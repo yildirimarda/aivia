@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tomllib
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "pyproject.toml"
+LIVE_BUDGET_ENV = "AIVA_LIVE_BUDGET_USD"
 
 
-def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
+def _run(
+    *args: str, cwd: Path = ROOT, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        args, cwd=cwd, env=env, capture_output=True, text=True, check=False
+    )
 
 
 def _tool_config() -> dict[str, Any]:
@@ -21,7 +29,19 @@ def _tool_config() -> dict[str, Any]:
     return cast(dict[str, Any], config["tool"])
 
 
-def _run_pytest(test_file: Path) -> subprocess.CompletedProcess[str]:
+def _run_pytest(
+    test_file: Path, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    run_env = os.environ.copy()
+    run_env.pop(LIVE_BUDGET_ENV, None)
+    existing_pythonpath = run_env.get("PYTHONPATH")
+    run_env["PYTHONPATH"] = (
+        str(ROOT)
+        if not existing_pythonpath
+        else f"{ROOT}{os.pathsep}{existing_pythonpath}"
+    )
+    if env is not None:
+        run_env.update(env)
     return _run(
         sys.executable,
         "-m",
@@ -29,10 +49,34 @@ def _run_pytest(test_file: Path) -> subprocess.CompletedProcess[str]:
         "-q",
         "-p",
         "no:cacheprovider",
+        "-p",
+        "conftest",
         "-c",
         str(CONFIG),
+        *args,
         str(test_file),
+        env=run_env,
     )
+
+
+def _write_live_test(tmp_path: Path) -> Path:
+    sample = tmp_path / "test_live_sample.py"
+    sample.write_text(
+        "\n".join(
+            [
+                "from decimal import Decimal",
+                "",
+                "import pytest",
+                "",
+                "@pytest.mark.live",
+                "def test_live(live_budget_usd):",
+                "    assert live_budget_usd == Decimal('1.25')",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return sample
 
 
 def test_pyproject_configures_ruff() -> None:
@@ -145,3 +189,39 @@ def test_unknown_markers_fail_the_run(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "not_a_real_marker" in result.stdout + result.stderr
+
+
+def test_pytest_exposes_the_live_option() -> None:
+    result = _run(sys.executable, "-m", "pytest", "--help", "-c", str(CONFIG))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--live" in result.stdout
+
+
+def test_live_tests_are_skipped_unless_enabled(tmp_path: Path) -> None:
+    sample = _write_live_test(tmp_path)
+
+    result = _run_pytest(sample)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 skipped" in result.stdout
+    assert "live tests require --live" in result.stdout
+
+
+def test_live_tests_run_when_enabled_with_budget(tmp_path: Path) -> None:
+    sample = _write_live_test(tmp_path)
+
+    result = _run_pytest(sample, "--live", env={LIVE_BUDGET_ENV: "1.25"})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 passed" in result.stdout
+
+
+@pytest.mark.parametrize("budget", ["", "0", "-1", "not-a-number", "NaN"])
+def test_live_requires_a_positive_budget(tmp_path: Path, budget: str) -> None:
+    sample = _write_live_test(tmp_path)
+
+    result = _run_pytest(sample, "--live", env={LIVE_BUDGET_ENV: budget})
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert LIVE_BUDGET_ENV in result.stdout + result.stderr
