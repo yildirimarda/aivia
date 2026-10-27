@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
+from aivia.core.redact import redact, redact_data
+
 __all__ = [
     "AiviaError",
     "AuthError",
@@ -43,6 +45,9 @@ class AiviaError(Exception):
         self.message = message
         self.details: dict[str, Any] = dict(details) if details else {}
 
+    def __str__(self) -> str:
+        return redact(self.message)
+
     @property
     def permanent(self) -> bool:
         """Whether retrying the unchanged operation cannot succeed."""
@@ -53,12 +58,12 @@ class AiviaError(Exception):
         payload: dict[str, Any] = {
             "type": type(self).__name__,
             "code": self.code,
-            "message": self.message,
+            "message": redact(self.message),
             "retryable": self.retryable,
             "permanent": self.permanent,
         }
         if self.details:
-            payload["details"] = dict(self.details)
+            payload["details"] = redact_data(dict(self.details))
         return payload
 
 
