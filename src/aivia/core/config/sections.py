@@ -15,6 +15,7 @@ from typing import Any, Literal, Self
 from pydantic import Field, model_validator
 
 from aivia.core.config.base import ConfigModel
+from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.video import (
     DurationRangeConfig,
@@ -45,6 +46,7 @@ __all__ = [
     "JobsConfig",
     "LanguageConfig",
     "LanguagesConfig",
+    "OnExceed",
     "PipelineConfig",
     "PlatformAccountConfig",
     "PlatformVideoConfig",
@@ -140,19 +142,6 @@ class RenderConfig(ConfigModel):
     fonts_dir: str = "package"
     require_bundled_fonts: bool = True
     min_contrast: float = 4.5
-
-
-class BudgetConfig(ConfigModel):
-    """Spending caps, provider limits, alert thresholds and overrun policy."""
-
-    per_video: float = 0.0
-    per_day: float = 0.0
-    per_month: float = 0.0
-    per_order: float = 0.0
-    per_instruction: float = 0.0
-    per_provider: dict[str, float] = Field(default_factory=dict)
-    alerts: list[float] = Field(default_factory=list)
-    on_exceed: Literal["pause", "downgrade", "notify"] = "pause"
 
 
 class StorageConfig(ConfigModel):
