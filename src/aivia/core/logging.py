@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from contextvars import ContextVar
+from collections.abc import Mapping
+from contextlib import AbstractAsyncContextManager, AbstractContextManager
+from contextvars import ContextVar, Token
 from datetime import UTC, datetime
+from types import TracebackType
 from typing import Any, TextIO
 
 run_id: ContextVar[str | None] = ContextVar("run_id", default=None)
@@ -18,6 +21,105 @@ CONTEXT_VARS: tuple[tuple[str, ContextVar[str | None]], ...] = (
     ("stage", stage),
     ("provider", provider),
 )
+
+_CONTEXT_VARIABLES: dict[str, ContextVar[str | None]] = dict(CONTEXT_VARS)
+
+
+class _Unset:
+    """Sentinel type distinguishing "leave unchanged" from an explicit ``None``."""
+
+    __slots__ = ()
+
+
+_UNSET = _Unset()
+
+
+class LogContext(
+    AbstractContextManager["LogContext"],
+    AbstractAsyncContextManager["LogContext"],
+):
+    """Temporarily set logging context values and restore them on exit.
+
+    The values live in :class:`~contextvars.ContextVar` instances, so they are
+    isolated between asyncio tasks and survive ``await`` points inside the task
+    that entered the context. Nested contexts only change the values they name
+    and restore the previous values afterwards.
+    """
+
+    def __init__(self, values: Mapping[str, str | None]) -> None:
+        self._values = dict(values)
+        self._tokens: list[tuple[str, Token[str | None]]] = []
+        self._entered = False
+
+    def __enter__(self) -> LogContext:
+        if self._entered:
+            raise RuntimeError("log context is already active")
+        self._entered = True
+        try:
+            for name, value in self._values.items():
+                token = _CONTEXT_VARIABLES[name].set(value)
+                self._tokens.append((name, token))
+        except BaseException:
+            self._reset()
+            raise
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._reset()
+
+    async def __aenter__(self) -> LogContext:
+        return self.__enter__()
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.__exit__(exc_type, exc_value, traceback)
+
+    def _reset(self) -> None:
+        tokens, self._tokens = self._tokens, []
+        self._entered = False
+        for name, token in reversed(tokens):
+            _CONTEXT_VARIABLES[name].reset(token)
+
+
+def log_context(
+    *,
+    run_id: str | _Unset | None = _UNSET,
+    stage: str | _Unset | None = _UNSET,
+    provider: str | _Unset | None = _UNSET,
+) -> LogContext:
+    """Return a context manager that sets the named logging context values.
+
+    Values that are omitted are left untouched. Passing ``None`` explicitly
+    clears a value. The returned object works with both ``with`` and
+    ``async with``.
+    """
+    values: dict[str, str | None] = {}
+    if not isinstance(run_id, _Unset):
+        values["run_id"] = run_id
+    if not isinstance(stage, _Unset):
+        values["stage"] = stage
+    if not isinstance(provider, _Unset):
+        values["provider"] = provider
+    return LogContext(values)
+
+
+def current_context() -> dict[str, str]:
+    """Return the logging context values that are currently set."""
+    context: dict[str, str] = {}
+    for name, variable in CONTEXT_VARS:
+        value = variable.get()
+        if value is not None:
+            context[name] = value
+    return context
 
 
 class JsonFormatter(logging.Formatter):
