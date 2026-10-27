@@ -1,9 +1,25 @@
 """Command-line entry point for AIVIA."""
 
-from aivia import __version__
+from __future__ import annotations
 
+from aivia.cli.registry import (
+    Command,
+    CommandHandler,
+    CommandRegistry,
+    ParserConfigurator,
+    register_command,
+    registry,
+)
+from aivia.cli.root import build_parser, main, version_string
 
-def main() -> int:
-    """Print the installed version and exit successfully."""
-    print(f"aivia {__version__}")
-    return 0
+__all__ = [
+    "Command",
+    "CommandHandler",
+    "CommandRegistry",
+    "ParserConfigurator",
+    "build_parser",
+    "main",
+    "register_command",
+    "registry",
+    "version_string",
+]
