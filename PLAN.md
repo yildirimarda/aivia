@@ -332,7 +332,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Dedupe candidates by normalized title and embedding similarity inside the window and across profiles, returning the reason (tests/research/test_dedupe.py)
 - [ ] Gate candidates by relevance against the brief with a test set of at least ten on theme and ten off theme examples (tests/research/test_relevance.py)
 - [ ] Score candidates with a versioned rubric, configured weights, per dimension scores and a minimum score filter (tests/research/test_scoring.py)
-- [ ] Score each topic on its weakest rubric dimension as well as the weighted mean so one dead dimension blocks selection (tests/research/test_weakest_link.py
+- [ ] Score each topic on its weakest rubric dimension as well as the weighted mean so one dead dimension blocks selection (tests/research/test_weakest_link.py)
 - [ ] Filter sensitive topics into blocked or manual review with the matched rule recorded (tests/research/test_sensitivity.py)
 - [ ] Verify each selected topic against at least two independent domains, marking single source topics unverified (tests/research/test_verify.py)
 - [ ] Produce a compact fact list with source urls implementing the core fact contract without importing any core code from this module (tests/research/test_factbase.py)
@@ -570,7 +570,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add an aggregator publisher covering several platforms and reporting capability gaps per account (tests/publish/test_aggregator.py)
 - [ ] Choose the matching run output per platform media type from the platform data file (tests/publish/test_media_types.py)
 - [ ] Format captions, hashtags, titles and disclosure text from platform data with no literals in code (tests/publish/test_formatting.py)
-- [ ] Generate description chapters from the transcript, validated against the platform chapter rules before publishing (tests/publish/test_chapters.py
+- [ ] Generate description chapters from the transcript, validated against the platform chapter rules before publishing (tests/publish/test_chapters.py)
 - [ ] Map profile, platform and language to credentials and apply daily posting slots with jitter and deferral notices (tests/publish/test_accounts.py)
 - [ ] Make publishing idempotent so a retry after a timeout never double posts, retrying only retryable errors and persisting post ids and urls (tests/publish/test_idempotency.py)
 - [ ] Validate format to account compatibility with a matrix test over every format and configured account (tests/publish/test_compat.py)
