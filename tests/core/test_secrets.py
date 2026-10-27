@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+import sys
+import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -32,6 +35,10 @@ class FakeKeyring:
 class BrokenKeyring:
     def get_password(self, service_name: str, username: str) -> str | None:
         raise RuntimeError("keyring unavailable")
+
+
+def _requirement_name(requirement: str) -> str:
+    return re.split(r"[<>=!~\[; ]", requirement, maxsplit=1)[0].lower()
 
 
 def _loader(tmp_path: Path, **kwargs: object) -> SecretsLoader:
@@ -117,6 +124,45 @@ def test_a_broken_keyring_falls_back_to_missing(tmp_path: Path) -> None:
     assert loader.get_optional("API_KEY") is None
     with pytest.raises(MissingSecretError):
         loader.get("API_KEY")
+
+
+def test_keyring_is_declared_as_an_optional_extra() -> None:
+    pyproject = tomllib.loads(
+        (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+    )
+    project = pyproject["project"]
+    core = {_requirement_name(dep) for dep in project["dependencies"]}
+    extras = {
+        name: {_requirement_name(dep) for dep in deps}
+        for name, deps in project.get("optional-dependencies", {}).items()
+    }
+
+    assert "keyring" not in core
+    assert "keyring" in extras.get("keyring", set())
+
+
+def test_an_installed_keyring_is_discovered_without_an_explicit_backend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    keyring = FakeKeyring({"API_KEY": "keyring"})
+    monkeypatch.setitem(sys.modules, "keyring", keyring)
+
+    loader = _loader(tmp_path)
+
+    assert loader.get("API_KEY") == "keyring"
+    assert keyring.calls == [("aivia", "API_KEY")]
+
+
+def test_a_missing_keyring_extra_is_not_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "keyring", None)
+
+    loader = _loader(tmp_path)
+
+    assert loader.get_optional("API_KEY") is None
 
 
 def test_file_supports_comments_exports_quotes_and_prefixed_keys(
