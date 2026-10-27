@@ -1,10 +1,99 @@
 # Copied to $XDG_CONFIG_HOME/aivia/config.yaml on first run.
 schema_version: 1
 
+languages:
+  default: en
+  en:
+    name: English
+    locale: en_US
+  de:
+    name: German
+    locale: de_DE
+  tr:
+    name: Turkish
+    locale: tr_TR
+
 pipeline:
   stages: [research, write, voice, visuals, render, review, publish]
   timezone: Europe/Berlin
 
+video:
+  resolution: 1080x1920
+  fps: 30
+  duration_seconds:
+    min: 20
+    max: 45
+  loudness_lufs: -14
+
 render:
   fonts_dir: package
   require_bundled_fonts: true
+  min_contrast: 4.5
+
+budget:
+  per_video: 0
+  per_day: 0
+  per_month: 0
+  per_order: 0
+  per_instruction: 0
+  per_provider: {}
+  alerts: []
+  on_exceed: pause
+
+storage:
+  backend: local
+  local_dir: media
+
+api:
+  host: 127.0.0.1
+  port: 8765
+  require_auth: true
+  api_key_ref: AIVA_API_KEY
+  max_body_bytes: 10000000
+  rate_limit_per_minute: 60
+
+jobs:
+  concurrency: 1
+  max_attempts: 3
+  heartbeat_seconds: 30
+  poll_seconds: 2
+  stale_after_seconds: 120
+
+safety:
+  enabled: true
+  screen_prompts: true
+  screen_media: true
+  block_categories: []
+  allow_regenerate: true
+
+platforms:
+  accounts: {}
+
+presets:
+  presets: {}
+
+retention:
+  intermediates_days: 7
+  cache_days: 14
+  logs_days: 30
+  personal_data_days: 30
+  delete_final_outputs: false
+
+privacy:
+  redact_logs: true
+  redact_prompts: false
+  store_prompt_text: true
+  allow_personal_data: false
+
+tracing:
+  enabled: false
+  exporter: none
+  service_name: aivia
+  sample_ratio: 1.0
+
+accessibility:
+  enabled: true
+  alt_text: true
+  subtitles: true
+  min_contrast: 4.5
+  subtitle_font_size: 32
