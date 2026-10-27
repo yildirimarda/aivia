@@ -24,6 +24,7 @@ from aivia.core.config.ops import (
     ReviewConfig,
     StorageConfig,
 )
+from aivia.core.config.profile import ProfilesConfig
 from aivia.core.config.quality import QualityConfig, ScoringConfig
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.video import (
@@ -66,6 +67,7 @@ __all__ = [
     "PresetsConfig",
     "PrivacyConfig",
     "ProfileVideoConfig",
+    "ProfilesConfig",
     "QualityConfig",
     "RenderConfig",
     "Resolution",
@@ -279,6 +281,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("languages", LanguagesConfig),
     ("pipeline", PipelineConfig),
     ("formats", FormatsConfig),
+    ("profiles", ProfilesConfig),
     ("video", VideoConfig),
     ("render", RenderConfig),
     ("budget", BudgetConfig),
