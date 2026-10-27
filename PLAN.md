@@ -54,7 +54,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the video spec parsing resolution, fps, duration bounds and per platform and per profile deep merge (tests/core/config/test_video.py)
 - [x] Add the budget config with all caps, provider monthly limits, sorted alert thresholds and the on exceed behaviour enum (tests/core/config/test_budget.py)
 - [x] Add the reusable capability chain config with strategy, chain, pricing overrides, per clip cap and split flag (tests/core/config/test_capability.py)
-- [ ] Add LLM config with repair limit, per million token pricing and the core role enum plus module registered roles and a clear unknown role error (tests/core/config/test_llm.py)
+- [x] Add LLM config with repair limit, per million token pricing and the core role enum plus module registered roles and a clear unknown role error (tests/core/config/test_llm.py)
 - [ ] Add quality, scoring, render, privacy and accessibility config with weight sum validation and contrast and font settings (tests/core/config/test_quality.py)
 - [ ] Add review, retention, jobs and storage config including delete final outputs defaulting to false and required S3 fields (tests/core/config/test_ops.py)
 - [ ] Add the format recipe schema with ordered stages, per stage options, output type and a save, publish or deliver handler (tests/core/config/test_formats.py)
