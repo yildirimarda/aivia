@@ -62,7 +62,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add occasion, orders and delivery config with variables, personalization levels, name verify retries, pricing and per provider delivery fields (tests/core/config/test_orders.py)
 - [x] Add planner config with step and iteration limits, approval mode, allowed tools, preview, defaults and budget (tests/core/config/test_planner.py)
 - [x] Add reference config with similarity level, visual and text thresholds, regeneration limit and download policy (tests/core/config/test_reference.py)
-- [ ] Add character and brand kit config with the consistency strategy order, QA thresholds, consent flags and branding fields (tests/core/config/test_character.py)
+- [x] Add character and brand kit config with the consistency strategy order, QA thresholds, consent flags and branding fields (tests/core/config/test_character.py)
 - [ ] Add schedule, publish and presets config validating cron fields, existing profiles and credential references (tests/core/config/test_schedule.py)
 - [ ] Assemble the root config model with cross checks such as platform accounts existing in the platform data (tests/core/config/test_app.py)
 - [ ] Implement layered resolution from packaged defaults through user config, environment file, profile overrides and CLI set flags with documented precedence (tests/core/config/test_resolve.py)

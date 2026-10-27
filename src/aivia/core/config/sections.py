@@ -16,6 +16,7 @@ from pydantic import Field, field_validator, model_validator
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.budget import BudgetConfig, OnExceed
+from aivia.core.config.character import BrandKitConfig, CharacterConfig
 from aivia.core.config.formats import FormatsConfig
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.ops import (
@@ -53,7 +54,9 @@ __all__ = [
     "CORE_SECTION_KEYS",
     "AccessibilityConfig",
     "ApiConfig",
+    "BrandKitConfig",
     "BudgetConfig",
+    "CharacterConfig",
     "DeliveryConfig",
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
@@ -307,6 +310,8 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("delivery", DeliveryConfig),
     ("planner", PlannerConfig),
     ("reference", ReferenceConfig),
+    ("character", CharacterConfig),
+    ("brand", BrandKitConfig),
     ("retention", RetentionConfig),
     ("review", ReviewConfig),
     ("privacy", PrivacyConfig),

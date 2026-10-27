@@ -281,6 +281,31 @@ reference:
     max_redirects: 5
     cache: true
 
+character:
+  enabled: true
+  consistency_strategies: [composite, reference, adapter, prompt_only]
+  qa:
+    min_score: 0.8
+    vision_threshold: 0.8
+    embedding_threshold: 0.75
+    max_retries: 2
+  consent:
+    voice_cloning: false
+    real_person_likeness: false
+    resemblance_warning: true
+    require_ownership: true
+  max_reference_images: 4
+
+brand:
+  name: default
+  colors: []
+  fonts: []
+  logo: ""
+  watermark: ""
+  intro: ""
+  outro: ""
+  caption_style: ""
+
 occasions:
   default: birthday
   occasions:
