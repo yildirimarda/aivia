@@ -1,57 +1,623 @@
 # Plan
 
+492 items in 22 milestones, in dependency order (an item may only rely on items above it).
+Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisions: docs/decisions.md.
+
 <!--
-  This file is the agent's queue AND its notebook.
+  run.sh takes the first unchecked item and hands its text to the agent; the agent ticks it in the
+  same PR. The agent may APPEND items (end of the relevant milestone, or ## Discovered) but never
+  delete, reorder or reword an existing one. Only ./run.sh --replan may restructure.
 
-  `./run.sh` finds the first unchecked item, hands that exact text to the
-  agent, and the agent ticks it off in the same pull request. While working,
-  the agent may APPEND newly discovered work — to the end of the milestone it
-  belongs to, or to "## Discovered" below. It may never delete, reorder or
-  reword an existing item.
-
-  Format rules — `run.sh` parses these lines, so keep them exact:
-    · headings:  ## Milestone N: name
-    · todo:      - [ ] text
-    · done:      - [x] text
-
-  Writing good items is the highest-leverage thing you do here:
-    · One pull request per item. If it needs two PRs, split it.
-    · Independently testable. If you can't test it, it's not an item.
-    · Ordered. Each item may only depend on items above it.
-    · Written as an instruction, not a topic.
-        good: "Add config loading from environment variables with validation"
-        bad:  "Config"
-
-  Starting a new project? Don't write this by hand:
-      ./run.sh --init "what you're building, constraints, stack"
-  The agent drafts the plan, opens a PR labelled `plan`, and stops so you can
-  review it. Reviewing the plan is where your judgement pays off.
-
-  Plan grown messy after a few dozen items? Tidy it up:
-      ./run.sh --replan
-  That is the only mode allowed to promote, split, reorder and delete items.
-
-  Delete this comment block once you have real content.
+  Parse rules:  ## Milestone N: name   ·   - [ ] todo   ·   - [x] done
+  Item rules: one PR per item · independently testable · test path in parentheses · one line ·
+  imperative · no backticks or pipes · <=25 words.
 -->
 
-## Milestone 1: Foundations
+## Milestone 1: Toolchain, packaging and smoke tests
 
-- [ ] Set up the project layout, dependency manifest and a placeholder test so the test command passes
-- [ ] Add configuration loading from environment variables, with validation and clear errors on missing values
-- [ ] Add structured logging with a configurable level
+<!-- goal: installable single-package tool with logging, ids, secrets, bootstrap and a plan lint -->
 
-## Milestone 2: Core
+- [ ] Create the package skeleton with pyproject.toml, the aivia console script and a wheel containing exactly one top-level package plus package data (tests/test_packaging.py)
+- [ ] Bundle an OFL font family with its LICENSE inside the package and declare it as package data with the default config, prompts and templates (tests/test_packaging.py)
+- [ ] Configure ruff, mypy, pytest and the live, slow and golden markers so unknown markers fail the run (tests/test_smoke.py)
+- [ ] Add Makefile targets for lint, type, test, check, docs and install-smoke, with check running the first three in order (make check)
+- [ ] Add a CI workflow that installs ffmpeg and runs lint, type and the offline suite, excluding the live marker (CI)
+- [ ] Add structured JSON logging with ts, level, msg and logger plus run_id, stage and provider context variables (tests/core/test_logging.py)
+- [ ] Add a log context helper that nests, restores and is safe inside async code (tests/core/test_logging.py)
+- [ ] Add the error taxonomy with retryable, permanent, budget, auth, rate limit, timeout, invalid request, content policy, provider exhausted, config, validation and quota errors (tests/core/test_errors.py)
+- [ ] Add a secrets loader that checks environment, then a secrets file, then the OS keyring, naming only the missing reference and exposing the token store key (tests/core/test_secrets.py)
+- [ ] Add a redaction helper used by logging and exception formatting that masks known secrets and token-like strings (tests/core/test_redact.py)
+- [ ] Resolve user config and data directories plus package resources, working from any working directory, with the config flag taking precedence (tests/core/test_paths.py)
+- [ ] Add a time-sortable ULID generator with run, job, asset and order prefixes (tests/core/test_ids.py)
+- [ ] Add the root CLI with a version flag and a subcommand registry that later milestones extend (tests/cli/test_root.py)
+- [ ] Write the architecture note, the decisions log and the progress log, recording the deterministic core and no module imports in core (tests/test_docs.py)
+- [ ] Document the fixtures and examples policy: recorded responses per provider, one example per schema, goldens folder, no real personal data (tests/test_docs.py)
+- [ ] Add the env example file with AIVA prefixed variables and a repo scan that fails on high entropy or key-like strings (tests/test_no_secrets.py)
+- [ ] Add an advisory config coverage lint that reports vendor names, model ids, prices and thresholds found outside adapters, config and data (tests/test_config_coverage.py)
+- [ ] Add a plan lint that fails on malformed item lines, duplicate or missing fields and any dependency pointing to a later item or milestone (tests/test_plan_lint.py)
+- [ ] Add first run bootstrap that copies package defaults into the user config directory once, never overwriting edited files and adding new defaults on upgrade (tests/core/test_bootstrap.py)
+- [ ] Add an init command that creates the config skeleton, prints resolved paths and refuses to overwrite without force or in dry run mode (tests/cli/test_init.py)
+- [ ] Add an installed tool smoke script that builds a wheel, installs it with uv tool install and runs config show from outside the repo (scripts/install_smoke.sh)
 
-<!-- Add your items here as real checkbox lines: a dash, space, brackets,
-space, then the text ("dash [ ] item text"). This placeholder deliberately
-avoids writing one at the start of a line — the loop greps for that shape and
-would hand it to the agent as a task. -->
+## Milestone 2: Configuration system
 
-## Milestone 3: Hardening
+<!-- goal: every tunable validated, layered and discoverable; schema versioned and migratable -->
 
-<!-- Add your items here. -->
+- [ ] Add the config base model with environment interpolation including defaults, rejecting unknown keys with a dotted path (tests/core/config/test_base.py)
+- [ ] Add a modular section registry so modules register their own top-level keys and collisions or unknown keys fail clearly (tests/core/config/test_registry.py)
+- [ ] Add the core config sections for languages, pipeline, video, render, budget, storage, api, jobs, safety, platforms, presets, retention, privacy, tracing and accessibility (tests/core/config/test_core_sections.py)
+- [ ] Add the language config with locale, words per second bounds, subtitle font and hashtag style (tests/core/config/test_language.py)
+- [ ] Add the video spec parsing resolution, fps, duration bounds and per platform and per profile deep merge (tests/core/config/test_video.py)
+- [ ] Add the budget config with all caps, provider monthly limits, sorted alert thresholds and the on exceed behaviour enum (tests/core/config/test_budget.py)
+- [ ] Add the reusable capability chain config with strategy, chain, pricing overrides, per clip cap and split flag (tests/core/config/test_capability.py)
+- [ ] Add LLM config with repair limit, per million token pricing and the core role enum plus module registered roles and a clear unknown role error (tests/core/config/test_llm.py)
+- [ ] Add quality, scoring, render, privacy and accessibility config with weight sum validation and contrast and font settings (tests/core/config/test_quality.py)
+- [ ] Add review, retention, jobs and storage config including delete final outputs defaulting to false and required S3 fields (tests/core/config/test_ops.py)
+- [ ] Add the format recipe schema with ordered stages, per stage options, output type and a save, publish or deliver handler (tests/core/config/test_formats.py)
+- [ ] Add the content profile schema with format, weighted topic modes, brief, niche, keywords, examples, sources, tone, style bible, character, brand kit, accounts and overrides (tests/core/config/test_profile.py)
+- [ ] Add occasion, orders and delivery config with variables, personalization levels, name verify retries, pricing and per provider delivery fields (tests/core/config/test_orders.py)
+- [ ] Add planner config with step and iteration limits, approval mode, allowed tools, preview, defaults and budget (tests/core/config/test_planner.py)
+- [ ] Add reference config with similarity level, visual and text thresholds, regeneration limit and download policy (tests/core/config/test_reference.py)
+- [ ] Add character and brand kit config with the consistency strategy order, QA thresholds, consent flags and branding fields (tests/core/config/test_character.py)
+- [ ] Add schedule, publish and presets config validating cron fields, existing profiles and credential references (tests/core/config/test_schedule.py)
+- [ ] Assemble the root config model with cross checks such as platform accounts existing in the platform data (tests/core/config/test_app.py)
+- [ ] Implement layered resolution from packaged defaults through user config, environment file, profile overrides and CLI set flags with documented precedence (tests/core/config/test_resolve.py)
+- [ ] Add a config validate command printing every error with its key path and a failing exit code (tests/cli/test_config_validate.py)
+- [ ] Add a config show command printing the merged configuration with profile selection, origin tracking and masked secrets (tests/cli/test_config_show.py)
+- [ ] Export a JSON schema from the registered sections deterministically and fail CI when it is stale (tests/cli/test_config_schema.py)
+- [ ] Prove a configuration without module sections still validates and that a module key without its package errors clearly (tests/core/config/test_module_optional.py)
+- [ ] Maintain a single packaged default config that validates and covers every area of the configuration checklist (tests/test_example_config.py)
+- [ ] Improve config error messages to include file, dotted path, expected versus actual and a hint without a stack trace (tests/core/config/test_errors.py)
+- [ ] Generate the configuration reference document from the schema and docstrings and fail CI when it is stale (tests/cli/test_config_docs.py)
+- [ ] Audit masking so resolved config, run snapshots and sidecars never contain secrets and prompt content obeys the redact setting (tests/core/config/test_masking.py)
+- [ ] Add config schema versioning and a migrate command that upgrades older user configs, prints a diff and preserves unknown but valid keys (tests/cli/test_config_migrate.py)
+
+## Milestone 3: Models, repositories and database
+
+<!-- goal: versioned models and a migration safe SQLite store -->
+
+- [ ] Add the model base with schema version, timestamps, deterministic JSON and a warn on unknown extra fields policy (tests/core/models/test_base.py)
+- [ ] Add topic, candidate and claim models carrying source URLs and a fact list contract usable without the research module (tests/core/models/test_topic.py)
+- [ ] Add mode aware script, beat and media prompt models including dialogue lines per speaker (tests/core/models/test_script.py)
+- [ ] Add the asset models with provider, model, prompt hash, license, cost links, analysis fields, alt text and a pinned flag (tests/core/models/test_asset.py)
+- [ ] Add run and stage result models with run kinds, paused budget state, idempotency key and toolchain fingerprint (tests/core/models/test_run.py)
+- [ ] Add job models with attempts, not before, heartbeat and dead letter state (tests/core/models/test_job.py)
+- [ ] Add cost event and provider meta models with capability, pricing, rate limit, quality rank and licensing fields (tests/core/models/test_cost_provider.py)
+- [ ] Add post, delivery, plan and composition reference models including attestation fields (tests/core/models/test_io.py)
+- [ ] Configure the database engine and migrations in the user data directory with WAL, busy timeout and foreign keys enabled on every connection (tests/core/db/test_migrate.py)
+- [ ] Create the runs, stage runs and jobs tables with a claim index and a unique idempotency key index (tests/core/db/test_tables_core.py)
+- [ ] Create the assets, compositions and cost events tables with indexes on prompt hash, run, provider, creation time and pinned (tests/core/db/test_tables_assets.py)
+- [ ] Create the plans, templates, references, style specs, feedback and ratings tables with one rating per subject (tests/core/db/test_tables_aux.py)
+- [ ] Create the orders, deliveries, posts, post metrics and web card hits tables with order state indexing and delete cascade (tests/core/db/test_tables_orders.py)
+- [ ] Implement repository classes with create, get, update and list for every aggregate, tested against an in memory database (tests/core/db/test_repos.py)
+- [ ] Add a migration guard test that fails when models and migrations diverge (tests/core/db/test_migrations_in_sync.py)
+- [ ] Add an upgrade path test proving a database from the previous schema version upgrades with runs, orders, costs and assets intact (tests/core/db/test_upgrade_path.py)
+
+## Milestone 4: Providers, registry, router and mocks
+
+<!-- goal: any capability swappable by config, with fallback, budget awareness and deterministic mocks -->
+
+- [ ] Add the provider base class with metadata, health and close plus a reusable contract test suite (tests/contracts)
+- [ ] Define the LLM, search and page fetch protocols with typed request and response models and passing fakes (tests/contracts/test_llm_search.py)
+- [ ] Define the embeddings, text to speech and speech to text protocols including word timestamps (tests/contracts/test_audio_protocols.py)
+- [ ] Define the image, image edit, video, music, sfx and stock protocols with capability flags (tests/contracts/test_media_protocols.py)
+- [ ] Define the notifier, publisher, delivery, storage, lip sync and character trainer protocols (tests/contracts/test_io_protocols.py)
+- [ ] Implement the provider registry with a registration decorator, name lookup, dotted path loading and a clear unknown type error (tests/core/test_registry.py)
+- [ ] Implement router selection for the first available strategy honouring required capabilities (tests/core/test_router.py)
+- [ ] Implement the cheapest strategy using provider pricing and overrides with chain order as the tie breaker (tests/core/test_router.py)
+- [ ] Implement round robin and weighted strategies with seeded determinism and recorded selection (tests/core/test_router.py)
+- [ ] Implement the best quality strategy using static ranks until human ratings exist, warning when a rank is missing (tests/core/test_router.py)
+- [ ] Implement fallback on retryable, timeout and rate limit errors while surfacing permanent and auth errors and raising provider exhausted (tests/core/test_router.py)
+- [ ] Make provider selection budget aware, skipping providers whose estimate exceeds the remaining budget (tests/core/test_router.py)
+- [ ] Add a per provider circuit breaker that opens, cools down and half opens, with the router skipping open providers (tests/core/test_circuit.py)
+- [ ] Add a token bucket rate limiter per provider that waits or raises a rate limited error under concurrency (tests/core/test_ratelimit.py)
+- [ ] Add a shared async HTTP client with backoff, jitter, timeouts, redacted header logging and an injectable transport (tests/core/test_http.py)
+- [ ] Implement deterministic mock providers for every capability, including lavfi generated video and sized audio, with simulated cost and failures (tests/contracts)
+- [ ] Add providers list and providers check commands, the latter requiring live mode and a budget cap (tests/cli/test_providers.py)
+- [ ] Generate the provider capability matrix document from provider metadata and fail CI when it is stale (tests/test_provider_docs.py)
+- [ ] Validate configured model ids against models.yaml, warning on unknown ids with a closest match and on deprecated ids with a replacement (tests/core/test_model_ids.py)
+
+## Milestone 5: Cost tracking, budgets and dashboard
+
+<!-- goal: every paid call recorded and capped, with reports a human can read -->
+
+- [ ] Record a cost event for every paid call including provider, operation, units, amount, pricing version and estimate or actual flag (tests/core/test_cost.py)
+- [ ] Resolve pricing from provider metadata and overrides with unit conversions and a warning event instead of a crash when a price is missing (tests/core/test_pricing.py)
+- [ ] Implement SQL level cost aggregation by run, day, week, month, provider, model, profile, format and stage (tests/core/test_cost_agg.py)
+- [ ] Enforce per run and per call caps, raising a budget error before the call is made (tests/core/test_budget.py)
+- [ ] Implement the on exceed behaviours: downgrade to a cheaper provider, pause the run as paused budget, or notify only (tests/core/test_budget.py)
+- [ ] Enforce day, month and per provider monthly limits computed from events across dates (tests/core/test_budget.py)
+- [ ] Add pre run estimation where each stage reports an estimate and the estimate flag prints the table and exits (tests/cli/test_estimate.py)
+- [ ] Require confirmation above the configured threshold, with a yes flag and a refusal path in non interactive mode (tests/cli/test_confirm.py)
+- [ ] Add a costs run command breaking down spend by stage, provider, model and asset (tests/cli/test_costs_run.py)
+- [ ] Add a costs summary command with grouping options and date filters (tests/cli/test_costs_summary.py)
+- [ ] Add CSV and JSON cost export whose totals match the summary (tests/cli/test_costs_export.py)
+- [ ] Write a sidecar cost file next to every output containing totals, items, providers, models, pricing version and toolchain fingerprint (tests/core/test_sidecar.py)
+- [ ] Support actual amounts reported by providers and flag drift above a threshold against the estimate (tests/core/test_reconcile.py)
+- [ ] Emit budget alerts once per threshold per period and provide a console notifier any module can fall back on (tests/core/test_budget_alerts.py)
+- [ ] Generate a static HTML dashboard showing spend per day, run and provider plus budget bars (tests/cli/test_dashboard.py)
+- [ ] Add a resume command that continues a paused budget run after explicit confirmation and records who and why (tests/cli/test_resume.py)
+
+## Milestone 6: Execution core, storage and API
+
+<!-- goal: durable, resumable runs behind a queue, a storage abstraction and a local API -->
+
+- [ ] Add the stage base class with name, run, estimate and artifact declarations plus a context exposing run directory, config, cost, router, storage and logger (tests/core/stages/test_base.py)
+- [ ] Manage run directories and register artifacts per stage (tests/core/test_run_dirs.py)
+- [ ] Implement the run state machine with legal transitions only and persistence on each change (tests/core/test_run_state.py)
+- [ ] Implement the orchestrator that executes recipe stages in order, persists results and stops on failure with stage and error code (tests/core/test_orchestrator.py)
+- [ ] Support resume from failure by skipping succeeded stages whose input hash is unchanged (tests/core/test_resume.py)
+- [ ] Apply per stage timeout and retry policy with recorded attempts and exhaustion (tests/core/test_stage_retry.py)
+- [ ] Save a masked config snapshot with seeds, provider and model ids and the toolchain fingerprint for replay (tests/core/test_snapshot.py)
+- [ ] Add per profile locks and a global parallel run limit so scheduled runs never overlap unsafely (tests/core/test_locks.py)
+- [ ] Implement the job queue with atomic claim, heartbeat, complete and fail so two workers never claim the same job (tests/core/jobs/test_queue.py)
+- [ ] Implement the worker loop with backoff retries, dead letter state, graceful shutdown and stale heartbeat recovery (tests/core/jobs/test_worker.py)
+- [ ] Add a local storage provider with content addressed paths, dedupe on put and url resolution (tests/providers/test_storage_local.py)
+- [ ] Add an S3 compatible storage provider with presigned expiring urls verified against a local mock (tests/providers/test_storage_s3.py)
+- [ ] Add the asset cache keyed by provider, model, prompt, parameters and reference hashes, recording zero cost hits (tests/core/test_asset_cache.py)
+- [ ] Add the core platform data loader and default file with durations, resolutions, aspect ratios, size limits, caption limits, safe areas and disclosure rules (tests/core/test_platforms.py)
+- [ ] Add the CLI framework with global config, profile, set, estimate, dry run, yes, no cache, live and verbose flags plus a command registry (tests/cli/test_globals.py)
+- [ ] Enforce dry run by swapping in mock providers and failing the test on any outbound socket call (tests/e2e/test_dry_run.py)
+- [ ] Add the local API skeleton with health, OpenAPI, localhost binding, API key auth, rate limiting, body limits and upload sanitization (tests/api/test_skeleton.py)
+- [ ] Expose generic job and run endpoints for submission, status, run details and run costs (tests/api/test_jobs.py)
+- [ ] Add a run command that creates a run, executes or enqueues it and prints the id and estimate, plus a run show view of stages, cost and artifacts (tests/cli/test_run.py)
+- [ ] Add an end to end smoke test producing a run directory, stage records, cost events, snapshot and sidecars for every run kind (tests/e2e/test_smoke_all_kinds.py)
+- [ ] Reject or defer submissions above the queue depth limit with a quota error carrying the current depth (tests/core/jobs/test_backpressure.py)
+- [ ] Support an idempotency key on runs, returning the existing run for a repeated key and conflicting on a different payload (tests/cli/test_run_idempotency.py)
+- [ ] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
+
+## Milestone 7: LLM, prompts, search and embeddings
+
+<!-- goal: validated structured LLM output, versioned prompts, interchangeable search and embeddings -->
+
+- [ ] Add the Anthropic LLM provider with system and user messages, usage reporting and mapped errors (tests/providers/llm/test_anthropic.py)
+- [ ] Add the OpenAI LLM provider with the same behaviour and error mapping (tests/providers/llm/test_openai.py)
+- [ ] Add the Gemini LLM provider mapping safety blocks to a content policy error (tests/providers/llm/test_gemini.py)
+- [ ] Add a generic OpenAI compatible provider configured by base url, key reference and model, verified against a local mock server (tests/providers/llm/test_openai_compat.py)
+- [ ] Convert reported token usage into cost events using configured per million input and output prices (tests/providers/llm/test_llm_cost.py)
+- [ ] Add a structured output helper that validates responses against a pydantic schema and records tokens and cost (tests/llm/test_structured.py)
+- [ ] Add a repair loop that re prompts with the validation error up to the configured limit then raises a structured output error (tests/llm/test_repair.py)
+- [ ] Support image input for vision capable providers and filter out models without vision when a task needs it (tests/llm/test_vision.py)
+- [ ] Resolve models by role using the config enum as the single source of truth, with unknown roles listing the allowed values (tests/llm/test_roles.py)
+- [ ] Cache LLM responses by provider, model, prompt version, messages and parameters, recording hits at zero cost and honouring a no cache flag (tests/llm/test_cache.py)
+- [ ] Load prompt templates from the user directory with packaged defaults as fallback, rendered in a sandboxed environment with strict undefined variables (tests/llm/test_prompts.py)
+- [ ] Select prompt versions per config and per profile and list user and default versions (tests/cli/test_prompts.py)
+- [ ] Record the prompt name and version on every call, omitting content when redaction is enabled (tests/llm/test_prompt_log.py)
+- [ ] Add an untrusted input wrapper that places user text, filenames and extracted text inside delimited data blocks with a data only instruction (tests/llm/test_untrusted.py)
+- [ ] Add language utilities for code normalization, detection and per language accessors such as words per second and fonts (tests/llm/test_languages.py)
+- [ ] Normalize search results into one model, dedupe by url and route search calls through the router with cost tracking (tests/providers/search/test_normalize.py)
+- [ ] Add the Tavily search provider with quota errors mapped to rate limited (tests/providers/search/test_tavily.py)
+- [ ] Add the Exa search provider (tests/providers/search/test_exa.py)
+- [ ] Add the Brave search provider (tests/providers/search/test_brave.py)
+- [ ] Add SerpAPI and an LLM native search provider using the web search capability (tests/providers/search/test_serpapi_llm.py)
+- [ ] Add a page fetch provider with readability extraction, size and time limits, SSRF guarding and a host allowlist (tests/providers/test_pagefetch.py)
+- [ ] Add OpenAI, Voyage and local embedding providers with batching, cost tracking, dimension config and caching (tests/providers/test_embeddings.py)
+- [ ] Add similarity utilities for cosine, normalized title matching and n gram overlap with documented thresholds (tests/core/test_similarity.py)
+- [ ] Run the shared contract suite plus golden fixtures across all LLM providers offline (tests/contracts/test_llm_providers.py)
+
+## Milestone 8: Media generation core and toolkit
+
+<!-- goal: any image, video, voice, music or sfx produced by a config chosen provider, cost tracked and cached -->
+
+- [ ] Implement the async media job helper with submit, poll, download, timeout, cancel, idempotency key and restart safe persisted job ids (tests/providers/media/test_async_job.py)
+- [ ] Define media request and result models for image, video, music and speech with range validation (tests/providers/media/test_dto.py)
+- [ ] Add a prompt and option adaptation layer that snaps sizes, clamps durations and rejects unsupported options instead of silently dropping them (tests/providers/media/test_adapt.py)
+- [ ] Add a download and validation helper with format sniffing, dimension checks, size caps, decompression bomb guard and ffprobe checks (tests/core/test_media_probe.py)
+- [ ] Add image utilities for resize, aspect crop, blurred fill padding, conversion and metadata stripping that never modify the original (tests/media/test_image_utils.py)
+- [ ] Add offline and vision based image analysis producing dimensions, dominant colors, a description, detected text, faces and alt text (tests/media/test_image_analysis.py)
+- [ ] Add the fal image provider using the queue pattern with fixtures for success and filtered content (tests/providers/image/test_fal.py)
+- [ ] Add the Replicate image provider with a versioned model id from config (tests/providers/image/test_replicate.py)
+- [ ] Add the OpenAI image provider handling sizes, counts and both base64 and url responses (tests/providers/image/test_openai_image.py)
+- [ ] Add the Google image provider (tests/providers/image/test_google_image.py)
+- [ ] Build a declarative HTTP provider engine supporting sync and async APIs with sandboxed body templates, pricing and mock server tests (tests/providers/media/test_http_spec.py)
+- [ ] Add a providers add spec command that prints target hosts and secret names and requires confirmation, rejecting non TLS urls unless loopback and hosts outside the allowlist (tests/cli/test_providers_add_spec.py)
+- [ ] Pass reference images only to providers declaring image input support (tests/providers/image/test_reference_input.py)
+- [ ] Add aggregator image editing for instruction edit, inpainting and outpainting with per operation fixtures (tests/providers/image_edit/test_aggregator.py)
+- [ ] Add local background removal producing alpha png output at no cost (tests/providers/image_edit/test_rembg.py)
+- [ ] Add remote background removal and upscaling with validated factors and asserted dimensions (tests/providers/image_edit/test_remote_ops.py)
+- [ ] Add Pexels and Pixabay stock providers for images and video recording attribution (tests/providers/stock/test_stock.py)
+- [ ] Rank stock candidates against the intended description with a vision model and drop everything below the configured relevance (tests/media/test_stock_relevance.py)
+- [ ] Add prompt and content screening that blocks configured terms before any provider call and returns a token paid services require (tests/media/test_screening.py)
+- [ ] Implement the image service requiring a screened prompt and running cache, budget, router, provider, validation, storage, cost and sidecar in one place (tests/media/test_image_service.py)
+- [ ] Handle variation counts and seeds, recording a distinct seed per output (tests/media/test_variations.py)
+- [ ] Add image quality assurance with a vision score, retries up to the configured limit and fallback to the next provider or stock (tests/media/test_image_qa.py)
+- [ ] Build a reusable batch runner library with a concurrency cap, a batch wide budget stop and a per item manifest, with no CLI parsing (tests/media/test_batch_runner.py)
+- [ ] Define video request and result models with duration, aspect, resolution, fps, seed, first and last frame and audio flags (tests/providers/video/test_dto.py)
+- [ ] Add the fal video provider with queue states, poll progress and timeout handling (tests/providers/video/test_fal.py)
+- [ ] Add fal image to video using a first frame input behind a capability flag (tests/providers/video/test_fal_i2v.py)
+- [ ] Add the Replicate video provider and one direct vendor integration authenticating through a credential reference (tests/providers/video/test_replicate_veo.py)
+- [ ] Provide a sample async declarative video spec passing a mock server test (tests/providers/video/test_http_spec_video.py)
+- [ ] Adapt video requests by clamping limits with recorded warnings and optionally splitting long requests into multiple clips with combined cost (tests/providers/video/test_adapt.py)
+- [ ] Implement video pricing models for per second, per clip, resolution tiers and audio options with estimator tests (tests/media/test_video_pricing.py)
+- [ ] Validate downloaded video with ffprobe, store it as an asset and serve identical requests from cache (tests/media/test_video_cache.py)
+- [ ] Add a helper that generates or selects a still and animates it, keeping linked cost events (tests/media/test_i2v_flow.py)
+- [ ] Filter providers by first and last frame and native audio support and strip unwanted audio verified by ffprobe (tests/providers/video/test_flags.py)
+- [ ] Add a video to video adapter or document the skip when the capability is absent (tests/providers/video/test_v2v.py)
+- [ ] Implement the video service requiring a screened prompt with budget checks before submit, cost on completion, recorded failures and caching (tests/media/test_video_service.py)
+- [ ] Add video quality assurance with scene aware frame sampling, vision checks, retries and image to video fallback (tests/media/test_video_qa.py)
+- [ ] Add video utilities for trim, speed, concatenation with crossfade, frame and audio extraction, seamless loops and GIF, WebP and MP4 outputs with size caps (tests/media/test_video_utils.py)
+- [ ] Add ElevenLabs, OpenAI, Google or Azure and local text to speech providers with voice mapping and per character cost (tests/providers/tts)
+- [ ] Resolve per language voices with fallback, list voices and pass pronunciation hints where supported (tests/media/test_voices.py)
+- [ ] Implement the speech service with caching by text, voice and settings plus loudness normalization, duration measurement, trimming and fades (tests/media/test_tts_service.py)
+- [ ] Add local and API speech to text providers with word level timestamps and per minute cost (tests/providers/stt)
+- [ ] Add forced alignment of known text to audio and term verification by fuzzy match (tests/media/test_align_verify.py)
+- [ ] Add a subtitle model with SRT and VTT export plus a dynamic ASS generator with word highlighting, style presets and safe areas (tests/media/test_subtitles.py)
+- [ ] Implement per language line breaking rules and assert glyph coverage for Turkish and German characters against the bundled font (tests/media/test_subtitle_i18n.py)
+- [ ] Add music providers for vocals and instrumentals plus a local stub, recording commercial use metadata (tests/providers/music)
+- [ ] Generate several music candidates, prefilter by duration, silence, clipping and loudness and record the chosen index (tests/media/test_music_candidates.py)
+- [ ] Implement the music service with caching, cost, license metadata and a commercial license gate blocking publish or deliver (tests/media/test_music_service.py)
+- [ ] Add a local royalty free music library indexed by mood, tempo, genre and license with selection by tags and duration (tests/media/test_music_library.py)
+- [ ] Add audio analysis for tempo, silence and loudness plus multi track mixing with verified voice ducking (tests/media/test_audio_mix.py)
+- [ ] Add media generate commands for image, video, speech, transcription, music and sfx with provider, strategy, prompt files, estimate and dry run support (tests/cli/test_media_generate.py)
+- [ ] Add a media edit command for instruction edits, background removal, upscaling and outpainting (tests/cli/test_media_edit.py)
+- [ ] Add a batch CLI that only parses CSV or YAML, maps flags onto the batch runner and resumes completed entries by manifest (tests/cli/test_media_batch_cli.py)
+- [ ] Add named presets with CLI flags overriding preset values and list and show commands (tests/core/test_presets.py)
+- [ ] Expose a MediaToolkit Python API for image, video, speech, transcription, music and edit returning results with cost (tests/test_media_toolkit.py)
+- [ ] Expose toolkit HTTP routes with job submission, status and result download (tests/api/test_media_api.py)
+- [ ] Add a per clip budget policy that returns a cheaper hint or raises before submit when nothing cheaper exists (tests/core/test_media_budget.py)
+- [ ] Add a media service facade that CLI, API and stages all use, emitting a metrics file (tests/media/test_media_facade.py)
+- [ ] Run the shared contract suite across every real media adapter offline (tests/contracts/test_media_providers.py)
+- [ ] Add an end to end media slice test where a second identical run costs nothing and totals match (tests/e2e/test_media_slice.py)
+- [ ] Add voice cloning create, list and delete requiring explicit consent and storing provider voice id, consent metadata and owner (tests/media/test_voice_clone.py)
+- [ ] Emit alt text and SRT and VTT sidecars for every audio and video output when accessibility output is enabled (tests/media/test_accessibility.py)
+
+## Milestone 9: Composition and rendering
+
+<!-- goal: one declarative composition rendered deterministically by one renderer, with no AI at render time -->
+
+- [ ] Define the composition schema with canvas, duration, fps, layers, audio tracks, effects and a schema version (tests/compose/test_schema.py)
+- [ ] Add layer types for image, video, text, shape, sticker and logo with validation (tests/compose/test_layers.py)
+- [ ] Validate compositions for unique ids, timings inside the duration, existing assets, sorted keyframes and value ranges, returning all errors (tests/compose/test_validation.py)
+- [ ] Support loading and saving compositions as YAML and JSON plus a JSON schema export (tests/compose/test_io.py)
+- [ ] Implement keyframes and easing functions for position, scale, rotation and opacity (tests/compose/test_keyframes.py)
+- [ ] Add the renderer interface and a Pillow still renderer for canvas, background and image layers with golden image tests and no AI or network imports (tests/compose/test_render_still.py)
+- [ ] Add shape layers for rectangles, rounded rectangles, circles and lines with fill, stroke and gradient (tests/compose/test_shapes.py)
+- [ ] Add text layers with full typography control, wrapping and shrink to fit with ellipsis (tests/compose/test_text.py)
+- [ ] Add a font manager resolving bundled families with per language fallback chains, treating system fallback as an error when bundled fonts are required (tests/compose/test_fonts.py)
+- [ ] Add sticker and logo layers with nine anchors, margins and an optional drop shadow (tests/compose/test_stickers.py)
+- [ ] Add masks, blend modes and basic filters to image layers with numeric difference tests (tests/compose/test_blend_filters.py)
+- [ ] Add smart text placement that finds low detail regions and optionally avoids faces with a vision check (tests/compose/test_placement.py)
+- [ ] Add a contrast utility that chooses light or dark text and adds outline, shadow or a backing box below the configured contrast (tests/compose/test_contrast.py)
+- [ ] Build the FFmpeg filtergraph as a pure function producing an argument list tested without executing ffmpeg (tests/compose/test_ffmpeg_cmd.py)
+- [ ] Render multi layer video with timing, scaling and overlay, verified by ffprobe (slow, tests/compose/test_render_video.py)
+- [ ] Implement keyframed motion in video including Ken Burns and parallax with sampled frame checks (slow, tests/compose/test_motion.py)
+- [ ] Render text in video with entrance and exit animations sampled at start, middle and end (slow, tests/compose/test_text_video.py)
+- [ ] Generate procedural overlays such as confetti, sparkles, snow and bokeh deterministically by seed without external assets (slow, tests/compose/test_overlays.py)
+- [ ] Implement cut, crossfade and slide transitions with sampled frame checks (slow, tests/compose/test_transitions.py)
+- [ ] Mix audio tracks with volume, offsets, fades and ducking to the configured loudness and burn subtitles inside the safe area (slow, tests/compose/test_audio_subs.py)
+- [ ] Drive resolution, fps, codec, bitrate, loudness and duration from config with platform and profile overrides (slow, tests/compose/test_output_profiles.py)
+- [ ] Produce optimized GIF and animated WebP outputs respecting loop flags and size caps (slow, tests/compose/test_anim_outputs.py)
+- [ ] Render seamless loop outputs whose first and last frames are similar enough (slow, tests/compose/test_loop_output.py)
+- [ ] Produce audio only outputs with correct codec, duration and ID3 metadata (tests/compose/test_audio_output.py)
+- [ ] Produce a self contained web card with embedded background, CSS text animation, an explicit play button, optional expiry and a view hit hook (tests/compose/test_web_card.py)
+- [ ] Generate cover or thumbnail frames and apply watermark, intro and outro from the branding block (tests/compose/test_cover_branding.py)
+- [ ] Validate outputs against platform data for duration, resolution, size, audio presence and loudness with per type messages (tests/compose/test_output_validation.py)
+- [ ] Cache renders by composition hash, asset hashes, renderer version, ffmpeg version and font fingerprint (tests/compose/test_render_cache.py)
+- [ ] Add a preview render at reduced resolution and fps that is measurably faster than a full render (slow, tests/compose/test_preview.py)
+- [ ] Add a validated reversible patch language for composition edits where apply and undo restore the original hash (tests/compose/test_patch.py)
+- [ ] Convert a timeline with voice timings, beats, assets, subtitles and music into a composition per language and platform with exact duration (tests/compose/test_timeline.py)
+- [ ] Add compose render, validate and schema commands with output selection and preview (tests/cli/test_compose.py)
+- [ ] Run golden render tests with a pinned ffmpeg and bundled fonts on Linux only, including Turkish and German glyph cases (golden, tests/golden/test_render_golden.py)
+- [ ] Add three example compositions that validate and render (tests/compose/test_examples.py)
+- [ ] Apply per platform safe area margins to text and sticker layers and warn when manual coordinates violate them (tests/compose/test_safe_area.py)
+- [ ] Add an end to end test where mock assets become an mp4, a gif and a web card that pass output validation (slow, tests/e2e/test_assets_to_output.py)
+- [ ] Shape mixed left to right and right to left text correctly with per language direction defaults (tests/compose/test_bidi.py)
+
+## Milestone 10: Research engine
+
+<!-- goal: discover, score, verify and select topics steered by a plain language brief; no core dependency -->
+
+- [ ] Add the source provider protocol and registry returning topic candidates with a passing mock (tests/providers/sources/test_base.py)
+- [ ] Add the Wikipedia source for extracts and links per language with a retryable error for missing editions (tests/providers/sources/test_wikipedia.py)
+- [ ] Add the Wikipedia on this day source with structured year and category plus cross year dedupe (tests/providers/sources/test_wikipedia_otd.py)
+- [ ] Add the Wikipedia pageviews source ranking top pages as candidates with a traffic signal (tests/providers/sources/test_pageviews.py)
+- [ ] Add Reddit and Hacker News sources with configurable subreddits, thresholds, windows and rate limit handling (tests/providers/sources/test_reddit_hn.py)
+- [ ] Add generic RSS and optional Google Trends sources that degrade to empty results instead of failing (tests/providers/sources/test_rss_trends.py)
+- [ ] Resolve per profile sources with weights and language filters, failing clearly on unknown sources (tests/research/test_source_selection.py)
+- [ ] Add the topic mode protocol and registry including custom modes loaded by dotted path (tests/research/test_modes_base.py)
+- [ ] Derive search queries, subtopics, include and exclude terms and a relevance rubric from the profile brief, cached by brief hash with explicit keywords taking precedence (tests/research/test_brief.py)
+- [ ] Regenerate derived settings only when the brief changes and expose them through profile show with a derived flag (tests/cli/test_profile_derived.py)
+- [ ] Feed the brief into relevance, scoring, tone and style prompts (tests/research/test_brief_propagation.py)
+- [ ] Implement the on this day mode with an importance filter and no repetition within the dedupe window (tests/research/test_mode_otd.py)
+- [ ] Implement the niche mode with query expansion, concurrent discovery and a relevance gate (tests/research/test_mode_niche.py)
+- [ ] Implement the keyword and feeds modes, the latter ignoring all other sources (tests/research/test_mode_kw_feeds.py)
+- [ ] Implement the evergreen ideas mode with a maintained backlog, replenishment trigger and dedupe against past topics (tests/research/test_mode_evergreen.py)
+- [ ] Implement the trending and manual modes with signal ordering and an ordered queue (tests/research/test_mode_trending_manual.py)
+- [ ] Combine modes by weight with seeded determinism and tag each candidate with its mode (tests/research/test_mode_mix.py)
+- [ ] Add the collection stage running sources concurrently with per source timeouts and a failure report (tests/research/test_collect.py)
+- [ ] Dedupe candidates by normalized title and embedding similarity inside the window and across profiles, returning the reason (tests/research/test_dedupe.py)
+- [ ] Gate candidates by relevance against the brief with a test set of at least ten on theme and ten off theme examples (tests/research/test_relevance.py)
+- [ ] Score candidates with a versioned rubric, configured weights, per dimension scores and a minimum score filter (tests/research/test_scoring.py)
+- [ ] Filter sensitive topics into blocked or manual review with the matched rule recorded (tests/research/test_sensitivity.py)
+- [ ] Verify each selected topic against at least two independent domains, marking single source topics unverified (tests/research/test_verify.py)
+- [ ] Produce a compact fact list with source urls implementing the core fact contract without importing any core code from this module (tests/research/test_factbase.py)
+- [ ] Select topics per run above the minimum score with a diversity constraint on category (tests/research/test_select.py)
+- [ ] Add a research add command that skips collection but still verifies and rejects duplicates (tests/cli/test_research_add.py)
+- [ ] Add a research preview command printing scores, reasons, matched brief parts and cost with a JSON output option (tests/cli/test_research_preview.py)
+- [ ] Add a topics feedback command storing likes, dislikes and comments and summarizing them into guidance used by later prompts (tests/cli/test_topic_feedback.py)
+- [ ] Add a profile create chat command asking at most three questions, writing the profile and showing ten sample topics for approval before saving (tests/cli/test_profile_chat.py)
+- [ ] Add the research stage chaining collection, dedupe, gating, scoring, verification and selection into a topic input (tests/research/test_research_stage.py)
+- [ ] Add a research end to end test where one failing source is tolerated (tests/e2e/test_research.py)
+
+## Milestone 11: Writing
+
+<!-- goal: mode aware scripts and lyrics from a fact list or user supplied text, with originality and length control -->
+
+- [ ] Define the mode aware script schema with per mode payloads, dialogue per speaker and a stable round trip (tests/writing/test_script_schema.py)
+- [ ] Add the writing mode registry with a mode base class and support for a custom mode defined in a file (tests/writing/test_mode_registry.py)
+- [ ] Implement the facts mode building hook, beats and outro from a fact list supplied either by user text or by the research module, without importing it (tests/writing/test_mode_facts.py)
+- [ ] Implement the quote mode requiring attribution and forbidding invented attribution to real people (tests/writing/test_mode_quote.py)
+- [ ] Implement the poem and story modes with configurable length, form and tone and a reading time in range (tests/writing/test_mode_poem_story.py)
+- [ ] Implement the joke and riddle modes with setup and punchline or question and answer fields (tests/writing/test_mode_humor.py)
+- [ ] Implement the lyrics mode with section counts, rhyme scheme, syllable budget and optional keyword insertion (tests/writing/test_mode_lyrics.py)
+- [ ] Add originality and lyrics safety checks that rewrite above the overlap threshold and block profanity (tests/writing/test_originality.py)
+- [ ] Generate several hook candidates and pick one with a recorded reason, keeping all alternatives for testing (tests/writing/test_hooks.py)
+- [ ] Estimate duration from per language words per second and rewrite up to a limit before failing with measured versus target (tests/writing/test_length.py)
+- [ ] Write each target language natively from the same fact base with per language forbidden phrase lists (tests/writing/test_multilingual.py)
+- [ ] Load the style bible from user files with packaged defaults as fallback and fail clearly when it is missing (tests/writing/test_style_bible.py)
+- [ ] Generate one image prompt and one motion prompt per beat, provider agnostic, with style bible and glossary terms applied (tests/writing/test_media_prompts.py)
+- [ ] Assign each beat a visual type while honouring the maximum AI video beats limit (tests/writing/test_visual_assign.py)
+- [ ] Generate captions, descriptions and hashtags within platform and language limits with a source line and AI disclosure (tests/writing/test_captions.py)
+- [ ] Guard the writer against injection by wrapping sources and labels as data, verified with five hostile fixtures (tests/writing/test_injection.py)
+- [ ] Add a write command that runs the stage for an existing run with a language filter and prints cost and tokens (tests/cli/test_write.py)
+- [ ] Load a per language brand glossary from user or packaged files and apply it to scripts, captions and media prompts, reporting violations (tests/writing/test_glossary.py)
+
+## Milestone 12: Voice, subtitles and timeline
+
+<!-- goal: audio with word level timing, styled subtitles and an editable timeline -->
+
+- [ ] Add the voice stage supporting per beat or whole script synthesis with gaps and real durations written to a timeline file (tests/audio/test_voice_stage.py)
+- [ ] Add the subtitle stage producing ASS per language with style presets and safe areas (tests/audio/test_subtitle_stage.py)
+- [ ] Map dialogue lines per speaker to distinct voices with correct timing for narrator and character (tests/audio/test_dialogue.py)
+- [ ] Add audio quality checks for silence, duplication, truncation and mispronunciation with severity (tests/audio/test_audio_qa.py)
+- [ ] Select background music from the library or a provider by mood, record the license and apply ducking (tests/audio/test_music_select.py)
+- [ ] Place sound effects by rule with volume set, leaving total duration unchanged (tests/audio/test_sfx_stage.py)
+- [ ] Add a voice command that runs voice, subtitles and timeline and prints cost and durations (tests/cli/test_voice.py)
+- [ ] Align lyrics to a generated song with line and word timings tolerant of sung text and report mismatches (tests/audio/test_lyric_align.py)
+- [ ] Add an audio analysis utility reporting tempo, silence map and loudness (tests/audio/test_analysis.py)
+- [ ] Add a subtitle edit command exposing words and timings as YAML and re burning only the affected outputs through the cached renderer (tests/cli/test_subtitle_edit.py)
+
+## Milestone 13: Visuals in the pipeline
+
+<!-- goal: beats become assets with quality checks and budget downgrades -->
+
+- [ ] Resolve the visual strategy per beat into a concrete deterministic request (tests/visuals/test_strategy.py)
+- [ ] Resolve stock beats with a query, top results, relevance scoring and fallback to the next query (tests/visuals/test_stock_stage.py)
+- [ ] Resolve image beats through the media service, storing prompt hash, provider and model with the asset (tests/visuals/test_image_stage.py)
+- [ ] Resolve video beats with duration clamped to the beat, a per clip cap and the platform aspect ratio (tests/visuals/test_video_stage.py)
+- [ ] Run visual quality checks per asset with retries and fallback, logging every attempt with its cost (tests/visuals/test_qa_integration.py)
+- [ ] Downgrade from video to image to stock under a tight budget, emitting an alert and never exceeding the cap (tests/visuals/test_downgrade.py)
+- [ ] Generate visuals once per run and share them across languages (tests/visuals/test_reuse.py)
+- [ ] Persist provider, model, prompt hash, license, cost links, quality score, alt text and pinned flag on every asset row (tests/visuals/test_asset_rows.py)
+- [ ] Add a visuals command printing the per beat decision, provider, cost and quality score (tests/cli/test_visuals.py)
+
+## Milestone 14: Formats and song pipeline
+
+<!-- goal: composable recipes, built in formats and a song pipeline that uses the same stages -->
+
+- [ ] Add the stage registry with typed input and output contracts and rejection of duplicates or missing contracts (tests/formats/test_registry.py)
+- [ ] Validate recipes so every stage input is produced by an earlier stage and errors name the stage (tests/formats/test_recipe.py)
+- [ ] Let a run execute its recipe, skipping unused stages at zero cost and loading user and packaged format files (tests/formats/test_orchestrator_recipe.py)
+- [ ] Add an input topic stage building the topic from CLI arguments, a file or research so every format runs without research (tests/formats/test_input_topic.py)
+- [ ] Allow skipping research and writing by passing a text or script file, with validation and cost reflecting the skipped stages (tests/cli/test_byo_input.py)
+- [ ] Implement the explainer video format with hybrid visuals (slow, tests/formats/test_explainer.py)
+- [ ] Implement the narrated still format with one or few images, text overlay, speech and word synced subtitles (slow, tests/formats/test_narrated_still.py)
+- [ ] Implement the quote card format rendering typography templates stored as data (tests/formats/test_quote_card.py)
+- [ ] Implement the slideshow format with transitions and a single voice track (slow, tests/formats/test_slideshow.py)
+- [ ] Implement the image post and carousel formats with aspect presets and text per slide (tests/formats/test_image_post.py)
+- [ ] Implement the AI video short format with one generated clip per beat (slow, tests/formats/test_ai_video_short.py)
+- [ ] Generate a music prompt from profile settings and store it with the request (tests/audio/test_music_prompt.py)
+- [ ] Generate several song candidates, prefilter and select one, recording the chosen index (tests/audio/test_song_candidates.py)
+- [ ] Implement the song video format with lyrics, music selection, alignment, karaoke subtitles and visual backgrounds (slow, tests/formats/test_song_video.py)
+- [ ] Implement the audio only format with cover art and metadata and no video cost (tests/formats/test_audio_only.py)
+- [ ] Add a smoke test running one mock pipeline per built in format and asserting artifacts, costs and sidecars (tests/e2e/test_formats.py)
+- [ ] Add a command that produces an extra language for an existing run by reusing facts and visuals with no visual recharge (tests/cli/test_add_language.py)
+
+## Milestone 15: Reference driven generation
+
+<!-- goal: learn structure and style from an example, generate something new, never copy -->
+
+- [ ] Define the reference and style spec schemas covering structure, pacing, palette, typography, music mood and aspect (tests/reference/test_schema.py)
+- [ ] Accept repeatable reference inputs from the CLI and API with type validation by extension and probe (tests/cli/test_reference_input.py)
+- [ ] Analyze an image reference into composition, palette, style and typography plus a generic reproducing prompt that names no original subject (tests/reference/test_analyze_image.py)
+- [ ] Sample video scenes with a frame cap and analyze cuts, shot types, captions, on screen text, hook structure, aspect and duration (tests/reference/test_analyze_video.py)
+- [ ] Analyze audio references for genre, tempo, mood, instrumentation, vocal type and structure while storing no verbatim lyrics or melody data (tests/reference/test_analyze_audio.py)
+- [ ] Analyze text references for tone, structure, hook pattern and language (tests/reference/test_analyze_text.py)
+- [ ] Merge several references keeping common traits and reporting conflicts for a documented resolution (tests/reference/test_merge.py)
+- [ ] Store style specs as editable YAML in the user directory, validated on load and reloadable by name (tests/reference/test_store.py)
+- [ ] Translate a style spec into style bible entries and prompt suffixes (tests/reference/test_style_prompts.py)
+- [ ] Convert a style spec into a validated format recipe, style bible and preset (tests/reference/test_to_format.py)
+- [ ] Filter providers by reference capabilities and fall back to prompt only style transfer with a warning (tests/reference/test_capabilities.py)
+- [ ] Implement reference conditioned paths for text to image, image to image, first frame to video and video to video, rebuilding scene by scene when unsupported (tests/reference/test_conditioned.py)
+- [ ] Reproduce the reference structure with matching scene count and durations within tolerance, regenerating once on deviation (tests/reference/test_structure.py)
+- [ ] Map low, medium and high similarity levels to enforced spec fields with global, profile and CLI precedence (tests/reference/test_similarity_levels.py)
+- [ ] Gate visual similarity with perceptual hash and embeddings, regenerating or refusing above the configured limit (tests/reference/test_visual_gate.py)
+- [ ] Gate text similarity by n gram overlap against the reference and rewrite above the limit (tests/reference/test_text_gate.py)
+- [ ] Detect identifiable faces, logos and trademarks in references and strip them or block with a clear message (tests/reference/test_identity.py)
+- [ ] Enforce rights policy so unowned references are used for style and structure only and high similarity requires an owned flag (tests/reference/test_rights.py)
+- [ ] Add a match evaluator scoring structure, pacing, look and mood with bounded regenerations (tests/reference/test_evaluator.py)
+- [ ] Add an optional spec review step that shows the extracted style spec for edit or confirmation before any paid generation (tests/e2e/test_reference.py)
+
+## Milestone 16: Characters and brand kits
+
+<!-- goal: an opt-in recurring character that stays consistent across outputs -->
+
+- [ ] Define the character schema and loader reading a character file and assets from the user directory with errors naming file and field (tests/characters/test_schema.py)
+- [ ] Add a character create command that validates supplied images and stores version one (tests/cli/test_character_create.py)
+- [ ] Generate a canonical character sheet with a vision model, editable by hand and re-analyzed only on request (tests/characters/test_sheet.py)
+- [ ] Version characters so sheet, pose and voice changes bump the version while runs pin an older one (tests/characters/test_versioning.py)
+- [ ] Load and bind brand kits with colors, fonts, logo, watermark, intro, outro and caption style (tests/characters/test_brand_kit.py)
+- [ ] Resolve character opt in by CLI flag, then order or instruction field, then profile, running no character code when none is selected (tests/characters/test_select.py)
+- [ ] Support several characters per run with host, sidekick and narrator roles (tests/characters/test_roles.py)
+- [ ] Inject the character sheet, art style, negatives and per scene pose only into scenes that include the character (tests/characters/test_prompt_injection.py)
+- [ ] Filter providers by character capability flags and enforce the maximum reference image count (tests/characters/test_capabilities.py)
+- [ ] Run the configured strategy chain per scene and record which strategy produced each asset (tests/characters/test_chain.py)
+- [ ] Store a pose library of named cutouts with alpha, anchors and tags including edge cleanup (tests/characters/test_poses_lib.py)
+- [ ] Add a build poses command that generates, checks and stores a standard pose and expression set with cost recorded (tests/cli/test_build_poses.py)
+- [ ] Place cutouts in compositions with anchor, scale, flip, shadow, safe area awareness and idle animation (tests/characters/test_composite.py)
+- [ ] Attach character reference images where the provider supports it, adapting the request per provider (tests/characters/test_reference_strategy.py)
+- [ ] Add a trainer adapter interface storing model id, trigger words and training cost and skipping unusable adapters with a reason (tests/characters/test_adapter.py)
+- [ ] Fall back to prompt only as the last strategy with an explicit warning in logs and review messages (tests/characters/test_prompt_only.py)
+- [ ] Check character consistency with vision feature checks and embedding similarity, retrying then moving to the next strategy (tests/characters/test_qa.py)
+- [ ] Plan character scenes per beat with action, pose, expression, position and size inside safe areas (tests/characters/test_scene_plan.py)
+- [ ] Support per language character voices, pin the exact provider voice id across runs and gate cloning behind consent (tests/characters/test_voices_consent.py)
+- [ ] Add a lip sync provider adapter plus a no AI fallback using audio reactive pose swaps, blinking and idle motion with sprite sheet support (tests/characters/test_lipsync.py)
+- [ ] Give each character a music identity with style prompts, personality lyrics and a reusable jingle or intro (tests/characters/test_music_identity.py)
+- [ ] Implement the character short and character card formats that fail clearly when no character is selected (slow, tests/formats/test_character_formats.py)
+- [ ] Keep a series continuity log injected into writing with view and edit commands and contradiction warnings (tests/characters/test_series.py)
+- [ ] Add a character test command rendering sample scenes across strategies and printing consistency scores and cost (tests/cli/test_character_test.py)
+- [ ] Enforce character rights: ownership flag required, real person likeness blocked without consent and an optional resemblance warning (tests/characters/test_rights.py)
+- [ ] Run one mock character run per strategy with the strategy recorded (tests/e2e/test_character_strategies.py)
+
+## Milestone 17: Natural language assistant
+
+<!-- goal: turn an instruction plus assets into a validated plan, execute it and refine it conversationally -->
+
+- [ ] Add the asset registry with labels, hashes and read only originals, rejecting duplicate labels (tests/assistant/test_assets.py)
+- [ ] Parse at labels in instructions, resolving them to assets and failing clearly on unknown labels (tests/assistant/test_labels.py)
+- [ ] Analyze registered assets for dimensions, colors, vision description, detected text and face regions (tests/assistant/test_asset_analysis.py)
+- [ ] Add the tool framework with JSON schema, estimate, execute, safety limits and allowlist enforcement (tests/assistant/test_tool_framework.py)
+- [ ] Expose generation tools for image, image edit, background removal, upscale, video, voice and music (tests/assistant/test_generation_tools.py)
+- [ ] Expose composition tools for text, asset placement, overlays, animation and audio mixing that emit validated patches (tests/assistant/test_composition_tools.py)
+- [ ] Expose a render tool with output selection and a deliver tool registered only when delivery providers exist (tests/assistant/test_render_tools.py)
+- [ ] Define the plan schema with ordered steps, arguments, dependencies, estimate, assumptions and acyclicity checks (tests/assistant/test_plan.py)
+- [ ] Build the planner turning an instruction, asset summary and tool schemas into a valid plan bounded by the step limit with repair then failure (tests/assistant/test_planner.py)
+- [ ] Validate plans for allowlist, acyclicity, argument schemas and the instruction budget cap (tests/assistant/test_plan_validation.py)
+- [ ] Add plan preview and approval with always, ask and never modes plus an edit plan path (tests/cli/test_do_approval.py)
+- [ ] Implement the executor running steps in dependency order with caching, per step cost, retries, fallbacks and resumable partial results (tests/assistant/test_executor.py)
+- [ ] Assemble tool outputs and patches into a single composition rendered by the shared renderer (tests/assistant/test_assembly.py)
+- [ ] Add a do command resolving at labels, accepting output selection and printing a cost breakdown (tests/cli/test_do.py)
+- [ ] Ask one short clarifying question interactively and apply configured defaults in batch mode with a note (tests/assistant/test_clarify.py)
+- [ ] Add a visual self check that verifies the preview against the instruction and auto fixes up to the iteration limit (tests/assistant/test_selfcheck.py)
+- [ ] Add the session model holding assets, current composition, plan history and versions with a stable round trip (tests/assistant/test_session.py)
+- [ ] Add an interactive session REPL where each message refines or replans, with five sample edits mapping to patches and undo and redo including branching (tests/cli/test_session_repl.py)
+- [ ] Re execute only the steps affected by a change using dependency invalidation (tests/assistant/test_incremental.py)
+- [ ] Expose session HTTP routes for create, message, preview and history with session scoped asset access (tests/api/test_session_api.py)
+- [ ] Extract a reusable template from a session with suggested variables, and support template run plus CSV batch with per row cost and isolated bad rows (tests/cli/test_template.py)
+- [ ] Sandbox the assistant: session scoped file access, data only user text, enforced limits and every tool call logged, verified with hostile strings (tests/assistant/test_safety.py)
+- [ ] Add twenty planner evaluation fixtures with expected tool sets, runnable offline and cost capped when live (tests/assistant/test_eval.py)
+
+## Milestone 18: Orders, receipts and delivery
+
+<!-- goal: personalized, on demand cards with privacy, scheduling and a simple receipt -->
+
+- [ ] Define the order schema and lifecycle with state transitions and an audit log of every change (tests/orders/test_lifecycle.py)
+- [ ] Add occasion config with five built in occasions and support for adding one with files only (tests/orders/test_occasions.py)
+- [ ] Add order create, show and delete with idempotency keys returning the existing order for a repeated key (tests/cli/test_order_cli.py)
+- [ ] Add batch order import from CSV or JSON with a per row validation report and isolated bad rows (tests/cli/test_order_import.py)
+- [ ] Expose order HTTP routes with auth, limits and upload sanitization (tests/api/test_orders_api.py)
+- [ ] Validate and sanitize order input for length, Unicode, normalization and profanity, treating every field as data and rejecting injection attempts (tests/orders/test_validate.py)
+- [ ] Link orders to their runs so order cost equals the sum of its runs (tests/orders/test_mapping.py)
+- [ ] Generate personalized lyrics with the name in chorus and hook, optional age and interests, fitting language, tone and duration (tests/orders/test_lyrics.py)
+- [ ] Pass phonetic hints to speech and music and verify the name with transcription, regenerating up to the retry limit (tests/orders/test_pronunciation.py)
+- [ ] Implement personalization levels that change which steps run and what they cost (tests/orders/test_levels.py)
+- [ ] Maintain a tagged background library with static, animated and AI loop modes and verified loop seamlessness (tests/orders/test_backgrounds.py)
+- [ ] Accept provided background, loop, audio and logo assets with format and resolution validation and fitting that preserves originals (tests/orders/test_provided_assets.py)
+- [ ] Select stages from the requested outputs so a png runs only the name overlay at zero API cost (tests/orders/test_stage_selection.py)
+- [ ] Place the name on provided images avoiding faces and low contrast regions, with golden tests including special characters (tests/orders/test_name_overlay.py)
+- [ ] Support manual placement overrides and a per image layout file that takes precedence over automatic placement (tests/orders/test_placement_manual.py)
+- [ ] Animate stills with slow zoom, overlays and a name entrance without any AI call (slow, tests/orders/test_animate.py)
+- [ ] Support batch naming with per name or shared songs and assert the difference (tests/orders/test_song_mode.py)
+- [ ] Implement the personalized song card format with optional character support (slow, tests/orders/test_song_card.py)
+- [ ] Package outputs as mp4, gif, animated webp, mp3, poster and web card with size presets and mark finals as pinned (tests/orders/test_packaging.py)
+- [ ] Add delivery providers for local folder, expiring storage link, email and signed webhook with an allowlist and chain fallback (tests/orders/test_delivery.py)
+- [ ] Deliver at the requested time in the order timezone with retries and a confirmation record (tests/orders/test_scheduled_delivery.py)
+- [ ] Support order review and revision where feedback re runs only the affected stages (tests/orders/test_review.py)
+- [ ] Report cost per order, per output type and averaged per occasion (tests/cli/test_costs_order.py)
+- [ ] Minimize and redact personal data, support placeholder mode and keep a data processing record of providers and fields (tests/orders/test_privacy.py)
+- [ ] Delete inputs, intermediates, outputs and deliveries on order delete while retention honours pinned finals and the audit entry keeps no personal data (tests/orders/test_deletion.py)
+- [ ] Block delivery when music is not cleared for commercial use and store license metadata per order (tests/orders/test_license.py)
+- [ ] Support multiple languages per occasion for lyrics, speech, on screen text and age and date phrasing (tests/orders/test_i18n.py)
+- [ ] Allow an optional character on orders, asserting both paths run (tests/orders/test_character_order.py)
+- [ ] Run an order end to end matrix covering png, mp3, mp4, gif and web card plus a scheduled delivery (tests/e2e/test_orders.py)
+- [ ] Export a simple receipt with the line item, currency and a single flat tax estimate plus a footer stating it is not a tax invoice (tests/orders/test_receipt.py)
+- [ ] Handle delivery failure by retrying, notifying with a console fallback and offering a redo that reuses cached artifacts (tests/orders/test_delivery_failure.py)
+- [ ] Count web card views anonymously with a daily salted hash and show them on order show with a retention window (tests/orders/test_web_card_hits.py)
+
+## Milestone 19: Scheduling, notifications and review
+
+<!-- goal: unattended runs with approval gates -->
+
+- [ ] Add the scheduler enqueueing jobs from cron entries with timezone and DST correctness, rejecting invalid cron and locking overlapping runs (tests/scheduling/test_scheduler.py)
+- [ ] Add the Telegram notifier with media, inline buttons and callback handling using a credential reference (tests/providers/notify/test_telegram.py)
+- [ ] Add Slack and email notifiers using the same message model with chain fallback (tests/providers/notify/test_slack_email.py)
+- [ ] Add the review flow sending preview, title, sources, cost, warnings and approve, reject and regenerate buttons (tests/review/test_flow.py)
+- [ ] Implement the review state machine with per profile approval settings and timeout behaviour tested with a fake clock (tests/review/test_state.py)
+- [ ] Re run only the affected stages when a reviewer regenerates a script, visuals, voice or song (tests/review/test_regenerate.py)
+- [ ] Add a CLI review fallback with list, approve and reject without any notifier (tests/cli/test_review.py)
+- [ ] Send budget and failure alerts plus a daily summary built from stored data (tests/review/test_alerts.py)
+- [ ] Run a scheduled end to end test covering review approval, rejection and a budget pause (tests/e2e/test_schedule_review.py)
+
+## Milestone 20: Publishing
+
+<!-- goal: idempotent, attested publishing to the configured accounts, deliberately last -->
+
+- [ ] Normalize post requests and results with a per platform error taxonomy and store tokens encrypted with the key from the secrets loader, refreshing automatically and never logging them (tests/publish/test_tokens.py)
+- [ ] Add the Telegram channel publisher as the first live capable target (tests/publish/test_telegram.py)
+- [ ] Add the YouTube publisher with resumable upload, retries, quota hints, metadata limits, disclosure fields and a clear message when an unaudited project forces private uploads (tests/publish/test_youtube.py)
+- [ ] Add the Instagram publisher with the container flow, a business account check, carousels and aspect validation (tests/publish/test_instagram.py)
+- [ ] Add the TikTok publisher with init, upload and status, restricting unaudited clients to private posts with a clear message (tests/publish/test_tiktok.py)
+- [ ] Add the X publisher with chunked upload and post creation plus a tier limit hint (tests/publish/test_x.py)
+- [ ] Add an aggregator publisher covering several platforms and reporting capability gaps per account (tests/publish/test_aggregator.py)
+- [ ] Choose the matching run output per platform media type from the platform data file (tests/publish/test_media_types.py)
+- [ ] Format captions, hashtags, titles and disclosure text from platform data with no literals in code (tests/publish/test_formatting.py)
+- [ ] Map profile, platform and language to credentials and apply daily posting slots with jitter and deferral notices (tests/publish/test_accounts.py)
+- [ ] Make publishing idempotent so a retry after a timeout never double posts, retrying only retryable errors and persisting post ids and urls (tests/publish/test_idempotency.py)
+- [ ] Validate format to account compatibility with a matrix test over every format and configured account (tests/publish/test_compat.py)
+- [ ] Add publish dry run and publish check commands validating tokens, media, formatting, compatibility, scopes and remaining quota (tests/cli/test_publish_cli.py)
+- [ ] Add a media publish command that publishes a standalone generated file and records a publish cost event (tests/cli/test_media_publish.py)
+- [ ] Expose publish through the API as an asynchronous job with status and a dry run flag (tests/api/test_publish_api.py)
+- [ ] Notify once per day when a token is about to expire, with a re authentication hint (tests/publish/test_token_alerts.py)
+- [ ] Write the platform onboarding document covering apps, scopes, account types, audits, quota requests and environment variables (tests/test_platform_docs.py)
+- [ ] Run a publishing end to end test against local mock servers exercising idempotency and backoff (tests/e2e/test_publish.py)
+- [ ] Add an opt in live publish smoke test to a private test account behind a flag and an account allowlist (live, tests/live/test_publish_live.py)
+- [ ] Record a publish attestation with who confirmed rights and disclosure, when, the applied disclosure text and the license summary, blocking under strict mode when anything is missing (tests/publish/test_attestation.py)
+- [ ] Support a reference account as a style source by fetching top posts through a read capable API into a merged style spec with cached responses and a clear error when the scope is missing (tests/publish/test_account_reference.py)
+
+## Milestone 21: Analytics and benchmarking
+
+<!-- goal: close the loop with measured data -->
+
+- [ ] Collect platform metrics such as views, watch time, likes, shares, comments and followers, mapping unknown metrics to null (tests/analytics/test_collect.py)
+- [ ] Snapshot metrics at twenty four hours and seven days idempotently per post and mark, retrying partial failures (tests/analytics/test_metrics_job.py)
+- [ ] Report performance by profile, mode, category, language, platform, format, hook style and visual strategy plus cost per thousand views in the static dashboard (tests/analytics/test_reports.py)
+- [ ] Feed performance back into category weights with a bounded learning rate, a manual override and a change log (tests/analytics/test_learning.py)
+- [ ] Compare alternative hooks in comparable slots and record the winner with a significance note (tests/analytics/test_ab.py)
+- [ ] Build a benchmark harness running the same prompt set across providers of one capability with cost, latency, failures and artifacts side by side (tests/benchmark/test_harness.py)
+- [ ] Capture human ratings and let them drive the best quality and weighted strategies, asserting order changes (tests/analytics/test_ratings_router.py)
+- [ ] Add a pricing drift job that warns and prints suggested overrides without writing them (tests/analytics/test_pricing_drift.py)
+- [ ] Build a weekly report of spend, outputs, top performers and provider comparison delivered through notifiers (tests/analytics/test_weekly_report.py)
+- [ ] Harvest comments through read APIs into deduped clustered topic suggestions appended to the manual queue, opt in and clearly failing without the read scope (tests/analytics/test_idea_harvest.py)
+
+## Milestone 22: Hardening and documentation
+
+<!-- goal: safe, observable, recoverable, documented -->
+
+- [ ] Add content safety gates with block lists, escalation to mandatory review and a distinct refusal state (tests/safety/test_gates.py)
+- [ ] Track license and attribution per asset and add required attributions to descriptions automatically (tests/safety/test_licenses.py)
+- [ ] Apply AI disclosure metadata and an optional on screen label per platform, stored with the post and its attestation (tests/safety/test_disclosure.py)
+- [ ] Scan logs, artifacts, errors and sidecars of a mock run for configured secrets and fail when one appears (tests/safety/test_secret_audit.py)
+- [ ] Protect every file input and output against path traversal with a fuzz test (tests/safety/test_paths.py)
+- [ ] Harden SSRF protection against numeric IP encodings, IPv6 mapped addresses, DNS rebinding and redirects by validating resolved addresses per hop (tests/safety/test_ssrf.py)
+- [ ] Sign and verify webhooks with a timestamp and replay window tested in both directions (tests/safety/test_webhook.py)
+- [ ] Add API security regression tests enumerating routes to assert auth, body limits and rate limits (tests/api/test_security.py)
+- [ ] Add dependency vulnerability scanning that fails on high severity with a documented allowlist (CI)
+- [ ] Add health reporting for queue depth, worker liveness, disk space and provider status plus a disk guard refusing new runs (tests/cli/test_health.py)
+- [ ] Add a retention job removing intermediates, cache, expired orders, deliveries, logs and hits while never deleting pinned final outputs unless explicitly enabled, with a dry run listing deletions (tests/cli/test_retention.py)
+- [ ] Add a scripted backup and restore drill verifying runs, orders and costs survive (tests/test_restore.py)
+- [ ] Inject provider outages, malformed responses, partial downloads, expired tokens and a full queue and assert defined behaviour with no double charge (tests/resilience/test_failures.py)
+- [ ] Run concurrency and performance tests for parallel renders, queue load, large inputs and memory ceilings without deadlocks (slow, tests/resilience/test_perf.py)
+- [ ] Emit spans for stages and provider calls with run id, capability, latency and cost, never breaking a run when the exporter fails (tests/core/test_tracing.py)
+- [ ] Support credential rotation by reloading secrets without restart, letting in flight calls finish with the old value and logging rotation without values (tests/cli/test_credentials_reload.py)
+- [ ] Scope runs, orders and posts to an owner with optional per owner budgets and rate limits, leaving single user config unchanged (tests/core/test_owner_scope.py)
+- [ ] Prove schedules and deliveries crossing spring forward and fall back fire exactly once at the intended local time (tests/scheduling/test_dst.py)
+- [ ] Write the README with prerequisites, uv tool install and editable install paths, first run init and a CI verified walkthrough, with no publishing path (tests/test_readme.py)
+- [ ] Generate the CLI reference from the command registry, compare it with the design document and fail when stale (tests/test_cli_docs.py)
+- [ ] Write guides for adding a provider, language, format, platform, occasion and character, each covered by a test (tests/test_docs.py)
+- [ ] Write the troubleshooting guide covering common failures, cost reports, resuming, credential rotation and config locations, with every listed message existing in code (tests/test_troubleshooting.py)
+- [ ] Run a final live end to end test producing one image, video, voice and song per language under a strict budget cap, asserting pinning and running disclosure checks only when the publishing module is installed (live, tests/live/test_final_e2e.py)
 
 ## Discovered
 
 <!-- Work the agent found while building. Move items from here into the
-     milestone where they belong with `./run.sh --replan`. -->
+     milestone where they belong with ./run.sh --replan. -->
