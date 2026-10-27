@@ -25,7 +25,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add structured JSON logging with ts, level, msg and logger plus run_id, stage and provider context variables (tests/core/test_logging.py)
 - [x] Add a log context helper that nests, restores and is safe inside async code (tests/core/test_logging.py)
 - [x] Add the error taxonomy with retryable, permanent, budget, auth, rate limit, timeout, invalid request, content policy, provider exhausted, config, validation and quota errors (tests/core/test_errors.py)
-- [ ] Add a secrets loader that checks environment, then a secrets file, then the OS keyring, naming only the missing reference and exposing the token store key (tests/core/test_secrets.py)
+- [x] Add a secrets loader that checks environment, then a secrets file, then the OS keyring, naming only the missing reference and exposing the token store key (tests/core/test_secrets.py)
 - [ ] Add a redaction helper used by logging and exception formatting that masks known secrets and token-like strings (tests/core/test_redact.py)
 - [ ] Resolve user config and data directories plus package resources, working from any working directory, with the config flag taking precedence (tests/core/test_paths.py)
 - [ ] Add a time-sortable ULID generator with run, job, asset and order prefixes (tests/core/test_ids.py)
