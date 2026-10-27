@@ -36,13 +36,29 @@ jobs:
             echo "no pyproject.toml yet — python steps skipped"
           fi
 
-      # ffmpeg/ffprobe are system prerequisites for the media pipeline and the
-      # mock video path; without them media tests fail instead of skipping.
+      # ffmpeg/ffprobe: static build, cached. No apt — mirrors made this take minutes.
+      - name: Cache ffmpeg
+        id: ff
+        if: steps.py.outputs.found == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/ffmpeg
+          key: ffmpeg-static-linux64-v1      # bump to pick up a new build
+
       - name: Install ffmpeg
+        if: steps.py.outputs.found == 'true' && steps.ff.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/.local/ffmpeg"
+          curl -fsSL --retry 3 -o /tmp/ff.tar.xz \
+            https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+          tar -xJf /tmp/ff.tar.xz -C "$HOME/.local/ffmpeg" --strip-components=1
+          "$HOME/.local/ffmpeg/bin/ffmpeg" -version | head -1
+          "$HOME/.local/ffmpeg/bin/ffprobe" -version | head -1
+
+      - name: Put ffmpeg on PATH
         if: steps.py.outputs.found == 'true'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          echo "$HOME/.local/ffmpeg/bin" >> "$GITHUB_PATH"
           ffmpeg -version | head -1
           ffprobe -version | head -1
 
