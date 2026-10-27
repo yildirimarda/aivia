@@ -17,6 +17,12 @@ from pydantic import Field, field_validator, model_validator
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.config.llm import LLMConfig
+from aivia.core.config.ops import (
+    JobsConfig,
+    RetentionConfig,
+    ReviewConfig,
+    StorageConfig,
+)
 from aivia.core.config.quality import QualityConfig, ScoringConfig
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.video import (
@@ -62,6 +68,7 @@ __all__ = [
     "RenderConfig",
     "Resolution",
     "RetentionConfig",
+    "ReviewConfig",
     "SafetyConfig",
     "ScoringConfig",
     "StorageConfig",
@@ -161,22 +168,6 @@ class RenderConfig(ConfigModel):
         return fonts
 
 
-class StorageConfig(ConfigModel):
-    """Where generated media and intermediates are stored.
-
-    Credentials are referenced by name and resolved through the secrets
-    loader, never written into the configuration file.
-    """
-
-    backend: Literal["local", "s3"] = "local"
-    local_dir: str = "media"
-    bucket: str | None = None
-    endpoint: str | None = None
-    region: str | None = None
-    access_key_ref: str | None = None
-    secret_key_ref: str | None = None
-
-
 class ApiConfig(ConfigModel):
     """The local HTTP API bind address, authentication and request limits."""
 
@@ -186,16 +177,6 @@ class ApiConfig(ConfigModel):
     api_key_ref: str = "AIVA_API_KEY"
     max_body_bytes: int = 10_000_000
     rate_limit_per_minute: int = 60
-
-
-class JobsConfig(ConfigModel):
-    """Worker concurrency, retry and heartbeat settings for the job queue."""
-
-    concurrency: int = 1
-    max_attempts: int = 3
-    heartbeat_seconds: int = 30
-    poll_seconds: int = 2
-    stale_after_seconds: int = 120
 
 
 class SafetyConfig(ConfigModel):
@@ -258,20 +239,6 @@ class PresetsConfig(ConfigModel):
         return data
 
 
-class RetentionConfig(ConfigModel):
-    """How long intermediates, cache, logs and personal data are kept.
-
-    Final outputs are pinned and are never removed unless
-    ``delete_final_outputs`` is explicitly enabled.
-    """
-
-    intermediates_days: int = 7
-    cache_days: int = 14
-    logs_days: int = 30
-    personal_data_days: int = 30
-    delete_final_outputs: bool = False
-
-
 class PrivacyConfig(ConfigModel):
     """Redaction and personal-data handling for logs, prompts and sidecars."""
 
@@ -322,6 +289,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("platforms", PlatformsConfig),
     ("presets", PresetsConfig),
     ("retention", RetentionConfig),
+    ("review", ReviewConfig),
     ("privacy", PrivacyConfig),
     ("tracing", TracingConfig),
     ("accessibility", AccessibilityConfig),
