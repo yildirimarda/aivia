@@ -61,7 +61,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the content profile schema with format, weighted topic modes, brief, niche, keywords, examples, sources, tone, style bible, character, brand kit, accounts and overrides (tests/core/config/test_profile.py)
 - [x] Add occasion, orders and delivery config with variables, personalization levels, name verify retries, pricing and per provider delivery fields (tests/core/config/test_orders.py)
 - [x] Add planner config with step and iteration limits, approval mode, allowed tools, preview, defaults and budget (tests/core/config/test_planner.py)
-- [ ] Add reference config with similarity level, visual and text thresholds, regeneration limit and download policy (tests/core/config/test_reference.py)
+- [x] Add reference config with similarity level, visual and text thresholds, regeneration limit and download policy (tests/core/config/test_reference.py)
 - [ ] Add character and brand kit config with the consistency strategy order, QA thresholds, consent flags and branding fields (tests/core/config/test_character.py)
 - [ ] Add schedule, publish and presets config validating cron fields, existing profiles and credential references (tests/core/config/test_schedule.py)
 - [ ] Assemble the root config model with cross checks such as platform accounts existing in the platform data (tests/core/config/test_app.py)
