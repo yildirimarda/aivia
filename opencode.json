@@ -1,0 +1,127 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "openrouter/deepseek/deepseek-v4.1-flash-1017",
+  "small_model": "openrouter/deepseek/deepseek-v4.1-flash-1017",
+  "permission": {
+    "*": "allow",
+    "bash": {
+      "*": "allow",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git push*main*": "deny",
+      "git push*master*": "deny",
+      "terraform apply*": "deny",
+      "terraform destroy*": "deny"
+    },
+    "edit": {
+      "*": "allow",
+      ".github/workflows/**": "deny"
+    }
+  },
+  "mcp": {
+    "graphify": {
+      "type": "local",
+      "command": [
+        "/opt/graphify/bin/python",
+        "-m",
+        "graphify.serve",
+        "graphify-out/graph.json"
+      ],
+      "enabled": true,
+      "timeout": 30000,
+      "environment": {
+        "GRAPHIFY_QUERY_LOG_DISABLE": "1"
+      }
+    }
+  },
+  "provider": {
+    "openrouter": {
+      "options": {
+        "timeout": 600000,
+        "setCacheKey": true
+      },
+      "models": {
+        "deepseek/deepseek-v4-flash-0731": {
+          "options": {
+            "provider": {
+              "order": [
+                "deepinfra",
+                "streamlake",
+                "digitalocean"
+              ],
+              "allow_fallbacks": true
+            }
+          }
+        },
+        "xiaomi/mimo-v2.6-flash": {
+          "options": {
+            "provider": {
+              "order": [
+                "deepinfra",
+                "xiaomi",
+                "io-net"
+              ],
+              "allow_fallbacks": true
+            }
+          }
+        },
+        "deepseek/deepseek-v4.1-flash-1017": {
+          "options": {
+            "provider": {
+              "order": [
+                "deepinfra",
+                "inference-net",
+                "cloudflare"
+              ],
+              "allow_fallbacks": true
+            }
+          }
+        }
+      }
+    },
+    "lmstudio": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LM Studio (local)",
+      "options": {
+        "baseURL": "http://host.docker.internal:1234/v1"
+      },
+      "models": {
+        "qwen/qwen3.8-27b": {
+          "name": "Qwen3.8 27B (local)"
+        }
+      }
+    },
+    "nvidia-nim": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "NVIDIA NIM",
+      "options": {
+        "baseURL": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "{env:NVIDIA_API_KEY}",
+        "timeout": 600000
+      },
+      "models": {
+        "z-ai/glm-5.3": {
+          "name": "GLM 5.3",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 1000000, "output": 16384 }
+        },
+        "deepseek-ai/deepseek-v4.1-flash": {
+          "name": "DeepSeek V4.1 Flash",
+          "tool_call": true,
+          "reasoning": true,
+          "limit": { "context": 1000000, "output": 16384 }
+        }
+      }
+    }
+  },
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 12000
+  },
+  "tool_output": {
+    "max_lines": 500,
+    "max_bytes": 20480
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push --force)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f)",
+      "Bash(git push -f:*)",
+      "Bash(git push origin main)",
+      "Bash(git push origin main:*)",
+      "Bash(git push origin master)",
+      "Bash(git push origin master:*)",
+      "Bash(terraform apply)",
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy)",
+      "Bash(terraform destroy:*)",
+      "Edit(.github/workflows/**)",
+      "Write(.github/workflows/**)"
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # IMPORTANT: the job is named "ci" — setup-github.sh registers this exact
+  # name as the required status check. If you rename it, re-run the setup
+  # script with CHECK=<new-name> ./setup-github.sh, otherwise branch
+  # protection waits on a check that never reports and nothing ever merges.
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Python: only runs once a pyproject.toml exists ─────────────────────
+      # On a brand-new repo the agent's --init PR creates the scaffolding;
+      # until then these steps skip and the job stays green, so branch
+      # protection has a passing "ci" check from day one.
+      - name: Detect python project
+        id: py
+        run: |
+          if [ -f pyproject.toml ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "no pyproject.toml yet — python steps skipped"
+          fi
+
+      - uses: astral-sh/setup-uv@v5
+        if: steps.py.outputs.found == 'true'
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        if: steps.py.outputs.found == 'true'
+        # --frozen: use exactly the locked versions. Without it CI may
+        # resolve a different ruff than local runs, and format rules change
+        # between ruff versions — "clean locally, red in CI".
+        run: uv sync --frozen --all-extras --dev
+
+      - name: Lint
+        if: steps.py.outputs.found == 'true'
+        run: |
+          uv run --no-sync ruff --version
+          uv run --no-sync ruff check .
+
+      - name: Format check
+        if: steps.py.outputs.found == 'true'
+        run: uv run --no-sync ruff format --check .
+
+      - name: Tests
+        if: steps.py.outputs.found == 'true'
+        run: uv run --no-sync pytest -q
+
+      # ── Terraform: only runs if the repo actually contains .tf files ──────
+      - name: Detect terraform
+        id: tf
+        run: |
+          if find . -name '*.tf' -not -path './.git/*' | grep -q .; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: hashicorp/setup-terraform@v3
+        if: steps.tf.outputs.found == 'true'
+
+      - name: Terraform validate
+        if: steps.tf.outputs.found == 'true'
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false
+          terraform validate
+
+      # ── Uncomment if you need Java/Spark in CI ───────────────────────────
+      # - uses: actions/setup-java@v4
+      #   with:
+      #     distribution: temurin
+      #     java-version: '17'

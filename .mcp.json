@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "graphify": {
+      "command": "/opt/graphify/bin/python",
+      "args": ["-m", "graphify.serve", "graphify-out/graph.json"],
+      "env": {
+        "GRAPHIFY_QUERY_LOG_DISABLE": "1"
+      }
+    }
+  }
+}

@@ -1,0 +1,117 @@
+# The agent's workspace container.
+# Whatever you install here, the agent can use for local testing.
+#
+# Build:  docker build -t agent -f Dockerfile.agent .
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ARG TF_VERSION=1.9.8
+
+# ── Base tools + Java (required by Spark) ────────────────────────────────────
+# python3-venv is required for `python3 -m venv` below (Headroom) — Ubuntu's
+# python3 package does not bundle ensurepip/venv on its own, so without this
+# the Headroom install step fails with "ensurepip is not available".
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git curl ca-certificates jq unzip gnupg lsb-release shellcheck \
+      python3 python3-venv openjdk-17-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Node 22 (required by OpenCode) ───────────────────────────────────────────
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && rm -rf /var/lib/apt/lists/*
+
+# ── GitHub CLI ───────────────────────────────────────────────────────────────
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /usr/share/keyrings/githubcli.gpg \
+ && echo "deb [signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update && apt-get install -y --no-install-recommends gh \
+ && rm -rf /var/lib/apt/lists/*
+
+# ── uv (Python + package management) ─────────────────────────────────────────
+RUN curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+# ── Terraform (detects its own arch: arm64 / amd64) ──────────────────────────
+RUN ARCH="$(dpkg --print-architecture)" \
+ && curl -fsSL "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_${ARCH}.zip" \
+      -o /tmp/tf.zip \
+ && unzip -q /tmp/tf.zip -d /usr/local/bin \
+ && rm /tmp/tf.zip \
+ && terraform version
+
+# ── OpenCode (free engine: OpenRouter models) ────────────────────────────────
+RUN npm install -g opencode-ai
+
+# ── Claude Code (optional paid engine: Anthropic models) ─────────────────────
+# Used only when you run `./run.sh --engine claude`. Authenticates with
+# ANTHROPIC_API_KEY passed at runtime — no login flow needed in headless mode.
+RUN npm install -g @anthropic-ai/claude-code
+
+# Codex CLI (optional third engine: ./run.sh --engine codex)
+RUN npm install -g @openai/codex
+
+# Headroom (optional context-compression proxy: ./run.sh --headroom).
+# Compresses tool outputs locally before they reach the model; lossless-
+# retrievable, prompt-cache-aware. Isolated in its own venv like graphify.
+RUN python3 -m venv /opt/headroom \
+    && /opt/headroom/bin/pip install --no-cache-dir "headroom-ai[proxy]" \
+    && ln -s /opt/headroom/bin/headroom /usr/local/bin/headroom
+
+# ── Graphify: codebase knowledge graph, cuts token usage substantially ───────
+# PyPI package name is "graphifyy" (double y) — plain "graphify" on PyPI is a
+# different, unaffiliated project. The [mcp] extra ships the MCP server the
+# agent queries instead of reading whole files.
+#
+# Indexing with --code-only is pure tree-sitter: no LLM calls, no API key,
+# no network. Installed into its own venv at /opt/graphify so the MCP command
+# can point at an unambiguous interpreter.
+RUN uv venv /opt/graphify --python 3.12 \
+ && VIRTUAL_ENV=/opt/graphify uv pip install --quiet "graphifyy[mcp]" \
+ && ln -sf /opt/graphify/bin/graphify /usr/local/bin/graphify \
+ && test -x /opt/graphify/bin/graphify \
+ && /opt/graphify/bin/python -c "import graphify.serve" \
+ && chmod -R a+rX /opt/graphify
+
+# ── ADD YOUR OWN TOOLS HERE ──────────────────────────────────────────────────
+# Examples:
+#   RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client
+#   RUN uv tool install ruff
+#   RUN npm install -g some-cli
+#
+# NOTE: we deliberately do NOT install pyspark here. Keep it as a project
+# dependency in pyproject.toml so the agent installs it with `uv sync` and
+# versions never drift. Java is already available above, so
+# `spark-submit --master local[2]` works.
+
+# ── Non-root user ────────────────────────────────────────────────────────────
+RUN useradd -m -s /bin/bash agent
+# Create /work and hand it to agent BEFORE the WORKDIR line below. WORKDIR
+# creates its target directory root-owned regardless of the active USER (at
+# least on this Docker/colima build), so without this, the agent user can't
+# write into /work at all — including the mkdir -p .../work/.venv a few
+# lines down, which failed with "Permission denied" until this was added.
+RUN mkdir -p /work && chown agent:agent /work
+USER agent
+WORKDIR /work
+
+# Pre-create the volume mount points. A fresh named volume copies ownership
+# from the image path at first mount; if the path does not exist in the
+# image, Docker creates it root-owned and opencode/claude cannot write
+# their caches (EACCES on /home/agent/.cache). Same reason /work/.venv is
+# pre-created here: the agent-venv volume that shadows it (see run.sh)
+# would otherwise land root-owned, and `uv sync` as the agent user fails
+# with "Permission denied" the moment it tries to create the venv there.
+RUN mkdir -p /home/agent/.cache /home/agent/.claude /work/.venv
+
+# A git identity is REQUIRED — without it the agent cannot create commits.
+# The credential helper line makes `git push`/`git pull` over HTTPS work with
+# the GH_TOKEN env var (gh serves it as the credential). Without it, git in
+# the container has no way to authenticate and every push fails with
+# "could not read Username".
+RUN git config --global user.name  "agent" \
+ && git config --global user.email "agent@local" \
+ && git config --global --add safe.directory '*' \
+ && git config --global init.defaultBranch main \
+ && git config --global credential.https://github.com.helper '!gh auth git-credential'

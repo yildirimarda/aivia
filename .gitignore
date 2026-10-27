@@ -1,0 +1,5 @@
+logs/
+graphify-out/
+.opencode/
+*.agentloop-new
+.agentloop.local
