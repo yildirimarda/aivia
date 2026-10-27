@@ -38,6 +38,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add first run bootstrap that copies package defaults into the user config directory once, never overwriting edited files and adding new defaults on upgrade (tests/core/test_bootstrap.py)
 - [ ] Add an init command that creates the config skeleton, prints resolved paths and refuses to overwrite without force or in dry run mode (tests/cli/test_init.py)
 - [ ] Add an installed tool smoke script that builds a wheel, installs it with uv tool install and runs config show from outside the repo (scripts/install_smoke.sh)
+- [ ] Add a pytest live option that skips live tests unless enabled and honors AIVA_LIVE_BUDGET_USD (tests/test_smoke.py)
 
 ## Milestone 2: Configuration system
 
