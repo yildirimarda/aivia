@@ -116,6 +116,13 @@ from aivia.core.config.profile import (
     TopicModesConfig,
 )
 from aivia.core.config.quality import QualityConfig, ScoringConfig
+from aivia.core.config.reference import (
+    DownloadPolicy,
+    ReferenceConfig,
+    ReferenceDownloadConfig,
+    ReferenceDownloadPolicy,
+    SimilarityLevel,
+)
 from aivia.core.config.registry import (
     Section,
     SectionRegistry,
@@ -185,6 +192,7 @@ __all__ = [
     "DeliveryConfig",
     "DeliveryProviderConfig",
     "DeliveryProviderType",
+    "DownloadPolicy",
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
     "EmailDeliveryConfig",
@@ -257,6 +265,9 @@ __all__ = [
     "ProfilesConfig",
     "QualityConfig",
     "RecipeConfig",
+    "ReferenceConfig",
+    "ReferenceDownloadConfig",
+    "ReferenceDownloadPolicy",
     "RegisteredLLMRole",
     "RenderConfig",
     "Resolution",
@@ -268,6 +279,7 @@ __all__ = [
     "ScoringConfig",
     "Section",
     "SectionRegistry",
+    "SimilarityLevel",
     "Stage",
     "StageConfig",
     "StageOptions",

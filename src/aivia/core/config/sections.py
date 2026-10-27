@@ -28,6 +28,7 @@ from aivia.core.config.orders import DeliveryConfig, OccasionsConfig, OrdersConf
 from aivia.core.config.planner import PlannerConfig
 from aivia.core.config.profile import ProfilesConfig
 from aivia.core.config.quality import QualityConfig, ScoringConfig
+from aivia.core.config.reference import ReferenceConfig
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.video import (
     DurationRangeConfig,
@@ -75,6 +76,7 @@ __all__ = [
     "ProfileVideoConfig",
     "ProfilesConfig",
     "QualityConfig",
+    "ReferenceConfig",
     "RenderConfig",
     "Resolution",
     "RetentionConfig",
@@ -304,6 +306,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("orders", OrdersConfig),
     ("delivery", DeliveryConfig),
     ("planner", PlannerConfig),
+    ("reference", ReferenceConfig),
     ("retention", RetentionConfig),
     ("review", ReviewConfig),
     ("privacy", PrivacyConfig),

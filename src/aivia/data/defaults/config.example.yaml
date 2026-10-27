@@ -266,6 +266,21 @@ planner:
   budget:
     per_instruction: 0
 
+reference:
+  enabled: true
+  similarity_level: medium
+  visual_threshold: 0.9
+  text_threshold: 0.85
+  max_regenerations: 2
+  download_policy:
+    mode: allow
+    max_bytes: 52428800
+    timeout_seconds: 30
+    allowed_hosts: []
+    follow_redirects: true
+    max_redirects: 5
+    cache: true
+
 occasions:
   default: birthday
   occasions:
