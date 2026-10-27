@@ -53,7 +53,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the language config with locale, words per second bounds, subtitle font and hashtag style (tests/core/config/test_language.py)
 - [x] Add the video spec parsing resolution, fps, duration bounds and per platform and per profile deep merge (tests/core/config/test_video.py)
 - [x] Add the budget config with all caps, provider monthly limits, sorted alert thresholds and the on exceed behaviour enum (tests/core/config/test_budget.py)
-- [ ] Add the reusable capability chain config with strategy, chain, pricing overrides, per clip cap and split flag (tests/core/config/test_capability.py)
+- [x] Add the reusable capability chain config with strategy, chain, pricing overrides, per clip cap and split flag (tests/core/config/test_capability.py)
 - [ ] Add LLM config with repair limit, per million token pricing and the core role enum plus module registered roles and a clear unknown role error (tests/core/config/test_llm.py)
 - [ ] Add quality, scoring, render, privacy and accessibility config with weight sum validation and contrast and font settings (tests/core/config/test_quality.py)
 - [ ] Add review, retention, jobs and storage config including delete final outputs defaulting to false and required S3 fields (tests/core/config/test_ops.py)
@@ -74,6 +74,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Generate the configuration reference document from the schema and docstrings and fail CI when it is stale (tests/cli/test_config_docs.py)
 - [ ] Audit masking so resolved config, run snapshots and sidecars never contain secrets and prompt content obeys the redact setting (tests/core/config/test_masking.py)
 - [ ] Add config schema versioning and a migrate command that upgrades older user configs, prints a diff and preserves unknown but valid keys (tests/cli/test_config_migrate.py)
+- [ ] Add optional per provider weights to capability chains and reject weighted_ab chains missing them (tests/core/config/test_capability.py)
 
 ## Milestone 3: Models, repositories and database
 
