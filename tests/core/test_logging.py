@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
 from io import StringIO
 from typing import Any, cast
 
+import pytest
+
 from aivia.core.logging import (
     CONTEXT_VARS,
     JsonFormatter,
     configure_logging,
+    current_context,
+    log_context,
     provider,
     run_id,
     stage,
@@ -69,6 +74,82 @@ def test_unset_context_variables_are_omitted() -> None:
 
     for name, _ in CONTEXT_VARS:
         assert name not in payload
+
+
+def test_log_context_sets_values_and_restores_them() -> None:
+    with log_context(run_id="run_01", stage="write"):
+        assert current_context() == {"run_id": "run_01", "stage": "write"}
+        payload = _payload(_record())
+
+    assert payload["run_id"] == "run_01"
+    assert payload["stage"] == "write"
+    assert current_context() == {}
+
+
+def test_log_context_nests_and_restores_outer_values() -> None:
+    with log_context(run_id="run_01", stage="write"):
+        with log_context(stage="render", provider="mock"):
+            assert current_context() == {
+                "run_id": "run_01",
+                "stage": "render",
+                "provider": "mock",
+            }
+        assert current_context() == {"run_id": "run_01", "stage": "write"}
+    assert current_context() == {}
+
+
+def test_log_context_can_clear_a_value_explicitly() -> None:
+    with log_context(stage="write"):
+        with log_context(stage=None):
+            assert current_context() == {}
+        assert current_context() == {"stage": "write"}
+
+
+def test_log_context_restores_outer_values_after_an_exception() -> None:
+    with log_context(run_id="run_01"):
+        with pytest.raises(ValueError, match="boom"), log_context(stage="write"):
+            raise ValueError("boom")
+        assert current_context() == {"run_id": "run_01"}
+    assert current_context() == {}
+
+
+def test_log_context_is_isolated_between_async_tasks() -> None:
+    async def observe(run: str) -> list[dict[str, str]]:
+        with log_context(run_id=run):
+            await asyncio.sleep(0)
+            first = current_context()
+            await asyncio.sleep(0)
+            second = current_context()
+        return [first, second]
+
+    async def main() -> list[list[dict[str, str]]]:
+        results = await asyncio.gather(observe("run_a"), observe("run_b"))
+        return list(results)
+
+    assert asyncio.run(main()) == [
+        [{"run_id": "run_a"}, {"run_id": "run_a"}],
+        [{"run_id": "run_b"}, {"run_id": "run_b"}],
+    ]
+    assert current_context() == {}
+
+
+def test_log_context_supports_async_with() -> None:
+    async def main() -> dict[str, str]:
+        async with log_context(run_id="run_01", stage="write"):
+            await asyncio.sleep(0)
+            inside = current_context()
+        assert current_context() == {}
+        return inside
+
+    assert asyncio.run(main()) == {"run_id": "run_01", "stage": "write"}
+    assert current_context() == {}
+
+
+def test_log_context_cannot_be_entered_twice() -> None:
+    context = log_context(run_id="run_01")
+    with context, pytest.raises(RuntimeError, match="already active"):
+        context.__enter__()
+    assert current_context() == {}
 
 
 def test_configure_logging_writes_json_to_the_stream() -> None:
