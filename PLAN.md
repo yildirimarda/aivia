@@ -35,11 +35,12 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the env example file with AIVA prefixed variables and a repo scan that fails on high entropy or key-like strings (tests/test_no_secrets.py)
 - [x] Add an advisory config coverage lint that reports vendor names, model ids, prices and thresholds found outside adapters, config and data (tests/test_config_coverage.py)
 - [x] Add a plan lint that fails on malformed item lines, duplicate or missing fields and any dependency pointing to a later item or milestone (tests/test_plan_lint.py)
-- [ ] Add first run bootstrap that copies package defaults into the user config directory once, never overwriting edited files and adding new defaults on upgrade (tests/core/test_bootstrap.py)
+- [x] Add first run bootstrap that copies package defaults into the user config directory once, never overwriting edited files and adding new defaults on upgrade (tests/core/test_bootstrap.py)
 - [ ] Add an init command that creates the config skeleton, prints resolved paths and refuses to overwrite without force or in dry run mode (tests/cli/test_init.py)
 - [ ] Add an installed tool smoke script that builds a wheel, installs it with uv tool install and runs config show from outside the repo (scripts/install_smoke.sh)
 - [ ] Add a pytest live option that skips live tests unless enabled and honors AIVA_LIVE_BUDGET_USD (tests/test_smoke.py)
 - [ ] Add keyring as an optional dependency so the OS keyring source works when the extra is installed (tests/core/test_secrets.py)
+- [ ] Run bootstrap before CLI commands so a fresh install populates the config directory automatically (tests/cli/test_root.py)
 
 ## Milestone 2: Configuration system
 
