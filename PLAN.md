@@ -41,7 +41,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add an installed tool smoke script that builds a wheel, installs it with uv tool install and runs config show from outside the repo (scripts/install_smoke.sh)
 - [x] Add a pytest live option that skips live tests unless enabled and honors AIVA_LIVE_BUDGET_USD (tests/test_smoke.py)
 - [x] Add keyring as an optional dependency so the OS keyring source works when the extra is installed (tests/core/test_secrets.py)
-- [ ] Run bootstrap before CLI commands so a fresh install populates the config directory automatically (tests/cli/test_root.py)
+- [x] Run bootstrap before CLI commands so a fresh install populates the config directory automatically (tests/cli/test_root.py)
 - [ ] Run the installed tool smoke script in CI after the offline suite so packaging regressions fail (tests/test_ci_workflow.py)
 
 ## Milestone 2: Configuration system
