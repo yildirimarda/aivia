@@ -32,6 +32,71 @@ pipeline:
   stages: [research, write, voice, visuals, render, review, publish]
   timezone: Europe/Berlin
 
+formats:
+  narrated_still:
+    description: One or a few images with narration and word-synced subtitles.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: voice
+      - stage: visuals
+        options:
+          strategy: image
+      - stage: render
+    capabilities: [llm, tts, image_gen]
+    output_type: video
+    handler: save
+  quote_card:
+    description: Typography-led still image.
+    stages:
+      - stage: input_topic
+      - stage: write
+        options:
+          mode: quote
+      - stage: render
+    capabilities: [llm, image_gen]
+    output_type: image
+    handler: save
+  song_video:
+    description: Song with lyrics, karaoke subtitles and visual backgrounds.
+    stages:
+      - stage: input_topic
+      - stage: write
+        options:
+          mode: lyrics
+      - stage: music
+      - stage: align
+      - stage: visuals
+      - stage: render
+    capabilities: [llm, music_gen, tts, image_gen]
+    output_type: video
+    handler: publish
+  character_short:
+    description: Short video built around a consistent character.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: voice
+      - stage: visuals
+        options:
+          character_consistency: true
+      - stage: render
+    capabilities: [llm, tts, video_gen]
+    output_type: video
+    handler: publish
+  personalized_song_card:
+    description: Personalized song card delivered to an order recipient.
+    stages:
+      - stage: input_topic
+      - stage: write
+        options:
+          mode: lyrics
+      - stage: music
+      - stage: render
+    capabilities: [llm, music_gen]
+    output_type: audio
+    handler: deliver
+
 video:
   resolution: 1080x1920
   fps: 30
