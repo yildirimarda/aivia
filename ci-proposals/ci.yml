@@ -58,3 +58,9 @@ jobs:
       # money. Live tests are opt-in only and are excluded here.
       - name: Offline tests
         run: uv run --no-sync pytest -q -m "not live"
+
+      # Packaging regressions (missing package data, broken entry points) only
+      # surface in the installed wheel. Build it, install it as an isolated uv
+      # tool and run config show from outside the repository.
+      - name: Installed tool smoke
+        run: scripts/install_smoke.sh
