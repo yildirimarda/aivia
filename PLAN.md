@@ -30,7 +30,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Resolve user config and data directories plus package resources, working from any working directory, with the config flag taking precedence (tests/core/test_paths.py)
 - [x] Add a time-sortable ULID generator with run, job, asset and order prefixes (tests/core/test_ids.py)
 - [x] Add the root CLI with a version flag and a subcommand registry that later milestones extend (tests/cli/test_root.py)
-- [ ] Write the architecture note, the decisions log and the progress log, recording the deterministic core and no module imports in core (tests/test_docs.py)
+- [x] Write the architecture note, the decisions log and the progress log, recording the deterministic core and no module imports in core (tests/test_docs.py)
 - [ ] Document the fixtures and examples policy: recorded responses per provider, one example per schema, goldens folder, no real personal data (tests/test_docs.py)
 - [ ] Add the env example file with AIVA prefixed variables and a repo scan that fails on high entropy or key-like strings (tests/test_no_secrets.py)
 - [ ] Add an advisory config coverage lint that reports vendor names, model ids, prices and thresholds found outside adapters, config and data (tests/test_config_coverage.py)
