@@ -33,7 +33,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Write the architecture note, the decisions log and the progress log, recording the deterministic core and no module imports in core (tests/test_docs.py)
 - [x] Document the fixtures and examples policy: recorded responses per provider, one example per schema, goldens folder, no real personal data (tests/test_docs.py)
 - [x] Add the env example file with AIVA prefixed variables and a repo scan that fails on high entropy or key-like strings (tests/test_no_secrets.py)
-- [ ] Add an advisory config coverage lint that reports vendor names, model ids, prices and thresholds found outside adapters, config and data (tests/test_config_coverage.py)
+- [x] Add an advisory config coverage lint that reports vendor names, model ids, prices and thresholds found outside adapters, config and data (tests/test_config_coverage.py)
 - [ ] Add a plan lint that fails on malformed item lines, duplicate or missing fields and any dependency pointing to a later item or milestone (tests/test_plan_lint.py)
 - [ ] Add first run bootstrap that copies package defaults into the user config directory once, never overwriting edited files and adding new defaults on upgrade (tests/core/test_bootstrap.py)
 - [ ] Add an init command that creates the config skeleton, prints resolved paths and refuses to overwrite without force or in dry run mode (tests/cli/test_init.py)
