@@ -232,3 +232,23 @@ accessibility:
   subtitle_font_size: 32
   subtitle_outline: true
   subtitle_background: false
+
+profiles:
+  default:
+    format: narrated_still
+    topic_modes:
+      niche: 0.7
+      keywords: 0.3
+    brief: Short, factual explainers with a calm and curious tone.
+    niche: general knowledge
+    keywords: [history, science]
+    examples:
+      liked: []
+      disliked: []
+    sources: [wikipedia]
+    tone: calm and factual
+    style_bible: default
+    character: null
+    brand_kit: null
+    accounts: []
+    overrides: {}
