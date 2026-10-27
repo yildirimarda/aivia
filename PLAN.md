@@ -28,7 +28,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a secrets loader that checks environment, then a secrets file, then the OS keyring, naming only the missing reference and exposing the token store key (tests/core/test_secrets.py)
 - [x] Add a redaction helper used by logging and exception formatting that masks known secrets and token-like strings (tests/core/test_redact.py)
 - [x] Resolve user config and data directories plus package resources, working from any working directory, with the config flag taking precedence (tests/core/test_paths.py)
-- [ ] Add a time-sortable ULID generator with run, job, asset and order prefixes (tests/core/test_ids.py)
+- [x] Add a time-sortable ULID generator with run, job, asset and order prefixes (tests/core/test_ids.py)
 - [ ] Add the root CLI with a version flag and a subcommand registry that later milestones extend (tests/cli/test_root.py)
 - [ ] Write the architecture note, the decisions log and the progress log, recording the deterministic core and no module imports in core (tests/test_docs.py)
 - [ ] Document the fixtures and examples policy: recorded responses per provider, one example per schema, goldens folder, no real personal data (tests/test_docs.py)
