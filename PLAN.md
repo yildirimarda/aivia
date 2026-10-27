@@ -17,7 +17,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: installable single-package tool with logging, ids, secrets, bootstrap and a plan lint -->
 
-- [ ] Create the package skeleton with pyproject.toml, the aivia console script and a wheel containing exactly one top-level package plus package data (tests/test_packaging.py)
+- [x] Create the package skeleton with pyproject.toml, the aivia console script and a wheel containing exactly one top-level package plus package data (tests/test_packaging.py)
 - [ ] Bundle an OFL font family with its LICENSE inside the package and declare it as package data with the default config, prompts and templates (tests/test_packaging.py)
 - [ ] Configure ruff, mypy, pytest and the live, slow and golden markers so unknown markers fail the run (tests/test_smoke.py)
 - [ ] Add Makefile targets for lint, type, test, check, docs and install-smoke, with check running the first three in order (make check)
