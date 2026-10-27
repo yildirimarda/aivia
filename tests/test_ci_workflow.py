@@ -54,3 +54,23 @@ def test_ci_proposal_runs_the_offline_suite_without_live_tests() -> None:
 
     assert 'uv run --no-sync pytest -q -m "not live"' in text
     assert "--live" not in text
+
+
+def test_ci_proposal_runs_the_installed_tool_smoke_after_the_offline_suite() -> None:
+    text = _proposal()
+
+    offline = text.index("Offline tests")
+    smoke = text.index("Installed tool smoke")
+    assert smoke > offline
+    assert "scripts/install_smoke.sh" in text[smoke:]
+
+
+def test_ci_proposal_delegates_the_smoke_to_the_script() -> None:
+    text = _proposal()
+
+    smoke = text.index("Installed tool smoke")
+    step = text[smoke:]
+
+    assert "run: scripts/install_smoke.sh" in step
+    assert "uv tool install" not in step
+    assert "uv build" not in step
