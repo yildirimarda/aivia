@@ -57,7 +57,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add LLM config with repair limit, per million token pricing and the core role enum plus module registered roles and a clear unknown role error (tests/core/config/test_llm.py)
 - [x] Add quality, scoring, render, privacy and accessibility config with weight sum validation and contrast and font settings (tests/core/config/test_quality.py)
 - [x] Add review, retention, jobs and storage config including delete final outputs defaulting to false and required S3 fields (tests/core/config/test_ops.py)
-- [ ] Add the format recipe schema with ordered stages, per stage options, output type and a save, publish or deliver handler (tests/core/config/test_formats.py)
+- [x] Add the format recipe schema with ordered stages, per stage options, output type and a save, publish or deliver handler (tests/core/config/test_formats.py)
 - [ ] Add the content profile schema with format, weighted topic modes, brief, niche, keywords, examples, sources, tone, style bible, character, brand kit, accounts and overrides (tests/core/config/test_profile.py)
 - [ ] Add occasion, orders and delivery config with variables, personalization levels, name verify retries, pricing and per provider delivery fields (tests/core/config/test_orders.py)
 - [ ] Add planner config with step and iteration limits, approval mode, allowed tools, preview, defaults and budget (tests/core/config/test_planner.py)

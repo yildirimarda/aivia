@@ -16,6 +16,7 @@ from pydantic import Field, field_validator, model_validator
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.budget import BudgetConfig, OnExceed
+from aivia.core.config.formats import FormatsConfig
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.ops import (
     JobsConfig,
@@ -51,6 +52,7 @@ __all__ = [
     "BudgetConfig",
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
+    "FormatsConfig",
     "JobsConfig",
     "LLMConfig",
     "LanguageConfig",
@@ -276,6 +278,7 @@ class AccessibilityConfig(ConfigModel):
 CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("languages", LanguagesConfig),
     ("pipeline", PipelineConfig),
+    ("formats", FormatsConfig),
     ("video", VideoConfig),
     ("render", RenderConfig),
     ("budget", BudgetConfig),
