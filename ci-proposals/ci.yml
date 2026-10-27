@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # IMPORTANT: the job is named "ci" — setup-github.sh registers this exact
+  # name as the required status check. If you rename it, re-run the setup
+  # script with CHECK=<new-name> ./setup-github.sh, otherwise branch
+  # protection waits on a check that never reports and nothing ever merges.
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ffmpeg and ffprobe are system prerequisites for the media pipeline and
+      # for the mock video path. Install them before any Python step so the
+      # suite never silently skips a media test.
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffprobe -version
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        # --frozen: use exactly the locked versions. Without it CI may
+        # resolve a different ruff than local runs, and format rules change
+        # between ruff versions — "clean locally, red in CI".
+        run: uv sync --frozen --all-extras --dev
+
+      - name: Lint
+        run: |
+          uv run --no-sync ruff --version
+          uv run --no-sync ruff check .
+
+      - name: Format check
+        run: uv run --no-sync ruff format --check .
+
+      - name: Type check
+        run: uv run --no-sync mypy
+
+      # The default suite is offline and must never touch the network or spend
+      # money. Live tests are opt-in only and are excluded here.
+      - name: Offline tests
+        run: uv run --no-sync pytest -q -m "not live"
