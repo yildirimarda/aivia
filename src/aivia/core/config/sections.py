@@ -16,6 +16,22 @@ from pydantic import Field, model_validator
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.registry import SectionRegistry, registry
+from aivia.core.config.video import (
+    DurationRangeConfig,
+    DurationRangeOverrideConfig,
+    PlatformVideoConfig,
+    ProfileVideoConfig,
+    Resolution,
+    VideoConfig,
+    VideoOverride,
+    VideoOverridesConfig,
+    VideoSpec,
+    VideoSpecConfig,
+    deep_merge,
+    merge_video_specs,
+    parse_resolution,
+    resolve_video,
+)
 from aivia.core.errors import ConfigError
 
 __all__ = [
@@ -25,23 +41,35 @@ __all__ = [
     "ApiConfig",
     "BudgetConfig",
     "DurationRangeConfig",
+    "DurationRangeOverrideConfig",
     "JobsConfig",
     "LanguageConfig",
     "LanguagesConfig",
     "PipelineConfig",
     "PlatformAccountConfig",
+    "PlatformVideoConfig",
     "PlatformsConfig",
     "PresetConfig",
     "PresetsConfig",
     "PrivacyConfig",
+    "ProfileVideoConfig",
     "RenderConfig",
+    "Resolution",
     "RetentionConfig",
     "SafetyConfig",
     "StorageConfig",
     "TracingConfig",
     "VideoConfig",
+    "VideoOverride",
+    "VideoOverridesConfig",
+    "VideoSpec",
+    "VideoSpecConfig",
     "WordsPerSecondConfig",
+    "deep_merge",
+    "merge_video_specs",
+    "parse_resolution",
     "register_core_sections",
+    "resolve_video",
 ]
 
 
@@ -104,22 +132,6 @@ class PipelineConfig(ConfigModel):
         ]
     )
     timezone: str = "UTC"
-
-
-class DurationRangeConfig(ConfigModel):
-    """Inclusive lower and upper bounds for a generated video in seconds."""
-
-    min: int = 20
-    max: int = 45
-
-
-class VideoConfig(ConfigModel):
-    """Video defaults shared by formats, profiles and platform overrides."""
-
-    resolution: str = "1080x1920"
-    fps: int = 30
-    duration_seconds: DurationRangeConfig = Field(default_factory=DurationRangeConfig)
-    loudness_lufs: float = -14.0
 
 
 class RenderConfig(ConfigModel):
