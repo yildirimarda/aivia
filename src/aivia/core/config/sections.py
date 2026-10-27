@@ -31,6 +31,13 @@ from aivia.core.config.profile import ProfilesConfig
 from aivia.core.config.quality import QualityConfig, ScoringConfig
 from aivia.core.config.reference import ReferenceConfig
 from aivia.core.config.registry import SectionRegistry, registry
+from aivia.core.config.schedule import (
+    PublishAccountConfig,
+    PublishConfig,
+    ScheduleConfig,
+    ScheduleEntryConfig,
+    profile_names,
+)
 from aivia.core.config.video import (
     DurationRangeConfig,
     DurationRangeOverrideConfig,
@@ -78,6 +85,8 @@ __all__ = [
     "PrivacyConfig",
     "ProfileVideoConfig",
     "ProfilesConfig",
+    "PublishAccountConfig",
+    "PublishConfig",
     "QualityConfig",
     "ReferenceConfig",
     "RenderConfig",
@@ -85,6 +94,8 @@ __all__ = [
     "RetentionConfig",
     "ReviewConfig",
     "SafetyConfig",
+    "ScheduleConfig",
+    "ScheduleEntryConfig",
     "ScoringConfig",
     "StorageConfig",
     "TracingConfig",
@@ -231,27 +242,218 @@ class PlatformsConfig(ConfigModel):
 
 
 class PresetConfig(ConfigModel):
-    """A named set of configuration overrides selected by the CLI or a profile."""
+    """A named set of configuration overrides selected by the CLI or a profile.
 
+    A preset may name the content profile it belongs to. When the configured
+    profiles are available, a non-empty profile is checked against them so a
+    typo never silently selects the default profile.
+    """
+
+    name: str = ""
     description: str = ""
+    profile: str = ""
+    profiles: list[str] = Field(default_factory=list)
+    format: str = ""
+    brand_kit: str = ""
+    character: str = ""
+    accounts: list[str] = Field(default_factory=list)
+    enabled: bool = True
     overrides: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(data)
+        for alias in ("id", "key", "title"):
+            if alias in values:
+                values.setdefault("name", values.pop(alias))
+        for alias in ("profile_name", "profile_id", "content_profile"):
+            if alias in values:
+                values.setdefault("profile", values.pop(alias))
+        for alias in ("recipe", "format_name"):
+            if alias in values:
+                values.setdefault("format", values.pop(alias))
+        for alias in ("brand", "brand_id"):
+            if alias in values:
+                values.setdefault("brand_kit", values.pop(alias))
+        for alias in ("character_id", "persona"):
+            if alias in values:
+                values.setdefault("character", values.pop(alias))
+        for alias in ("account", "publish_accounts"):
+            if alias in values:
+                values.setdefault("accounts", values.pop(alias))
+        for alias in ("config", "config_overrides", "settings"):
+            if alias in values:
+                values.setdefault("overrides", values.pop(alias))
+        if isinstance(values.get("accounts"), Mapping):
+            values["accounts"] = list(values["accounts"])
+        elif isinstance(values.get("accounts"), str):
+            values["accounts"] = [values["accounts"]]
+        if isinstance(values.get("profiles"), Mapping):
+            values["profiles"] = list(values["profiles"])
+        elif isinstance(values.get("profiles"), str):
+            values["profiles"] = [values["profiles"]]
+        if values.get("overrides") is None:
+            values["overrides"] = {}
+        return values
+
+    @field_validator("name", "profile", "format", "brand_kit", "character")
+    @classmethod
+    def _strip_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("accounts")
+    @classmethod
+    def _validate_accounts(cls, value: list[str]) -> list[str]:
+        accounts: list[str] = []
+        seen: set[str] = set()
+        for entry in value:
+            account = entry.strip() if isinstance(entry, str) else ""
+            if not account:
+                raise ValueError("preset account names must be non-empty")
+            if account in seen:
+                raise ValueError(f"duplicate preset account: {account}")
+            seen.add(account)
+            accounts.append(account)
+        return accounts
+
+    @field_validator("profiles")
+    @classmethod
+    def _validate_profiles(cls, value: list[str]) -> list[str]:
+        profiles: list[str] = []
+        seen: set[str] = set()
+        for entry in value:
+            profile = entry.strip() if isinstance(entry, str) else ""
+            if not profile:
+                raise ValueError("preset profile names must be non-empty")
+            if profile in seen:
+                raise ValueError(f"duplicate preset profile: {profile}")
+            seen.add(profile)
+            profiles.append(profile)
+        return profiles
+
+    @field_validator("overrides", mode="before")
+    @classmethod
+    def _accept_overrides(cls, value: Any) -> Any:
+        if value is None:
+            return {}
+        if not isinstance(value, Mapping):
+            raise ValueError("preset overrides must be a mapping")
+        return dict(value)
 
 
 class PresetsConfig(ConfigModel):
-    """Named presets keyed by name.
+    """Named presets keyed by name, with an optional default preset.
 
     Entries may be written directly under the section
     (``presets: {short: {...}}``) or nested under ``presets``.
     """
 
+    enabled: bool = True
+    default: str = ""
     presets: dict[str, PresetConfig] = Field(default_factory=dict)
+
+    @classmethod
+    def from_mapping(
+        cls,
+        values: Mapping[str, Any],
+        *,
+        environ: Mapping[str, str] | None = None,
+        context: Mapping[str, Any] | None = None,
+        profiles: Any = None,
+    ) -> Self:
+        """Validate presets and optionally check the selected profiles."""
+        merged = dict(context or {})
+        if profiles is not None:
+            merged["profiles"] = profiles
+        return super().from_mapping(values, environ=environ, context=merged)
 
     @model_validator(mode="before")
     @classmethod
     def _accept_direct_mapping(cls, data: Any) -> Any:
-        if isinstance(data, Mapping) and "presets" not in data:
-            return {"presets": dict(data)}
-        return data
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(data)
+        for alias in ("items", "definitions"):
+            if alias in values:
+                values.setdefault("presets", values.pop(alias))
+        if "presets" in values:
+            return values
+        global_keys = {"enabled", "default"}
+        entries = {
+            key: value for key, value in values.items() if key not in global_keys
+        }
+        for key in list(entries):
+            values.pop(key)
+        values["presets"] = entries
+        return values
+
+    @field_validator("presets")
+    @classmethod
+    def _name_presets(
+        cls,
+        value: dict[str, PresetConfig],
+    ) -> dict[str, PresetConfig]:
+        presets: dict[str, PresetConfig] = {}
+        for name, preset in value.items():
+            key = name.strip() if isinstance(name, str) else ""
+            if not key:
+                raise ValueError("preset name must be non-empty")
+            if key in presets:
+                raise ValueError(f"duplicate preset: {key}")
+            if not preset.name:
+                object.__setattr__(preset, "name", key)
+            presets[key] = preset
+        return presets
+
+    @model_validator(mode="after")
+    def _default_exists(self) -> PresetsConfig:
+        if self.default and self.presets and self.default not in self.presets:
+            raise ValueError(f"default preset is not configured: {self.default}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_context(self, info: Any) -> PresetsConfig:
+        context = info.context
+        profiles = context.get("profiles") if isinstance(context, Mapping) else None
+        return self.validate_profiles(profiles)
+
+    def validate_profiles(self, profiles: Any) -> PresetsConfig:
+        """Check every preset profile against *profiles* when provided."""
+        available = profile_names(profiles)
+        if available is None:
+            return self
+        for name, preset in self.presets.items():
+            referenced = list(preset.profiles)
+            if preset.profile:
+                referenced.insert(0, preset.profile)
+            for profile in referenced:
+                if profile not in available:
+                    names = ", ".join(sorted(available)) or "none"
+                    raise ConfigError(
+                        f"preset {name} references unknown profile: "
+                        f"{profile} (available: {names})",
+                        details={
+                            "preset": name,
+                            "profile": profile,
+                            "available": sorted(available),
+                        },
+                    )
+        return self
+
+    def check_profiles(self, profiles: Any) -> PresetsConfig:
+        """Alias for :meth:`validate_profiles`."""
+        return self.validate_profiles(profiles)
+
+    def validate_references(self, config: Any) -> PresetsConfig:
+        """Validate profiles from a parsed root configuration or mapping."""
+        if isinstance(config, Mapping):
+            profiles = config.get("profiles")
+        else:
+            profiles = getattr(config, "profiles", None)
+        return self.validate_profiles(profiles)
 
 
 class PrivacyConfig(ConfigModel):
@@ -304,6 +506,8 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("jobs", JobsConfig),
     ("safety", SafetyConfig),
     ("platforms", PlatformsConfig),
+    ("schedule", ScheduleConfig),
+    ("publish", PublishConfig),
     ("presets", PresetsConfig),
     ("occasions", OccasionsConfig),
     ("orders", OrdersConfig),
