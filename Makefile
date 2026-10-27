@@ -18,7 +18,8 @@ check: lint type test
 docs:
 	@test -f docs/DESIGN.md
 	@test -f docs/decisions.md
-	@echo "Documentation: docs/DESIGN.md, docs/decisions.md"
+	@test -f docs/PROGRESS.md
+	@echo "Documentation: docs/DESIGN.md, docs/decisions.md, docs/PROGRESS.md"
 
 install-smoke:
 	@if [ -x scripts/install_smoke.sh ]; then \

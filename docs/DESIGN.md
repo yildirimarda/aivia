@@ -1,6 +1,7 @@
 # AIVIA — Design
 
-> Long-form design. Rules for the agent: AGENTS.md · task queue: PLAN.md · decision log: docs/decisions.md.
+> Long-form design. Rules for the agent: AGENTS.md · task queue: PLAN.md · decision log: docs/decisions.md ·
+> progress log: docs/PROGRESS.md.
 > Generated docs (do not hand-edit): docs/CONFIG.md (from config schema), docs/PROVIDERS.md (from
 > ProviderMeta), docs/platform-onboarding.md.
 

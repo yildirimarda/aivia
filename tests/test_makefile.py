@@ -123,6 +123,7 @@ def test_make_docs_checks_the_documentation_files(tmp_path: Path) -> None:
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "DESIGN.md").write_text("design", encoding="utf-8")
     (tmp_path / "docs" / "decisions.md").write_text("decisions", encoding="utf-8")
+    (tmp_path / "docs" / "PROGRESS.md").write_text("progress", encoding="utf-8")
 
     result = _run_make(tmp_path, ["docs"], os.environ.copy())
 
