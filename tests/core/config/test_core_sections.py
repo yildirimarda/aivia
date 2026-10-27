@@ -25,6 +25,7 @@ from aivia.core.config import (
     OccasionsConfig,
     OrdersConfig,
     PipelineConfig,
+    PlannerConfig,
     PlatformsConfig,
     PresetsConfig,
     PrivacyConfig,
@@ -56,6 +57,7 @@ EXPECTED_KEYS = {
     "occasions",
     "orders",
     "pipeline",
+    "planner",
     "platforms",
     "presets",
     "privacy",
@@ -121,6 +123,8 @@ def test_registering_a_core_key_with_another_model_still_fails() -> None:
     ("model", "field", "expected"),
     [
         (PipelineConfig, "timezone", "UTC"),
+        (PlannerConfig, "max_steps", 10),
+        (PlannerConfig, "approval_mode", "ask"),
         (
             PipelineConfig,
             "stages",
