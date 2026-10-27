@@ -1,5 +1,7 @@
 """Redaction contract for logs, data and formatted exceptions."""
 
+# secret-scan: allow-file -- this module intentionally contains fake tokens.
+
 from __future__ import annotations
 
 import json

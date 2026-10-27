@@ -14,6 +14,8 @@ Status: in progress.
 - Architecture note (`docs/DESIGN.md`) and decisions log (`docs/decisions.md`) are written.
 - Fixtures and examples policy recorded in `DESIGN.md` §9 and as D-023: recorded responses per provider,
   one example per schema, a goldens folder and no real personal data.
+- Env example (`.env.example`) and the repository secret scan for high-entropy and key-like strings are in
+  place; `.env` files are ignored.
 - Progress log started in this file.
 
 ## Foundational constraints recorded
