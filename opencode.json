@@ -70,10 +70,12 @@
             "provider": {
               "order": [
                 "deepinfra",
-                "inference-net",
-                "cloudflare"
+                "cloudflare",
+                "morph",
+                "atlas-cloud"
               ],
-              "allow_fallbacks": true
+              "allow_fallbacks": true,
+              "quantizations": ["fp8", "unknown"]
             }
           }
         }
