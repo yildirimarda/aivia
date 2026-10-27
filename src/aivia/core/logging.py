@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any, TextIO
 
+from aivia.core.redact import redact
+
 run_id: ContextVar[str | None] = ContextVar("run_id", default=None)
 stage: ContextVar[str | None] = ContextVar("stage", default=None)
 provider: ContextVar[str | None] = ContextVar("provider", default=None)
@@ -129,17 +131,17 @@ class JsonFormatter(logging.Formatter):
         payload: dict[str, Any] = {
             "ts": _timestamp(record.created),
             "level": record.levelname,
-            "msg": record.getMessage(),
+            "msg": redact(record.getMessage()),
             "logger": record.name,
         }
         for name, variable in CONTEXT_VARS:
             value = variable.get()
             if value is not None:
-                payload[name] = value
+                payload[name] = redact(value)
         if record.exc_info:
-            payload["exc_info"] = self.formatException(record.exc_info)
+            payload["exc_info"] = redact(self.formatException(record.exc_info))
         if record.stack_info:
-            payload["stack_info"] = self.formatStack(record.stack_info)
+            payload["stack_info"] = redact(self.formatStack(record.stack_info))
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
