@@ -22,7 +22,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Configure ruff, mypy, pytest and the live, slow and golden markers so unknown markers fail the run (tests/test_smoke.py)
 - [x] Add Makefile targets for lint, type, test, check, docs and install-smoke, with check running the first three in order (make check)
 - [x] Add a CI workflow that installs ffmpeg and runs lint, type and the offline suite, excluding the live marker (CI)
-- [ ] Add structured JSON logging with ts, level, msg and logger plus run_id, stage and provider context variables (tests/core/test_logging.py)
+- [x] Add structured JSON logging with ts, level, msg and logger plus run_id, stage and provider context variables (tests/core/test_logging.py)
 - [ ] Add a log context helper that nests, restores and is safe inside async code (tests/core/test_logging.py)
 - [ ] Add the error taxonomy with retryable, permanent, budget, auth, rate limit, timeout, invalid request, content policy, provider exhausted, config, validation and quota errors (tests/core/test_errors.py)
 - [ ] Add a secrets loader that checks environment, then a secrets file, then the OS keyring, naming only the missing reference and exposing the token store key (tests/core/test_secrets.py)
