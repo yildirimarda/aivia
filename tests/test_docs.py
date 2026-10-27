@@ -38,11 +38,48 @@ def test_architecture_note_records_core_independence() -> None:
     assert "the core never imports a module" in text
 
 
+def test_fixtures_policy_records_responses_per_provider() -> None:
+    text = _read(DESIGN).lower()
+
+    assert "recorded responses" in text
+    assert "per provider" in text
+    assert "tests/fixtures/providers/" in text
+
+
+def test_fixtures_policy_records_one_example_per_schema() -> None:
+    text = _read(DESIGN).lower()
+
+    assert "one example per schema" in text
+    assert "examples/" in text
+
+
+def test_fixtures_policy_records_the_goldens_folder() -> None:
+    text = _read(DESIGN).lower()
+
+    assert "goldens folder" in text
+    assert "tests/golden/" in text
+
+
+def test_fixtures_policy_forbids_real_personal_data() -> None:
+    text = _read(DESIGN).lower()
+
+    assert "no real personal data" in text
+    assert "synthetic" in text
+    assert "redacted" in text
+
+
 def test_decisions_log_records_deterministic_core_and_core_independence() -> None:
     text = _read(DECISIONS).lower()
 
     assert "d-003 · deterministic core, llm at the edges" in text
     assert "d-006 · core never imports a module" in text
+
+
+def test_decisions_log_records_the_fixtures_policy() -> None:
+    text = _read(DECISIONS).lower()
+
+    assert "d-023 · fixtures are recorded, examples synthetic" in text
+    assert "synthetic data only" in text
 
 
 def test_progress_log_records_deterministic_core_and_core_independence() -> None:

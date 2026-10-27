@@ -233,6 +233,27 @@ marked `live`, require `--live`, and honor `AIVA_LIVE_BUDGET_USD`. Golden render
 Linux image with a pinned ffmpeg and the bundled fonts. Every milestone that adds a real stage extends the
 end-to-end smoke test.
 
+**Fixtures and examples policy.**
+
+- **Recorded responses, one folder per provider.** Network responses used by tests are recorded under
+  `tests/fixtures/providers/<provider>/<case>.json` and replayed offline through the provider's HTTP
+  transport. A fixture stores the request (method, URL, relevant headers), the response status, headers and
+  body, and when it was captured. Provider contract tests reuse the same fixtures for every provider;
+  recording is a reviewed manual step and never happens in the default suite.
+- **One example per schema.** Every public structured schema (config sections, provider specs, compositions,
+  plans, profiles, orders) has exactly one minimal valid example under `examples/<schema>.example.yaml`, or
+  `.json` where the format is JSON, named after the schema. Tests validate each example against its schema so
+  examples cannot drift. The canonical config is the exception: it lives in
+  `src/aivia/data/defaults/config.example.yaml` and is not duplicated here.
+- **A goldens folder.** Expected render and media artifacts live under `tests/golden/` beside their metadata
+  (composition id, toolchain fingerprint, SSIM tolerance). Goldens are generated only on the pinned Linux
+  image with the pinned ffmpeg and bundled fonts, are marked `golden`, and are never hand-edited. The default
+  offline run does not compare goldens.
+- **No real personal data.** Fixtures, examples and goldens use synthetic names, emails, phone numbers,
+  addresses, faces and voices. Recordings are redacted of tokens, cookies and personal data before they are
+  committed. Real customer data, secrets and live credentials never enter the repository, a fixture or a
+  log. Only generated or public-domain media is used, with its provenance recorded.
+
 ## 10. How work flows
 
 `PLAN.md` is both the queue and the notebook. The runner takes the first unchecked item, hands that exact
