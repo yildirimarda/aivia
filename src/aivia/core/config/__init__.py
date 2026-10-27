@@ -1,6 +1,14 @@
 """Validated configuration models, environment interpolation and section registry."""
 
 from aivia.core.config.base import ConfigModel, dotted_path, interpolate_env
+from aivia.core.config.budget import (
+    BudgetConfig,
+    BudgetExceedBehavior,
+    BudgetExceedBehaviour,
+    OnExceed,
+    OnExceedBehavior,
+    OnExceedBehaviour,
+)
 from aivia.core.config.registry import (
     Section,
     SectionRegistry,
@@ -12,7 +20,6 @@ from aivia.core.config.sections import (
     CORE_SECTIONS,
     AccessibilityConfig,
     ApiConfig,
-    BudgetConfig,
     DurationRangeConfig,
     DurationRangeOverrideConfig,
     JobsConfig,
@@ -51,12 +58,17 @@ __all__ = [
     "AccessibilityConfig",
     "ApiConfig",
     "BudgetConfig",
+    "BudgetExceedBehavior",
+    "BudgetExceedBehaviour",
     "ConfigModel",
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
     "JobsConfig",
     "LanguageConfig",
     "LanguagesConfig",
+    "OnExceed",
+    "OnExceedBehavior",
+    "OnExceedBehaviour",
     "PipelineConfig",
     "PlatformAccountConfig",
     "PlatformVideoConfig",

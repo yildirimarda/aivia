@@ -51,6 +51,8 @@ budget:
   per_month: 0
   per_order: 0
   per_instruction: 0
+  per_run: 0
+  per_call: 0
   per_provider: {}
   alerts: []
   on_exceed: pause
