@@ -49,7 +49,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 - [x] Add the config base model with environment interpolation including defaults, rejecting unknown keys with a dotted path (tests/core/config/test_base.py)
 - [x] Add a modular section registry so modules register their own top-level keys and collisions or unknown keys fail clearly (tests/core/config/test_registry.py)
-- [ ] Add the core config sections for languages, pipeline, video, render, budget, storage, api, jobs, safety, platforms, presets, retention, privacy, tracing and accessibility (tests/core/config/test_core_sections.py)
+- [x] Add the core config sections for languages, pipeline, video, render, budget, storage, api, jobs, safety, platforms, presets, retention, privacy, tracing and accessibility (tests/core/config/test_core_sections.py)
 - [ ] Add the language config with locale, words per second bounds, subtitle font and hashtag style (tests/core/config/test_language.py)
 - [ ] Add the video spec parsing resolution, fps, duration bounds and per platform and per profile deep merge (tests/core/config/test_video.py)
 - [ ] Add the budget config with all caps, provider monthly limits, sorted alert thresholds and the on exceed behaviour enum (tests/core/config/test_budget.py)
