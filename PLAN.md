@@ -47,7 +47,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: every tunable validated, layered and discoverable; schema versioned and migratable -->
 
-- [ ] Add the config base model with environment interpolation including defaults, rejecting unknown keys with a dotted path (tests/core/config/test_base.py)
+- [x] Add the config base model with environment interpolation including defaults, rejecting unknown keys with a dotted path (tests/core/config/test_base.py)
 - [ ] Add a modular section registry so modules register their own top-level keys and collisions or unknown keys fail clearly (tests/core/config/test_registry.py)
 - [ ] Add the core config sections for languages, pipeline, video, render, budget, storage, api, jobs, safety, platforms, presets, retention, privacy, tracing and accessibility (tests/core/config/test_core_sections.py)
 - [ ] Add the language config with locale, words per second bounds, subtitle font and hashtag style (tests/core/config/test_language.py)
