@@ -12,6 +12,8 @@ Status: in progress.
 - Structured logging, log context, the error taxonomy, secrets loading, redaction, path resolution, ULIDs
   and the root CLI are implemented with offline tests.
 - Architecture note (`docs/DESIGN.md`) and decisions log (`docs/decisions.md`) are written.
+- Fixtures and examples policy recorded in `DESIGN.md` §9 and as D-023: recorded responses per provider,
+  one example per schema, a goldens folder and no real personal data.
 - Progress log started in this file.
 
 ## Foundational constraints recorded

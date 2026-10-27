@@ -119,3 +119,9 @@ delivered.
 leaves it as is and only reverts it to unchecked when it ends without completing the work.
 *Why:* two writers on one line cause PLAN.md conflicts on every PR.
 *Consequence:* conflict resolution always takes main's version of every line except the agent's own tick.
+
+**D-023 · Fixtures are recorded, examples synthetic** — Provider responses are recorded once per provider and
+replayed offline; every schema has one validated example; render goldens live under `tests/golden/`; fixtures,
+examples and goldens contain synthetic data only.
+*Why:* offline tests must be deterministic and reviewable, and the repository must never carry real personal data.
+*Consequence:* recording is a reviewed manual step, and examples are schema-validated so they cannot drift.
