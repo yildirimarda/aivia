@@ -219,6 +219,8 @@ These are the rules code must never break. They are enforced by tests, not by go
 12. **Safe defaults.** SQLite runs with WAL, a busy timeout and foreign keys; outbound fetches validate the
     resolved IP (DNS-rebinding safe); token encryption keys come from the secrets loader; publishing
     defaults to dry run in tests.
+13. Cheap before expensive. Filter deterministically (regex, thresholds, hashes, medians) before spending a 
+    paid model judgement. Hook pre-scoring, music prefilter and stock relevance all follow this order.
 
 ## 9. Definition of done and test policy
 
