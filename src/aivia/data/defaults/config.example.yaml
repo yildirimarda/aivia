@@ -1,0 +1,10 @@
+# Copied to $XDG_CONFIG_HOME/aivia/config.yaml on first run.
+schema_version: 1
+
+pipeline:
+  stages: [research, write, voice, visuals, render, review, publish]
+  timezone: Europe/Berlin
+
+render:
+  fonts_dir: package
+  require_bundled_fonts: true
