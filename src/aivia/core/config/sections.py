@@ -25,6 +25,7 @@ from aivia.core.config.ops import (
     StorageConfig,
 )
 from aivia.core.config.orders import DeliveryConfig, OccasionsConfig, OrdersConfig
+from aivia.core.config.planner import PlannerConfig
 from aivia.core.config.profile import ProfilesConfig
 from aivia.core.config.quality import QualityConfig, ScoringConfig
 from aivia.core.config.registry import SectionRegistry, registry
@@ -64,6 +65,7 @@ __all__ = [
     "OnExceed",
     "OrdersConfig",
     "PipelineConfig",
+    "PlannerConfig",
     "PlatformAccountConfig",
     "PlatformVideoConfig",
     "PlatformsConfig",
@@ -301,6 +303,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("occasions", OccasionsConfig),
     ("orders", OrdersConfig),
     ("delivery", DeliveryConfig),
+    ("planner", PlannerConfig),
     ("retention", RetentionConfig),
     ("review", ReviewConfig),
     ("privacy", PrivacyConfig),

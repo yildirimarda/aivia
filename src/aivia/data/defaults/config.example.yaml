@@ -253,6 +253,19 @@ profiles:
     accounts: []
     overrides: {}
 
+planner:
+  enabled: true
+  max_steps: 10
+  max_iterations: 3
+  approval_mode: ask
+  allowed_tools: []
+  preview: true
+  defaults:
+    format: narrated_still
+    language: en
+  budget:
+    per_instruction: 0
+
 occasions:
   default: birthday
   occasions:
