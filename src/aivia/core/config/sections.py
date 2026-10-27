@@ -1,0 +1,317 @@
+"""Core configuration sections registered by the base application.
+
+Each top-level key owns one :class:`ConfigModel`. Optional modules register
+their own sections with the same registry, so the core set stays free of
+module-specific keys. Sections use defaults for every field: an empty mapping
+is a valid configuration and later milestones can tighten individual fields
+without making existing configs unreadable.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, Literal
+
+from pydantic import Field, model_validator
+
+from aivia.core.config.base import ConfigModel
+from aivia.core.config.registry import SectionRegistry, registry
+from aivia.core.errors import ConfigError
+
+__all__ = [
+    "CORE_SECTIONS",
+    "CORE_SECTION_KEYS",
+    "AccessibilityConfig",
+    "ApiConfig",
+    "BudgetConfig",
+    "DurationRangeConfig",
+    "JobsConfig",
+    "LanguageConfig",
+    "LanguagesConfig",
+    "PipelineConfig",
+    "PlatformAccountConfig",
+    "PlatformsConfig",
+    "PresetConfig",
+    "PresetsConfig",
+    "PrivacyConfig",
+    "RenderConfig",
+    "RetentionConfig",
+    "SafetyConfig",
+    "StorageConfig",
+    "TracingConfig",
+    "VideoConfig",
+    "register_core_sections",
+]
+
+
+class LanguageConfig(ConfigModel):
+    """Settings for one language written natively from the shared fact base."""
+
+    name: str = ""
+    locale: str = "en_US"
+
+
+class LanguagesConfig(ConfigModel):
+    """The available languages plus the one used when none is requested.
+
+    A config file may write the language entries directly under the section
+    (``languages: {en: {...}, de: {...}}``) or nest them under ``languages``;
+    both forms validate to the same model.
+    """
+
+    default: str = "en"
+    languages: dict[str, LanguageConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_direct_mapping(cls, data: Any) -> Any:
+        if isinstance(data, Mapping) and "languages" not in data:
+            values = dict(data)
+            default = values.pop("default", "en")
+            return {"default": default, "languages": values}
+        return data
+
+
+class PipelineConfig(ConfigModel):
+    """The ordered stages a pipeline runs and the timezone used for schedules."""
+
+    stages: list[str] = Field(
+        default_factory=lambda: [
+            "research",
+            "write",
+            "voice",
+            "visuals",
+            "render",
+            "review",
+            "publish",
+        ]
+    )
+    timezone: str = "UTC"
+
+
+class DurationRangeConfig(ConfigModel):
+    """Inclusive lower and upper bounds for a generated video in seconds."""
+
+    min: int = 20
+    max: int = 45
+
+
+class VideoConfig(ConfigModel):
+    """Video defaults shared by formats, profiles and platform overrides."""
+
+    resolution: str = "1080x1920"
+    fps: int = 30
+    duration_seconds: DurationRangeConfig = Field(default_factory=DurationRangeConfig)
+    loudness_lufs: float = -14.0
+
+
+class RenderConfig(ConfigModel):
+    """Deterministic renderer settings that never require an AI call."""
+
+    fonts_dir: str = "package"
+    require_bundled_fonts: bool = True
+    min_contrast: float = 4.5
+
+
+class BudgetConfig(ConfigModel):
+    """Spending caps, provider limits, alert thresholds and overrun policy."""
+
+    per_video: float = 0.0
+    per_day: float = 0.0
+    per_month: float = 0.0
+    per_order: float = 0.0
+    per_instruction: float = 0.0
+    per_provider: dict[str, float] = Field(default_factory=dict)
+    alerts: list[float] = Field(default_factory=list)
+    on_exceed: Literal["pause", "downgrade", "notify"] = "pause"
+
+
+class StorageConfig(ConfigModel):
+    """Where generated media and intermediates are stored.
+
+    Credentials are referenced by name and resolved through the secrets
+    loader, never written into the configuration file.
+    """
+
+    backend: Literal["local", "s3"] = "local"
+    local_dir: str = "media"
+    bucket: str | None = None
+    endpoint: str | None = None
+    region: str | None = None
+    access_key_ref: str | None = None
+    secret_key_ref: str | None = None
+
+
+class ApiConfig(ConfigModel):
+    """The local HTTP API bind address, authentication and request limits."""
+
+    host: str = "127.0.0.1"
+    port: int = 8765
+    require_auth: bool = True
+    api_key_ref: str = "AIVA_API_KEY"
+    max_body_bytes: int = 10_000_000
+    rate_limit_per_minute: int = 60
+
+
+class JobsConfig(ConfigModel):
+    """Worker concurrency, retry and heartbeat settings for the job queue."""
+
+    concurrency: int = 1
+    max_attempts: int = 3
+    heartbeat_seconds: int = 30
+    poll_seconds: int = 2
+    stale_after_seconds: int = 120
+
+
+class SafetyConfig(ConfigModel):
+    """Prompt and media screening before a paid or published call."""
+
+    enabled: bool = True
+    screen_prompts: bool = True
+    screen_media: bool = True
+    block_categories: list[str] = Field(default_factory=list)
+    allow_regenerate: bool = True
+
+
+class PlatformAccountConfig(ConfigModel):
+    """One publishing account, bound to exactly one platform and language."""
+
+    platform: str = ""
+    language: str = ""
+    enabled: bool = True
+    credential_refs: list[str] = Field(default_factory=list)
+
+
+class PlatformsConfig(ConfigModel):
+    """Publishing accounts keyed by ``platform/language``.
+
+    Entries may be written directly under the section
+    (``platforms: {youtube/en: {...}}``) or nested under ``accounts``.
+    """
+
+    accounts: dict[str, PlatformAccountConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_direct_mapping(cls, data: Any) -> Any:
+        if isinstance(data, Mapping) and "accounts" not in data:
+            return {"accounts": dict(data)}
+        return data
+
+
+class PresetConfig(ConfigModel):
+    """A named set of configuration overrides selected by the CLI or a profile."""
+
+    description: str = ""
+    overrides: dict[str, Any] = Field(default_factory=dict)
+
+
+class PresetsConfig(ConfigModel):
+    """Named presets keyed by name.
+
+    Entries may be written directly under the section
+    (``presets: {short: {...}}``) or nested under ``presets``.
+    """
+
+    presets: dict[str, PresetConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_direct_mapping(cls, data: Any) -> Any:
+        if isinstance(data, Mapping) and "presets" not in data:
+            return {"presets": dict(data)}
+        return data
+
+
+class RetentionConfig(ConfigModel):
+    """How long intermediates, cache, logs and personal data are kept.
+
+    Final outputs are pinned and are never removed unless
+    ``delete_final_outputs`` is explicitly enabled.
+    """
+
+    intermediates_days: int = 7
+    cache_days: int = 14
+    logs_days: int = 30
+    personal_data_days: int = 30
+    delete_final_outputs: bool = False
+
+
+class PrivacyConfig(ConfigModel):
+    """Redaction and personal-data handling for logs, prompts and sidecars."""
+
+    redact_logs: bool = True
+    redact_prompts: bool = False
+    store_prompt_text: bool = True
+    allow_personal_data: bool = False
+
+
+class TracingConfig(ConfigModel):
+    """Optional tracing export; disabled by default and vendor neutral."""
+
+    enabled: bool = False
+    exporter: Literal["none", "otlp"] = "none"
+    endpoint: str | None = None
+    service_name: str = "aivia"
+    sample_ratio: float = 1.0
+
+
+class AccessibilityConfig(ConfigModel):
+    """Alt text, subtitles and contrast settings for accessible outputs."""
+
+    enabled: bool = True
+    alt_text: bool = True
+    subtitles: bool = True
+    min_contrast: float = 4.5
+    subtitle_font_size: int = 32
+
+
+CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
+    ("languages", LanguagesConfig),
+    ("pipeline", PipelineConfig),
+    ("video", VideoConfig),
+    ("render", RenderConfig),
+    ("budget", BudgetConfig),
+    ("storage", StorageConfig),
+    ("api", ApiConfig),
+    ("jobs", JobsConfig),
+    ("safety", SafetyConfig),
+    ("platforms", PlatformsConfig),
+    ("presets", PresetsConfig),
+    ("retention", RetentionConfig),
+    ("privacy", PrivacyConfig),
+    ("tracing", TracingConfig),
+    ("accessibility", AccessibilityConfig),
+)
+
+CORE_SECTION_KEYS: tuple[str, ...] = tuple(sorted(key for key, _ in CORE_SECTIONS))
+
+
+def register_core_sections(
+    sections: SectionRegistry | None = None,
+) -> SectionRegistry:
+    """Register every core section on *sections* and return the registry.
+
+    The operation is idempotent for the core models, so importing the package
+    and calling this explicitly cannot register the same key twice. A key
+    already owned by a different model is still a collision.
+    """
+    target = registry if sections is None else sections
+    for key, model in CORE_SECTIONS:
+        if key in target:
+            existing = target.get(key)
+            if existing.model is not model:
+                raise ConfigError(
+                    f"config section already registered: {key}",
+                    details={
+                        "key": key,
+                        "existing": existing.model.__name__,
+                        "new": model.__name__,
+                    },
+                )
+            continue
+        target.register(key, model)
+    return target
+
+
+register_core_sections()
