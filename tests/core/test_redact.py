@@ -88,8 +88,7 @@ def test_secret_values_are_matched_literally_not_as_patterns() -> None:
             "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature123",
         ),
         (
-            "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n"
-            "-----END RSA PRIVATE KEY-----",
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----",
             "MIIEow",
         ),
     ],
@@ -200,9 +199,7 @@ def test_json_logging_redacts_messages_context_and_token_patterns() -> None:
     register_secret("log-secret")
     token = run_id.set("log-secret")
     try:
-        payload = _payload(
-            _record(msg="using log-secret and sk-abcdefghijklmnop")
-        )
+        payload = _payload(_record(msg="using log-secret and sk-abcdefghijklmnop"))
     finally:
         run_id.reset(token)
 
