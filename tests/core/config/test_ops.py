@@ -151,9 +151,7 @@ def test_jobs_rejects_non_positive_or_negative_values(
 
 def test_jobs_stale_after_must_exceed_the_heartbeat() -> None:
     with pytest.raises(ConfigError) as caught:
-        JobsConfig.from_mapping(
-            {"heartbeat_seconds": 30, "stale_after_seconds": 30}
-        )
+        JobsConfig.from_mapping({"heartbeat_seconds": 30, "stale_after_seconds": 30})
 
     assert "stale_after_seconds" in str(caught.value)
 

@@ -180,8 +180,7 @@ class JobsConfig(ConfigModel):
     def _stale_after_heartbeat(self) -> JobsConfig:
         if self.stale_after_seconds <= self.heartbeat_seconds:
             raise ValueError(
-                "jobs.stale_after_seconds must be greater than "
-                "jobs.heartbeat_seconds"
+                "jobs.stale_after_seconds must be greater than jobs.heartbeat_seconds"
             )
         return self
 
@@ -226,7 +225,5 @@ class StorageConfig(ConfigModel):
             if not str(getattr(self, name) or "").strip()
         ]
         if missing:
-            raise ValueError(
-                "S3 backend requires: " + ", ".join(missing)
-            )
+            raise ValueError("S3 backend requires: " + ", ".join(missing))
         return self
