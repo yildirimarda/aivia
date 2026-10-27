@@ -57,6 +57,12 @@ budget:
   alerts: []
   on_exceed: pause
 
+llm:
+  chain: []
+  roles: {}
+  pricing: {}
+  max_repairs: 2
+
 storage:
   backend: local
   local_dir: media
