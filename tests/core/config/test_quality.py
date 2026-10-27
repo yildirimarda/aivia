@@ -150,9 +150,7 @@ def test_invalid_scoring_weights_are_rejected(weights: dict[str, float]) -> None
         ("min_dimension_score", 1.01),
     ],
 )
-def test_scoring_thresholds_stay_between_zero_and_one(
-    field: str, value: float
-) -> None:
+def test_scoring_thresholds_stay_between_zero_and_one(field: str, value: float) -> None:
     with pytest.raises(ConfigError) as caught:
         ScoringConfig.from_mapping({field: value})
 
