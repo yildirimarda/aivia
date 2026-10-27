@@ -19,7 +19,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 - [x] Create the package skeleton with pyproject.toml, the aivia console script and a wheel containing exactly one top-level package plus package data (tests/test_packaging.py)
 - [x] Bundle an OFL font family with its LICENSE inside the package and declare it as package data with the default config, prompts and templates (tests/test_packaging.py)
-- [ ] Configure ruff, mypy, pytest and the live, slow and golden markers so unknown markers fail the run (tests/test_smoke.py)
+- [x] Configure ruff, mypy, pytest and the live, slow and golden markers so unknown markers fail the run (tests/test_smoke.py)
 - [ ] Add Makefile targets for lint, type, test, check, docs and install-smoke, with check running the first three in order (make check)
 - [ ] Add a CI workflow that installs ffmpeg and runs lint, type and the offline suite, excluding the live marker (CI)
 - [ ] Add structured JSON logging with ts, level, msg and logger plus run_id, stage and provider context variables (tests/core/test_logging.py)
@@ -38,6 +38,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add first run bootstrap that copies package defaults into the user config directory once, never overwriting edited files and adding new defaults on upgrade (tests/core/test_bootstrap.py)
 - [ ] Add an init command that creates the config skeleton, prints resolved paths and refuses to overwrite without force or in dry run mode (tests/cli/test_init.py)
 - [ ] Add an installed tool smoke script that builds a wheel, installs it with uv tool install and runs config show from outside the repo (scripts/install_smoke.sh)
+- [ ] Add a pytest live option that skips live tests unless enabled and honors AIVA_LIVE_BUDGET_USD (tests/test_smoke.py)
 
 ## Milestone 2: Configuration system
 
