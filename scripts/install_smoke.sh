@@ -28,7 +28,7 @@ wheel="${wheels[0]}"
 UV_TOOL_DIR="$tool_dir" \
     UV_TOOL_BIN_DIR="$tool_bin_dir" \
     UV_CACHE_DIR="$cache_dir" \
-    uv tool install --force --no-index --from "$wheel" aivia
+    uv tool install --force --from "$wheel" aivia
 
 # Run from outside the repository with an isolated config directory so the
 # smoke test never reads or writes the developer's real configuration.

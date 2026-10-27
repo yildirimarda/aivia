@@ -29,6 +29,12 @@ case "${1:-}" in
         printf 'wheel\\n' > "$out_dir/aivia-0.1.0-py3-none-any.whl"
         ;;
     tool)
+        for argument in "$@"; do
+            if [ "$argument" = "--no-index" ]; then
+                printf 'error: cannot resolve runtime dependencies offline\\n' >&2
+                exit 1
+            fi
+        done
         if [ -z "${UV_TOOL_BIN_DIR:-}" ]; then
             printf 'missing UV_TOOL_BIN_DIR\\n' >&2
             exit 1
