@@ -44,6 +44,7 @@ from aivia.core.config.llm import (
     roles,
     validate_role,
 )
+from aivia.core.config.quality import QualityConfig, ScoringConfig
 from aivia.core.config.registry import (
     Section,
     SectionRegistry,
@@ -130,6 +131,7 @@ __all__ = [
     "PresetsConfig",
     "PrivacyConfig",
     "ProfileVideoConfig",
+    "QualityConfig",
     "RegisteredLLMRole",
     "RenderConfig",
     "Resolution",
@@ -137,6 +139,7 @@ __all__ = [
     "Role",
     "RoleRegistry",
     "SafetyConfig",
+    "ScoringConfig",
     "Section",
     "SectionRegistry",
     "StorageConfig",

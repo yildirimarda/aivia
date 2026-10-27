@@ -43,7 +43,11 @@ video:
 render:
   fonts_dir: package
   require_bundled_fonts: true
+  default_font: Lato
+  fallback_fonts: [Lato]
+  font_size: 48
   min_contrast: 4.5
+  contrast_strategy: outline
 
 budget:
   per_video: 0
@@ -62,6 +66,27 @@ llm:
   roles: {}
   pricing: {}
   max_repairs: 2
+
+quality:
+  enabled: true
+  min_score: 0.7
+  max_retries: 2
+  sample_frames: 3
+  vision: true
+  weights:
+    prompt_adherence: 0.4
+    technical_quality: 0.3
+    aesthetic_quality: 0.3
+
+scoring:
+  rubric_version: "1"
+  min_score: 0.6
+  min_dimension_score: 0.0
+  weights:
+    relevance: 0.35
+    originality: 0.25
+    accuracy: 0.25
+    engagement: 0.15
 
 storage:
   backend: local
@@ -107,6 +132,8 @@ privacy:
   redact_prompts: false
   store_prompt_text: true
   allow_personal_data: false
+  placeholder_mode: false
+  data_processing_record: true
 
 tracing:
   enabled: false
@@ -119,4 +146,7 @@ accessibility:
   alt_text: true
   subtitles: true
   min_contrast: 4.5
+  subtitle_font: Lato
   subtitle_font_size: 32
+  subtitle_outline: true
+  subtitle_background: false

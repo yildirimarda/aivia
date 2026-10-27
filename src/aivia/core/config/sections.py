@@ -12,11 +12,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.config.llm import LLMConfig
+from aivia.core.config.quality import QualityConfig, ScoringConfig
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.video import (
     DurationRangeConfig,
@@ -57,10 +58,12 @@ __all__ = [
     "PresetsConfig",
     "PrivacyConfig",
     "ProfileVideoConfig",
+    "QualityConfig",
     "RenderConfig",
     "Resolution",
     "RetentionConfig",
     "SafetyConfig",
+    "ScoringConfig",
     "StorageConfig",
     "TracingConfig",
     "VideoConfig",
@@ -143,7 +146,19 @@ class RenderConfig(ConfigModel):
 
     fonts_dir: str = "package"
     require_bundled_fonts: bool = True
-    min_contrast: float = 4.5
+    default_font: str = Field(default="Lato", min_length=1)
+    fallback_fonts: list[str] = Field(default_factory=lambda: ["Lato"])
+    font_size: int = Field(default=48, gt=0)
+    min_contrast: float = Field(default=4.5, ge=1, le=21)
+    contrast_strategy: Literal["outline", "shadow", "box"] = "outline"
+
+    @field_validator("fallback_fonts")
+    @classmethod
+    def _validate_fallback_fonts(cls, value: list[str]) -> list[str]:
+        fonts = [font.strip() for font in value]
+        if any(not font for font in fonts):
+            raise ValueError("fallback font names must not be empty")
+        return fonts
 
 
 class StorageConfig(ConfigModel):
@@ -264,6 +279,8 @@ class PrivacyConfig(ConfigModel):
     redact_prompts: bool = False
     store_prompt_text: bool = True
     allow_personal_data: bool = False
+    placeholder_mode: bool = False
+    data_processing_record: bool = True
 
 
 class TracingConfig(ConfigModel):
@@ -282,8 +299,11 @@ class AccessibilityConfig(ConfigModel):
     enabled: bool = True
     alt_text: bool = True
     subtitles: bool = True
-    min_contrast: float = 4.5
-    subtitle_font_size: int = 32
+    min_contrast: float = Field(default=4.5, ge=1, le=21)
+    subtitle_font: str = Field(default="Lato", min_length=1)
+    subtitle_font_size: int = Field(default=32, gt=0)
+    subtitle_outline: bool = True
+    subtitle_background: bool = False
 
 
 CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
@@ -293,6 +313,8 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("render", RenderConfig),
     ("budget", BudgetConfig),
     ("llm", LLMConfig),
+    ("quality", QualityConfig),
+    ("scoring", ScoringConfig),
     ("storage", StorageConfig),
     ("api", ApiConfig),
     ("jobs", JobsConfig),
