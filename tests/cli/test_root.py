@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +15,7 @@ from aivia.cli import (
     main,
     version_string,
 )
+from aivia.core import paths
 
 
 def test_version_flag_prints_the_installed_version(
@@ -126,3 +128,106 @@ def test_build_parser_includes_registered_commands() -> None:
 
     assert args.command == "example"
     assert args._command.name == "example"
+
+
+def test_command_bootstraps_the_config_directory_on_a_fresh_install(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    xdg = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    config_dir = xdg / "aivia"
+    observed: list[Path] = []
+    commands = CommandRegistry()
+
+    @commands.command("inspect", help="Inspect the config directory")
+    def inspect(_: argparse.Namespace) -> int:
+        observed.append(config_dir / "config.yaml")
+        return 0
+
+    assert main(["inspect"], registry=commands) == 0
+
+    assert (config_dir / "config.yaml").read_text(encoding="utf-8") == (
+        paths.package_defaults_dir() / "config.example.yaml"
+    ).read_text(encoding="utf-8")
+    assert (config_dir / "prompts" / "image.md").is_file()
+    assert (config_dir / "templates" / "web_card.html").is_file()
+    assert (config_dir / "data").is_dir()
+    assert observed == [config_dir / "config.yaml"]
+    assert observed[0].is_file()
+
+
+def test_command_preserves_an_edited_config_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    xdg = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    config = xdg / "aivia" / "config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text("schema_version: 1\nuser: edited\n", encoding="utf-8")
+    commands = CommandRegistry()
+    commands.register(Command(name="noop", handler=lambda _: 0))
+
+    assert main(["noop"], registry=commands) == 0
+
+    assert config.read_text(encoding="utf-8") == "schema_version: 1\nuser: edited\n"
+    assert (xdg / "aivia" / "prompts" / "image.md").is_file()
+
+
+@pytest.mark.parametrize("argv", [["--version"], ["-V"], []])
+def test_informational_invocations_do_not_bootstrap(
+    argv: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    xdg = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+
+    assert main(argv, registry=CommandRegistry()) == 0
+
+    assert not (xdg / "aivia").exists()
+
+
+def test_init_is_the_explicit_bootstrap_and_reports_its_creations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    xdg = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    config = xdg / "aivia" / "config.yaml"
+
+    assert main(["init"]) == 0
+
+    output = capsys.readouterr().out
+    assert f"Created: {config}" in output
+    assert "already exists" not in output
+
+
+def test_bootstrap_failure_stops_the_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    commands = CommandRegistry()
+    calls: list[bool] = []
+
+    def handler(_: argparse.Namespace) -> int:
+        calls.append(True)
+        return 0
+
+    commands.register(Command(name="noop", handler=handler))
+
+    def fail() -> None:
+        raise OSError("read-only config directory")
+
+    monkeypatch.setattr("aivia.cli.root.bootstrap", fail)
+
+    assert main(["noop"], registry=commands) == 1
+
+    captured = capsys.readouterr()
+    assert "cannot populate the config directory" in captured.err
+    assert "read-only config directory" in captured.err
+    assert calls == []

@@ -7,8 +7,9 @@ import sys
 from collections.abc import Sequence
 
 from aivia import __version__
-from aivia.cli.registry import CommandRegistry
+from aivia.cli.registry import Command, CommandRegistry
 from aivia.cli.registry import registry as default_registry
+from aivia.core.bootstrap import bootstrap
 
 __all__ = ["build_parser", "main", "version_string"]
 
@@ -37,6 +38,24 @@ def build_parser(registry: CommandRegistry | None = None) -> argparse.ArgumentPa
     return parser
 
 
+def _bootstrap_before(command: Command) -> int | None:
+    """Populate the user config directory before a command runs.
+
+    ``init`` is the explicit bootstrap command and already reports what it
+    creates, so it is left alone.  Every other command silently ensures the
+    packaged defaults exist, which makes a fresh installation usable without
+    asking the user to run ``init`` first.
+    """
+    if command.name == "init":
+        return None
+    try:
+        bootstrap()
+    except OSError as exc:
+        print(f"error: cannot populate the config directory: {exc}", file=sys.stderr)
+        return 1
+    return None
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -55,6 +74,9 @@ def main(
         return 0
 
     command = active.get(args.command)
+    bootstrap_error = _bootstrap_before(command)
+    if bootstrap_error is not None:
+        return bootstrap_error
     result = command.handler(args)
     return 0 if result is None else int(result)
 
