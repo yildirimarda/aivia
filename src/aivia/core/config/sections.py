@@ -10,7 +10,7 @@ without making existing configs unreadable.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -40,8 +40,22 @@ __all__ = [
     "StorageConfig",
     "TracingConfig",
     "VideoConfig",
+    "WordsPerSecondConfig",
     "register_core_sections",
 ]
+
+
+class WordsPerSecondConfig(ConfigModel):
+    """Inclusive speaking-rate bounds used to estimate and check script length."""
+
+    min: float = Field(default=2.0, gt=0)
+    max: float = Field(default=3.5, gt=0)
+
+    @model_validator(mode="after")
+    def _ordered_bounds(self) -> Self:
+        if self.min > self.max:
+            raise ValueError("words per second min must not exceed max")
+        return self
 
 
 class LanguageConfig(ConfigModel):
@@ -49,6 +63,9 @@ class LanguageConfig(ConfigModel):
 
     name: str = ""
     locale: str = "en_US"
+    words_per_second: WordsPerSecondConfig = Field(default_factory=WordsPerSecondConfig)
+    subtitle_font: str = Field(default="Lato", min_length=1)
+    hashtag_style: Literal["lower", "title", "upper"] = "lower"
 
 
 class LanguagesConfig(ConfigModel):

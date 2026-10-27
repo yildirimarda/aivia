@@ -29,6 +29,7 @@ from aivia.core.config.sections import (
     StorageConfig,
     TracingConfig,
     VideoConfig,
+    WordsPerSecondConfig,
     register_core_sections,
 )
 
@@ -57,6 +58,7 @@ __all__ = [
     "StorageConfig",
     "TracingConfig",
     "VideoConfig",
+    "WordsPerSecondConfig",
     "dotted_path",
     "interpolate_env",
     "register_core_sections",
