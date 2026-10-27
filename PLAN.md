@@ -74,6 +74,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Generate the configuration reference document from the schema and docstrings and fail CI when it is stale (tests/cli/test_config_docs.py)
 - [ ] Audit masking so resolved config, run snapshots and sidecars never contain secrets and prompt content obeys the redact setting (tests/core/config/test_masking.py)
 - [ ] Add config schema versioning and a migrate command that upgrades older user configs, prints a diff and preserves unknown but valid keys (tests/cli/test_config_migrate.py)
+- [ ] Add optional per provider weights to capability chains and reject weighted_ab chains missing them (tests/core/config/test_capability.py)
 
 ## Milestone 3: Models, repositories and database
 

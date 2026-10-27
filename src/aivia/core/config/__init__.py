@@ -9,6 +9,12 @@ from aivia.core.config.budget import (
     OnExceedBehavior,
     OnExceedBehaviour,
 )
+from aivia.core.config.capability import (
+    CapabilityChainConfig,
+    CapabilityConfig,
+    CapabilityStrategy,
+    ChainStrategy,
+)
 from aivia.core.config.registry import (
     Section,
     SectionRegistry,
@@ -60,6 +66,10 @@ __all__ = [
     "BudgetConfig",
     "BudgetExceedBehavior",
     "BudgetExceedBehaviour",
+    "CapabilityChainConfig",
+    "CapabilityConfig",
+    "CapabilityStrategy",
+    "ChainStrategy",
     "ConfigModel",
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
