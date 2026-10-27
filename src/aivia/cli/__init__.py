@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from aivia.cli import init
 from aivia.cli.registry import (
     Command,
     CommandHandler,
@@ -18,6 +19,7 @@ __all__ = [
     "CommandRegistry",
     "ParserConfigurator",
     "build_parser",
+    "init",
     "main",
     "register_command",
     "registry",

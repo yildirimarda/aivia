@@ -80,6 +80,7 @@ def bootstrap(
     data_dir: Path | None = None,
     defaults_dir: Path | None = None,
     environ: Mapping[str, str] | None = None,
+    dry_run: bool = False,
 ) -> BootstrapResult:
     """Populate the user config and data directories from packaged defaults.
 
@@ -87,6 +88,9 @@ def bootstrap(
     *defaults_dir* are copied on every run, which is what makes an upgrade add
     defaults without rewriting the user's edits.  The example config is copied
     as the active config file rather than under its packaged name.
+
+    With *dry_run* nothing is written or created; the result reports what a
+    real run would create and preserve.
     """
     if config_dir is None:
         target_config = paths.config_dir(environ)
@@ -109,8 +113,9 @@ def bootstrap(
     if not source_dir.is_dir():
         raise FileNotFoundError(f"packaged defaults directory is missing: {source_dir}")
 
-    target_config.mkdir(parents=True, exist_ok=True)
-    target_data.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        target_config.mkdir(parents=True, exist_ok=True)
+        target_data.mkdir(parents=True, exist_ok=True)
 
     created: list[Path] = []
     preserved: list[Path] = []
@@ -122,7 +127,12 @@ def bootstrap(
         if destination_relative is None:
             continue
         destination = target_config / destination_relative
-        if _copy_if_missing(source, destination):
+        if dry_run:
+            if os.path.lexists(destination):
+                preserved.append(destination)
+            else:
+                created.append(destination)
+        elif _copy_if_missing(source, destination):
             created.append(destination)
         else:
             preserved.append(destination)
