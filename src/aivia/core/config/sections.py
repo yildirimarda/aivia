@@ -24,6 +24,7 @@ from aivia.core.config.ops import (
     ReviewConfig,
     StorageConfig,
 )
+from aivia.core.config.orders import DeliveryConfig, OccasionsConfig, OrdersConfig
 from aivia.core.config.profile import ProfilesConfig
 from aivia.core.config.quality import QualityConfig, ScoringConfig
 from aivia.core.config.registry import SectionRegistry, registry
@@ -51,6 +52,7 @@ __all__ = [
     "AccessibilityConfig",
     "ApiConfig",
     "BudgetConfig",
+    "DeliveryConfig",
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
     "FormatsConfig",
@@ -58,7 +60,9 @@ __all__ = [
     "LLMConfig",
     "LanguageConfig",
     "LanguagesConfig",
+    "OccasionsConfig",
     "OnExceed",
+    "OrdersConfig",
     "PipelineConfig",
     "PlatformAccountConfig",
     "PlatformVideoConfig",
@@ -294,6 +298,9 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("safety", SafetyConfig),
     ("platforms", PlatformsConfig),
     ("presets", PresetsConfig),
+    ("occasions", OccasionsConfig),
+    ("orders", OrdersConfig),
+    ("delivery", DeliveryConfig),
     ("retention", RetentionConfig),
     ("review", ReviewConfig),
     ("privacy", PrivacyConfig),

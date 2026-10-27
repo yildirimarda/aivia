@@ -252,3 +252,90 @@ profiles:
     brand_kit: null
     accounts: []
     overrides: {}
+
+occasions:
+  default: birthday
+  occasions:
+    birthday:
+      label: Birthday
+      description: A personal birthday song card.
+      variables:
+        name:
+          type: text
+          required: true
+          max_length: 60
+        age:
+          type: integer
+          required: false
+        message:
+          type: text
+          required: false
+          max_length: 500
+      personalization_levels: [basic, standard, premium]
+      formats: [personalized_song_card]
+      files: []
+
+orders:
+  default_level: standard
+  personalization_levels:
+    basic:
+      description: Name overlay on a still background.
+      stages: [name_overlay]
+      outputs: [png]
+      price: 0.0
+      include_age: false
+      include_interests: false
+    standard:
+      description: Personalized song with a still background.
+      stages: [write, music, name_overlay, render]
+      outputs: [mp4, mp3]
+      price: 19.0
+      include_age: true
+      include_interests: false
+    premium:
+      description: Personalized song with an animated background and voice.
+      stages: [write, music, voice, visuals, name_overlay, render]
+      outputs: [mp4, gif, webp, mp3, png, web_card]
+      price: 39.0
+      include_age: true
+      include_interests: true
+  name_verify:
+    enabled: true
+    retries: 3
+    threshold: 0.8
+  pricing:
+    currency: USD
+    amount: 19.0
+    tax_rate: 0.0
+    tax_included: false
+  timezone: Europe/Berlin
+  max_batch_size: 100
+  max_name_length: 80
+  max_message_length: 1000
+
+delivery:
+  enabled: true
+  default: folder
+  chain: [folder, link, email, webhook]
+  providers:
+    folder:
+      type: folder
+      enabled: true
+      path: deliveries
+    link:
+      type: link
+      enabled: false
+      expires_seconds: 604800
+    email:
+      type: email
+      enabled: false
+      subject: Your personalized card
+    webhook:
+      type: webhook
+      enabled: false
+      url: ""
+      secret_ref: AIVA_WEBHOOK_SECRET
+      allowlist: []
+  retry_seconds: 60
+  max_attempts: 3
+  notify_on_failure: true
