@@ -91,6 +91,9 @@ scoring:
 storage:
   backend: local
   local_dir: media
+  prefix: ""
+  presign_seconds: 3600
+  use_path_style: true
 
 api:
   host: 127.0.0.1
@@ -106,6 +109,7 @@ jobs:
   heartbeat_seconds: 30
   poll_seconds: 2
   stale_after_seconds: 120
+  max_queue_depth: 0
 
 safety:
   enabled: true
@@ -125,7 +129,20 @@ retention:
   cache_days: 14
   logs_days: 30
   personal_data_days: 30
+  orders_days: 90
+  deliveries_days: 30
+  web_card_hits_days: 30
   delete_final_outputs: false
+
+review:
+  enabled: true
+  approval_mode: ask
+  timeout_seconds: 86400
+  on_timeout: reject
+  allow_regenerate: true
+  max_regenerations: 3
+  preview: true
+  notify: true
 
 privacy:
   redact_logs: true
