@@ -16,6 +16,7 @@ from pydantic import Field, model_validator
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.budget import BudgetConfig, OnExceed
+from aivia.core.config.llm import LLMConfig
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.video import (
     DurationRangeConfig,
@@ -44,6 +45,7 @@ __all__ = [
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
     "JobsConfig",
+    "LLMConfig",
     "LanguageConfig",
     "LanguagesConfig",
     "OnExceed",
@@ -290,6 +292,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("video", VideoConfig),
     ("render", RenderConfig),
     ("budget", BudgetConfig),
+    ("llm", LLMConfig),
     ("storage", StorageConfig),
     ("api", ApiConfig),
     ("jobs", JobsConfig),
