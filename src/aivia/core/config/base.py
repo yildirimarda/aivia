@@ -184,14 +184,22 @@ class ConfigModel(BaseModel):
         values: Mapping[str, Any],
         *,
         environ: Mapping[str, str] | None = None,
+        context: Mapping[str, Any] | None = None,
     ) -> Self:
-        """Interpolate, validate and return a configuration section."""
+        """Interpolate, validate and return a configuration section.
+
+        *context* carries cross-section data such as the configured profile
+        names. It is passed to Pydantic validators unchanged, with ``environ``
+        added under the same key the base model reads.
+        """
         if not isinstance(values, Mapping):
             raise ConfigError("config root must be a mapping")
+        merged_context: dict[str, Any] = dict(context or {})
+        merged_context["environ"] = environ
         try:
             return cls.model_validate(
                 dict(values),
-                context={"environ": environ},
+                context=merged_context,
             )
         except ValidationError as error:
             raise _validation_error(error) from error
@@ -202,6 +210,7 @@ class ConfigModel(BaseModel):
         values: Mapping[str, Any],
         *,
         environ: Mapping[str, str] | None = None,
+        context: Mapping[str, Any] | None = None,
     ) -> Self:
         """Alias for :meth:`from_mapping`."""
-        return cls.from_mapping(values, environ=environ)
+        return cls.from_mapping(values, environ=environ, context=context)

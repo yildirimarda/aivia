@@ -159,7 +159,13 @@ class SectionRegistry:
                 f"{messages} (registered: {known})",
                 details={"unknown": unknown, "available": list(self.keys())},
             )
-        return self.model().from_mapping(values, environ=environ)
+        parsed = self.model().from_mapping(values, environ=environ)
+        for key in self._sections:
+            section = getattr(parsed, key, None)
+            validator = getattr(section, "validate_references", None)
+            if validator is not None:
+                validator(parsed)
+        return parsed
 
     def __contains__(self, key: object) -> bool:
         return isinstance(key, str) and key in self._sections

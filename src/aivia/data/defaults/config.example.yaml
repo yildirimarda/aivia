@@ -186,6 +186,18 @@ safety:
 platforms:
   accounts: {}
 
+schedule:
+  enabled: true
+  default: ""
+  timezone: UTC
+  schedules: {}
+
+publish:
+  enabled: true
+  dry_run: true
+  default_profile: ""
+  accounts: {}
+
 presets:
   presets: {}
 
