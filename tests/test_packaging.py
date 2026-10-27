@@ -54,6 +54,45 @@ def test_wheel_contains_package_data(wheel: Path) -> None:
     assert "aivia/data/defaults/README.txt" in names
 
 
+def test_wheel_contains_bundled_ofl_font_family_and_license(wheel: Path) -> None:
+    font_dir = "aivia/assets/fonts/lato/"
+    font_files = [
+        f"{font_dir}Lato-Regular.ttf",
+        f"{font_dir}Lato-Bold.ttf",
+        f"{font_dir}Lato-Italic.ttf",
+        f"{font_dir}Lato-BoldItalic.ttf",
+    ]
+
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+
+        assert set(font_files) <= names
+        assert f"{font_dir}OFL.txt" in names
+
+        for font_file in font_files:
+            assert archive.read(font_file)[:4] == b"\x00\x01\x00\x00"
+
+        license_text = archive.read(f"{font_dir}OFL.txt").decode()
+        assert "SIL OPEN FONT LICENSE Version 1.1" in license_text
+        assert 'Reserved Font Name "Lato"' in license_text
+
+
+def test_wheel_contains_default_config_prompts_and_templates(wheel: Path) -> None:
+    expected = {
+        "aivia/data/defaults/config.example.yaml",
+        "aivia/data/defaults/prompts/image.md",
+        "aivia/data/defaults/templates/web_card.html",
+    }
+
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+        assert expected <= names
+
+        config = archive.read("aivia/data/defaults/config.example.yaml").decode()
+        assert "schema_version: 1" in config
+        assert "fonts_dir: package" in config
+
+
 def test_wheel_declares_console_script(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         entry_points = next(

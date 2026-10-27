@@ -22,3 +22,7 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aivia"]
+artifacts = [
+  "src/aivia/assets/fonts/**",
+  "src/aivia/data/defaults/**",
+]
