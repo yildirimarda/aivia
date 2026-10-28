@@ -357,9 +357,7 @@ def test_fake_llm_propagates_a_typed_error() -> None:
     with pytest.raises(RateLimitError) as caught:
         asyncio.run(
             fake.complete(
-                LLMRequest(
-                    messages=[ChatMessage(role=MessageRole.USER, content="hi")]
-                )
+                LLMRequest(messages=[ChatMessage(role=MessageRole.USER, content="hi")])
             )
         )
 
