@@ -383,6 +383,8 @@ class HttpClient:
         methods retry, while ``POST`` and other non-idempotent methods do not.
         """
         if retry is not None:
+            if not isinstance(retry, bool):
+                raise TypeError("retry must be a boolean or None")
             return retry
         return method.upper() in _IDEMPOTENT_METHODS
 

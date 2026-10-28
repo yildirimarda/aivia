@@ -333,6 +333,22 @@ def test_retry_false_makes_a_single_attempt() -> None:
     assert sleep.delays == []
 
 
+@pytest.mark.parametrize("retry", [1, 0, "yes", "", [], object()])
+def test_non_boolean_retry_flags_are_rejected(retry: object) -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(503)
+
+    client = make_client(handler)
+
+    with pytest.raises(TypeError, match="retry must be a boolean"):
+        asyncio.run(client.post("https://example.test", retry=retry))
+
+    assert calls == []
+
+
 def test_post_is_not_retried_by_default() -> None:
     calls: list[int] = []
     sleep = FakeSleep()
