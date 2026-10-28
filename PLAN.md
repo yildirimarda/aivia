@@ -126,7 +126,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add providers list and providers check commands, the latter requiring live mode and a budget cap (tests/cli/test_providers.py)
 - [x] Generate the provider capability matrix document from provider metadata and fail CI when it is stale (tests/test_provider_docs.py)
 - [x] Validate configured model ids against models.yaml, warning on unknown ids with a closest match and on deprecated ids with a replacement (tests/core/test_model_ids.py)
-- [ ] Add a timeout to provider health checks so an unresponsive adapter cannot block a status command (tests/contracts/test_provider_base.py)
+- [x] Add a timeout to provider health checks so an unresponsive adapter cannot block a status command (tests/contracts/test_provider_base.py)
 - [ ] Add a providers config section mapping names to type, options and secret references for router chains (tests/core/config/test_providers.py)
 - [ ] Warn or refuse when budget-aware selection cannot estimate an unpriced provider (tests/core/test_router.py)
 - [ ] Register a circuit breaker config section and pass its threshold and cooldown into router construction (tests/core/config/test_circuit.py)
