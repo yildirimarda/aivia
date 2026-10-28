@@ -138,6 +138,11 @@ circuit:
   failure_threshold: 5
   cooldown_seconds: 60.0
 
+ratelimit:
+  requests_per_minute: 60
+  burst: 0
+  on_limit: wait
+
 quality:
   enabled: true
   min_score: 0.7
