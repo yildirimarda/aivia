@@ -1029,3 +1029,119 @@ def test_execute_rejects_a_non_callable_operation() -> None:
 
     with pytest.raises(TypeError, match="operation must be callable"):
         asyncio.run(router.execute("image_gen", cast(Any, "not callable")))
+
+
+def test_budget_aware_selection_skips_a_provider_over_the_remaining_budget() -> None:
+    pricey = FakeProvider("pricey", ["image_gen"], pricing={"image_gen": 0.10})
+    affordable = FakeProvider("affordable", ["image_gen"], pricing={"image_gen": 0.02})
+    router = make_router(pricey, affordable, chain=["pricey", "affordable"])
+
+    selection = router.select_with_record("image_gen", remaining_budget=0.05)
+
+    assert selection.provider is affordable
+    assert selection.skipped == (
+        RouteSkip(provider="pricey", reason="budget_exceeded"),
+    )
+
+
+def test_budget_aware_cheapest_ignores_a_provider_over_budget() -> None:
+    affordable = FakeProvider("affordable", ["image_gen"], pricing={"image_gen": 0.10})
+    pricey = FakeProvider("pricey", ["image_gen"], pricing={"image_gen": 0.20})
+    router = make_router(
+        affordable,
+        pricey,
+        chain=["affordable", "pricey"],
+        strategy=CapabilityStrategy.CHEAPEST,
+    )
+
+    selection = router.select_with_record("image_gen", remaining_budget=0.15)
+
+    assert selection.provider is affordable
+    assert selection.skipped == (
+        RouteSkip(provider="pricey", reason="budget_exceeded"),
+    )
+
+
+def test_budget_aware_selection_allows_an_estimate_equal_to_the_budget() -> None:
+    exact = FakeProvider("exact", ["image_gen"], pricing={"image_gen": 0.05})
+    router = make_router(exact)
+
+    assert router.select("image_gen", remaining_budget=0.05) is exact
+
+
+def test_budget_aware_selection_scales_the_estimate_by_units() -> None:
+    per_image = FakeProvider("per_image", ["image_gen"], pricing={"image_gen": 0.01})
+    bulk = FakeProvider("bulk", ["image_gen"], pricing={"image_gen": 0.004})
+    router = make_router(per_image, bulk, chain=["per_image", "bulk"])
+
+    selection = router.select_with_record("image_gen", remaining_budget=0.05, units=10)
+
+    assert selection.provider is bulk
+    assert selection.skipped == (
+        RouteSkip(provider="per_image", reason="budget_exceeded"),
+    )
+
+
+def test_budget_aware_selection_does_not_skip_an_unpriced_provider() -> None:
+    unpriced = FakeProvider("unpriced", ["image_gen"])
+    priced = FakeProvider("priced", ["image_gen"], pricing={"image_gen": 0.50})
+    router = make_router(unpriced, priced, chain=["unpriced", "priced"])
+
+    assert router.select("image_gen", remaining_budget=0.0) is unpriced
+
+
+def test_budget_aware_selection_uses_pricing_overrides() -> None:
+    expensive_metadata = FakeProvider(
+        "overridden", ["image_gen"], pricing={"image_gen": 0.01}
+    )
+    other = FakeProvider("other", ["image_gen"], pricing={"image_gen": 0.05})
+    router = make_router(
+        expensive_metadata,
+        other,
+        chain=["overridden", "other"],
+        pricing_overrides={"overridden": 0.75},
+    )
+
+    assert router.select("image_gen", remaining_budget=0.10) is other
+
+
+def test_budget_aware_selection_reports_exhaustion_when_nothing_fits() -> None:
+    first = FakeProvider("first", ["image_gen"], pricing={"image_gen": 0.10})
+    second = FakeProvider("second", ["image_gen"], pricing={"image_gen": 0.20})
+    router = make_router(first, second, chain=["first", "second"])
+
+    with pytest.raises(ProviderExhaustedError) as caught:
+        router.select("image_gen", remaining_budget=0.05)
+
+    assert caught.value.details["skipped"] == [
+        {"provider": "first", "reason": "budget_exceeded"},
+        {"provider": "second", "reason": "budget_exceeded"},
+    ]
+
+
+def test_budget_aware_execute_never_calls_a_provider_over_budget() -> None:
+    pricey = FakeProvider("pricey", ["image_gen"], pricing={"image_gen": 1.00})
+    affordable = FakeProvider("affordable", ["image_gen"], pricing={"image_gen": 0.10})
+    router = make_router(pricey, affordable, chain=["pricey", "affordable"])
+    calls: list[str] = []
+
+    result = asyncio.run(
+        router.execute(
+            "image_gen",
+            make_operation({}, calls),
+            remaining_budget=0.50,
+        )
+    )
+
+    assert result == "affordable:ok"
+    assert calls == ["affordable"]
+
+
+def test_budget_aware_selection_rejects_invalid_budget_and_units() -> None:
+    image = FakeProvider("image", ["image_gen"], pricing={"image_gen": 0.10})
+    router = make_router(image)
+
+    with pytest.raises(ConfigError, match="remaining budget"):
+        router.select("image_gen", remaining_budget=float("nan"))
+    with pytest.raises(ConfigError, match="units"):
+        router.select("image_gen", units=-1)
