@@ -41,6 +41,7 @@ from aivia.core.config.character import (
     ConsistencyStrategyOrder,
     QAConfig,
 )
+from aivia.core.config.circuit import CircuitBreakerConfig, CircuitConfig
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.docs import (
     DOCS_FILENAME,
@@ -304,6 +305,8 @@ __all__ = [
     "CharacterQA",
     "CharacterQAConfig",
     "CharacterQaConfig",
+    "CircuitBreakerConfig",
+    "CircuitConfig",
     "ConfigMigration",
     "ConfigModel",
     "ConsentConfig",

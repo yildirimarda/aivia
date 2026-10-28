@@ -129,6 +129,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add a timeout to provider health checks so an unresponsive adapter cannot block a status command (tests/contracts/test_provider_base.py)
 - [ ] Add a providers config section mapping names to type, options and secret references for router chains (tests/core/config/test_providers.py)
 - [ ] Warn or refuse when budget-aware selection cannot estimate an unpriced provider (tests/core/test_router.py)
+- [ ] Register a circuit breaker config section and pass its threshold and cooldown into router construction (tests/core/config/test_circuit.py)
 
 ## Milestone 5: Cost tracking, budgets and dashboard
 

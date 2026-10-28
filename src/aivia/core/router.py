@@ -28,6 +28,11 @@ timeout or rate limit error. Permanent errors, including authentication and
 budget failures, are surfaced immediately because another provider cannot fix
 them. When every candidate fails with a retryable error the router raises
 :class:`~aivia.core.errors.ProviderExhaustedError` describing each attempt.
+
+Each provider has its own :class:`~aivia.core.circuit.CircuitBreaker`. Retryable
+failures are recorded per provider, and a provider whose circuit is open is
+skipped until its cooldown elapses. Selection then half-opens the circuit for a
+single probe, which either closes it on success or reopens it on failure.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TypeVar
 
+from aivia.core.circuit import CircuitBreaker
 from aivia.core.config.capability import CapabilityChainConfig, CapabilityStrategy
 from aivia.core.errors import AiviaError, ConfigError, ProviderExhaustedError
 from aivia.providers.base import Provider
@@ -295,10 +301,13 @@ def _rejection(
     name: str,
     provider: Provider,
     required: tuple[str, ...],
+    breaker: CircuitBreaker | None = None,
 ) -> RouteSkip | None:
     """Return why *provider* cannot serve *required*, or ``None`` if it can."""
     if provider.closed:
         return RouteSkip(provider=name, reason="closed")
+    if breaker is not None and not breaker.available():
+        return RouteSkip(provider=name, reason="circuit_open")
     missing = tuple(
         requirement for requirement in required if not provider.supports(requirement)
     )
@@ -395,6 +404,11 @@ class Router:
     model. ``seed`` makes weighted draws reproducible. An empty chain means
     every provider in insertion order, which keeps a small configuration usable
     without repeating provider names.
+
+    Each provider gets its own circuit breaker. ``circuit_breakers`` injects
+    pre-built breakers by provider name, while ``circuit_breaker_factory``
+    builds the remaining ones; the default is a fresh
+    :class:`~aivia.core.circuit.CircuitBreaker`.
     """
 
     def __init__(
@@ -409,8 +423,11 @@ class Router:
         chain: Iterable[str] | None = None,
         weights: Mapping[str, float] | None = None,
         seed: int | None = None,
+        circuit_breaker_factory: Callable[[str], CircuitBreaker] | None = None,
+        circuit_breakers: Mapping[str, CircuitBreaker] | None = None,
     ) -> None:
         self._providers = _coerce_providers(providers)
+        self._circuits = self._build_circuits(circuit_breaker_factory, circuit_breakers)
         default = (
             config
             if isinstance(config, CapabilityChainConfig)
@@ -446,10 +463,80 @@ class Router:
         self._rng = random.Random(seed)
         self._round_robin: dict[str, int] = {}
 
+    def _build_circuits(
+        self,
+        factory: Callable[[str], CircuitBreaker] | None,
+        injected: Mapping[str, CircuitBreaker] | None,
+    ) -> dict[str, CircuitBreaker]:
+        if factory is not None and not callable(factory):
+            raise TypeError("circuit_breaker_factory must be callable")
+        supplied: dict[str, CircuitBreaker] = {}
+        if injected is not None:
+            for name, breaker in injected.items():
+                if not isinstance(name, str) or not name.strip():
+                    raise ConfigError("circuit breaker names must be non-empty strings")
+                if not isinstance(breaker, CircuitBreaker):
+                    raise TypeError(
+                        "circuit_breakers values must be CircuitBreaker instances"
+                    )
+                supplied[name.strip()] = breaker
+            unknown = sorted(set(supplied) - set(self._providers))
+            if unknown:
+                names = ", ".join(unknown)
+                raise ConfigError(
+                    f"circuit breakers name unknown providers: {names}",
+                    details={
+                        "unknown": unknown,
+                        "available": list(self._providers),
+                    },
+                )
+
+        circuits: dict[str, CircuitBreaker] = {}
+        for name in self._providers:
+            if name in supplied:
+                circuits[name] = supplied[name]
+            elif factory is not None:
+                breaker = factory(name)
+                if not isinstance(breaker, CircuitBreaker):
+                    raise TypeError(
+                        "circuit_breaker_factory must return CircuitBreaker instances"
+                    )
+                circuits[name] = breaker
+            else:
+                circuits[name] = CircuitBreaker()
+        return circuits
+
     @property
     def providers(self) -> Mapping[str, Provider]:
         """The configured provider instances keyed by name."""
         return dict(self._providers)
+
+    @property
+    def circuits(self) -> Mapping[str, CircuitBreaker]:
+        """The circuit breaker for every configured provider, keyed by name."""
+        return dict(self._circuits)
+
+    @property
+    def breakers(self) -> Mapping[str, CircuitBreaker]:
+        """Alias for :attr:`circuits`."""
+        return self.circuits
+
+    def circuit_for(self, provider: str) -> CircuitBreaker:
+        """Return the circuit breaker belonging to *provider*."""
+        if not isinstance(provider, str) or not provider.strip():
+            raise ConfigError("provider name must be a non-empty string")
+        name = provider.strip()
+        try:
+            return self._circuits[name]
+        except KeyError:
+            raise ConfigError(
+                f"unknown provider for circuit breaker: {name}",
+                details={"provider": name, "available": list(self._circuits)},
+            ) from None
+
+    def breaker_for(self, provider: str) -> CircuitBreaker:
+        """Alias for :meth:`circuit_for`."""
+        return self.circuit_for(provider)
 
     @property
     def provider_names(self) -> tuple[str, ...]:
@@ -507,6 +594,7 @@ class Router:
             self._providers[provider_name]
             for provider_name in self.chain_for(capability)
             if not self._providers[provider_name].closed
+            and self._circuits[provider_name].available()
             and all(
                 self._providers[provider_name].supports(requirement)
                 for requirement in names
@@ -648,7 +736,7 @@ class Router:
                 if name in excluded:
                     skipped.append(RouteSkip(provider=name, reason="excluded"))
                     continue
-                rejection = _rejection(name, provider, names)
+                rejection = _rejection(name, provider, names, self._circuits[name])
                 if rejection is None:
                     rejection = _budget_rejection(
                         name,
@@ -771,7 +859,9 @@ class Router:
         refusal or a content policy rejection.
 
         ``remaining_budget`` and ``units`` are passed to every selection so a
-        provider whose estimate exceeds the budget is never called. When every
+        provider whose estimate exceeds the budget is never called. Retryable
+        failures are recorded on the provider's circuit breaker; a provider
+        whose circuit is open is skipped until it half-opens. When every
         candidate fails with a retryable error, the router raises
         :class:`~aivia.core.errors.ProviderExhaustedError` with the attempted
         providers and the last error, chained as the cause. The successful
@@ -809,10 +899,16 @@ class Router:
                     details=details,
                 ) from last_error
 
+            breaker = self._circuits[selection.name]
+            if not breaker.acquire():
+                excluded.add(selection.name)
+                continue
+
             try:
-                return await operation(selection.provider)
+                result = await operation(selection.provider)
             except AiviaError as exc:
                 if not exc.retryable:
+                    breaker.release()
                     raise
                 attempted.append(
                     RouteAttempt(
@@ -823,7 +919,14 @@ class Router:
                     )
                 )
                 excluded.add(selection.name)
+                breaker.record_failure()
                 last_error = exc
+            except BaseException:
+                breaker.release()
+                raise
+            else:
+                breaker.record_success()
+                return result
 
 
 ProviderRouter = Router
