@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aivia.cli import config, init, providers, run
+from aivia.cli import config, confirm, init, providers, run
 from aivia.cli.registry import (
     Command,
     CommandHandler,
@@ -20,6 +20,7 @@ __all__ = [
     "ParserConfigurator",
     "build_parser",
     "config",
+    "confirm",
     "init",
     "main",
     "providers",

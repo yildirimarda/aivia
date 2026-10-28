@@ -122,6 +122,7 @@ budget:
   per_instruction: 0
   per_run: 0
   per_call: 0
+  confirm_above: 0
   per_provider: {}
   alerts: []
   on_exceed: pause

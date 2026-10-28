@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import sys
 
+from aivia.cli.confirm import confirm_spend, confirmation_required
 from aivia.cli.registry import register_command
+from aivia.core.config.budget import BudgetConfig
 from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
 from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_app_config
@@ -61,6 +63,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
         "--estimate",
         action="store_true",
         help="print the stage cost estimate and exit without running anything",
+    )
+    parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="confirm spending above the configured threshold without prompting",
     )
     _configure_resolution(parser)
 
@@ -125,37 +133,64 @@ def _print_missing(estimate: RecipeEstimate) -> None:
         )
 
 
+def _confirmation_threshold(config: object) -> float:
+    """Return the configured spend above which a run needs confirmation."""
+    budget = getattr(config, "budget", None)
+    if isinstance(budget, BudgetConfig):
+        return budget.confirm_above
+    return 0.0
+
+
+def _estimate_run(args: argparse.Namespace) -> tuple[object, RecipeEstimate]:
+    config = resolve_app_config(
+        config_file=args.config,
+        environment=args.environment,
+        profile=args.profile,
+        set_values=args.set_values,
+    )
+    name, recipe = _resolve_recipe(config, args.format_name)
+    estimate = Estimator(provider_metadata(config)).estimate(name, recipe)
+    return config, estimate
+
+
 def run_run(args: argparse.Namespace) -> int:
-    """Print a pre-run estimate and exit, or explain that execution is pending."""
-    if not args.estimate:
-        print(
-            "error: run execution is not available yet; "
-            "pass --estimate to preview costs",
-            file=sys.stderr,
-        )
-        return 2
+    """Print a pre-run estimate, confirm a costly run, or explain it is pending."""
     if not args.format_name:
-        print("error: --format is required with --estimate", file=sys.stderr)
+        suffix = " with --estimate" if args.estimate else ""
+        print(f"error: --format is required{suffix}", file=sys.stderr)
         return 2
 
     try:
-        config = resolve_app_config(
-            config_file=args.config,
-            environment=args.environment,
-            profile=args.profile,
-            set_values=args.set_values,
-        )
-        name, recipe = _resolve_recipe(config, args.format_name)
-        estimate = Estimator(provider_metadata(config)).estimate(name, recipe)
+        config, estimate = _estimate_run(args)
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    print(render_estimate(estimate), end="")
+    if args.estimate:
+        print(render_estimate(estimate), end="")
+        if estimate.missing_stages:
+            _print_missing(estimate)
+            return 1
+        return 0
+
     if estimate.missing_stages:
+        print(render_estimate(estimate), end="")
         _print_missing(estimate)
         return 1
-    return 0
+
+    threshold = _confirmation_threshold(config)
+    if confirmation_required(estimate.total_usd, threshold) and not confirm_spend(
+        estimate.total_usd,
+        threshold,
+        assume_yes=args.yes,
+    ):
+        return 1
+
+    print(
+        "error: run execution is not available yet; pass --estimate to preview costs",
+        file=sys.stderr,
+    )
+    return 2
 
 
 register_command(

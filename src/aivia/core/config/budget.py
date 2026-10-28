@@ -2,9 +2,10 @@
 
 A cap of ``0`` means the cap is not configured; a positive value is the maximum
 amount that may be spent in that scope. ``per_provider`` holds the monthly limit
-for each provider. Alert thresholds are sorted ascending so alerts fire from the
-lowest threshold upward, and ``on_exceed`` selects what happens when a cap is
-reached.
+for each provider. ``confirm_above`` is the estimated spend above which a run
+needs explicit confirmation; ``0`` disables the confirmation check. Alert
+thresholds are sorted ascending so alerts fire from the lowest threshold upward,
+and ``on_exceed`` selects what happens when a cap is reached.
 """
 
 from __future__ import annotations
@@ -48,6 +49,11 @@ _PROVIDER_ALIASES = (
     "providers",
 )
 _ALERT_ALIASES = ("alert_thresholds", "thresholds")
+_CONFIRM_ALIASES = (
+    "confirm_over",
+    "confirmation_threshold",
+    "require_confirmation_above",
+)
 _PROVIDER_LIMIT_KEYS = ("monthly", "per_month", "limit", "cap", "value")
 
 
@@ -76,6 +82,7 @@ class BudgetConfig(ConfigModel):
     per_instruction: float = Field(default=0.0, ge=0)
     per_run: float = Field(default=0.0, ge=0)
     per_call: float = Field(default=0.0, ge=0)
+    confirm_above: float = Field(default=0.0, ge=0)
     per_provider: dict[str, float] = Field(default_factory=dict)
     alerts: list[float] = Field(default_factory=list)
     on_exceed: OnExceed = OnExceed.PAUSE
@@ -94,6 +101,10 @@ class BudgetConfig(ConfigModel):
             if alias in values:
                 thresholds = values.pop(alias)
                 values.setdefault("alerts", thresholds)
+        for alias in _CONFIRM_ALIASES:
+            if alias in values:
+                threshold = values.pop(alias)
+                values.setdefault("confirm_above", threshold)
         if "per_provider" in values:
             values["per_provider"] = _normalise_provider_limits(values["per_provider"])
         return values
@@ -129,3 +140,8 @@ class BudgetConfig(ConfigModel):
     def alert_thresholds(self) -> list[float]:
         """Alias for :attr:`alerts`, sorted ascending."""
         return self.alerts
+
+    @property
+    def confirmation_threshold(self) -> float:
+        """Alias for :attr:`confirm_above`, the spend that needs confirmation."""
+        return self.confirm_above
