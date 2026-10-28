@@ -93,6 +93,14 @@ from aivia.providers.protocols import (
     VideoResult,
     WordTimestamp,
 )
+from aivia.providers.registry import (
+    ProviderRegistration,
+    ProviderRegistry,
+    provider_registry,
+    register_provider,
+    registry,
+    resolve_provider,
+)
 
 __all__ = [
     "CAPABILITY_EMBEDDINGS",
@@ -148,6 +156,8 @@ __all__ = [
     "ProtocolModel",
     "Provider",
     "ProviderHealth",
+    "ProviderRegistration",
+    "ProviderRegistry",
     "ProviderState",
     "SFXClip",
     "SFXProvider",
@@ -184,4 +194,8 @@ __all__ = [
     "VideoResponse",
     "VideoResult",
     "WordTimestamp",
+    "provider_registry",
+    "register_provider",
+    "registry",
+    "resolve_provider",
 ]
