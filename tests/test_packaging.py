@@ -61,6 +61,7 @@ def test_wheel_contains_the_database_migrations(wheel: Path) -> None:
     assert "aivia/data/migrations/env.py" in names
     assert "aivia/data/migrations/versions/0001_initial.py" in names
     assert "aivia/data/migrations/versions/0002_core_tables.py" in names
+    assert "aivia/data/migrations/versions/0003_asset_tables.py" in names
 
 
 def test_wheel_contains_bundled_ofl_font_family_and_license(wheel: Path) -> None:
