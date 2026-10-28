@@ -132,6 +132,8 @@ llm:
   pricing: {}
   max_repairs: 2
 
+providers: {}
+
 quality:
   enabled: true
   min_score: 0.7

@@ -163,6 +163,7 @@ from aivia.core.config.profile import (
     TopicModeConfig,
     TopicModesConfig,
 )
+from aivia.core.config.providers import ProviderConfig, ProvidersConfig
 from aivia.core.config.quality import QualityConfig, ScoringConfig
 from aivia.core.config.ratelimit import (
     OnLimit,
@@ -413,6 +414,8 @@ __all__ = [
     "ProfileExamplesConfig",
     "ProfileVideoConfig",
     "ProfilesConfig",
+    "ProviderConfig",
+    "ProvidersConfig",
     "PublishAccount",
     "PublishAccountConfig",
     "PublishAccountsConfig",

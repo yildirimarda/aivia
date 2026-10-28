@@ -29,6 +29,7 @@ This reference is generated from the registered configuration models, their JSON
 | `presets` | [PresetsConfig](#presets) or null | Named presets keyed by name, with an optional default preset. Entries may be written directly under the section (``presets: {short: {...}}``) or nested under ``presets``. |
 | `privacy` | [PrivacyConfig](#privacy) or null | Redaction and personal-data handling for logs, prompts and sidecars. |
 | `profiles` | [ProfilesConfig](#profiles) or null | Named content profiles. Profiles may be written directly under the section (``profiles: {short: {...}}``) or nested under ``profiles``; both forms validate to the same mapping. |
+| `providers` | [ProvidersConfig](#providers) or null | Named provider instances keyed by the names router chains use. Entries may be written directly under the section (``providers: {fal: {...}}``) or nested under ``providers``. Every entry must name a non-empty ``type``. |
 | `publish` | [PublishConfig](#publish) or null | Publishing accounts, dry-run policy and reference validation. |
 | `quality` | [QualityConfig](#quality) or null | Thresholds and retry policy for generated media quality assurance. |
 | `reference` | [ReferenceConfig](#reference) or null | Similarity level, similarity gates, regeneration cap and downloads. |
@@ -272,6 +273,15 @@ Named content profiles. Profiles may be written directly under the section (``pr
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
 | `profiles` | map of [ContentProfileConfig](#contentprofileconfig) |  |  |  |
+
+## `providers`
+
+Named provider instances keyed by the names router chains use. Entries may be written directly under the section (``providers: {fal: {...}}``) or nested under ``providers``. Every entry must name a non-empty ``type``.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `enabled` | boolean | `true` |  |  |
+| `providers` | map of [ProviderConfig](#providerconfig) |  |  |  |
 
 ## `publish`
 
@@ -726,6 +736,17 @@ A named set of configuration overrides selected by the CLI or a profile. A prese
 | `overrides` | object |  |  |  |
 | `profile` | string | `""` |  |  |
 | `profiles` | array of string |  |  |  |
+
+### ProviderConfig
+
+One named provider instance used by router chains. ``type`` names a registered provider type or a dotted import path. ``options`` are passed to the adapter unchanged. ``secret_refs`` maps an option name to the secret reference that supplies its value; the reference is resolved through the secrets loader, never stored here.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `enabled` | boolean | `true` |  |  |
+| `options` | object |  |  |  |
+| `secret_refs` | map of string |  |  |  |
+| `type` | string | `""` |  |  |
 
 ### PublishAccountConfig
 

@@ -1720,6 +1720,56 @@
       "title": "ProfilesConfig",
       "type": "object"
     },
+    "ProviderConfig": {
+      "additionalProperties": false,
+      "description": "One named provider instance used by router chains.\n\n``type`` names a registered provider type or a dotted import path.\n``options`` are passed to the adapter unchanged. ``secret_refs`` maps an\noption name to the secret reference that supplies its value; the reference\nis resolved through the secrets loader, never stored here.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "options": {
+          "additionalProperties": true,
+          "title": "Options",
+          "type": "object"
+        },
+        "secret_refs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Secret Refs",
+          "type": "object"
+        },
+        "type": {
+          "default": "",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "ProviderConfig",
+      "type": "object"
+    },
+    "ProvidersConfig": {
+      "additionalProperties": false,
+      "description": "Named provider instances keyed by the names router chains use.\n\nEntries may be written directly under the section (``providers: {fal: {...}}``)\nor nested under ``providers``. Every entry must name a non-empty ``type``.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "providers": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ProviderConfig"
+          },
+          "title": "Providers",
+          "type": "object"
+        }
+      },
+      "title": "ProvidersConfig",
+      "type": "object"
+    },
     "PublishAccountConfig": {
       "additionalProperties": false,
       "description": "One publishing account and the secret references it needs.",
@@ -2817,6 +2867,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/ProfilesConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "providers": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProvidersConfig"
         },
         {
           "type": "null"
