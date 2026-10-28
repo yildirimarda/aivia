@@ -103,6 +103,18 @@ class ResolvedConfig:
     profile: str | None = None
     environment: str | None = None
     sources: tuple[Path, ...] = field(default_factory=tuple)
+    origin_files: dict[str, str] = field(default_factory=dict)
+
+    def error_context(self) -> dict[str, Any]:
+        """Context that lets validation errors name the file behind a path."""
+        fallback = self.origin_files.get(USER_ORIGIN)
+        if fallback is None and self.sources:
+            fallback = str(self.sources[-1])
+        return {
+            "origins": self.origins,
+            "origin_files": self.origin_files,
+            "file": fallback,
+        }
 
     def to_app_config(
         self,
@@ -110,7 +122,11 @@ class ResolvedConfig:
         sections: SectionRegistry | None = None,
     ) -> RootConfig:
         """Validate the merged values into the root application config."""
-        return resolve_app_config(self.values, sections=sections)
+        return resolve_app_config(
+            self.values,
+            sections=sections,
+            context=self.error_context(),
+        )
 
     @property
     def app_config(self) -> RootConfig:
@@ -481,12 +497,30 @@ def resolve_config(
     if cli_overrides:
         _merge_mapping(values, origins, cli_overrides, origin=CLI_ORIGIN)
 
+    origin_files = {
+        layer.origin: str(layer.path) for layer in layers if layer.path is not None
+    }
+    if selected_profile is not None:
+        profile_origin = origins.get("profiles") or origins.get(
+            f"profiles.{selected_profile}"
+        )
+        profile_source = origin_files.get(profile_origin or "")
+        if profile_source is None:
+            profile_source = origin_files.get(USER_ORIGIN) or origin_files.get(
+                DEFAULT_ORIGIN
+            )
+        if profile_source is not None:
+            origin_files[f"{PROFILE_ORIGIN_PREFIX}{selected_profile}"] = profile_source
+    if cli_overrides:
+        origin_files[CLI_ORIGIN] = "<command line>"
+
     return ResolvedConfig(
         values=values,
         origins=origins,
         profile=selected_profile,
         environment=selected_environment,
         sources=tuple(sources),
+        origin_files=origin_files,
     )
 
 
@@ -509,12 +543,14 @@ def resolve_app_config(
     values: Mapping[str, Any] | None = None,
     *,
     sections: SectionRegistry | None = None,
+    context: Mapping[str, Any] | None = None,
     **options: Any,
 ) -> RootConfig:
     """Resolve configuration and validate it into the root application model.
 
     When *values* is given it is used as the merged mapping; otherwise the
-    keyword options are passed to :func:`resolve_config`.
+    keyword options are passed to :func:`resolve_config`. *context* carries
+    source information so validation errors can name the offending file.
     """
     from aivia.core.config.app import parse_app_config
 
@@ -523,4 +559,11 @@ def resolve_app_config(
         if values is not None
         else resolve_config(**options)
     )
-    return parse_app_config(resolved.values, sections=sections)
+    merged_context: dict[str, Any] = dict(resolved.error_context())
+    if context:
+        merged_context.update(context)
+    return parse_app_config(
+        resolved.values,
+        sections=sections,
+        context=merged_context,
+    )

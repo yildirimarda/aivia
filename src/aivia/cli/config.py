@@ -287,7 +287,7 @@ def run_validate(args: argparse.Namespace) -> int:
             values.pop(key)
 
     try:
-        parse_app_config(values)
+        parse_app_config(values, context=resolved.error_context())
     except ConfigError as exc:
         issues.extend(_error_items(exc))
 
