@@ -288,6 +288,27 @@ def _credential_names(value: Any) -> set[str] | None:
     raise ValueError("credentials must be a mapping or an iterable of names")
 
 
+def _language_names(value: Any) -> set[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, Mapping):
+        entries = value.get("languages")
+        if isinstance(entries, Mapping):
+            return {str(name) for name in entries}
+        return {str(name) for name in value if str(name) != "default"}
+    entries = getattr(value, "languages", None)
+    if isinstance(entries, Mapping):
+        return {str(name) for name in entries}
+    names = getattr(value, "names", None)
+    if names is not None:
+        return {str(name) for name in names}
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, Iterable):
+        return {str(name) for name in value}
+    raise ValueError("languages must be a mapping or an iterable of names")
+
+
 def _section(source: Any, key: str) -> Any:
     if isinstance(source, Mapping):
         return source.get(key)
@@ -628,9 +649,39 @@ class ScheduleConfig(ConfigModel):
         """Alias for :meth:`validate_profiles`."""
         return self.validate_profiles(profiles)
 
+    def validate_languages(self, languages: Any) -> Self:
+        """Check every entry language against *languages*.
+
+        *languages* may be a :class:`LanguagesConfig`, a mapping of names or any
+        iterable of language names. ``None`` skips the check.
+        """
+        available = _language_names(languages)
+        if available is None:
+            return self
+        for name, entry in self.schedules.items():
+            for language in entry.languages:
+                if language not in available:
+                    names = ", ".join(sorted(available)) or "none"
+                    raise ConfigError(
+                        f"schedule {name} references unknown language: "
+                        f"{language} (available: {names})",
+                        details={
+                            "schedule": name,
+                            "language": language,
+                            "available": sorted(available),
+                        },
+                    )
+        return self
+
+    def check_languages(self, languages: Any) -> Self:
+        """Alias for :meth:`validate_languages`."""
+        return self.validate_languages(languages)
+
     def validate_references(self, config: Any) -> Self:
-        """Validate profiles from a parsed root configuration or mapping."""
-        return self.validate_profiles(_section(config, "profiles"))
+        """Validate profiles and languages from a parsed root or mapping."""
+        self.validate_profiles(_section(config, "profiles"))
+        self.validate_languages(_section(config, "languages"))
+        return self
 
     @property
     def entries(self) -> dict[str, ScheduleEntryConfig]:
