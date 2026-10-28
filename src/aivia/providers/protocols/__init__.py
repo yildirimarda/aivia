@@ -18,6 +18,21 @@ from aivia.providers.protocols.base import (
     normalize_domain,
     validate_http_url,
 )
+from aivia.providers.protocols.character_trainer import (
+    CAPABILITY_CHARACTER_TRAINER,
+    CharacterTrainer,
+    CharacterTrainerRequest,
+    CharacterTrainingJob,
+    TrainingState,
+)
+from aivia.providers.protocols.delivery import (
+    CAPABILITY_DELIVERY,
+    DeliveryArtifact,
+    DeliveryMethod,
+    DeliveryProvider,
+    DeliveryReceipt,
+    DeliveryRequest,
+)
 from aivia.providers.protocols.embeddings import (
     CAPABILITY_EMBEDDINGS,
     Embedding,
@@ -40,6 +55,14 @@ from aivia.providers.protocols.image_edit import (
     ImageEditProvider,
     ImageEditRequest,
     ImageEditResponse,
+)
+from aivia.providers.protocols.lipsync import (
+    CAPABILITY_LIPSYNC,
+    LipSyncProvider,
+    LipSyncRequest,
+    LipSyncResponse,
+    LipSyncResult,
+    LipSyncSpriteSheet,
 )
 from aivia.providers.protocols.llm import (
     CAPABILITY_LLM,
@@ -72,12 +95,29 @@ from aivia.providers.protocols.music import (
     MusicResponse,
     MusicTrack,
 )
+from aivia.providers.protocols.notify import (
+    CAPABILITY_NOTIFY,
+    NotificationButton,
+    NotificationLevel,
+    NotificationMedia,
+    NotificationMessage,
+    NotificationReceipt,
+    Notifier,
+)
 from aivia.providers.protocols.page_fetch import (
     CAPABILITY_PAGE_FETCH,
     PageFetchProvider,
     PageFetchRequest,
     PageFetchResponse,
     PageKind,
+)
+from aivia.providers.protocols.publish import (
+    CAPABILITY_PUBLISH,
+    PostVisibility,
+    Publisher,
+    PublishMedia,
+    PublishRequest,
+    PublishResult,
 )
 from aivia.providers.protocols.search import (
     CAPABILITY_SEARCH,
@@ -106,6 +146,12 @@ from aivia.providers.protocols.stock import (
     StockResponse,
     StockResult,
 )
+from aivia.providers.protocols.storage import (
+    CAPABILITY_STORAGE,
+    StorageObject,
+    StorageProvider,
+    StoragePutRequest,
+)
 from aivia.providers.protocols.stt import (
     CAPABILITY_STT,
     STTProvider,
@@ -127,22 +173,36 @@ from aivia.providers.protocols.video import (
 )
 
 __all__ = [
+    "CAPABILITY_CHARACTER_TRAINER",
+    "CAPABILITY_DELIVERY",
     "CAPABILITY_EMBEDDINGS",
     "CAPABILITY_IMAGE_EDIT",
     "CAPABILITY_IMAGE_GEN",
+    "CAPABILITY_LIPSYNC",
     "CAPABILITY_LLM",
     "CAPABILITY_MUSIC_GEN",
+    "CAPABILITY_NOTIFY",
     "CAPABILITY_PAGE_FETCH",
+    "CAPABILITY_PUBLISH",
     "CAPABILITY_SEARCH",
     "CAPABILITY_SFX",
     "CAPABILITY_STOCK",
+    "CAPABILITY_STORAGE",
     "CAPABILITY_STT",
     "CAPABILITY_TTS",
     "CAPABILITY_VIDEO_GEN",
     "AudioFormat",
     "CapabilityProvider",
+    "CharacterTrainer",
+    "CharacterTrainerRequest",
+    "CharacterTrainingJob",
     "ChatMessage",
     "ContentPart",
+    "DeliveryArtifact",
+    "DeliveryMethod",
+    "DeliveryProvider",
+    "DeliveryReceipt",
+    "DeliveryRequest",
     "Embedding",
     "EmbeddingInputType",
     "EmbeddingProvider",
@@ -165,6 +225,11 @@ __all__ = [
     "LLMRequest",
     "LLMResponse",
     "LLMUsage",
+    "LipSyncProvider",
+    "LipSyncRequest",
+    "LipSyncResponse",
+    "LipSyncResult",
+    "LipSyncSpriteSheet",
     "MediaDimensions",
     "MediaInput",
     "MessageRole",
@@ -173,11 +238,22 @@ __all__ = [
     "MusicRequest",
     "MusicResponse",
     "MusicTrack",
+    "NotificationButton",
+    "NotificationLevel",
+    "NotificationMedia",
+    "NotificationMessage",
+    "NotificationReceipt",
+    "Notifier",
     "PageFetchProvider",
     "PageFetchRequest",
     "PageFetchResponse",
     "PageKind",
+    "PostVisibility",
     "ProtocolModel",
+    "PublishMedia",
+    "PublishRequest",
+    "PublishResult",
+    "Publisher",
     "SFXClip",
     "SFXProvider",
     "SFXRequest",
@@ -199,6 +275,9 @@ __all__ = [
     "StockRequest",
     "StockResponse",
     "StockResult",
+    "StorageObject",
+    "StorageProvider",
+    "StoragePutRequest",
     "TTSProvider",
     "TTSRequest",
     "TTSResponse",
@@ -206,6 +285,7 @@ __all__ = [
     "ToolCall",
     "ToolChoice",
     "ToolDefinition",
+    "TrainingState",
     "TranscriptSegment",
     "VideoFormat",
     "VideoProvider",
