@@ -183,12 +183,26 @@ def _field(value: Any, name: str, default: Any) -> Any:
     return getattr(value, name, default)
 
 
+def _language_names(value: Any) -> set[str] | None:
+    if value is None:
+        return None
+    entries = _get_section(value, "languages")
+    if entries is None and isinstance(value, Mapping):
+        entries = value
+    if isinstance(entries, Mapping):
+        return {str(name) for name in entries if str(name) != "default"}
+    if isinstance(entries, Sequence) and not isinstance(entries, (str, bytes)):
+        return {str(name) for name in entries}
+    return None
+
+
 def _validate_profile_references(config: Any) -> None:
     profiles = _entries(_get_section(config, "profiles"), "profiles")
     if not profiles:
         return
     accounts = _names(_get_section(config, "platforms"), "accounts")
     formats = _names(_get_section(config, "formats"), "formats")
+    languages = _language_names(_get_section(config, "languages"))
     for name, profile in profiles.items():
         if accounts is not None:
             for account in _field(profile, "accounts", None) or []:
@@ -215,6 +229,19 @@ def _validate_profile_references(config: Any) -> None:
                     "available": sorted(formats),
                 },
             )
+        if languages is not None:
+            for language in _field(profile, "languages", None) or []:
+                if language not in languages:
+                    available = ", ".join(sorted(languages)) or "none"
+                    raise ConfigError(
+                        f"profile {name} references unknown language: {language} "
+                        f"(available: {available})",
+                        details={
+                            "profile": name,
+                            "language": language,
+                            "available": sorted(languages),
+                        },
+                    )
 
 
 def _validate_preset_references(config: Any) -> None:

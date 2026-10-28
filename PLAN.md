@@ -75,7 +75,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Audit masking so resolved config, run snapshots and sidecars never contain secrets and prompt content obeys the redact setting (tests/core/config/test_masking.py)
 - [x] Add config schema versioning and a migrate command that upgrades older user configs, prints a diff and preserves unknown but valid keys (tests/cli/test_config_migrate.py)
 - [x] Add optional per provider weights to capability chains and reject weighted_ab chains missing them (tests/core/config/test_capability.py)
-- [ ] Cross-check profile and schedule language names against the configured languages at the root (tests/core/config/test_app.py)
+- [x] Cross-check profile and schedule language names against the configured languages at the root (tests/core/config/test_app.py)
+- [ ] Validate the languages default names a configured language and reject a default without entries (tests/core/config/test_language.py)
 
 ## Milestone 3: Models, repositories and database
 

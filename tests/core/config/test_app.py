@@ -125,6 +125,76 @@ def test_profile_formats_must_exist_in_the_format_recipes() -> None:
     AppConfig.from_mapping(config)
 
 
+def test_profile_languages_must_exist_in_the_languages_section() -> None:
+    config = {
+        "languages": {"en": {}, "de": {}},
+        "profiles": {"default": {"languages": ["en", "fr"]}},
+    }
+
+    with pytest.raises(ConfigError) as caught:
+        AppConfig.from_mapping(config)
+
+    assert "profile default references unknown language: fr" in str(caught.value)
+    assert caught.value.details["profile"] == "default"
+    assert caught.value.details["language"] == "fr"
+    assert caught.value.details["available"] == ["de", "en"]
+
+    config["profiles"] = {"default": {"languages": ["en", "de"]}}
+    AppConfig.from_mapping(config)
+
+
+def test_profile_languages_are_skipped_without_a_languages_section() -> None:
+    config = AppConfig.from_mapping(
+        {"profiles": {"default": {"languages": ["en", "fr"]}}}
+    )
+
+    assert config.profiles.get("default").languages == ["en", "fr"]  # type: ignore[attr-defined]
+
+
+def test_schedule_languages_must_exist_in_the_languages_section() -> None:
+    config = {
+        "languages": {"default": "en", "en": {}, "de": {}},
+        "schedule": {
+            "daily": {
+                "profile": "default",
+                "cron": "0 9 * * *",
+                "languages": ["en", "fr"],
+            }
+        },
+    }
+
+    with pytest.raises(ConfigError) as caught:
+        AppConfig.from_mapping(config)
+
+    assert "schedule daily references unknown language: fr" in str(caught.value)
+    assert caught.value.details["schedule"] == "daily"
+    assert caught.value.details["language"] == "fr"
+    assert caught.value.details["available"] == ["de", "en"]
+
+    config["schedule"] = {
+        "daily": {
+            "profile": "default",
+            "cron": "0 9 * * *",
+            "languages": ["en", "de"],
+        }
+    }
+    AppConfig.from_mapping(config)
+
+
+def test_cross_reference_validation_checks_languages_on_a_mapping() -> None:
+    config = {
+        "languages": {"default": "en", "en": {}},
+        "profiles": {"default": {"languages": ["fr"]}},
+    }
+
+    with pytest.raises(ConfigError) as caught:
+        validate_cross_references(config)
+    assert "profile default references unknown language: fr" in str(caught.value)
+
+    config["profiles"] = {"default": {"languages": ["en"]}}
+    validate_cross_references(config)
+
+
 def test_preset_accounts_and_formats_must_exist() -> None:
     config = {
         "platforms": {"accounts": {"youtube/en": {}}},
