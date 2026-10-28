@@ -6,23 +6,25 @@ adapters only implement the capability itself. A capability names an ordered
 the required capabilities first, so a provider that cannot serve the request is
 never chosen regardless of its position in the chain.
 
-This module implements four strategies. ``first_available`` walks the chain in
+This module implements five strategies. ``first_available`` walks the chain in
 order and returns the first provider that is open and declares every required
 capability. ``cheapest`` compares the price of the remaining candidates and
 uses chain order as the tie breaker. A price configured in
 ``pricing_overrides`` wins over the provider's own metadata, and a provider
 without any price sorts after every priced candidate so missing data never
-looks free. ``round_robin`` rotates through the available providers per
-capability and is inherently deterministic. ``weighted_ab`` draws from the
-configured per-provider weights; a seed makes the draw reproducible, and the
-selected weight is recorded on the selection. The remaining strategy is added
-later; asking for it now fails with a clear configuration error instead of
-silently falling back to the wrong policy.
+looks free. ``best_quality`` picks the highest static ``quality_rank`` until
+human ratings exist, warning about any candidate whose rank is missing and
+sorting those candidates after every ranked one. ``round_robin`` rotates
+through the available providers per capability and is inherently
+deterministic. ``weighted_ab`` draws from the configured per-provider weights;
+a seed makes the draw reproducible, and the selected weight is recorded on the
+selection.
 """
 
 from __future__ import annotations
 
 import random
+import warnings
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
@@ -31,12 +33,17 @@ from aivia.core.errors import ConfigError, ProviderExhaustedError
 from aivia.providers.base import Provider
 
 __all__ = [
+    "MissingQualityRankWarning",
     "ProviderRouter",
     "RouteSelection",
     "RouteSkip",
     "Router",
     "RouterSelection",
 ]
+
+
+class MissingQualityRankWarning(UserWarning):
+    """A provider lacks the static quality rank the strategy needs to compare it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +85,7 @@ class RouteSelection:
     skipped: tuple[RouteSkip, ...] = field(default_factory=tuple)
     seed: int | None = None
     weight: float | None = None
+    quality_rank: int | None = None
 
     @property
     def name(self) -> str:
@@ -166,6 +174,25 @@ def _price_for(
     if price is None:
         return None
     return price.cost_for(1.0)
+
+
+def _quality_rank_for(name: str, provider: Provider) -> int | None:
+    """Return the static quality rank of *provider*, warning when it is absent.
+
+    ``best_quality`` compares ranks until human ratings exist. A provider
+    without a rank cannot be compared, so it is reported once per selection
+    and treated as worse than every ranked candidate. ``name`` is the
+    configured provider name, which may differ from the metadata name.
+    """
+    rank = provider.metadata.quality_rank
+    if rank is None:
+        warnings.warn(
+            f"provider {name!r} is missing a quality rank; "
+            "best_quality treats it as unranked",
+            MissingQualityRankWarning,
+            stacklevel=3,
+        )
+    return rank
 
 
 def _rejection(
@@ -472,6 +499,7 @@ class Router:
         implemented = (
             CapabilityStrategy.FIRST_AVAILABLE,
             CapabilityStrategy.CHEAPEST,
+            CapabilityStrategy.BEST_QUALITY,
             CapabilityStrategy.ROUND_ROBIN,
             CapabilityStrategy.WEIGHTED_AB,
         )
@@ -520,6 +548,7 @@ class Router:
             raise _exhausted(target, names, chosen_strategy, chain, skipped)
 
         weight: float | None = None
+        quality_rank: int | None = None
         if chosen_strategy is CapabilityStrategy.CHEAPEST:
             overrides = configured.pricing_overrides
 
@@ -529,6 +558,15 @@ class Router:
                 return (price is None, price if price is not None else 0.0)
 
             _, chosen = min(available, key=price_key)
+        elif chosen_strategy is CapabilityStrategy.BEST_QUALITY:
+
+            def rank_key(entry: tuple[str, Provider]) -> tuple[bool, int]:
+                name, provider = entry
+                rank = _quality_rank_for(name, provider)
+                return (rank is not None, rank if rank is not None else 0)
+
+            _, chosen = max(available, key=rank_key)
+            quality_rank = chosen.metadata.quality_rank
         elif chosen_strategy is CapabilityStrategy.ROUND_ROBIN:
             chosen = self._round_robin_pick(target, chain, available)
         else:
@@ -556,6 +594,7 @@ class Router:
             skipped=tuple(skipped),
             seed=effective_seed,
             weight=weight,
+            quality_rank=quality_rank,
         )
         self._last_selection = selection
         return selection
