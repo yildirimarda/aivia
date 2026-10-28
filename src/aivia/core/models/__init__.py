@@ -24,6 +24,13 @@ from aivia.core.models.base import (
     canonical_json,
     utcnow,
 )
+from aivia.core.models.job import (
+    Job,
+    JobModel,
+    JobRecord,
+    JobState,
+    JobStatus,
+)
 from aivia.core.models.run import (
     Run,
     RunKind,
@@ -101,6 +108,11 @@ __all__ = [
     "FactListContract",
     "FactListModel",
     "ImagePrompt",
+    "Job",
+    "JobModel",
+    "JobRecord",
+    "JobState",
+    "JobStatus",
     "License",
     "MediaKind",
     "MediaPrompt",
