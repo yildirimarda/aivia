@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
+import json
 import math
 import sys
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from aivia.cli.registry import register_command
@@ -25,6 +29,7 @@ from aivia.core.models.cost import CostEvent
 __all__ = [
     "configure",
     "run_costs",
+    "run_costs_export",
     "run_costs_run",
     "run_costs_summary",
 ]
@@ -82,7 +87,7 @@ def _configure_run(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_costs_handler=run_costs_run)
 
 
-def _configure_summary(parser: argparse.ArgumentParser) -> None:
+def _configure_report(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-g",
         "--group",
@@ -140,7 +145,54 @@ def _configure_summary(parser: argparse.ArgumentParser) -> None:
         help="database file to read instead of the one in the user data directory",
     )
     _configure_resolution(parser)
+
+
+def _configure_export_options(
+    parser: argparse.ArgumentParser,
+    *,
+    default_format: str,
+) -> None:
+    parser.add_argument(
+        "-f",
+        "--format",
+        dest="export_format",
+        choices=("table", "csv", "json"),
+        default=None,
+        help=f"output format (default: {default_format})",
+    )
+    parser.add_argument(
+        "--csv",
+        dest="export_format",
+        action="store_const",
+        const="csv",
+        help="shorthand for --format csv",
+    )
+    parser.add_argument(
+        "--json",
+        dest="export_format",
+        action="store_const",
+        const="json",
+        help="shorthand for --format json",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        metavar="PATH",
+        help="write the export to PATH instead of standard output",
+    )
+    parser.set_defaults(_default_export_format=default_format)
+
+
+def _configure_summary(parser: argparse.ArgumentParser) -> None:
+    _configure_report(parser)
+    _configure_export_options(parser, default_format="table")
     parser.set_defaults(_costs_handler=run_costs_summary)
+
+
+def _configure_export(parser: argparse.ArgumentParser) -> None:
+    _configure_report(parser)
+    _configure_export_options(parser, default_format="csv")
+    parser.set_defaults(_costs_handler=run_costs_export)
 
 
 def configure(parser: argparse.ArgumentParser) -> None:
@@ -160,6 +212,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="Summarize spend by a dimension with optional date filters",
     )
     _configure_summary(summary_parser)
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Export spend as CSV or JSON with the same totals as the summary",
+        description="Export spend as CSV or JSON with the same totals as the summary",
+    )
+    _configure_export(export_parser)
 
 
 def run_costs(args: argparse.Namespace) -> int:
@@ -167,7 +225,7 @@ def run_costs(args: argparse.Namespace) -> int:
     handler = getattr(args, "_costs_handler", None)
     if handler is None:
         print("error: missing costs command", file=sys.stderr)
-        print("usage: aivia costs {run,summary}", file=sys.stderr)
+        print("usage: aivia costs {run,summary,export}", file=sys.stderr)
         return 2
     return int(handler(args))
 
@@ -399,6 +457,136 @@ def run_costs_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _collect_report(
+    engine: Engine,
+    groups: list[CostGroup],
+    *,
+    start: date | datetime | None,
+    end: date | datetime | None,
+    run_id: str | None,
+    provider: str | None,
+    model: str | None,
+    stage: str | None,
+) -> tuple[list[tuple[CostGroup, list[CostAggregate]]], float]:
+    aggregator = CostAggregator(engine)
+    sections: list[tuple[CostGroup, list[CostAggregate]]] = []
+    total = 0.0
+    for index, group in enumerate(groups):
+        buckets = aggregator.aggregate(
+            group,
+            start=start,
+            end=end,
+            run_id=run_id,
+            provider=provider,
+            model=model,
+            stage=stage,
+        )
+        if index == 0:
+            total = math.fsum(bucket.total_usd for bucket in buckets)
+        sections.append((group, buckets))
+    return sections, total
+
+
+def _export_format(args: argparse.Namespace) -> str:
+    chosen = getattr(args, "export_format", None)
+    output = getattr(args, "output", None)
+    if chosen is None and output:
+        suffix = Path(output).suffix.lower()
+        if suffix == ".json":
+            chosen = "json"
+        elif suffix == ".csv":
+            chosen = "csv"
+    if chosen is None:
+        chosen = getattr(args, "_default_export_format", "csv")
+    return str(chosen)
+
+
+def _export_json(
+    sections: list[tuple[CostGroup, list[CostAggregate]]],
+    total: float,
+) -> str:
+    group_payloads: list[dict[str, object]] = []
+    rows: list[dict[str, object]] = []
+    for group, buckets in sections:
+        bucket_rows = [bucket.to_dict() for bucket in buckets]
+        rows.extend(bucket_rows)
+        group_payloads.append(
+            {
+                "group": group.value,
+                "total_usd": math.fsum(bucket.total_usd for bucket in buckets),
+                "estimated_usd": math.fsum(bucket.estimated_usd for bucket in buckets),
+                "actual_usd": math.fsum(bucket.actual_usd for bucket in buckets),
+                "rows": bucket_rows,
+            }
+        )
+
+    first = sections[0][1] if sections else []
+    estimated = math.fsum(bucket.estimated_usd for bucket in first)
+    actual = math.fsum(bucket.actual_usd for bucket in first)
+    payload: dict[str, object] = {
+        "group": sections[0][0].value if sections else None,
+        "total_usd": total,
+        "total": total,
+        "estimated_usd": estimated,
+        "actual_usd": actual,
+        "totals": {
+            "total_usd": total,
+            "estimated_usd": estimated,
+            "actual_usd": actual,
+        },
+        "groups": group_payloads,
+        "rows": rows,
+    }
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def _export_csv(
+    sections: list[tuple[CostGroup, list[CostAggregate]]],
+) -> str:
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(
+        [
+            "group",
+            "key",
+            "total_usd",
+            "estimated_usd",
+            "actual_usd",
+            "units",
+            "count",
+        ]
+    )
+    for group, buckets in sections:
+        for bucket in buckets:
+            writer.writerow(
+                [
+                    group.value,
+                    bucket.key,
+                    f"{bucket.total_usd:.6f}",
+                    f"{bucket.estimated_usd:.6f}",
+                    f"{bucket.actual_usd:.6f}",
+                    _units(bucket.units),
+                    bucket.count,
+                ]
+            )
+    return buffer.getvalue()
+
+
+def _emit_export(text: str, output: str | None) -> int:
+    if not output:
+        sys.stdout.write(text)
+        return 0
+    target = Path(output).expanduser()
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot write {target}: {exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {target}")
+    return 0
+
+
 def run_costs_summary(args: argparse.Namespace) -> int:
     """Print spend grouped by one or more dimensions, optionally date-filtered."""
     try:
@@ -428,34 +616,36 @@ def run_costs_summary(args: argparse.Namespace) -> int:
     provider = getattr(args, "provider", None) or None
     model = getattr(args, "model", None) or None
     stage = getattr(args, "stage", None) or None
+    output = getattr(args, "output", None)
 
     engine = create_database_engine(path=database_path, config=database_config)
     try:
-        aggregator = CostAggregator(engine)
-        sections: list[list[str]] = []
-        total = 0.0
-        for index, group in enumerate(groups):
-            buckets = aggregator.aggregate(
-                group,
-                start=start,
-                end=end,
-                run_id=run_id,
-                provider=provider,
-                model=model,
-                stage=stage,
-            )
-            if index == 0:
-                total = math.fsum(bucket.total_usd for bucket in buckets)
-            sections.append(
+        sections, total = _collect_report(
+            engine,
+            groups,
+            start=start,
+            end=end,
+            run_id=run_id,
+            provider=provider,
+            model=model,
+            stage=stage,
+        )
+        export_format = _export_format(args)
+        if export_format == "json":
+            return _emit_export(_export_json(sections, total), output)
+        if export_format == "csv":
+            return _emit_export(_export_csv(sections), output)
+
+        lines = [f"Total: {_money(total)}"]
+        for group, buckets in sections:
+            lines.append("")
+            lines.extend(
                 _render_aggregates(
                     f"BY {group.value.upper()}", group.value.upper(), buckets
                 )
             )
-
-        lines = [f"Total: {_money(total)}"]
-        for section in sections:
-            lines.append("")
-            lines.extend(section)
+        if output:
+            return _emit_export("\n".join(lines) + "\n", output)
         print("\n".join(lines))
     except SQLAlchemyError as exc:
         print(f"error: cannot read the cost ledger: {exc}", file=sys.stderr)
@@ -463,6 +653,72 @@ def run_costs_summary(args: argparse.Namespace) -> int:
     finally:
         engine.dispose()
     return 0
+
+
+def run_costs_export(args: argparse.Namespace) -> int:
+    """Export grouped spend as CSV or JSON, matching the summary totals."""
+    try:
+        groups = _summary_groups(args.groups)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        start = _parse_moment(args.start) if args.start else None
+        end = _parse_moment(args.end) if args.end else None
+    except ValueError as exc:
+        print(f"error: invalid date: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        database_path, database_config = _resolve_database(args)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if not database_path.exists():
+        print(f"error: database not found: {database_path}", file=sys.stderr)
+        return 1
+
+    run_id = getattr(args, "run_id", None) or None
+    provider = getattr(args, "provider", None) or None
+    model = getattr(args, "model", None) or None
+    stage = getattr(args, "stage", None) or None
+    output = getattr(args, "output", None)
+    export_format = _export_format(args)
+
+    engine = create_database_engine(path=database_path, config=database_config)
+    try:
+        sections, total = _collect_report(
+            engine,
+            groups,
+            start=start,
+            end=end,
+            run_id=run_id,
+            provider=provider,
+            model=model,
+            stage=stage,
+        )
+        if export_format == "json":
+            text = _export_json(sections, total)
+        elif export_format == "csv":
+            text = _export_csv(sections)
+        else:
+            lines = [f"Total: {_money(total)}"]
+            for group, buckets in sections:
+                lines.append("")
+                lines.extend(
+                    _render_aggregates(
+                        f"BY {group.value.upper()}", group.value.upper(), buckets
+                    )
+                )
+            text = "\n".join(lines) + "\n"
+        return _emit_export(text, output)
+    except SQLAlchemyError as exc:
+        print(f"error: cannot read the cost ledger: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        engine.dispose()
 
 
 register_command(
