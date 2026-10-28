@@ -96,7 +96,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Create the plans, templates, references, style specs, feedback and ratings tables with one rating per subject (tests/core/db/test_tables_aux.py)
 - [x] Create the orders, deliveries, posts, post metrics and web card hits tables with order state indexing and delete cascade (tests/core/db/test_tables_orders.py)
 - [x] Implement repository classes with create, get, update and list for every aggregate, tested against an in memory database (tests/core/db/test_repos.py)
-- [ ] Add a migration guard test that fails when models and migrations diverge (tests/core/db/test_migrations_in_sync.py)
+- [x] Add a migration guard test that fails when models and migrations diverge (tests/core/db/test_migrations_in_sync.py)
 - [ ] Add an upgrade path test proving a database from the previous schema version upgrades with runs, orders, costs and assets intact (tests/core/db/test_upgrade_path.py)
 - [ ] Add a database config section for the file name and busy timeout and build the engine from it (tests/core/config/test_database.py)
 - [ ] Add a concurrency test with two writers proving WAL and the busy timeout avoid database is locked (slow, tests/core/db/test_concurrency.py)
