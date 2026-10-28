@@ -2,10 +2,15 @@
 
 The :class:`BudgetGuard` is the read side of the budget policy. A caller hands
 it the amount a call is expected to cost and the run it belongs to; the guard
-compares that estimate with the configured per-call and per-run caps and raises
-:class:`~aivia.core.errors.BudgetError` when the call would exceed either one.
-The check runs before the provider is contacted, so an over-budget call never
-spends money.
+compares that estimate with the configured per-call, per-run, per-day,
+per-month and per-provider monthly caps and raises
+:class:`~aivia.core.errors.BudgetError` when the call would exceed any one of
+them. The check runs before the provider is contacted, so an over-budget call
+never spends money.
+
+Day and month spend is read from the cost events whose ``created_at`` falls in
+the current UTC day or month. A provider monthly limit narrows the same month
+window to the provider making the call.
 
 :meth:`BudgetGuard.decide` applies the configured ``on_exceed`` behaviour to an
 exceeded check. ``downgrade`` picks the cheapest affordable candidate provider,
@@ -24,7 +29,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, time, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -32,6 +37,7 @@ from sqlalchemy import Engine
 
 from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.cost import CostTracker
+from aivia.core.cost_agg import CostAggregator, CostGroup
 from aivia.core.db.repos import CostEventRepository
 from aivia.core.errors import BudgetError, ConfigError
 from aivia.core.models.base import utcnow
@@ -63,6 +69,9 @@ __all__ = [
 
 _PER_CALL = "per_call"
 _PER_RUN = "per_run"
+_PER_DAY = "per_day"
+_PER_MONTH = "per_month"
+_PER_PROVIDER = "per_provider"
 
 
 def _exceeds(amount: float, cap: float) -> bool:
@@ -73,6 +82,36 @@ def _exceeds(amount: float, cap: float) -> bool:
         rel_tol=1e-9,
         abs_tol=1e-9,
     )
+
+
+def _coerce_now(value: object) -> datetime:
+    """Return *value* as an aware UTC datetime, defaulting to the current time."""
+    if value is None:
+        return utcnow()
+    if not isinstance(value, datetime):
+        raise ConfigError(
+            "budget timestamp must be a datetime",
+            details={"now": value},
+        )
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _day_window(now: datetime) -> tuple[datetime, datetime]:
+    """Return the half-open UTC window covering *now*'s calendar day."""
+    start = datetime.combine(now.date(), time.min, tzinfo=UTC)
+    return start, start + timedelta(days=1)
+
+
+def _month_window(now: datetime) -> tuple[datetime, datetime]:
+    """Return the half-open UTC window covering *now*'s calendar month."""
+    start = datetime(now.year, now.month, 1, tzinfo=UTC)
+    if now.month == 12:
+        end = datetime(now.year + 1, 1, 1, tzinfo=UTC)
+    else:
+        end = datetime(now.year, now.month + 1, 1, tzinfo=UTC)
+    return start, end
 
 
 def _coerce_amount(value: object, *, label: str = "amount_usd") -> float:
@@ -155,6 +194,12 @@ class BudgetCheck:
     spent_usd: float
     per_call_cap: float = 0.0
     per_run_cap: float = 0.0
+    per_day_cap: float = 0.0
+    per_month_cap: float = 0.0
+    per_provider_cap: float = 0.0
+    day_spent_usd: float = 0.0
+    month_spent_usd: float = 0.0
+    provider_spent_usd: float = 0.0
     scope: str | None = None
     provider: str = ""
     operation: str = ""
@@ -175,6 +220,41 @@ class BudgetCheck:
         return self.spent_usd + self.amount_usd
 
     @property
+    def day_projected_usd(self) -> float:
+        """Spend for the current UTC day if this call is made."""
+        return self.day_spent_usd + self.amount_usd
+
+    @property
+    def month_projected_usd(self) -> float:
+        """Spend for the current UTC month if this call is made."""
+        return self.month_spent_usd + self.amount_usd
+
+    @property
+    def provider_projected_usd(self) -> float:
+        """Spend for the provider in the current UTC month if this call is made."""
+        return self.provider_spent_usd + self.amount_usd
+
+    @property
+    def day_spent(self) -> float:
+        """Alias for :attr:`day_spent_usd`."""
+        return self.day_spent_usd
+
+    @property
+    def month_spent(self) -> float:
+        """Alias for :attr:`month_spent_usd`."""
+        return self.month_spent_usd
+
+    @property
+    def provider_spent(self) -> float:
+        """Alias for :attr:`provider_spent_usd`."""
+        return self.provider_spent_usd
+
+    @property
+    def per_provider_monthly_cap(self) -> float:
+        """Alias for :attr:`per_provider_cap`."""
+        return self.per_provider_cap
+
+    @property
     def remaining_usd(self) -> float | None:
         """The most this call may cost, or ``None`` when no cap is configured."""
         limits: list[float] = []
@@ -182,6 +262,12 @@ class BudgetCheck:
             limits.append(self.per_call_cap)
         if self.per_run_cap:
             limits.append(max(self.per_run_cap - self.spent_usd, 0.0))
+        if self.per_day_cap:
+            limits.append(max(self.per_day_cap - self.day_spent_usd, 0.0))
+        if self.per_month_cap:
+            limits.append(max(self.per_month_cap - self.month_spent_usd, 0.0))
+        if self.per_provider_cap:
+            limits.append(max(self.per_provider_cap - self.provider_spent_usd, 0.0))
         if not limits:
             return None
         return min(limits)
@@ -202,6 +288,12 @@ class BudgetCheck:
             "projected_usd": self.projected_usd,
             "per_call_cap": self.per_call_cap,
             "per_run_cap": self.per_run_cap,
+            "per_day_cap": self.per_day_cap,
+            "per_month_cap": self.per_month_cap,
+            "per_provider_cap": self.per_provider_cap,
+            "day_spent_usd": self.day_spent_usd,
+            "month_spent_usd": self.month_spent_usd,
+            "provider_spent_usd": self.provider_spent_usd,
             "remaining_usd": self.remaining_usd,
             "scope": self.scope,
             "allowed": self.allowed,
@@ -367,6 +459,25 @@ def _exceeded_message(result: BudgetCheck) -> str:
             f"estimated call cost {result.amount_usd:.6g} USD exceeds the "
             f"per-call cap of {result.per_call_cap:.6g} USD"
         )
+    if result.scope == _PER_DAY:
+        return (
+            f"estimated call cost {result.amount_usd:.6g} USD would bring "
+            f"day spend to {result.day_projected_usd:.6g} USD, above the "
+            f"per-day cap of {result.per_day_cap:.6g} USD"
+        )
+    if result.scope == _PER_MONTH:
+        return (
+            f"estimated call cost {result.amount_usd:.6g} USD would bring "
+            f"month spend to {result.month_projected_usd:.6g} USD, above the "
+            f"per-month cap of {result.per_month_cap:.6g} USD"
+        )
+    if result.scope == _PER_PROVIDER:
+        return (
+            f"estimated call cost {result.amount_usd:.6g} USD would bring "
+            f"provider {result.provider or '<none>'} month spend to "
+            f"{result.provider_projected_usd:.6g} USD, above the provider "
+            f"monthly cap of {result.per_provider_cap:.6g} USD"
+        )
     return (
         f"estimated call cost {result.amount_usd:.6g} USD would bring "
         f"run {result.run_id or '<none>'} spend to "
@@ -398,14 +509,15 @@ def _pause_run(
 
 
 class BudgetGuard:
-    """Check a call estimate against the per-call and per-run caps.
+    """Check a call estimate against every configured spending cap.
 
     Pass a :class:`~aivia.core.config.budget.BudgetConfig` (or a mapping using
     its aliases) and the cost ledger to read spend from. The ledger may be a
     :class:`~aivia.core.cost.CostTracker`, a
     :class:`~aivia.core.db.repos.CostEventRepository` or an SQLAlchemy engine.
-    A guard without a ledger can still enforce the per-call cap; the per-run
-    cap needs the ledger to know what the run has already spent.
+    A guard without a ledger can still enforce the per-call cap; the per-run,
+    per-day, per-month and per-provider caps need the ledger to know what has
+    already been spent.
 
     ``evaluate`` returns a :class:`BudgetCheck` without raising, while
     ``check`` and its aliases raise :class:`~aivia.core.errors.BudgetError`
@@ -459,6 +571,24 @@ class BudgetGuard:
             return 0.0
         return self._tracker.total(run_id=target)
 
+    def _period_spent(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        provider: str | None = None,
+    ) -> float:
+        """Sum the ledger over the half-open UTC window ``[start, end)``."""
+        if self._tracker is None:
+            return 0.0
+        buckets = CostAggregator(self._tracker.repository).aggregate(
+            CostGroup.PROVIDER,
+            start=start,
+            end=end - timedelta.resolution,
+            provider=provider,
+        )
+        return math.fsum(bucket.total_usd for bucket in buckets)
+
     def evaluate(
         self,
         amount_usd: float | None = None,
@@ -469,6 +599,7 @@ class BudgetGuard:
         estimate: float | None = None,
         amount: float | None = None,
         cost_usd: float | None = None,
+        now: datetime | None = None,
     ) -> BudgetCheck:
         """Evaluate an estimated call without raising on an exceeded cap."""
         if amount_usd is None:
@@ -483,20 +614,63 @@ class BudgetGuard:
             )
         value = _coerce_amount(amount_usd)
         target = _coerce_run_id(run_id)
+        current_provider = _coerce_optional_name(provider, label="provider")
         per_call = self._config.per_call
         per_run = self._config.per_run
+        per_day = self._config.per_day
+        per_month = self._config.per_month
+        per_provider = self._config.per_provider.get(current_provider, 0.0)
         if per_run > 0 and self._tracker is None:
             raise ConfigError(
                 "a per-run budget cap needs a cost ledger",
                 details={"per_run": per_run},
             )
+        if per_day and self._tracker is None:
+            raise ConfigError(
+                "a per-day budget cap needs a cost ledger",
+                details={"per_day": per_day},
+            )
+        if per_month and self._tracker is None:
+            raise ConfigError(
+                "a per-month budget cap needs a cost ledger",
+                details={"per_month": per_month},
+            )
+        if per_provider and self._tracker is None:
+            raise ConfigError(
+                "a per-provider budget cap needs a cost ledger",
+                details={"per_provider": per_provider},
+            )
         spent = self.spent(target)
+
+        day_spent = 0.0
+        month_spent = 0.0
+        provider_spent = 0.0
+        if per_day or per_month or per_provider:
+            moment = _coerce_now(now)
+            day_start, day_end = _day_window(moment)
+            month_start, month_end = _month_window(moment)
+            if per_day:
+                day_spent = self._period_spent(day_start, day_end)
+            if per_month:
+                month_spent = self._period_spent(month_start, month_end)
+            if per_provider:
+                provider_spent = self._period_spent(
+                    month_start,
+                    month_end,
+                    provider=current_provider,
+                )
 
         scope: str | None = None
         if per_call > 0 and _exceeds(value, per_call):
             scope = _PER_CALL
         elif per_run > 0 and _exceeds(spent + value, per_run):
             scope = _PER_RUN
+        elif per_day and _exceeds(day_spent + value, per_day):
+            scope = _PER_DAY
+        elif per_month and _exceeds(month_spent + value, per_month):
+            scope = _PER_MONTH
+        elif per_provider and _exceeds(provider_spent + value, per_provider):
+            scope = _PER_PROVIDER
 
         return BudgetCheck(
             run_id=target,
@@ -504,8 +678,14 @@ class BudgetGuard:
             spent_usd=spent,
             per_call_cap=per_call,
             per_run_cap=per_run,
+            per_day_cap=per_day,
+            per_month_cap=per_month,
+            per_provider_cap=per_provider,
+            day_spent_usd=day_spent,
+            month_spent_usd=month_spent,
+            provider_spent_usd=provider_spent,
             scope=scope,
-            provider=_coerce_optional_name(provider, label="provider"),
+            provider=current_provider,
             operation=_coerce_optional_name(operation, label="operation"),
         )
 
@@ -549,6 +729,7 @@ class BudgetGuard:
                 estimate=estimate,
                 amount=amount,
                 cost_usd=cost_usd,
+                now=now,
             )
         if not isinstance(result, BudgetCheck):
             raise ConfigError(
@@ -680,6 +861,7 @@ class BudgetGuard:
         estimate: float | None = None,
         amount: float | None = None,
         cost_usd: float | None = None,
+        now: datetime | None = None,
     ) -> BudgetCheck:
         """Raise :class:`~aivia.core.errors.BudgetError` when a cap is exceeded.
 
@@ -694,11 +876,19 @@ class BudgetGuard:
             estimate=estimate,
             amount=amount,
             cost_usd=cost_usd,
+            now=now,
         )
         if result.allowed:
             return result
 
-        cap = result.per_call_cap if result.scope == _PER_CALL else result.per_run_cap
+        caps = {
+            _PER_CALL: result.per_call_cap,
+            _PER_RUN: result.per_run_cap,
+            _PER_DAY: result.per_day_cap,
+            _PER_MONTH: result.per_month_cap,
+            _PER_PROVIDER: result.per_provider_cap,
+        }
+        cap = caps.get(result.scope or "", 0.0)
         raise BudgetError(
             _exceeded_message(result),
             details={
@@ -709,6 +899,12 @@ class BudgetGuard:
                 "spent_usd": result.spent_usd,
                 "spent": result.spent_usd,
                 "projected_usd": result.projected_usd,
+                "day_spent_usd": result.day_spent_usd,
+                "day_projected_usd": result.day_projected_usd,
+                "month_spent_usd": result.month_spent_usd,
+                "month_projected_usd": result.month_projected_usd,
+                "provider_spent_usd": result.provider_spent_usd,
+                "provider_projected_usd": result.provider_projected_usd,
                 "remaining_usd": result.remaining_usd,
                 "remaining": result.remaining_usd,
                 "run_id": result.run_id,
@@ -765,9 +961,22 @@ class BudgetGuard:
         """Return whether the estimated call exceeds an active cap."""
         return self.evaluate(amount_usd, **kwargs).exceeded
 
-    def remaining(self, run_id: str | None = None) -> float | None:
+    def remaining(
+        self,
+        run_id: str | None = None,
+        *,
+        provider: str | None = None,
+        operation: str | None = None,
+        now: datetime | None = None,
+    ) -> float | None:
         """Return the most a call may cost for *run_id*, if a cap applies."""
-        return self.evaluate(0.0, run_id=run_id).remaining_usd
+        return self.evaluate(
+            0.0,
+            run_id=run_id,
+            provider=provider,
+            operation=operation,
+            now=now,
+        ).remaining_usd
 
 
 BudgetEnforcer = BudgetGuard
@@ -792,6 +1001,7 @@ def check_budget(
     tracker: CostTracker | CostEventRepository | Engine | None = None,
     provider: str | None = None,
     operation: str | None = None,
+    now: datetime | None = None,
 ) -> BudgetCheck:
     """Check one call estimate without constructing a long-lived guard."""
     return _guard(config, tracker).check(
@@ -799,6 +1009,7 @@ def check_budget(
         run_id=run_id,
         provider=provider,
         operation=operation,
+        now=now,
     )
 
 
@@ -810,6 +1021,7 @@ def enforce_budget(
     tracker: CostTracker | CostEventRepository | Engine | None = None,
     provider: str | None = None,
     operation: str | None = None,
+    now: datetime | None = None,
 ) -> BudgetCheck:
     """Alias for :func:`check_budget`."""
     return check_budget(
@@ -819,6 +1031,7 @@ def enforce_budget(
         tracker=tracker,
         provider=provider,
         operation=operation,
+        now=now,
     )
 
 
@@ -830,6 +1043,7 @@ def ensure_budget(
     tracker: CostTracker | CostEventRepository | Engine | None = None,
     provider: str | None = None,
     operation: str | None = None,
+    now: datetime | None = None,
 ) -> BudgetCheck:
     """Alias for :func:`check_budget`."""
     return check_budget(
@@ -839,6 +1053,7 @@ def ensure_budget(
         tracker=tracker,
         provider=provider,
         operation=operation,
+        now=now,
     )
 
 
@@ -850,6 +1065,7 @@ def would_exceed_budget(
     tracker: CostTracker | CostEventRepository | Engine | None = None,
     provider: str | None = None,
     operation: str | None = None,
+    now: datetime | None = None,
 ) -> bool:
     """Return whether a call estimate exceeds an active cap."""
     return _guard(config, tracker).would_exceed(
@@ -857,6 +1073,7 @@ def would_exceed_budget(
         run_id=run_id,
         provider=provider,
         operation=operation,
+        now=now,
     )
 
 
