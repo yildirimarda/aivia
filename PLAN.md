@@ -113,7 +113,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Define the image, image edit, video, music, sfx and stock protocols with capability flags (tests/contracts/test_media_protocols.py)
 - [x] Define the notifier, publisher, delivery, storage, lip sync and character trainer protocols (tests/contracts/test_io_protocols.py)
 - [x] Implement the provider registry with a registration decorator, name lookup, dotted path loading and a clear unknown type error (tests/core/test_registry.py)
-- [ ] Implement router selection for the first available strategy honouring required capabilities (tests/core/test_router.py)
+- [x] Implement router selection for the first available strategy honouring required capabilities (tests/core/test_router.py)
 - [ ] Implement the cheapest strategy using provider pricing and overrides with chain order as the tie breaker (tests/core/test_router.py)
 - [ ] Implement round robin and weighted strategies with seeded determinism and recorded selection (tests/core/test_router.py)
 - [ ] Implement the best quality strategy using static ranks until human ratings exist, warning when a rank is missing (tests/core/test_router.py)
