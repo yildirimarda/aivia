@@ -22,11 +22,16 @@ __all__ = [
     "encode_ulid",
     "is_ulid",
     "new_asset_id",
+    "new_composition_id",
     "new_cost_id",
+    "new_delivery_id",
     "new_id",
     "new_job_id",
     "new_order_id",
+    "new_plan_id",
+    "new_post_id",
     "new_run_id",
+    "new_step_id",
     "ulid",
 ]
 
@@ -143,3 +148,28 @@ def new_order_id() -> str:
 def new_cost_id() -> str:
     """Return a new cost event identifier."""
     return new_id(IdKind.COST)
+
+
+def new_post_id() -> str:
+    """Return a new post identifier."""
+    return f"post_{ulid()}"
+
+
+def new_delivery_id() -> str:
+    """Return a new delivery identifier."""
+    return f"delivery_{ulid()}"
+
+
+def new_plan_id() -> str:
+    """Return a new plan identifier."""
+    return f"plan_{ulid()}"
+
+
+def new_step_id() -> str:
+    """Return a new plan step identifier."""
+    return f"step_{ulid()}"
+
+
+def new_composition_id() -> str:
+    """Return a new composition reference identifier."""
+    return f"composition_{ulid()}"
