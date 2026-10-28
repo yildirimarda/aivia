@@ -9,8 +9,10 @@ never chosen regardless of its position in the chain.
 This module implements five strategies. ``first_available`` walks the chain in
 order and returns the first provider that is open and declares every required
 capability. ``cheapest`` compares the price of the remaining candidates and
-uses chain order as the tie breaker. A price configured in
-``pricing_overrides`` wins over the provider's own metadata, and a provider
+uses chain order as the tie breaker. Prices are resolved through the shared
+:class:`~aivia.core.pricing.PricingResolver`, so selection and budget checks
+honour the same ``pricing_overrides`` and unit conversions. A price configured
+in ``pricing_overrides`` wins over the provider's own metadata, and a provider
 without any price sorts after every priced candidate so missing data never
 looks free. ``best_quality`` picks the highest static ``quality_rank`` until
 human ratings exist, warning about any candidate whose rank is missing and
@@ -62,6 +64,7 @@ from aivia.core.errors import (
     ProviderExhaustedError,
     RateLimitError,
 )
+from aivia.core.pricing import MissingPriceWarning, PricingResolver, ResolvedPrice
 from aivia.core.ratelimit import TokenBucket
 from aivia.providers.base import Provider
 
@@ -217,28 +220,34 @@ def _coerce_required(
     return tuple(names)
 
 
-def _price_for(
+def _resolve_price(
     name: str,
     provider: Provider,
     capability: str,
-    overrides: Mapping[str, float],
-) -> float | None:
-    """Return the per-unit price of *capability* for *provider*, if known.
+    resolver: PricingResolver,
+    units: float,
+    unit_kind: str | None,
+) -> ResolvedPrice | None:
+    """Resolve *provider*'s price for *units* of *capability*, if known.
 
     *name* is the configured provider name, which may differ from the metadata
-    name when the same adapter serves several instances. An explicit override
-    wins over metadata because it is how an operator corrects a stale or
-    missing upstream price. Metadata prices are normalised to one unit so a
-    price expressed per thousand units compares fairly with a price expressed
-    per single call.
+    name when the same adapter serves several instances. The resolver owns the
+    override lookup, the metadata unit and the conversion of *units* from the
+    requested *unit_kind* into the price's own unit, so selection and budget
+    checks cannot drift apart. A missing price is reported as ``None``; the
+    resolver's own warning is suppressed because the router has a dedicated
+    :class:`UnpricedProviderWarning` for its callers.
     """
-    override = overrides.get(name)
-    if override is not None:
-        return override
-    price = provider.metadata.pricing_for(capability)
-    if price is None:
-        return None
-    return price.cost_for(1.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", MissingPriceWarning)
+        resolved = resolver.resolve(
+            provider,
+            capability,
+            units,
+            unit_kind=unit_kind,
+            provider_name=name,
+        )
+    return None if resolved.missing else resolved
 
 
 def _coerce_remaining_budget(value: float | None) -> float | None:
@@ -279,21 +288,24 @@ def _budget_rejection(
     name: str,
     provider: Provider,
     capability: str,
-    overrides: Mapping[str, float],
+    resolver: PricingResolver,
     remaining_budget: float | None,
     units: float,
+    unit_kind: str | None,
 ) -> RouteSkip | None:
     """Return why *provider* exceeds the remaining budget, if it does.
 
-    The estimate is the provider price for *capability* scaled to *units*. A
-    provider without a known price cannot be estimated, so it is left to the
-    strategy rather than being rejected on missing data, but a
-    :class:`UnpricedProviderWarning` is emitted so the gap is visible.
+    The estimate is the resolver's price for *capability* at *units* of
+    *unit_kind*, which applies the configured overrides and converts the
+    requested units into the price's own unit. A provider without a known price
+    cannot be estimated, so it is left to the strategy rather than being
+    rejected on missing data, but a :class:`UnpricedProviderWarning` is emitted
+    so the gap is visible.
     """
     if remaining_budget is None:
         return None
-    price = _price_for(name, provider, capability, overrides)
-    if price is None:
+    resolved = _resolve_price(name, provider, capability, resolver, units, unit_kind)
+    if resolved is None:
         warnings.warn(
             f"provider {name!r} has no price for {capability!r}; "
             "budget-aware selection cannot estimate it",
@@ -301,7 +313,7 @@ def _budget_rejection(
             stacklevel=3,
         )
         return None
-    if price * units > remaining_budget:
+    if resolved.amount_usd > remaining_budget:
         return RouteSkip(provider=name, reason="budget_exceeded")
     return None
 
@@ -772,6 +784,7 @@ class Router:
         seed: int | None = None,
         remaining_budget: float | None = None,
         units: float = 1.0,
+        unit_kind: str | None = None,
     ) -> Provider:
         """Return the provider selected for *capability*.
 
@@ -781,10 +794,13 @@ class Router:
         call. ``seed`` overrides the router seed for one weighted draw.
 
         ``remaining_budget`` is the amount still available for this call. A
-        provider whose estimated price for *units* exceeds it is skipped, so
-        the strategy picks the best affordable candidate. ``None`` disables the
-        budget check. A provider without a known price cannot be estimated, so
-        it is never skipped, but :class:`UnpricedProviderWarning` is emitted.
+        provider whose estimated price for *units* of *unit_kind* exceeds it is
+        skipped, so the strategy picks the best affordable candidate. ``None``
+        disables the budget check. *unit_kind* defaults to the provider's own
+        price unit; naming it lets the shared pricing resolver convert the
+        request, so minutes can be priced by a per-second provider. A provider
+        without a known price cannot be estimated, so it is never skipped, but
+        :class:`UnpricedProviderWarning` is emitted.
         """
         return self.select_with_record(
             capability,
@@ -793,6 +809,7 @@ class Router:
             seed=seed,
             remaining_budget=remaining_budget,
             units=units,
+            unit_kind=unit_kind,
         ).provider
 
     def select_provider(
@@ -804,6 +821,7 @@ class Router:
         seed: int | None = None,
         remaining_budget: float | None = None,
         units: float = 1.0,
+        unit_kind: str | None = None,
     ) -> Provider:
         """Alias for :meth:`select`."""
         return self.select(
@@ -813,6 +831,7 @@ class Router:
             seed=seed,
             remaining_budget=remaining_budget,
             units=units,
+            unit_kind=unit_kind,
         )
 
     def _round_robin_pick(
@@ -842,6 +861,7 @@ class Router:
         exclude: Iterable[str] | None = None,
         remaining_budget: float | None = None,
         units: float = 1.0,
+        unit_kind: str | None = None,
     ) -> RouteSelection:
         """Select a provider and return the full selection record.
 
@@ -850,9 +870,12 @@ class Router:
         are reported as skipped with the ``excluded`` reason.
 
         ``remaining_budget`` and ``units`` make selection budget aware: a
-        provider whose estimated price for *units* is greater than the
-        remaining budget is reported as skipped with ``budget_exceeded``. An
-        unpriced provider cannot be estimated, so it is never skipped, but
+        provider whose estimated price for *units* of *unit_kind* is greater
+        than the remaining budget is reported as skipped with
+        ``budget_exceeded``. Both the budget check and ``cheapest`` resolve
+        through the same :class:`~aivia.core.pricing.PricingResolver`, so
+        overrides and unit conversions are applied consistently. An unpriced
+        provider cannot be estimated, so it is never skipped, but
         :class:`UnpricedProviderWarning` is emitted.
         """
         names = _coerce_required(capability, required)
@@ -861,7 +884,7 @@ class Router:
         budget = _coerce_remaining_budget(remaining_budget)
         quantity = _coerce_units(units)
         configured = self.config_for(target)
-        overrides = configured.pricing_overrides
+        resolver = PricingResolver(configured.pricing_overrides)
         chosen_strategy = (
             configured.strategy if strategy is None else _coerce_strategy(strategy)
         )
@@ -902,9 +925,10 @@ class Router:
                         name,
                         provider,
                         target,
-                        overrides,
+                        resolver,
                         budget,
                         quantity,
+                        unit_kind,
                     )
                 if rejection is not None:
                     skipped.append(rejection)
@@ -939,9 +963,10 @@ class Router:
                     name,
                     provider,
                     target,
-                    overrides,
+                    resolver,
                     budget,
                     quantity,
+                    unit_kind,
                 )
             if rejection is not None:
                 skipped.append(rejection)
@@ -957,8 +982,18 @@ class Router:
 
             def price_key(entry: tuple[str, Provider]) -> tuple[bool, float]:
                 name, provider = entry
-                price = _price_for(name, provider, target, overrides)
-                return (price is None, price if price is not None else 0.0)
+                resolved = _resolve_price(
+                    name,
+                    provider,
+                    target,
+                    resolver,
+                    quantity,
+                    unit_kind,
+                )
+                return (
+                    resolved is None,
+                    resolved.amount_usd if resolved is not None else 0.0,
+                )
 
             _, chosen = min(available, key=price_key)
         elif chosen_strategy is CapabilityStrategy.BEST_QUALITY:
@@ -1012,6 +1047,7 @@ class Router:
         seed: int | None = None,
         remaining_budget: float | None = None,
         units: float = 1.0,
+        unit_kind: str | None = None,
     ) -> T:
         """Run *operation* with fallback across the capability chain.
 
@@ -1023,18 +1059,19 @@ class Router:
         provider cannot fix an invalid request, bad credentials, a budget
         refusal or a content policy rejection.
 
-        ``remaining_budget`` and ``units`` are passed to every selection so a
-        provider whose estimate exceeds the budget is never called. Retryable
-        failures are recorded on the provider's circuit breaker; a provider
-        whose circuit is open is skipped until it half-opens. Before the call
-        the provider's token bucket is acquired, which waits for the next token
-        or raises a rate limited error according to the bucket policy. The same
-        acquisition holds a concurrency slot until the operation finishes, so a
-        provider's ``max_concurrency`` is never exceeded. When every candidate
-        fails with a retryable error, the router raises
-        :class:`~aivia.core.errors.ProviderExhaustedError` with the attempted
-        providers and the last error, chained as the cause. The successful
-        selection remains available through :attr:`last_selection`.
+        ``remaining_budget``, ``units`` and ``unit_kind`` are passed to every
+        selection so a provider whose estimate exceeds the budget is never
+        called, with the same override and unit conversion rules as selection.
+        Retryable failures are recorded on the provider's circuit breaker; a
+        provider whose circuit is open is skipped until it half-opens. Before
+        the call the provider's token bucket is acquired, which waits for the
+        next token or raises a rate limited error according to the bucket
+        policy. The same acquisition holds a concurrency slot until the
+        operation finishes, so a provider's ``max_concurrency`` is never
+        exceeded. When every candidate fails with a retryable error, the router
+        raises :class:`~aivia.core.errors.ProviderExhaustedError` with the
+        attempted providers and the last error, chained as the cause. The
+        successful selection remains available through :attr:`last_selection`.
         """
         if not callable(operation):
             raise TypeError("operation must be callable")
@@ -1055,6 +1092,7 @@ class Router:
                     exclude=excluded,
                     remaining_budget=remaining_budget,
                     units=units,
+                    unit_kind=unit_kind,
                 )
             except ProviderExhaustedError as exhausted:
                 if last_error is None:

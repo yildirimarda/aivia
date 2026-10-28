@@ -1214,3 +1214,129 @@ def test_budget_aware_selection_rejects_invalid_budget_and_units() -> None:
         router.select("image_gen", remaining_budget=float("nan"))
     with pytest.raises(ConfigError, match="units"):
         router.select("image_gen", units=-1)
+
+
+def test_cheapest_applies_overrides_with_the_metadata_unit_and_bulk_factor() -> None:
+    bulk = FakeProvider(
+        "bulk",
+        ["image_gen"],
+        pricing={
+            "image_gen": ProviderPrice(
+                amount_usd=0.10,
+                unit="image",
+                units_per_price=100,
+            )
+        },
+    )
+    single = FakeProvider("single", ["image_gen"], pricing={"image_gen": 0.01})
+    router = make_router(
+        single,
+        bulk,
+        chain=["single", "bulk"],
+        strategy=CapabilityStrategy.CHEAPEST,
+        pricing_overrides={"bulk": 0.20},
+    )
+
+    assert router.select("image_gen") is bulk
+
+
+def test_budget_check_applies_overrides_with_the_metadata_unit_and_bulk_factor() -> (
+    None
+):
+    bulk = FakeProvider(
+        "bulk",
+        ["image_gen"],
+        pricing={
+            "image_gen": ProviderPrice(
+                amount_usd=0.10,
+                unit="image",
+                units_per_price=100,
+            )
+        },
+    )
+    single = FakeProvider("single", ["image_gen"], pricing={"image_gen": 0.01})
+    router = make_router(
+        single,
+        bulk,
+        chain=["single", "bulk"],
+        pricing_overrides={"bulk": 0.20},
+    )
+
+    selection = router.select_with_record("image_gen", remaining_budget=0.03, units=10)
+
+    assert selection.provider is bulk
+    assert selection.skipped == (
+        RouteSkip(provider="single", reason="budget_exceeded"),
+    )
+
+
+def test_cheapest_converts_requested_units_into_each_price_unit() -> None:
+    per_second = FakeProvider(
+        "per_second",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.01, unit="second")},
+    )
+    per_minute = FakeProvider(
+        "per_minute",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.30, unit="minute")},
+    )
+    router = make_router(
+        per_second,
+        per_minute,
+        chain=["per_second", "per_minute"],
+        strategy=CapabilityStrategy.CHEAPEST,
+    )
+
+    assert router.select("video_gen", units=1, unit_kind="minute") is per_minute
+
+
+def test_budget_check_converts_requested_units_into_the_price_unit() -> None:
+    per_second = FakeProvider(
+        "per_second",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.01, unit="second")},
+    )
+    per_minute = FakeProvider(
+        "per_minute",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.50, unit="minute")},
+    )
+    router = make_router(per_second, per_minute, chain=["per_second", "per_minute"])
+
+    selection = router.select_with_record(
+        "video_gen", remaining_budget=1.0, units=2, unit_kind="minutes"
+    )
+
+    assert selection.provider is per_minute
+    assert selection.skipped == (
+        RouteSkip(provider="per_second", reason="budget_exceeded"),
+    )
+
+
+def test_budget_aware_execute_converts_requested_units_into_the_price_unit() -> None:
+    per_second = FakeProvider(
+        "per_second",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.01, unit="second")},
+    )
+    per_minute = FakeProvider(
+        "per_minute",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.50, unit="minute")},
+    )
+    router = make_router(per_second, per_minute, chain=["per_second", "per_minute"])
+    calls: list[str] = []
+
+    result = asyncio.run(
+        router.execute(
+            "video_gen",
+            make_operation({}, calls),
+            remaining_budget=1.0,
+            units=2,
+            unit_kind="minutes",
+        )
+    )
+
+    assert result == "per_minute:ok"
+    assert calls == ["per_minute"]
