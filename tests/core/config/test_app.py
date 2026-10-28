@@ -33,7 +33,7 @@ def example_sections() -> dict[str, Any]:
 
 def test_the_root_model_exposes_every_core_section() -> None:
     assert issubclass(AppConfig, ConfigModel)
-    assert set(AppConfig.model_fields) == set(CORE_SECTION_KEYS)
+    assert set(AppConfig.model_fields) == set(CORE_SECTION_KEYS) | {"schema_version"}
     assert assemble_root_config() is not None
     assert build_app_config(registry) is not None
 

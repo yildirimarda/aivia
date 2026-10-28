@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, Self, cast
 
-from pydantic import create_model
+from pydantic import Field, create_model
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.registry import SectionRegistry, registry
@@ -33,9 +33,13 @@ __all__ = [
 ]
 
 
+_ROOT_KEYS = frozenset({"schema_version"})
+
+
 class RootConfig(ConfigModel):
     """Base class for the assembled root configuration model."""
 
+    schema_version: int = Field(default=1, ge=1)
     _sections: ClassVar[SectionRegistry | None] = None
 
     @classmethod
@@ -129,7 +133,9 @@ def _reject_unknown_sections(
     values: Mapping[str, Any],
     sections: SectionRegistry,
 ) -> None:
-    unknown = sorted(str(key) for key in values if key not in sections)
+    unknown = sorted(
+        str(key) for key in values if key not in sections and key not in _ROOT_KEYS
+    )
     if not unknown:
         return
     known = ", ".join(sections.keys()) or "none"
