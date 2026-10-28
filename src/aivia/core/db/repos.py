@@ -1,0 +1,486 @@
+"""Repositories for the aggregates stored in the local SQLite database.
+
+A repository owns the persistence of one aggregate. It inserts, reads, updates
+and lists records without exposing SQLAlchemy statements to callers. Tables
+that have a model in :mod:`aivia.core.models` return validated model instances;
+the remaining tables return plain row dictionaries until their module ships a
+model.
+
+Every write runs in its own transaction and every read returns a fresh record,
+so a caller cannot mutate the store by keeping a reference to a returned row.
+``update`` stamps ``updated_at`` and returns ``None`` when the record does not
+exist. ``list`` accepts column equality filters and returns records ordered by
+their primary key, which is a time-sortable ULID for most aggregates.
+"""
+
+from __future__ import annotations
+
+import warnings
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Mapping
+from datetime import datetime
+from typing import Any, ClassVar
+
+from sqlalchemy import DateTime, Engine, RowMapping, Table, and_, select
+
+from aivia.core.db.tables import (
+    assets,
+    compositions,
+    cost_events,
+    deliveries,
+    feedback,
+    jobs,
+    orders,
+    plans,
+    post_metrics,
+    posts,
+    ratings,
+    references,
+    runs,
+    stage_runs,
+    style_specs,
+    templates,
+    web_card_hits,
+)
+from aivia.core.ids import (
+    new_asset_id,
+    new_composition_id,
+    new_cost_id,
+    new_delivery_id,
+    new_job_id,
+    new_order_id,
+    new_plan_id,
+    new_post_id,
+    new_run_id,
+    ulid,
+)
+from aivia.core.models import (
+    Asset,
+    CompositionReference,
+    CostEvent,
+    Delivery,
+    Job,
+    ModelBase,
+    Plan,
+    Post,
+    Run,
+    StageResult,
+    UnknownFieldWarning,
+    utcnow,
+)
+
+__all__ = [
+    "REPOSITORIES",
+    "AssetRepository",
+    "CompositionRepository",
+    "CostEventRepository",
+    "DeliveryRepository",
+    "FeedbackRepository",
+    "JobRepository",
+    "ModelRepository",
+    "OrderRepository",
+    "PlanRepository",
+    "PostMetricRepository",
+    "PostRepository",
+    "RatingRepository",
+    "ReferenceRepository",
+    "Repository",
+    "RunRepository",
+    "StageRunRepository",
+    "StyleSpecRepository",
+    "TableRepository",
+    "TemplateRepository",
+    "WebCardHitRepository",
+    "repository_for",
+]
+
+Record = dict[str, Any]
+_MIN_COUNT = 0
+
+
+def _combine(
+    record: ModelBase | Mapping[str, Any] | None,
+    values: Mapping[str, Any],
+) -> Record:
+    data: Record = {}
+    if isinstance(record, ModelBase):
+        data.update(record.model_dump(mode="python"))
+    elif record is not None:
+        data.update(record)
+    data.update(values)
+    return data
+
+
+def _prefixed(prefix: str) -> Callable[[], str]:
+    return lambda: f"{prefix}_{ulid()}"
+
+
+class Repository[RecordT](ABC):
+    """Create, get, update and list one aggregate.
+
+    Subclasses declare the :class:`~sqlalchemy.Table` they own, the columns that
+    form its primary key and, for tables without a model, a factory for a new
+    identifier. Callers never pass a connection: the repository opens a
+    transaction per write and a connection per read on the configured engine.
+    """
+
+    table: ClassVar[Table]
+    key_columns: ClassVar[tuple[str, ...]] = ("id",)
+    id_factory: ClassVar[Callable[[], str] | None] = None
+
+    def __init__(self, engine: Engine) -> None:
+        self.engine = engine
+
+    def create(
+        self,
+        record: ModelBase | Mapping[str, Any] | None = None,
+        **values: Any,
+    ) -> RecordT:
+        """Insert one record and return the stored row.
+
+        Pass a model, a mapping or keyword values. A model fills its defaults
+        and is validated before the insert; a mapping may omit the primary key
+        when the repository knows how to generate one.
+        """
+        data = self._prepare_create(_combine(record, values))
+        with self.engine.begin() as connection:
+            connection.execute(self.table.insert().values(**data))
+        key = tuple(data[column] for column in self.key_columns)
+        stored = self.get(*key)
+        if stored is None:
+            raise RuntimeError(f"{type(self).__name__} could not read back its insert")
+        return stored
+
+    def get(self, *key: Any) -> RecordT | None:
+        """Return the record with *key*, or ``None`` when it does not exist."""
+        condition = self._key_condition(key)
+        with self.engine.connect() as connection:
+            row = (
+                connection.execute(select(self.table).where(condition))
+                .mappings()
+                .first()
+            )
+        return None if row is None else self._to_record(row)
+
+    def update(self, *key: Any, **changes: Any) -> RecordT | None:
+        """Apply *changes* to the record with *key* and return it.
+
+        ``updated_at`` is refreshed on every update. An unknown record is left
+        untouched and ``None`` is returned.
+        """
+        existing = self.get(*key)
+        if existing is None:
+            return None
+        data = self._prepare_update(existing, changes)
+        condition = self._key_condition(key)
+        with self.engine.begin() as connection:
+            connection.execute(self.table.update().where(condition).values(**data))
+        return self.get(*key)
+
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        **filters: Any,
+    ) -> list[RecordT]:
+        """List records matching the column equality *filters*.
+
+        Results are ordered by the primary key so repeated calls are stable.
+        """
+        if limit is not None and limit < _MIN_COUNT:
+            raise ValueError("limit must not be negative")
+        if offset is not None and offset < _MIN_COUNT:
+            raise ValueError("offset must not be negative")
+        statement = select(self.table)
+        for name, value in filters.items():
+            if name not in self.table.c:
+                raise ValueError(f"{self.table.name} has no column named {name!r}")
+            statement = statement.where(self.table.c[name] == value)
+        statement = statement.order_by(
+            *(self.table.c[column] for column in self.key_columns)
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+        if offset is not None:
+            statement = statement.offset(offset)
+        with self.engine.connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [self._to_record(row) for row in rows]
+
+    def _key_condition(self, key: tuple[Any, ...]) -> Any:
+        if len(key) != len(self.key_columns):
+            expected = ", ".join(self.key_columns)
+            raise ValueError(
+                f"{type(self).__name__} expects the key ({expected}), "
+                f"got {len(key)} value(s)"
+            )
+        return and_(
+            *(
+                self.table.c[column] == value
+                for column, value in zip(self.key_columns, key, strict=True)
+            )
+        )
+
+    def _clear_empty_foreign_keys(self, values: Record) -> Record:
+        for name, value in values.items():
+            column = self.table.c[name]
+            if (
+                isinstance(value, str)
+                and not value
+                and column.nullable
+                and column.foreign_keys
+            ):
+                values[name] = None
+        return values
+
+    @abstractmethod
+    def _prepare_create(self, data: Record) -> Record:
+        """Return the column values to insert."""
+
+    @abstractmethod
+    def _prepare_update(self, existing: RecordT, changes: Mapping[str, Any]) -> Record:
+        """Return the column values to update."""
+
+    @abstractmethod
+    def _to_record(self, row: RowMapping) -> RecordT:
+        """Convert one database row into the repository's record type."""
+
+
+class TableRepository(Repository[Record]):
+    """A repository for a table whose module does not ship a model yet."""
+
+    def _prepare_create(self, data: Record) -> Record:
+        values = self._columns(data)
+        if "id" in self.table.c and not values.get("id"):
+            factory = type(self).id_factory
+            if factory is None:
+                raise ValueError(f"{type(self).__name__} needs an id")
+            values["id"] = factory()
+        return values
+
+    def _prepare_update(self, existing: Record, changes: Mapping[str, Any]) -> Record:
+        values = self._columns(changes)
+        values["updated_at"] = utcnow()
+        return values
+
+    def _to_record(self, row: RowMapping) -> Record:
+        return dict(row)
+
+    def _columns(self, data: Mapping[str, Any]) -> Record:
+        unknown = set(data) - set(self.table.c.keys())
+        if unknown:
+            names = ", ".join(sorted(unknown))
+            raise ValueError(f"{self.table.name} has no column(s) named {names}")
+        return self._clear_empty_foreign_keys(dict(data))
+
+
+class ModelRepository[ModelT: ModelBase](Repository[ModelT]):
+    """A repository that validates and returns the aggregate's model."""
+
+    model: ClassVar[type[ModelT]]
+
+    def _prepare_create(self, data: Record) -> Record:
+        return self._columns(self._validate(data))
+
+    def _prepare_update(self, existing: ModelT, changes: Mapping[str, Any]) -> Record:
+        data = existing.model_dump(mode="python")
+        data.update(changes)
+        data["updated_at"] = utcnow()
+        return self._columns(self._validate(data))
+
+    def _to_record(self, row: RowMapping) -> ModelT:
+        data = dict(row)
+        for name, value in data.items():
+            column = self.table.c[name]
+            if value is None and column.foreign_keys:
+                data[name] = ""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UnknownFieldWarning)
+            return self.model.model_validate(data)
+
+    def _validate(self, data: Mapping[str, Any]) -> Record:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UnknownFieldWarning)
+            dumped = self.model.model_validate(dict(data)).model_dump(mode="json")
+        return {
+            name: self._column_value(name, value)
+            for name, value in dumped.items()
+            if name in self.table.c
+        }
+
+    def _column_value(self, name: str, value: Any) -> Any:
+        if isinstance(self.table.c[name].type, DateTime) and isinstance(value, str):
+            return datetime.fromisoformat(value)
+        return value
+
+    def _columns(self, data: Mapping[str, Any]) -> Record:
+        return self._clear_empty_foreign_keys(
+            {name: value for name, value in data.items() if name in self.table.c}
+        )
+
+
+class RunRepository(ModelRepository[Run]):
+    """Persist pipeline, order, instruction, media and benchmark runs."""
+
+    table = runs
+    model = Run
+    id_factory = new_run_id
+
+
+class StageRunRepository(ModelRepository[StageResult]):
+    """Persist the per-stage results belonging to a run."""
+
+    table = stage_runs
+    model = StageResult
+    key_columns = ("run_id", "stage")
+
+
+class JobRepository(ModelRepository[Job]):
+    """Persist the durable worker queue."""
+
+    table = jobs
+    model = Job
+    id_factory = new_job_id
+
+
+class AssetRepository(ModelRepository[Asset]):
+    """Persist generated and user supplied media assets."""
+
+    table = assets
+    model = Asset
+    id_factory = new_asset_id
+
+
+class CompositionRepository(ModelRepository[CompositionReference]):
+    """Persist references to rendered compositions."""
+
+    table = compositions
+    model = CompositionReference
+    id_factory = new_composition_id
+
+
+class CostEventRepository(ModelRepository[CostEvent]):
+    """Persist the ledger of paid calls."""
+
+    table = cost_events
+    model = CostEvent
+    id_factory = new_cost_id
+
+
+class PlanRepository(ModelRepository[Plan]):
+    """Persist validated assistant plans."""
+
+    table = plans
+    model = Plan
+    id_factory = new_plan_id
+
+
+class DeliveryRepository(ModelRepository[Delivery]):
+    """Persist delivery attempts and their confirmations."""
+
+    table = deliveries
+    model = Delivery
+    id_factory = new_delivery_id
+
+
+class PostRepository(ModelRepository[Post]):
+    """Persist posts and their publication state."""
+
+    table = posts
+    model = Post
+    id_factory = new_post_id
+
+
+class TemplateRepository(TableRepository):
+    """Persist reusable plan and composition templates."""
+
+    table = templates
+    id_factory = _prefixed("template")
+
+
+class ReferenceRepository(TableRepository):
+    """Persist user supplied reference media."""
+
+    table = references
+    id_factory = _prefixed("reference")
+
+
+class StyleSpecRepository(TableRepository):
+    """Persist structured style descriptions extracted from references."""
+
+    table = style_specs
+    id_factory = _prefixed("style")
+
+
+class FeedbackRepository(TableRepository):
+    """Persist likes, dislikes and comments about a subject."""
+
+    table = feedback
+    id_factory = _prefixed("feedback")
+
+
+class RatingRepository(TableRepository):
+    """Persist the single rating a subject can carry."""
+
+    table = ratings
+    id_factory = _prefixed("rating")
+
+
+class OrderRepository(TableRepository):
+    """Persist personalized orders and their lifecycle."""
+
+    table = orders
+    id_factory = new_order_id
+
+
+class PostMetricRepository(TableRepository):
+    """Persist periodic snapshots of a published post's metrics."""
+
+    table = post_metrics
+    id_factory = _prefixed("metric")
+
+
+class WebCardHitRepository(TableRepository):
+    """Persist anonymous views of a delivered web card."""
+
+    table = web_card_hits
+    id_factory = _prefixed("hit")
+
+
+REPOSITORIES: Mapping[str, type[Repository[Any]]] = {
+    repository.table.name: repository
+    for repository in (
+        RunRepository,
+        StageRunRepository,
+        JobRepository,
+        AssetRepository,
+        CompositionRepository,
+        CostEventRepository,
+        PlanRepository,
+        TemplateRepository,
+        ReferenceRepository,
+        StyleSpecRepository,
+        FeedbackRepository,
+        RatingRepository,
+        OrderRepository,
+        DeliveryRepository,
+        PostRepository,
+        PostMetricRepository,
+        WebCardHitRepository,
+    )
+}
+"""Every repository keyed by the table it owns."""
+
+
+def repository_for(
+    table: str | Table,
+    engine: Engine,
+) -> Repository[Any]:
+    """Return the repository that owns *table*, bound to *engine*."""
+    name = table if isinstance(table, str) else table.name
+    try:
+        repository = REPOSITORIES[name]
+    except KeyError as exc:
+        raise ValueError(f"no repository for table {name!r}") from exc
+    return repository(engine)
