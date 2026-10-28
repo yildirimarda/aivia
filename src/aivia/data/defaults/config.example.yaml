@@ -132,6 +132,9 @@ llm:
   pricing: {}
   max_repairs: 2
 
+models_file:
+  path: models.yaml
+
 providers: {}
 
 circuit:

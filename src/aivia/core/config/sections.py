@@ -22,6 +22,7 @@ from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatsConfig
 from aivia.core.config.http import HttpClientConfig
 from aivia.core.config.llm import LLMConfig
+from aivia.core.config.models_file import ModelsFileConfig
 from aivia.core.config.ops import (
     JobsConfig,
     RetentionConfig,
@@ -524,6 +525,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("render", RenderConfig),
     ("budget", BudgetConfig),
     ("llm", LLMConfig),
+    ("models_file", ModelsFileConfig),
     ("providers", ProvidersConfig),
     ("circuit", CircuitBreakerConfig),
     ("ratelimit", RateLimiterConfig),

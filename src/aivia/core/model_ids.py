@@ -34,6 +34,7 @@ __all__ = [
     "configured_model_ids",
     "load_model_catalog",
     "model_catalog_path",
+    "resolve_model_catalog_path",
     "validate_configured_model_ids",
     "validate_model_ids",
     "warn_configured_model_ids",
@@ -354,23 +355,112 @@ def _entry_error(message: str, source: Path | None) -> str:
     return f"{message} in {source}" if source is not None else message
 
 
-def model_catalog_path(config_dir: str | Path | None = None) -> Path:
-    """Return the active catalog path, preferring the user's editable copy."""
+def _configured_models_file(models_file: Any) -> str | None:
+    """Extract a catalog path from a section, root config or mapping."""
+    if models_file is None:
+        return None
+    if isinstance(models_file, str):
+        path = models_file.strip()
+        return path or None
+    if isinstance(models_file, Path):
+        return str(models_file)
+    if isinstance(models_file, Mapping):
+        if "models_file" in models_file:
+            return _configured_models_file(models_file["models_file"])
+        for key in ("path", "file", "filename", "catalog", "catalog_file"):
+            if key in models_file:
+                return _configured_models_file(models_file[key])
+        return None
+    nested = getattr(models_file, "models_file", None)
+    if nested is not None and nested is not models_file:
+        return _configured_models_file(nested)
+    for name in ("path", "file", "filename", "catalog", "catalog_file"):
+        value = getattr(models_file, name, None)
+        if isinstance(value, (str, Path)):
+            path = str(value).strip()
+            return path or None
+    return None
+
+
+def resolve_model_catalog_path(
+    models_file: Any = None,
+    *,
+    config_dir: str | Path | None = None,
+) -> Path:
+    """Return the catalog path selected by a ``models_file`` section.
+
+    A relative path is resolved against the config directory, never the current
+    working directory. The default file name keeps the existing behaviour: the
+    user's editable copy wins when it exists, otherwise the packaged catalog is
+    used.
+    """
     base = paths.config_dir() if config_dir is None else Path(config_dir).expanduser()
-    candidate = base / CATALOG_FILENAME
-    if candidate.is_file():
-        return candidate
-    return paths.package_defaults_dir() / CATALOG_FILENAME
+    configured = _configured_models_file(models_file) or CATALOG_FILENAME
+    target = Path(configured).expanduser()
+    if target.is_absolute():
+        return target
+    candidate = base / target
+    if target == Path(CATALOG_FILENAME):
+        if candidate.is_file():
+            return candidate
+        return paths.package_defaults_dir() / CATALOG_FILENAME
+    return candidate
+
+
+def model_catalog_path(
+    config_dir: str | Path | Any | None = None,
+    models_file: Any = None,
+    *,
+    config: Any = None,
+) -> Path:
+    """Return the active catalog path, preferring the user's editable copy.
+
+    The first argument may also be a ``models_file`` section or a root config,
+    which makes ``model_catalog_path(config)`` read naturally.
+    """
+    if config is not None and models_file is None:
+        models_file = config
+    if config_dir is not None and not isinstance(config_dir, (str, Path)):
+        if models_file is None:
+            models_file = config_dir
+            config_dir = None
+        elif isinstance(models_file, (str, Path)):
+            config_dir, models_file = models_file, config_dir
+    elif models_file is None and isinstance(config_dir, (str, Path)):
+        candidate = Path(config_dir)
+        if candidate.name == CATALOG_FILENAME or candidate.suffix in {".yaml", ".yml"}:
+            models_file = config_dir
+            config_dir = None
+    return resolve_model_catalog_path(
+        models_file,
+        config_dir=config_dir,
+    )
 
 
 def load_model_catalog(
-    path: str | Path | None = None,
+    path: str | Path | Any | None = None,
     *,
     config_dir: str | Path | None = None,
+    models_file: Any = None,
+    config: Any = None,
 ) -> ModelCatalog:
-    """Load the catalog from *path*, the user config directory or the package."""
+    """Load the catalog from *path*, a ``models_file`` section or the default."""
+    if (
+        path is not None
+        and not isinstance(path, (str, Path))
+        and models_file is None
+        and config is None
+    ):
+        models_file = path
+        path = None
     target = (
-        Path(path).expanduser() if path is not None else model_catalog_path(config_dir)
+        model_catalog_path(
+            config_dir=config_dir,
+            models_file=models_file,
+            config=config,
+        )
+        if path is None
+        else Path(path).expanduser()
     )
     return ModelCatalog.load(target)
 
@@ -432,9 +522,14 @@ def validate_model_ids(
     config: Any,
     *,
     catalog: ModelCatalog | None = None,
+    config_dir: str | Path | None = None,
 ) -> list[ModelIdIssue]:
     """Return every unknown or deprecated model id configured in *config*."""
-    resolved = catalog if catalog is not None else load_model_catalog()
+    resolved = (
+        catalog
+        if catalog is not None
+        else load_model_catalog(models_file=config, config_dir=config_dir)
+    )
     issues: list[ModelIdIssue] = []
     for use in configured_model_ids(config):
         issue = resolved.check(use.model, path=use.path)
@@ -447,10 +542,11 @@ def warn_model_ids(
     config: Any,
     *,
     catalog: ModelCatalog | None = None,
+    config_dir: str | Path | None = None,
     stacklevel: int = 2,
 ) -> list[ModelIdIssue]:
     """Warn about every configured model id that needs attention."""
-    issues = validate_model_ids(config, catalog=catalog)
+    issues = validate_model_ids(config, catalog=catalog, config_dir=config_dir)
     for issue in issues:
         warnings.warn(issue.message, ModelIdWarning, stacklevel=stacklevel)
     return issues
