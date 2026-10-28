@@ -11,6 +11,7 @@ from aivia.core.config import CapabilityChainConfig, OnRateLimit, RateLimiterCon
 from aivia.core.errors import ConfigError, RateLimitError
 from aivia.core.models import ProviderMeta, RateLimit
 from aivia.core.ratelimit import (
+    ConcurrencyLimiter,
     ProviderRateLimiter,
     RateLimiter,
     TokenBucket,
@@ -385,3 +386,142 @@ def test_candidates_exclude_a_provider_whose_fail_fast_bucket_is_empty() -> None
     router = make_router(first, second, limiters={"first": limiter})
 
     assert [provider.name for provider in router.candidates("image_gen")] == ["second"]
+
+
+def test_a_concurrency_limiter_fails_fast_when_full() -> None:
+    gate = ConcurrencyLimiter(1, on_limit=OnRateLimit.RAISE, name="image")
+
+    async def scenario() -> None:
+        assert await gate.acquire() == 0.0
+        assert gate.active == 1
+        assert gate.available() is False
+        with pytest.raises(RateLimitError) as caught:
+            await gate.acquire()
+        assert caught.value.details["max_concurrency"] == 1
+        assert caught.value.details["provider"] == "image"
+        gate.release()
+        assert gate.active == 0
+        assert gate.available() is True
+
+    asyncio.run(scenario())
+
+
+def test_a_waiting_concurrency_limiter_queues_until_release() -> None:
+    async def scenario() -> list[int]:
+        gate = ConcurrencyLimiter(1)
+        await gate.acquire()
+        order: list[int] = []
+
+        async def waiter(index: int) -> None:
+            await gate.acquire()
+            order.append(index)
+            gate.release()
+
+        tasks = [asyncio.create_task(waiter(index)) for index in range(3)]
+        await asyncio.sleep(0)
+        assert order == []
+
+        gate.release()
+        await asyncio.gather(*tasks)
+        return order
+
+    assert asyncio.run(scenario()) == [0, 1, 2]
+
+
+def test_a_bucket_reads_max_concurrency_from_provider_metadata() -> None:
+    bucket = TokenBucket(
+        rate_limit=RateLimit(requests_per_minute=120, max_concurrency=3),
+        name="image",
+    )
+
+    assert bucket.max_concurrency == 3
+    assert bucket.concurrency.max_concurrency == 3
+    assert bucket.active == 0
+
+
+def test_execute_queues_calls_above_the_provider_concurrency_cap() -> None:
+    image = FakeProvider(
+        "image",
+        ["image_gen"],
+        RateLimit(requests_per_minute=0, max_concurrency=2),
+    )
+    router = make_router(image)
+    active = 0
+    peak = 0
+
+    async def scenario() -> None:
+        nonlocal active, peak
+        release = asyncio.Event()
+        reached = asyncio.Event()
+
+        async def operation(provider: Provider) -> str:
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            if active == 2:
+                reached.set()
+            await release.wait()
+            active -= 1
+            return f"{provider.name}:ok"
+
+        tasks = [
+            asyncio.create_task(router.execute("image_gen", operation))
+            for _ in range(5)
+        ]
+        await asyncio.wait_for(reached.wait(), timeout=5)
+        await asyncio.sleep(0)
+        assert peak == 2
+        assert active == 2
+
+        release.set()
+        assert await asyncio.gather(*tasks) == ["image:ok"] * 5
+        assert peak == 2
+        assert router.limiter_for("image").active == 0
+
+    asyncio.run(scenario())
+
+
+def test_execute_falls_back_when_the_concurrency_cap_is_full() -> None:
+    first = FakeProvider(
+        "first",
+        ["image_gen"],
+        RateLimit(requests_per_minute=0, max_concurrency=1),
+    )
+    second = FakeProvider("second", ["image_gen"], RateLimit(requests_per_minute=0))
+    limiter = TokenBucket(
+        rate_limit=first.metadata.rate_limit,
+        name="first",
+        on_limit=OnRateLimit.RAISE,
+    )
+    router = make_router(first, second, limiters={"first": limiter})
+    calls: list[str] = []
+
+    async def scenario() -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def first_operation(provider: Provider) -> str:
+            calls.append(provider.name)
+            entered.set()
+            await release.wait()
+            return f"{provider.name}:ok"
+
+        async def second_operation(provider: Provider) -> str:
+            calls.append(provider.name)
+            return f"{provider.name}:ok"
+
+        task = asyncio.create_task(router.execute("image_gen", first_operation))
+        await entered.wait()
+        assert [provider.name for provider in router.candidates("image_gen")] == [
+            "second"
+        ]
+
+        result = await router.execute("image_gen", second_operation)
+        assert result == "second:ok"
+
+        release.set()
+        assert await task == "first:ok"
+
+    asyncio.run(scenario())
+
+    assert calls == ["first", "second"]
