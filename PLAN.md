@@ -156,7 +156,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a costs summary command with grouping options and date filters (tests/cli/test_costs_summary.py)
 - [x] Add CSV and JSON cost export whose totals match the summary (tests/cli/test_costs_export.py)
 - [x] Write a sidecar cost file next to every output containing totals, items, providers, models, pricing version and toolchain fingerprint (tests/core/test_sidecar.py)
-- [ ] Support actual amounts reported by providers and flag drift above a threshold against the estimate (tests/core/test_reconcile.py)
+- [x] Support actual amounts reported by providers and flag drift above a threshold against the estimate (tests/core/test_reconcile.py)
 - [ ] Emit budget alerts once per threshold per period and provide a console notifier any module can fall back on (tests/core/test_budget_alerts.py)
 - [ ] Generate a static HTML dashboard showing spend per day, run and provider plus budget bars (tests/cli/test_dashboard.py)
 - [ ] Add a resume command that continues a paused budget run after explicit confirmation and records who and why (tests/cli/test_resume.py)
