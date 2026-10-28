@@ -19,6 +19,7 @@ from typing import Any, ClassVar, Self, cast
 from pydantic import Field, create_model
 
 from aivia.core.config.base import ConfigModel
+from aivia.core.config.errors import enrich_config_error
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.sections import register_core_sections
 from aivia.core.errors import ConfigError
@@ -54,11 +55,14 @@ class RootConfig(ConfigModel):
         if not isinstance(values, Mapping):
             raise ConfigError("config root must be a mapping")
         target = cls._sections
-        if target is not None:
-            _reject_unknown_sections(values, target)
-        parsed = super().from_mapping(values, environ=environ, context=context)
-        validate_cross_references(parsed, sections=target)
-        return parsed
+        try:
+            if target is not None:
+                _reject_unknown_sections(values, target)
+            parsed = super().from_mapping(values, environ=environ, context=context)
+            validate_cross_references(parsed, sections=target)
+            return parsed
+        except ConfigError as error:
+            raise enrich_config_error(error, context=context) from error
 
     @classmethod
     def parse(

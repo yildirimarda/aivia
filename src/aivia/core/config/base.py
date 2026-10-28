@@ -25,6 +25,11 @@ from pydantic import (
     model_validator,
 )
 
+from aivia.core.config.errors import (
+    describe_validation_issue,
+    enrich_config_error,
+    source_for_path,
+)
 from aivia.core.errors import ConfigError
 
 __all__ = [
@@ -131,21 +136,23 @@ def interpolate_env(
     return value
 
 
-def _validation_error(error: ValidationError) -> ConfigError:
+def _validation_error(
+    error: ValidationError,
+    *,
+    context: Mapping[str, Any] | None = None,
+) -> ConfigError:
     messages: list[str] = []
-    details: list[dict[str, str]] = []
+    details: list[dict[str, Any]] = []
     for issue in error.errors():
         path = dotted_path(issue.get("loc", ()))
-        kind = issue.get("type", "")
-        if kind == "extra_forbidden":
-            message = f"unknown config key: {path}"
-        elif kind == "missing":
-            message = f"missing required config key: {path}"
-        else:
-            reason = issue.get("msg", "invalid value")
-            message = f"invalid value for {path}: {reason}" if path else reason
+        source = source_for_path(path, context)
+        message, detail = describe_validation_issue(
+            issue,
+            path=path,
+            source=source,
+        )
         messages.append(message)
-        details.append({"path": path, "type": kind, "message": message})
+        details.append(detail)
     return ConfigError("; ".join(messages), details={"errors": details})
 
 
@@ -202,7 +209,9 @@ class ConfigModel(BaseModel):
                 context=merged_context,
             )
         except ValidationError as error:
-            raise _validation_error(error) from error
+            raise _validation_error(error, context=merged_context) from error
+        except ConfigError as error:
+            raise enrich_config_error(error, context=merged_context) from error
 
     @classmethod
     def from_dict(
