@@ -64,7 +64,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add reference config with similarity level, visual and text thresholds, regeneration limit and download policy (tests/core/config/test_reference.py)
 - [x] Add character and brand kit config with the consistency strategy order, QA thresholds, consent flags and branding fields (tests/core/config/test_character.py)
 - [x] Add schedule, publish and presets config validating cron fields, existing profiles and credential references (tests/core/config/test_schedule.py)
-- [ ] Assemble the root config model with cross checks such as platform accounts existing in the platform data (tests/core/config/test_app.py)
+- [x] Assemble the root config model with cross checks such as platform accounts existing in the platform data (tests/core/config/test_app.py)
 - [ ] Implement layered resolution from packaged defaults through user config, environment file, profile overrides and CLI set flags with documented precedence (tests/core/config/test_resolve.py)
 - [ ] Add a config validate command printing every error with its key path and a failing exit code (tests/cli/test_config_validate.py)
 - [ ] Export a JSON schema from the registered sections deterministically and fail CI when it is stale (tests/cli/test_config_schema.py)
@@ -75,6 +75,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Audit masking so resolved config, run snapshots and sidecars never contain secrets and prompt content obeys the redact setting (tests/core/config/test_masking.py)
 - [ ] Add config schema versioning and a migrate command that upgrades older user configs, prints a diff and preserves unknown but valid keys (tests/cli/test_config_migrate.py)
 - [ ] Add optional per provider weights to capability chains and reject weighted_ab chains missing them (tests/core/config/test_capability.py)
+- [ ] Cross-check profile and schedule language names against the configured languages at the root (tests/core/config/test_app.py)
 
 ## Milestone 3: Models, repositories and database
 

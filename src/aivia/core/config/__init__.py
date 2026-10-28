@@ -1,5 +1,13 @@
 """Validated configuration models, environment interpolation and section registry."""
 
+from aivia.core.config.app import (
+    AppConfig,
+    RootConfig,
+    assemble_root_config,
+    build_app_config,
+    parse_app_config,
+    validate_cross_references,
+)
 from aivia.core.config.base import ConfigModel, dotted_path, interpolate_env
 from aivia.core.config.budget import (
     BudgetConfig,
@@ -212,6 +220,7 @@ __all__ = [
     "CORE_SECTION_KEYS",
     "AccessibilityConfig",
     "ApiConfig",
+    "AppConfig",
     "ApprovalMode",
     "BrandConfig",
     "BrandKit",
@@ -338,6 +347,7 @@ __all__ = [
     "ReviewConfig",
     "Role",
     "RoleRegistry",
+    "RootConfig",
     "SafetyConfig",
     "ScheduleConfig",
     "ScheduleConfigEntry",
@@ -371,6 +381,8 @@ __all__ = [
     "VideoSpecConfig",
     "WebhookDeliveryConfig",
     "WordsPerSecondConfig",
+    "assemble_root_config",
+    "build_app_config",
     "credential_names",
     "deep_merge",
     "dotted_path",
@@ -378,6 +390,7 @@ __all__ = [
     "is_valid_cron",
     "llm_role_registry",
     "merge_video_specs",
+    "parse_app_config",
     "parse_resolution",
     "profile_names",
     "register_core_sections",
@@ -391,5 +404,6 @@ __all__ = [
     "role_registry",
     "roles",
     "validate_cron",
+    "validate_cross_references",
     "validate_role",
 ]
