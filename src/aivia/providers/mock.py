@@ -32,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
 
+from aivia.core.config.http import HttpClientConfig
 from aivia.core.errors import InvalidRequestError, PermanentError
 from aivia.core.models.provider import ProviderMeta, ProviderPrice, RateLimit
 from aivia.providers.base import Provider
@@ -362,6 +363,7 @@ class _MockProviderBase(Provider):
         seed: int = 0,
         ffmpeg: str = "ffmpeg",
         ffmpeg_runner: Callable[[Sequence[str]], bytes] | None = None,
+        http_config: HttpClientConfig | None = None,
     ) -> None:
         if metadata is None:
             prices = dict(self.prices)
@@ -372,7 +374,7 @@ class _MockProviderBase(Provider):
                 self.capabilities,
                 prices,
             )
-        super().__init__(metadata, name=name)
+        super().__init__(metadata, name=name, http_config=http_config)
         self._error = error
         self._failures: deque[BaseException | type[BaseException] | None] = deque(
             failures or ()

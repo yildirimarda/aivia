@@ -19,6 +19,7 @@ This reference is generated from the registered configuration models, their JSON
 | `database` | [DatabaseConfig](#database) or null | The SQLite file inside the user data directory and its busy timeout. ``filename`` is a bare file name; the directory is always the user data directory so a config file cannot point the database at another location. ``busy_timeout_ms`` is how long SQLite waits for a lock before raising ``database is locked``. |
 | `delivery` | [DeliveryConfig](#delivery) or null | Delivery providers, the fallback chain and shared retry settings. Providers may be nested under ``providers`` or written directly as ``folder``, ``link``, ``email`` and ``webhook`` keys. The ``chain`` lists provider names in fallback order and every entry must name a provider. |
 | `formats` | [FormatsConfig](#formats) or null | Named format recipes. Recipes may be written directly under the section (``formats: {narrated_still: {...}}``) or nested under ``formats`` (or ``recipes``); every form validates to the same mapping. |
+| `http` | [HttpClientConfig](#http) or null | Retry, backoff and timeout policy for :class:`~aivia.core.http.HttpClient`. |
 | `jobs` | [JobsConfig](#jobs) or null | Worker concurrency, retry and heartbeat settings for the job queue. |
 | `languages` | [LanguagesConfig](#languages) or null | The available languages plus the one used when none is requested. A config file may write the language entries directly under the section (``languages: {en: {...}, de: {...}}``) or nest them under ``languages``; both forms validate to the same model. |
 | `llm` | [LLMConfig](#llm) or null | Provider chain, per-role models, token prices and the repair limit. |
@@ -156,6 +157,25 @@ Named format recipes. Recipes may be written directly under the section (``forma
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
 | `formats` | map of [FormatRecipeConfig](#formatrecipeconfig) |  |  |  |
+
+## `http`
+
+Retry, backoff and timeout policy for :class:`~aivia.core.http.HttpClient`.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `backoff_base_seconds` | number | `0.5` | >= 0 |  |
+| `backoff_max_seconds` | number | `30.0` | >= 0 |  |
+| `connect_timeout_seconds` | number or null | `null` | > 0 |  |
+| `follow_redirects` | boolean | `true` |  |  |
+| `jitter_ratio` | number | `0.5` | >= 0; <= 1 |  |
+| `max_attempts` | integer | `3` | >= 1 |  |
+| `pool_timeout_seconds` | number or null | `null` | > 0 |  |
+| `read_timeout_seconds` | number or null | `null` | > 0 |  |
+| `respect_retry_after` | boolean | `true` |  |  |
+| `retry_statuses` | array of integer | `[408, 425, 429, 500, 502, 503, 504]` |  |  |
+| `timeout_seconds` | number | `30.0` | > 0 |  |
+| `write_timeout_seconds` | number or null | `null` | > 0 |  |
 
 ## `jobs`
 
