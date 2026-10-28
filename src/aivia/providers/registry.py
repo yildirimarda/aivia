@@ -206,6 +206,7 @@ class ProviderRegistry:
             ) from exc
         self._loaded[validated_path] = provider
         return provider
+
     def resolve(self, name: str) -> type[Provider]:
         """Return the class for a registered *name* or a dotted path."""
         validated_name = _validate_name(name)

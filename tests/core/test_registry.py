@@ -43,6 +43,7 @@ def custom_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     monkeypatch.setitem(sys.modules, module.__name__, module)
     return module
 
+
 def test_registered_providers_are_listed_in_sorted_order() -> None:
     providers = ProviderRegistry()
     providers.register("zulu", AlphaProvider)
@@ -219,10 +220,7 @@ def test_a_missing_module_fails_with_the_path() -> None:
         providers.load(path)
 
     assert caught.value.details["type"] == path
-    assert (
-        caught.value.details["module"]
-        == "definitely_missing_aivia_provider_module"
-    )
+    assert caught.value.details["module"] == "definitely_missing_aivia_provider_module"
 
 
 def test_a_missing_attribute_fails_with_the_module_and_attribute(
