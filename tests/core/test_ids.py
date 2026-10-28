@@ -14,6 +14,7 @@ from aivia.core.ids import (
     encode_ulid,
     is_ulid,
     new_asset_id,
+    new_cost_id,
     new_id,
     new_job_id,
     new_order_id,
@@ -91,7 +92,7 @@ def test_ulids_stay_sortable_when_the_clock_moves_backwards(
 
 
 def test_id_prefixes_cover_the_record_kinds() -> None:
-    assert ID_PREFIXES == ("run", "job", "asset", "order")
+    assert ID_PREFIXES == ("run", "job", "asset", "order", "cost")
     assert {kind.value for kind in IdKind} == set(ID_PREFIXES)
 
 
@@ -102,6 +103,7 @@ def test_id_prefixes_cover_the_record_kinds() -> None:
         ("job", new_job_id),
         ("asset", new_asset_id),
         ("order", new_order_id),
+        ("cost", new_cost_id),
     ],
 )
 def test_prefixed_ids_carry_the_kind_and_a_valid_ulid(

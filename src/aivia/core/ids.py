@@ -22,6 +22,7 @@ __all__ = [
     "encode_ulid",
     "is_ulid",
     "new_asset_id",
+    "new_cost_id",
     "new_id",
     "new_job_id",
     "new_order_id",
@@ -43,6 +44,7 @@ class IdKind(StrEnum):
     JOB = "job"
     ASSET = "asset"
     ORDER = "order"
+    COST = "cost"
 
 
 ID_PREFIXES: tuple[str, ...] = tuple(kind.value for kind in IdKind)
@@ -136,3 +138,8 @@ def new_asset_id() -> str:
 def new_order_id() -> str:
     """Return a new order identifier."""
     return new_id(IdKind.ORDER)
+
+
+def new_cost_id() -> str:
+    """Return a new cost event identifier."""
+    return new_id(IdKind.COST)
