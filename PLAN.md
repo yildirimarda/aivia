@@ -120,7 +120,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement fallback on retryable, timeout and rate limit errors while surfacing permanent and auth errors and raising provider exhausted (tests/core/test_router.py)
 - [x] Make provider selection budget aware, skipping providers whose estimate exceeds the remaining budget (tests/core/test_router.py)
 - [x] Add a per provider circuit breaker that opens, cools down and half opens, with the router skipping open providers (tests/core/test_circuit.py)
-- [ ] Add a token bucket rate limiter per provider that waits or raises a rate limited error under concurrency (tests/core/test_ratelimit.py)
+- [x] Add a token bucket rate limiter per provider that waits or raises a rate limited error under concurrency (tests/core/test_ratelimit.py)
 - [ ] Add a shared async HTTP client with backoff, jitter, timeouts, redacted header logging and an injectable transport (tests/core/test_http.py)
 - [ ] Implement deterministic mock providers for every capability, including lavfi generated video and sized audio, with simulated cost and failures (tests/contracts)
 - [ ] Add providers list and providers check commands, the latter requiring live mode and a budget cap (tests/cli/test_providers.py)
