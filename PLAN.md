@@ -128,7 +128,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Validate configured model ids against models.yaml, warning on unknown ids with a closest match and on deprecated ids with a replacement (tests/core/test_model_ids.py)
 - [x] Add a timeout to provider health checks so an unresponsive adapter cannot block a status command (tests/contracts/test_provider_base.py)
 - [x] Add a providers config section mapping names to type, options and secret references for router chains (tests/core/config/test_providers.py)
-- [ ] Warn or refuse when budget-aware selection cannot estimate an unpriced provider (tests/core/test_router.py)
+- [x] Warn or refuse when budget-aware selection cannot estimate an unpriced provider (tests/core/test_router.py)
 - [ ] Register a circuit breaker config section and pass its threshold and cooldown into router construction (tests/core/config/test_circuit.py)
 - [ ] Register a rate limiter config section and pass its on-limit behaviour into router construction (tests/core/config/test_ratelimit.py)
 - [ ] Enforce provider max concurrency in the router alongside the token bucket so parallel calls queue or fail (tests/core/test_ratelimit.py)
