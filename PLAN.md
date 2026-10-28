@@ -100,7 +100,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add an upgrade path test proving a database from the previous schema version upgrades with runs, orders, costs and assets intact (tests/core/db/test_upgrade_path.py)
 - [x] Add a database config section for the file name and busy timeout and build the engine from it (tests/core/config/test_database.py)
 - [x] Add a concurrency test with two writers proving WAL and the busy timeout avoid database is locked (slow, tests/core/db/test_concurrency.py)
-- [ ] Add a test that every tables module registers its tables on the shared metadata so new models are never missed (tests/core/db/test_tables_registered.py)
+- [x] Add a test that every tables module registers its tables on the shared metadata so new models are never missed (tests/core/db/test_tables_registered.py)
+- [ ] Add a test that the migrations environment imports every tables module so autogenerate sees new models (tests/core/db/test_migrations_env_imports.py)
 
 ## Milestone 4: Providers, registry, router and mocks
 
