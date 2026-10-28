@@ -164,6 +164,58 @@ def test_health_rejects_a_non_health_result() -> None:
         asyncio.run(WrongProvider().health())
 
 
+def test_health_times_out_an_unresponsive_adapter() -> None:
+    class HangingProvider(Provider):
+        health_timeout_seconds = 0.01
+
+        async def check_health(self) -> ProviderHealth:
+            await asyncio.sleep(10)
+            return ProviderHealth(status=HealthStatus.HEALTHY)
+
+    async def probe() -> ProviderHealth:
+        return await asyncio.wait_for(HangingProvider().health(), timeout=1.0)
+
+    report = asyncio.run(probe())
+
+    assert report.status is HealthStatus.UNHEALTHY
+    assert report.healthy is False
+    assert "timed out" in report.message
+    assert "0.01" in report.message
+    assert report.details == {"error": "TimeoutError"}
+    assert report.latency_ms is not None
+    assert report.latency_ms >= 0.0
+
+
+def test_health_timeout_can_be_set_for_one_instance() -> None:
+    class HangingProvider(Provider):
+        async def check_health(self) -> ProviderHealth:
+            await asyncio.sleep(10)
+            return ProviderHealth(status=HealthStatus.HEALTHY)
+
+    provider = HangingProvider(health_timeout_seconds=0.01)
+
+    async def probe() -> ProviderHealth:
+        return await asyncio.wait_for(provider.health(), timeout=1.0)
+
+    report = asyncio.run(probe())
+
+    assert provider.health_timeout_seconds == 0.01
+    assert report.status is HealthStatus.UNHEALTHY
+    assert report.details == {"error": "TimeoutError"}
+    assert provider.closed is False
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan")])
+def test_health_timeout_must_be_positive_and_finite(timeout: float) -> None:
+    with pytest.raises(ValueError, match="health_timeout_seconds"):
+        Provider(health_timeout_seconds=timeout)
+
+
+def test_health_timeout_must_be_a_number() -> None:
+    with pytest.raises(TypeError, match="health_timeout_seconds"):
+        Provider(health_timeout_seconds=cast(Any, "5"))
+
+
 def test_close_runs_the_hook_once_and_marks_the_provider_closed() -> None:
     provider = DummyProvider()
 
