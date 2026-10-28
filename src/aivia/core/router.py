@@ -236,17 +236,24 @@ def _resolve_price(
     requested *unit_kind* into the price's own unit, so selection and budget
     checks cannot drift apart. A missing price is reported as ``None``; the
     resolver's own warning is suppressed because the router has a dedicated
-    :class:`UnpricedProviderWarning` for its callers.
+    :class:`UnpricedProviderWarning` for its callers. A price unit that cannot
+    be converted into the requested unit is also reported as ``None``, so one
+    incompatible provider cannot abort the rest of the chain.
     """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", MissingPriceWarning)
-        resolved = resolver.resolve(
-            provider,
-            capability,
-            units,
-            unit_kind=unit_kind,
-            provider_name=name,
-        )
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", MissingPriceWarning)
+            resolved = resolver.resolve(
+                provider,
+                capability,
+                units,
+                unit_kind=unit_kind,
+                provider_name=name,
+            )
+    except ConfigError as exc:
+        if "from_unit" in exc.details and "to_unit" in exc.details:
+            return None
+        raise
     return None if resolved.missing else resolved
 
 

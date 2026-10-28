@@ -170,6 +170,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Exclude replaced estimates from sidecar totals and item counts (tests/core/test_sidecar.py)
 - [ ] Exclude replaced estimates from per asset cost report totals (tests/cli/test_costs_run.py)
 - [ ] Serialize budget alert state writes so parallel workers cannot lose emitted keys (tests/core/test_budget_alerts.py)
+- [ ] Treat an incompatible price unit as a missing estimate instead of aborting pre-run estimation (tests/core/test_estimate.py)
 
 ## Milestone 6: Execution core, storage and API
 
