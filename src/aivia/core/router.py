@@ -19,27 +19,38 @@ through the available providers per capability and is inherently
 deterministic. ``weighted_ab`` draws from the configured per-provider weights;
 a seed makes the draw reproducible, and the selected weight is recorded on the
 selection.
+
+:meth:`Router.execute` runs an operation against the selected provider and
+falls back to the next candidate when the provider reports a retryable,
+timeout or rate limit error. Permanent errors, including authentication and
+budget failures, are surfaced immediately because another provider cannot fix
+them. When every candidate fails with a retryable error the router raises
+:class:`~aivia.core.errors.ProviderExhaustedError` describing each attempt.
 """
 
 from __future__ import annotations
 
 import random
 import warnings
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 from aivia.core.config.capability import CapabilityChainConfig, CapabilityStrategy
-from aivia.core.errors import ConfigError, ProviderExhaustedError
+from aivia.core.errors import AiviaError, ConfigError, ProviderExhaustedError
 from aivia.providers.base import Provider
 
 __all__ = [
     "MissingQualityRankWarning",
     "ProviderRouter",
+    "RouteAttempt",
     "RouteSelection",
     "RouteSkip",
     "Router",
     "RouterSelection",
 ]
+
+T = TypeVar("T")
 
 
 class MissingQualityRankWarning(UserWarning):
@@ -67,6 +78,30 @@ class RouteSkip:
         if self.missing:
             payload["missing"] = list(self.missing)
         return payload
+
+
+@dataclass(frozen=True, slots=True)
+class RouteAttempt:
+    """One provider that ran the operation and failed with a retryable error.
+
+    ``error`` is the stable :class:`~aivia.core.errors.AiviaError` code and
+    ``error_type`` is the concrete exception name, so a report can explain why
+    the router moved on without exposing a provider response body.
+    """
+
+    provider: str
+    error: str
+    error_type: str
+    message: str
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable representation for logs and errors."""
+        return {
+            "provider": self.provider,
+            "error": self.error,
+            "error_type": self.error_type,
+            "message": self.message,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,10 +523,17 @@ class Router:
         required: Iterable[str] | str | None = None,
         strategy: CapabilityStrategy | str | None = None,
         seed: int | None = None,
+        exclude: Iterable[str] | None = None,
     ) -> RouteSelection:
-        """Select a provider and return the full selection record."""
+        """Select a provider and return the full selection record.
+
+        ``exclude`` names providers that must not be selected, which is how
+        :meth:`execute` moves on after a retryable failure. Excluded providers
+        are reported as skipped with the ``excluded`` reason.
+        """
         names = _coerce_required(capability, required)
         target = names[0]
+        excluded = frozenset(exclude or ())
         configured = self.config_for(target)
         chosen_strategy = (
             configured.strategy if strategy is None else _coerce_strategy(strategy)
@@ -518,6 +560,9 @@ class Router:
         if chosen_strategy is CapabilityStrategy.FIRST_AVAILABLE:
             for name in chain:
                 provider = self._providers[name]
+                if name in excluded:
+                    skipped.append(RouteSkip(provider=name, reason="excluded"))
+                    continue
                 rejection = _rejection(name, provider, names)
                 if rejection is not None:
                     skipped.append(rejection)
@@ -538,6 +583,9 @@ class Router:
         available: list[tuple[str, Provider]] = []
         for name in chain:
             provider = self._providers[name]
+            if name in excluded:
+                skipped.append(RouteSkip(provider=name, reason="excluded"))
+                continue
             rejection = _rejection(name, provider, names)
             if rejection is not None:
                 skipped.append(rejection)
@@ -598,6 +646,76 @@ class Router:
         )
         self._last_selection = selection
         return selection
+
+    async def execute(
+        self,
+        capability: str,
+        operation: Callable[[Provider], Awaitable[T]],
+        *,
+        required: Iterable[str] | str | None = None,
+        strategy: CapabilityStrategy | str | None = None,
+        seed: int | None = None,
+    ) -> T:
+        """Run *operation* with fallback across the capability chain.
+
+        The router selects a provider with the configured strategy, calls
+        ``operation(provider)`` and returns its result. A retryable error
+        (including timeout and rate limit failures) excludes that provider and
+        selects again, so the next candidate gets a turn. A permanent error is
+        raised immediately because retrying the same request on another
+        provider cannot fix an invalid request, bad credentials, a budget
+        refusal or a content policy rejection.
+
+        When every candidate fails with a retryable error, the router raises
+        :class:`~aivia.core.errors.ProviderExhaustedError` with the attempted
+        providers and the last error, chained as the cause. The successful
+        selection remains available through :attr:`last_selection`.
+        """
+        if not callable(operation):
+            raise TypeError("operation must be callable")
+
+        names = _coerce_required(capability, required)
+        target = names[0]
+        attempted: list[RouteAttempt] = []
+        excluded: set[str] = set()
+        last_error: AiviaError | None = None
+
+        while True:
+            try:
+                selection = self.select_with_record(
+                    capability,
+                    required=names,
+                    strategy=strategy,
+                    seed=seed,
+                    exclude=excluded,
+                )
+            except ProviderExhaustedError as exhausted:
+                if last_error is None:
+                    raise
+                details = dict(exhausted.details)
+                details["attempted"] = [entry.to_dict() for entry in attempted]
+                details["last_error"] = last_error.to_dict()
+                raise ProviderExhaustedError(
+                    f"no available provider for capability: {target} "
+                    f"after {len(attempted)} failed attempt(s)",
+                    details=details,
+                ) from last_error
+
+            try:
+                return await operation(selection.provider)
+            except AiviaError as exc:
+                if not exc.retryable:
+                    raise
+                attempted.append(
+                    RouteAttempt(
+                        provider=selection.name,
+                        error=exc.code,
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                    )
+                )
+                excluded.add(selection.name)
+                last_error = exc
 
 
 ProviderRouter = Router
