@@ -3,24 +3,32 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import Engine
 
 from aivia.core.budget import (
+    BudgetAction,
     BudgetCheck,
     BudgetChecker,
     BudgetController,
+    BudgetDecision,
     BudgetEnforcer,
     BudgetGuard,
     BudgetManager,
+    BudgetPolicy,
+    apply_budget_policy,
+    apply_on_exceed,
     check_budget,
+    decide_budget,
     enforce_budget,
     ensure_budget,
+    resolve_budget,
     would_exceed_budget,
 )
-from aivia.core.config import BudgetConfig
+from aivia.core.config import BudgetConfig, OnExceed
 from aivia.core.cost import CostTracker
 from aivia.core.db import (
     CostEventRepository,
@@ -28,6 +36,7 @@ from aivia.core.db import (
     upgrade_database,
 )
 from aivia.core.errors import BudgetError, ConfigError
+from aivia.core.models.run import Run, RunState
 
 
 @pytest.fixture
@@ -272,3 +281,223 @@ def test_a_guard_can_be_reused_across_runs(tracker: CostTracker) -> None:
         guard.check(0.10, run_id="run_1")
     assert guard.check(0.10, run_id="run_2").allowed is True
     assert guard.check(0.05, run_id="run_1").allowed is True
+
+
+def test_a_call_inside_the_cap_proceeds_without_a_notification(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(BudgetConfig(per_call=0.10), tracker)
+
+    decision = guard.decide(0.10, run_id="run_1", provider="acme")
+
+    assert decision.action is BudgetAction.PROCEED
+    assert decision.allowed is True
+    assert decision.blocked is False
+    assert decision.exceeded is False
+    assert decision.provider == "acme"
+    assert decision.notifications == ()
+    assert decision.behaviour is None
+    assert decision.message == "call is within budget"
+
+
+def test_downgrade_picks_the_cheapest_affordable_cheaper_provider(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(
+        BudgetConfig(per_call=0.10, on_exceed=OnExceed.DOWNGRADE),
+        tracker,
+    )
+
+    decision = guard.decide(
+        0.20,
+        run_id="run_1",
+        provider="pricey",
+        candidates={
+            "pricey": 0.20,
+            "mid": 0.08,
+            "cheap": 0.04,
+            "unaffordable": 0.50,
+        },
+    )
+
+    assert decision.action is BudgetAction.DOWNGRADE
+    assert decision.downgraded is True
+    assert decision.allowed is True
+    assert decision.blocked is False
+    assert decision.behaviour is OnExceed.DOWNGRADE
+    assert decision.provider == "cheap"
+    assert decision.previous_provider == "pricey"
+    assert decision.estimate_usd == pytest.approx(0.04)
+    assert decision.check.amount_usd == pytest.approx(0.20)
+    assert decision.check.scope == "per_call"
+    assert "downgraded from pricey to cheap" in decision.message
+
+
+def test_downgrade_respects_the_remaining_run_budget(tracker: CostTracker) -> None:
+    _record(tracker, run_id="run_1", amount_usd=0.45)
+    guard = BudgetGuard(
+        BudgetConfig(per_run=0.50, on_exceed=OnExceed.DOWNGRADE),
+        tracker,
+    )
+
+    decision = guard.decide(
+        0.10,
+        run_id="run_1",
+        provider="pricey",
+        candidates={"pricey": 0.10, "almost": 0.09, "fits": 0.05},
+    )
+
+    assert decision.downgraded is True
+    assert decision.provider == "fits"
+    assert decision.estimate_usd == pytest.approx(0.05)
+    assert decision.check.remaining_usd == pytest.approx(0.05)
+
+
+def test_downgrade_without_an_affordable_provider_pauses_the_run(
+    tracker: CostTracker,
+) -> None:
+    _record(tracker, run_id="run_1", amount_usd=0.45)
+    run = Run(state=RunState.RUNNING)
+    guard = BudgetGuard(
+        BudgetConfig(per_run=0.50, on_exceed=OnExceed.DOWNGRADE),
+        tracker,
+    )
+
+    decision = guard.decide(
+        0.10,
+        run_id="run_1",
+        provider="pricey",
+        candidates={"pricey": 0.10, "almost": 0.09, "close": 0.08},
+        run=run,
+    )
+
+    assert decision.action is BudgetAction.PAUSE
+    assert decision.blocked is True
+    assert decision.provider == ""
+    assert decision.previous_provider == "pricey"
+    assert decision.run_state is RunState.PAUSED_BUDGET
+    assert decision.paused_run is not None
+    assert decision.paused_run is not run
+    assert "no cheaper provider" in decision.message
+
+
+def test_pause_moves_the_run_to_paused_budget_with_a_reason(
+    tracker: CostTracker,
+) -> None:
+    run = Run(state=RunState.RUNNING)
+    now = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
+    guard = BudgetGuard(BudgetConfig(per_call=0.10), tracker)
+
+    decision = guard.decide(
+        0.20,
+        run_id=run.id,
+        provider="acme",
+        run=run,
+        now=now,
+    )
+
+    assert decision.action is BudgetAction.PAUSE
+    assert decision.paused is True
+    assert decision.allowed is False
+    assert decision.behaviour is OnExceed.PAUSE
+    assert decision.run_state is RunState.PAUSED_BUDGET
+    assert decision.run is not None
+    assert decision.run.is_budget_paused is True
+    assert decision.run.paused_at == now
+    assert decision.run.updated_at == now
+    assert decision.run.pause_reason.startswith("budget:")
+    assert "per-call cap" in decision.run.pause_reason
+    assert run.state is RunState.RUNNING
+    assert run.paused_at is None
+
+
+def test_pause_without_a_run_still_reports_the_paused_state(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(BudgetConfig(per_call=0.10), tracker)
+
+    decision = guard.decide(0.20, provider="acme")
+
+    assert decision.paused is True
+    assert decision.run is None
+    assert decision.run_state is RunState.PAUSED_BUDGET
+    assert decision.paused_run is None
+
+
+def test_notify_only_allows_the_call_and_returns_a_notification(
+    tracker: CostTracker,
+) -> None:
+    run = Run(state=RunState.RUNNING)
+    guard = BudgetGuard(
+        BudgetConfig(per_call=0.10, on_exceed=OnExceed.NOTIFY),
+        tracker,
+    )
+
+    decision = guard.decide(0.20, run_id="run_1", provider="acme", run=run)
+
+    assert decision.action is BudgetAction.NOTIFY
+    assert decision.notified is True
+    assert decision.notify is True
+    assert decision.allowed is True
+    assert decision.blocked is False
+    assert decision.behaviour is OnExceed.NOTIFY
+    assert len(decision.notifications) == 1
+    assert decision.alerts == decision.notifications
+    assert "notifying and continuing" in decision.notifications[0]
+    assert decision.run_state is RunState.RUNNING
+    assert decision.run is run
+
+
+def test_a_precomputed_check_can_be_passed_to_the_policy(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(
+        BudgetConfig(per_call=0.10, on_exceed=OnExceed.DOWNGRADE),
+        tracker,
+    )
+    check = guard.evaluate(0.20, run_id="run_1", provider="pricey")
+
+    decision = guard.decide(check=check, candidates={"cheap": 0.05})
+
+    assert isinstance(check, BudgetCheck)
+    assert decision.check is check
+    assert decision.provider == "cheap"
+    assert decision.action is BudgetAction.DOWNGRADE
+
+
+def test_the_policy_rejects_bad_candidates(tracker: CostTracker) -> None:
+    guard = BudgetGuard(
+        BudgetConfig(per_call=0.10, on_exceed=OnExceed.DOWNGRADE),
+        tracker,
+    )
+
+    with pytest.raises(ConfigError):
+        guard.decide(0.20, candidates={"cheap": -0.01})
+    with pytest.raises(ConfigError):
+        guard.decide(0.20, candidates={"": 0.01})
+    with pytest.raises(ConfigError):
+        guard.decide(0.20, candidates=cast(Any, [("cheap", 0.01, 0.02)]))
+
+
+def test_policy_aliases_and_module_helpers(tracker: CostTracker) -> None:
+    assert BudgetPolicy is BudgetGuard
+    config = BudgetConfig(per_call=0.10, on_exceed=OnExceed.NOTIFY)
+    guard = BudgetGuard(config, tracker)
+
+    assert guard.resolve(0.20).action is BudgetAction.NOTIFY
+    assert guard.on_exceed(0.20).action is BudgetAction.NOTIFY
+    assert guard.handle_exceed(0.20).action is BudgetAction.NOTIFY
+    assert guard.handle_exceeded(0.20).action is BudgetAction.NOTIFY
+    assert guard.apply_on_exceed(0.20).action is BudgetAction.NOTIFY
+    assert guard.apply_exceed(0.20).action is BudgetAction.NOTIFY
+    assert guard.apply_policy(0.20).action is BudgetAction.NOTIFY
+    for decide in (
+        decide_budget,
+        resolve_budget,
+        apply_budget_policy,
+        apply_on_exceed,
+    ):
+        decision = decide(0.20, config=config, tracker=tracker)
+        assert isinstance(decision, BudgetDecision)
+        assert decision.action is BudgetAction.NOTIFY
+    assert guard.decide(0.20).to_dict()["action"] == "notify"

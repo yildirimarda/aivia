@@ -7,6 +7,12 @@ compares that estimate with the configured per-call and per-run caps and raises
 The check runs before the provider is contacted, so an over-budget call never
 spends money.
 
+:meth:`BudgetGuard.decide` applies the configured ``on_exceed`` behaviour to an
+exceeded check. ``downgrade`` picks the cheapest affordable candidate provider,
+``pause`` moves the run to ``paused_budget`` and ``notify`` lets the call
+proceed while returning a notification. A downgrade with no affordable
+candidate falls back to pausing so no paid call can bypass the cap.
+
 A cap of ``0`` means the cap is not configured and never blocks a call. The
 guard reads spend from the cost ledger through
 :class:`~aivia.core.cost.CostTracker`; it never writes a cost event, resolves a
@@ -16,29 +22,42 @@ price or calls a provider. The media service composes those responsibilities.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import Engine
 
-from aivia.core.config.budget import BudgetConfig
+from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.cost import CostTracker
 from aivia.core.db.repos import CostEventRepository
 from aivia.core.errors import BudgetError, ConfigError
+from aivia.core.models.base import utcnow
+from aivia.core.models.run import Run, RunState
 
 __all__ = [
+    "BudgetAction",
     "BudgetCheck",
     "BudgetChecker",
     "BudgetController",
+    "BudgetDecision",
     "BudgetEnforcer",
     "BudgetGuard",
     "BudgetManager",
+    "BudgetOutcome",
+    "BudgetPolicy",
+    "BudgetResolution",
     "BudgetResult",
     "BudgetStatus",
+    "apply_budget_policy",
+    "apply_on_exceed",
     "check_budget",
+    "decide_budget",
     "enforce_budget",
     "ensure_budget",
+    "resolve_budget",
     "would_exceed_budget",
 ]
 
@@ -193,6 +212,191 @@ BudgetResult = BudgetCheck
 BudgetStatus = BudgetCheck
 
 
+class BudgetAction(StrEnum):
+    """What a caller should do after a budget check.
+
+    ``PROCEED`` and ``NOTIFY`` allow the call, ``DOWNGRADE`` allows it on a
+    cheaper provider and ``PAUSE`` stops the run until a human resumes it.
+    """
+
+    PROCEED = "proceed"
+    DOWNGRADE = "downgrade"
+    PAUSE = "pause"
+    NOTIFY = "notify"
+
+
+@dataclass(frozen=True, slots=True)
+class BudgetDecision:
+    """The configured ``on_exceed`` behaviour applied to one budget check.
+
+    ``allowed`` tells the caller whether it may make the paid call. A
+    downgrade names the cheaper ``provider``; a pause carries the updated
+    ``run`` in ``paused_budget`` state; a notification is available through
+    ``notifications`` and never blocks the call.
+    """
+
+    check: BudgetCheck
+    action: BudgetAction = BudgetAction.PROCEED
+    behaviour: OnExceed | None = None
+    provider: str = ""
+    previous_provider: str = ""
+    estimate_usd: float | None = None
+    run: Run | None = None
+    notifications: tuple[str, ...] = ()
+    message: str = ""
+
+    @property
+    def exceeded(self) -> bool:
+        """Whether the underlying check exceeded a cap."""
+        return self.check.exceeded
+
+    @property
+    def allowed(self) -> bool:
+        """Whether the paid call may proceed."""
+        return self.action in {
+            BudgetAction.PROCEED,
+            BudgetAction.DOWNGRADE,
+            BudgetAction.NOTIFY,
+        }
+
+    @property
+    def blocked(self) -> bool:
+        """Whether the call must not proceed."""
+        return not self.allowed
+
+    @property
+    def paused(self) -> bool:
+        """Whether the run was paused on budget."""
+        return self.action is BudgetAction.PAUSE
+
+    @property
+    def downgraded(self) -> bool:
+        """Whether a cheaper provider was selected."""
+        return self.action is BudgetAction.DOWNGRADE
+
+    @property
+    def notified(self) -> bool:
+        """Whether the call proceeds with a notification."""
+        return self.action is BudgetAction.NOTIFY
+
+    @property
+    def notify(self) -> bool:
+        """Alias for :attr:`notified`."""
+        return self.notified
+
+    @property
+    def alerts(self) -> tuple[str, ...]:
+        """Alias for :attr:`notifications`."""
+        return self.notifications
+
+    @property
+    def run_state(self) -> RunState | None:
+        """The state the run has after applying the decision."""
+        if self.run is not None:
+            return self.run.state
+        if self.paused:
+            return RunState.PAUSED_BUDGET
+        return None
+
+    @property
+    def paused_run(self) -> Run | None:
+        """The paused run, when the decision paused one."""
+        return self.run if self.paused else None
+
+    @property
+    def reason(self) -> str:
+        """Alias for :attr:`message`."""
+        return self.message
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable representation for logs and alerts."""
+        return {
+            "action": self.action.value,
+            "behaviour": self.behaviour.value if self.behaviour else None,
+            "allowed": self.allowed,
+            "blocked": self.blocked,
+            "provider": self.provider,
+            "previous_provider": self.previous_provider,
+            "estimate_usd": self.estimate_usd,
+            "run_id": self.check.run_id,
+            "run_state": self.run_state.value if self.run_state else None,
+            "notifications": list(self.notifications),
+            "message": self.message,
+            "check": self.check.to_dict(),
+        }
+
+
+BudgetOutcome = BudgetDecision
+BudgetResolution = BudgetDecision
+
+
+def _coerce_candidates(
+    value: Mapping[str, float] | Iterable[tuple[str, float]] | None,
+) -> list[tuple[str, float]]:
+    """Validate candidate provider estimates in the order they were supplied."""
+    if value is None:
+        return []
+    entries: Iterable[tuple[str, float]]
+    entries = value.items() if isinstance(value, Mapping) else value
+    candidates: list[tuple[str, float]] = []
+    for entry in entries:
+        if not isinstance(entry, (tuple, list)) or len(entry) != 2:
+            raise ConfigError(
+                "budget candidates must be (provider, estimate) pairs",
+                details={"candidate": entry},
+            )
+        name, estimate = entry
+        if not isinstance(name, str) or not name.strip():
+            raise ConfigError(
+                "candidate provider names must be non-empty strings",
+                details={"provider": name},
+            )
+        candidates.append(
+            (
+                name.strip(),
+                _coerce_amount(estimate, label="candidate estimate"),
+            )
+        )
+    return candidates
+
+
+def _exceeded_message(result: BudgetCheck) -> str:
+    """Describe an exceeded check in the same words as :meth:`BudgetGuard.check`."""
+    if result.scope == _PER_CALL:
+        return (
+            f"estimated call cost {result.amount_usd:.6g} USD exceeds the "
+            f"per-call cap of {result.per_call_cap:.6g} USD"
+        )
+    return (
+        f"estimated call cost {result.amount_usd:.6g} USD would bring "
+        f"run {result.run_id or '<none>'} spend to "
+        f"{result.projected_usd:.6g} USD, above the per-run cap of "
+        f"{result.per_run_cap:.6g} USD"
+    )
+
+
+def _pause_run(
+    run: Run | None, result: BudgetCheck, now: datetime | None
+) -> Run | None:
+    """Return *run* moved to ``paused_budget``, or ``None`` when no run is given."""
+    if run is None:
+        return None
+    moment = now if now is not None else utcnow()
+    if not isinstance(moment, datetime):
+        raise ConfigError(
+            "pause timestamp must be a datetime",
+            details={"now": moment},
+        )
+    return run.model_copy(
+        update={
+            "state": RunState.PAUSED_BUDGET,
+            "paused_at": moment,
+            "updated_at": moment,
+            "pause_reason": f"budget: {_exceeded_message(result)}",
+        }
+    )
+
+
 class BudgetGuard:
     """Check a call estimate against the per-call and per-run caps.
 
@@ -305,6 +509,167 @@ class BudgetGuard:
             operation=_coerce_optional_name(operation, label="operation"),
         )
 
+    def decide(
+        self,
+        value: BudgetCheck | float | None = None,
+        *,
+        check: BudgetCheck | None = None,
+        amount_usd: float | None = None,
+        run_id: str | None = None,
+        provider: str | None = None,
+        operation: str | None = None,
+        estimate: float | None = None,
+        amount: float | None = None,
+        cost_usd: float | None = None,
+        candidates: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+        prices: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+        run: Run | None = None,
+        now: datetime | None = None,
+    ) -> BudgetDecision:
+        """Apply the configured ``on_exceed`` behaviour to one check.
+
+        Pass either a :class:`BudgetCheck` or the same arguments accepted by
+        :meth:`evaluate`. ``candidates`` maps provider names to their estimated
+        cost for this call and is used by the ``downgrade`` behaviour. When no
+        cheaper candidate fits the remaining budget the decision falls back to
+        pausing, so a downgrade can never let an over-budget call proceed.
+        """
+        if check is not None:
+            if value is not None:
+                raise TypeError("pass a budget check or an amount, not both")
+            result = check
+        elif isinstance(value, BudgetCheck):
+            result = value
+        else:
+            result = self.evaluate(
+                value if value is not None else amount_usd,
+                run_id=run_id,
+                provider=provider,
+                operation=operation,
+                estimate=estimate,
+                amount=amount,
+                cost_usd=cost_usd,
+            )
+        if not isinstance(result, BudgetCheck):
+            raise ConfigError(
+                "budget decision needs a BudgetCheck",
+                details={"check": type(result).__name__},
+            )
+
+        current = _coerce_optional_name(
+            provider if provider is not None else result.provider,
+            label="provider",
+        )
+        if not result.exceeded:
+            return BudgetDecision(
+                check=result,
+                action=BudgetAction.PROCEED,
+                provider=current,
+                previous_provider=current,
+                estimate_usd=result.amount_usd,
+                run=run,
+                message="call is within budget",
+            )
+
+        behaviour = self._config.on_exceed
+        detail = _exceeded_message(result)
+
+        if behaviour is OnExceed.NOTIFY:
+            message = f"{detail}; notifying and continuing"
+            return BudgetDecision(
+                check=result,
+                action=BudgetAction.NOTIFY,
+                behaviour=behaviour,
+                provider=current,
+                previous_provider=current,
+                estimate_usd=result.amount_usd,
+                run=run,
+                notifications=(message,),
+                message=message,
+            )
+
+        if behaviour is OnExceed.DOWNGRADE:
+            remaining = result.remaining_usd
+            affordable: list[tuple[float, int, str]] = []
+            for index, (name, price) in enumerate(
+                _coerce_candidates(candidates if candidates is not None else prices)
+            ):
+                if name == current or not price < result.amount_usd:
+                    continue
+                if remaining is not None and _exceeds(price, remaining):
+                    continue
+                affordable.append((price, index, name))
+            if affordable:
+                price, _, name = min(affordable)
+                message = (
+                    f"{detail}; downgraded from {current or '<unknown>'} to "
+                    f"{name} at {price:.6g} USD"
+                )
+                return BudgetDecision(
+                    check=result,
+                    action=BudgetAction.DOWNGRADE,
+                    behaviour=behaviour,
+                    provider=name,
+                    previous_provider=current,
+                    estimate_usd=price,
+                    run=run,
+                    message=message,
+                )
+            message = (
+                f"{detail}; no cheaper provider fits the remaining budget, "
+                "run paused on budget"
+            )
+            return BudgetDecision(
+                check=result,
+                action=BudgetAction.PAUSE,
+                behaviour=behaviour,
+                provider="",
+                previous_provider=current,
+                estimate_usd=result.amount_usd,
+                run=_pause_run(run, result, now),
+                message=message,
+            )
+
+        message = f"{detail}; run paused on budget"
+        return BudgetDecision(
+            check=result,
+            action=BudgetAction.PAUSE,
+            behaviour=behaviour,
+            provider=current,
+            previous_provider=current,
+            estimate_usd=result.amount_usd,
+            run=_pause_run(run, result, now),
+            message=message,
+        )
+
+    def resolve(self, *args: Any, **kwargs: Any) -> BudgetDecision:
+        """Alias for :meth:`decide`."""
+        return self.decide(*args, **kwargs)
+
+    def on_exceed(self, *args: Any, **kwargs: Any) -> BudgetDecision:
+        """Alias for :meth:`decide`."""
+        return self.decide(*args, **kwargs)
+
+    def handle_exceed(self, *args: Any, **kwargs: Any) -> BudgetDecision:
+        """Alias for :meth:`decide`."""
+        return self.decide(*args, **kwargs)
+
+    def handle_exceeded(self, *args: Any, **kwargs: Any) -> BudgetDecision:
+        """Alias for :meth:`decide`."""
+        return self.decide(*args, **kwargs)
+
+    def apply_on_exceed(self, *args: Any, **kwargs: Any) -> BudgetDecision:
+        """Alias for :meth:`decide`."""
+        return self.decide(*args, **kwargs)
+
+    def apply_exceed(self, *args: Any, **kwargs: Any) -> BudgetDecision:
+        """Alias for :meth:`decide`."""
+        return self.decide(*args, **kwargs)
+
+    def apply_policy(self, *args: Any, **kwargs: Any) -> BudgetDecision:
+        """Alias for :meth:`decide`."""
+        return self.decide(*args, **kwargs)
+
     def check(
         self,
         amount_usd: float | None = None,
@@ -333,22 +698,9 @@ class BudgetGuard:
         if result.allowed:
             return result
 
-        if result.scope == _PER_CALL:
-            cap = result.per_call_cap
-            message = (
-                f"estimated call cost {result.amount_usd:.6g} USD exceeds the "
-                f"per-call cap of {cap:.6g} USD"
-            )
-        else:
-            cap = result.per_run_cap
-            message = (
-                f"estimated call cost {result.amount_usd:.6g} USD would bring "
-                f"run {result.run_id or '<none>'} spend to "
-                f"{result.projected_usd:.6g} USD, above the per-run cap of "
-                f"{cap:.6g} USD"
-            )
+        cap = result.per_call_cap if result.scope == _PER_CALL else result.per_run_cap
         raise BudgetError(
-            message,
+            _exceeded_message(result),
             details={
                 "scope": result.scope,
                 "cap": cap,
@@ -422,6 +774,7 @@ BudgetEnforcer = BudgetGuard
 BudgetChecker = BudgetGuard
 BudgetManager = BudgetGuard
 BudgetController = BudgetGuard
+BudgetPolicy = BudgetGuard
 
 
 def _guard(
@@ -504,4 +857,114 @@ def would_exceed_budget(
         run_id=run_id,
         provider=provider,
         operation=operation,
+    )
+
+
+def decide_budget(
+    amount_usd: float,
+    *,
+    run_id: str | None = None,
+    config: BudgetConfig | Mapping[str, Any] | None = None,
+    tracker: CostTracker | CostEventRepository | Engine | None = None,
+    provider: str | None = None,
+    operation: str | None = None,
+    candidates: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+    prices: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+    run: Run | None = None,
+    now: datetime | None = None,
+) -> BudgetDecision:
+    """Apply the configured overrun policy without a long-lived guard."""
+    return _guard(config, tracker).decide(
+        amount_usd,
+        run_id=run_id,
+        provider=provider,
+        operation=operation,
+        candidates=candidates,
+        prices=prices,
+        run=run,
+        now=now,
+    )
+
+
+def resolve_budget(
+    amount_usd: float,
+    *,
+    run_id: str | None = None,
+    config: BudgetConfig | Mapping[str, Any] | None = None,
+    tracker: CostTracker | CostEventRepository | Engine | None = None,
+    provider: str | None = None,
+    operation: str | None = None,
+    candidates: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+    prices: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+    run: Run | None = None,
+    now: datetime | None = None,
+) -> BudgetDecision:
+    """Alias for :func:`decide_budget`."""
+    return decide_budget(
+        amount_usd,
+        run_id=run_id,
+        config=config,
+        tracker=tracker,
+        provider=provider,
+        operation=operation,
+        candidates=candidates,
+        prices=prices,
+        run=run,
+        now=now,
+    )
+
+
+def apply_budget_policy(
+    amount_usd: float,
+    *,
+    run_id: str | None = None,
+    config: BudgetConfig | Mapping[str, Any] | None = None,
+    tracker: CostTracker | CostEventRepository | Engine | None = None,
+    provider: str | None = None,
+    operation: str | None = None,
+    candidates: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+    prices: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+    run: Run | None = None,
+    now: datetime | None = None,
+) -> BudgetDecision:
+    """Alias for :func:`decide_budget`."""
+    return decide_budget(
+        amount_usd,
+        run_id=run_id,
+        config=config,
+        tracker=tracker,
+        provider=provider,
+        operation=operation,
+        candidates=candidates,
+        prices=prices,
+        run=run,
+        now=now,
+    )
+
+
+def apply_on_exceed(
+    amount_usd: float,
+    *,
+    run_id: str | None = None,
+    config: BudgetConfig | Mapping[str, Any] | None = None,
+    tracker: CostTracker | CostEventRepository | Engine | None = None,
+    provider: str | None = None,
+    operation: str | None = None,
+    candidates: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+    prices: Mapping[str, float] | Iterable[tuple[str, float]] | None = None,
+    run: Run | None = None,
+    now: datetime | None = None,
+) -> BudgetDecision:
+    """Alias for :func:`decide_budget`."""
+    return decide_budget(
+        amount_usd,
+        run_id=run_id,
+        config=config,
+        tracker=tracker,
+        provider=provider,
+        operation=operation,
+        candidates=candidates,
+        prices=prices,
+        run=run,
+        now=now,
     )
