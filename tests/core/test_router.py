@@ -1340,3 +1340,46 @@ def test_budget_aware_execute_converts_requested_units_into_the_price_unit() -> 
 
     assert result == "per_minute:ok"
     assert calls == ["per_minute"]
+
+
+def test_cheapest_treats_an_incompatible_price_unit_as_unpriced() -> None:
+    per_image = FakeProvider(
+        "per_image",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.01, unit="image")},
+    )
+    per_second = FakeProvider(
+        "per_second",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.50, unit="second")},
+    )
+    router = make_router(
+        per_image,
+        per_second,
+        chain=["per_image", "per_second"],
+        strategy=CapabilityStrategy.CHEAPEST,
+    )
+
+    assert router.select("video_gen", units=1, unit_kind="second") is per_second
+
+
+def test_budget_aware_selection_treats_an_incompatible_price_unit_as_unpriced() -> None:
+    per_image = FakeProvider(
+        "per_image",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.01, unit="image")},
+    )
+    per_second = FakeProvider(
+        "per_second",
+        ["video_gen"],
+        pricing={"video_gen": ProviderPrice(amount_usd=0.50, unit="second")},
+    )
+    router = make_router(per_image, per_second, chain=["per_image", "per_second"])
+
+    with pytest.warns(UnpricedProviderWarning, match="no price"):
+        selection = router.select_with_record(
+            "video_gen", remaining_budget=0.05, units=1, unit_kind="second"
+        )
+
+    assert selection.provider is per_image
+    assert selection.skipped == ()
