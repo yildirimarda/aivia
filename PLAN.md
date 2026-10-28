@@ -160,6 +160,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Emit budget alerts once per threshold per period and provide a console notifier any module can fall back on (tests/core/test_budget_alerts.py)
 - [ ] Generate a static HTML dashboard showing spend per day, run and provider plus budget bars (tests/cli/test_dashboard.py)
 - [ ] Add a resume command that continues a paused budget run after explicit confirmation and records who and why (tests/cli/test_resume.py)
+- [ ] Make the router use the pricing resolver so selection and budget checks share overrides and unit conversions (tests/core/test_router.py)
 
 ## Milestone 6: Execution core, storage and API
 
