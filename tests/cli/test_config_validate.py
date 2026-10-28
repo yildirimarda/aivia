@@ -7,6 +7,21 @@ from pathlib import Path
 import pytest
 
 from aivia.cli import main
+from aivia.core.model_ids import CATALOG_FILENAME, ModelIdWarning
+
+CATALOG = """
+schema_version: 1
+models:
+  alpha-llm:
+    capabilities: [llm]
+""".lstrip()
+
+DECOY_CATALOG = """
+schema_version: 1
+models:
+  zzzz-llm:
+    capabilities: [llm]
+""".lstrip()
 
 
 def write_config(path: Path, text: str) -> Path:
@@ -230,3 +245,24 @@ profiles:
     assert output == ""
     assert "profiles.default.accounts" in err
     assert "tiktok/en" in err
+
+
+def test_validate_resolves_the_default_models_file_beside_the_explicit_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = write_config(
+        tmp_path / "project" / "config.yaml",
+        "schema_version: 1\nllm:\n  roles:\n    writing: alpha-lm\n",
+    )
+    write_config(tmp_path / "project" / CATALOG_FILENAME, CATALOG)
+    write_config(tmp_path / "aivia" / CATALOG_FILENAME, DECOY_CATALOG)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+    with pytest.warns(ModelIdWarning, match="closest match is 'alpha-llm'"):
+        code, output, err = validate(config, capsys)
+
+    assert code == 0
+    assert output.strip() == "configuration is valid"
+    assert err == ""

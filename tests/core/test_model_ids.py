@@ -301,9 +301,8 @@ def test_config_validate_warns_but_does_not_fail_for_an_unknown_model(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    catalog = tmp_path / "aivia" / CATALOG_FILENAME
-    catalog.parent.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "aivia"))
+    catalog = tmp_path / CATALOG_FILENAME
     catalog.write_text(CATALOG, encoding="utf-8")
     config = tmp_path / "config.yaml"
     config.write_text(
