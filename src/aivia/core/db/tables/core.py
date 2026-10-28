@@ -67,6 +67,9 @@ runs = Table(
     Column("finished_at", DateTime(timezone=True), nullable=True),
     Column("paused_at", DateTime(timezone=True), nullable=True),
     Column("pause_reason", Text, nullable=False, server_default=text("''")),
+    Column("resumed_by", Text, nullable=False, server_default=text("''")),
+    Column("resume_reason", Text, nullable=False, server_default=text("''")),
+    Column("resumed_at", DateTime(timezone=True), nullable=True),
     Column("schema_version", Integer, nullable=False, server_default=text("1")),
     Column(
         "created_at",
