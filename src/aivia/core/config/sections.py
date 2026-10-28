@@ -17,6 +17,7 @@ from pydantic import Field, field_validator, model_validator
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.config.character import BrandKitConfig, CharacterConfig
+from aivia.core.config.circuit import CircuitBreakerConfig
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatsConfig
 from aivia.core.config.llm import LLMConfig
@@ -66,6 +67,7 @@ __all__ = [
     "BrandKitConfig",
     "BudgetConfig",
     "CharacterConfig",
+    "CircuitBreakerConfig",
     "DatabaseConfig",
     "DeliveryConfig",
     "DurationRangeConfig",
@@ -519,6 +521,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("budget", BudgetConfig),
     ("llm", LLMConfig),
     ("providers", ProvidersConfig),
+    ("circuit", CircuitBreakerConfig),
     ("quality", QualityConfig),
     ("scoring", ScoringConfig),
     ("storage", StorageConfig),

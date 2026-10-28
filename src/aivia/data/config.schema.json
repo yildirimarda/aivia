@@ -325,6 +325,26 @@
       "title": "CharacterQAConfig",
       "type": "object"
     },
+    "CircuitBreakerConfig": {
+      "additionalProperties": false,
+      "description": "Failure threshold and cooldown for one provider circuit.",
+      "properties": {
+        "cooldown_seconds": {
+          "default": 60.0,
+          "minimum": 0,
+          "title": "Cooldown Seconds",
+          "type": "number"
+        },
+        "failure_threshold": {
+          "default": 5,
+          "minimum": 1,
+          "title": "Failure Threshold",
+          "type": "integer"
+        }
+      },
+      "title": "CircuitBreakerConfig",
+      "type": "object"
+    },
     "ConsistencyStrategy": {
       "description": "How a scene may be made consistent with a character.",
       "enum": [
@@ -2713,6 +2733,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/CharacterConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "circuit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CircuitBreakerConfig"
         },
         {
           "type": "null"
