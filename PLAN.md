@@ -151,7 +151,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the on exceed behaviours: downgrade to a cheaper provider, pause the run as paused budget, or notify only (tests/core/test_budget.py)
 - [x] Enforce day, month and per provider monthly limits computed from events across dates (tests/core/test_budget.py)
 - [x] Add pre run estimation where each stage reports an estimate and the estimate flag prints the table and exits (tests/cli/test_estimate.py)
-- [ ] Require confirmation above the configured threshold, with a yes flag and a refusal path in non interactive mode (tests/cli/test_confirm.py)
+- [x] Require confirmation above the configured threshold, with a yes flag and a refusal path in non interactive mode (tests/cli/test_confirm.py)
 - [ ] Add a costs run command breaking down spend by stage, provider, model and asset (tests/cli/test_costs_run.py)
 - [ ] Add a costs summary command with grouping options and date filters (tests/cli/test_costs_summary.py)
 - [ ] Add CSV and JSON cost export whose totals match the summary (tests/cli/test_costs_export.py)
