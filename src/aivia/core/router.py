@@ -6,9 +6,13 @@ adapters only implement the capability itself. A capability names an ordered
 the required capabilities first, so a provider that cannot serve the request is
 never chosen regardless of its position in the chain.
 
-This module implements the ``first_available`` strategy: walk the chain in
-order and return the first provider that is open and declares every required
-capability. The other strategies are added later; asking for one now fails with
+This module implements two strategies. ``first_available`` walks the chain in
+order and returns the first provider that is open and declares every required
+capability. ``cheapest`` compares the price of the remaining candidates and
+uses chain order as the tie breaker. A price configured in
+``pricing_overrides`` wins over the provider's own metadata, and a provider
+without any price sorts after every priced candidate so missing data never
+looks free. The other strategies are added later; asking for one now fails with
 a clear configuration error instead of silently falling back to the wrong
 policy.
 """
@@ -132,6 +136,69 @@ def _coerce_required(
         if name not in names:
             names.append(name)
     return tuple(names)
+
+
+def _price_for(
+    name: str,
+    provider: Provider,
+    capability: str,
+    overrides: Mapping[str, float],
+) -> float | None:
+    """Return the per-unit price of *capability* for *provider*, if known.
+
+    *name* is the configured provider name, which may differ from the metadata
+    name when the same adapter serves several instances. An explicit override
+    wins over metadata because it is how an operator corrects a stale or
+    missing upstream price. Metadata prices are normalised to one unit so a
+    price expressed per thousand units compares fairly with a price expressed
+    per single call.
+    """
+    override = overrides.get(name)
+    if override is not None:
+        return override
+    price = provider.metadata.pricing_for(capability)
+    if price is None:
+        return None
+    return price.cost_for(1.0)
+
+
+def _rejection(
+    name: str,
+    provider: Provider,
+    required: tuple[str, ...],
+) -> RouteSkip | None:
+    """Return why *provider* cannot serve *required*, or ``None`` if it can."""
+    if provider.closed:
+        return RouteSkip(provider=name, reason="closed")
+    missing = tuple(
+        requirement for requirement in required if not provider.supports(requirement)
+    )
+    if missing:
+        return RouteSkip(
+            provider=name,
+            reason="missing_capabilities",
+            missing=missing,
+        )
+    return None
+
+
+def _exhausted(
+    target: str,
+    required: tuple[str, ...],
+    strategy: CapabilityStrategy,
+    chain: tuple[str, ...],
+    skipped: list[RouteSkip],
+) -> ProviderExhaustedError:
+    return ProviderExhaustedError(
+        f"no available provider for capability: {target}",
+        details={
+            "capability": target,
+            "required": list(required),
+            "strategy": strategy.value,
+            "chain": list(chain),
+            "skipped": [entry.to_dict() for entry in skipped],
+        },
+    )
 
 
 def _coerce_strategy(value: CapabilityStrategy | str | None) -> CapabilityStrategy:
@@ -321,58 +388,72 @@ class Router:
         chosen_strategy = (
             configured.strategy if strategy is None else _coerce_strategy(strategy)
         )
-        if chosen_strategy is not CapabilityStrategy.FIRST_AVAILABLE:
+        if chosen_strategy not in (
+            CapabilityStrategy.FIRST_AVAILABLE,
+            CapabilityStrategy.CHEAPEST,
+        ):
             raise ConfigError(
                 f"router strategy not implemented: {chosen_strategy.value}",
                 details={
                     "strategy": chosen_strategy.value,
-                    "implemented": [CapabilityStrategy.FIRST_AVAILABLE.value],
+                    "implemented": [
+                        CapabilityStrategy.FIRST_AVAILABLE.value,
+                        CapabilityStrategy.CHEAPEST.value,
+                    ],
                 },
             )
 
         chain = self.chain_for(target)
         skipped: list[RouteSkip] = []
+        if chosen_strategy is CapabilityStrategy.FIRST_AVAILABLE:
+            for name in chain:
+                provider = self._providers[name]
+                rejection = _rejection(name, provider, names)
+                if rejection is not None:
+                    skipped.append(rejection)
+                    continue
+                selection = RouteSelection(
+                    provider=provider,
+                    capability=target,
+                    strategy=chosen_strategy,
+                    required=names,
+                    chain=chain,
+                    skipped=tuple(skipped),
+                )
+                self._last_selection = selection
+                return selection
+            raise _exhausted(target, names, chosen_strategy, chain, skipped)
+
+        available: list[tuple[str, Provider]] = []
         for name in chain:
             provider = self._providers[name]
-            if provider.closed:
-                skipped.append(RouteSkip(provider=name, reason="closed"))
+            rejection = _rejection(name, provider, names)
+            if rejection is not None:
+                skipped.append(rejection)
                 continue
-            missing = tuple(
-                requirement
-                for requirement in names
-                if not provider.supports(requirement)
-            )
-            if missing:
-                skipped.append(
-                    RouteSkip(
-                        provider=name,
-                        reason="missing_capabilities",
-                        missing=missing,
-                    )
-                )
-                continue
+            available.append((name, provider))
 
-            selection = RouteSelection(
-                provider=provider,
-                capability=target,
-                strategy=chosen_strategy,
-                required=names,
-                chain=chain,
-                skipped=tuple(skipped),
-            )
-            self._last_selection = selection
-            return selection
+        if not available:
+            raise _exhausted(target, names, chosen_strategy, chain, skipped)
 
-        raise ProviderExhaustedError(
-            f"no available provider for capability: {target}",
-            details={
-                "capability": target,
-                "required": list(names),
-                "strategy": chosen_strategy.value,
-                "chain": list(chain),
-                "skipped": [entry.to_dict() for entry in skipped],
-            },
+        overrides = configured.pricing_overrides
+
+        def price_key(entry: tuple[str, Provider]) -> tuple[bool, float]:
+            name, provider = entry
+            price = _price_for(name, provider, target, overrides)
+            return (price is None, price if price is not None else 0.0)
+
+        _, chosen = min(available, key=price_key)
+        selection = RouteSelection(
+            provider=chosen,
+            capability=target,
+            strategy=chosen_strategy,
+            required=names,
+            chain=chain,
+            skipped=tuple(skipped),
         )
+        self._last_selection = selection
+        return selection
 
 
 ProviderRouter = Router
