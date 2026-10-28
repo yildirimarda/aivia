@@ -93,7 +93,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Configure the database engine and migrations in the user data directory with WAL, busy timeout and foreign keys enabled on every connection (tests/core/db/test_migrate.py)
 - [x] Create the runs, stage runs and jobs tables with a claim index and a unique idempotency key index (tests/core/db/test_tables_core.py)
 - [x] Create the assets, compositions and cost events tables with indexes on prompt hash, run, provider, creation time and pinned (tests/core/db/test_tables_assets.py)
-- [ ] Create the plans, templates, references, style specs, feedback and ratings tables with one rating per subject (tests/core/db/test_tables_aux.py)
+- [x] Create the plans, templates, references, style specs, feedback and ratings tables with one rating per subject (tests/core/db/test_tables_aux.py)
 - [ ] Create the orders, deliveries, posts, post metrics and web card hits tables with order state indexing and delete cascade (tests/core/db/test_tables_orders.py)
 - [ ] Implement repository classes with create, get, update and list for every aggregate, tested against an in memory database (tests/core/db/test_repos.py)
 - [ ] Add a migration guard test that fails when models and migrations diverge (tests/core/db/test_migrations_in_sync.py)
