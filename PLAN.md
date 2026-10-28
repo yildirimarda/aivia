@@ -145,7 +145,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 <!-- goal: every paid call recorded and capped, with reports a human can read -->
 
 - [x] Record a cost event for every paid call including provider, operation, units, amount, pricing version and estimate or actual flag (tests/core/test_cost.py)
-- [ ] Resolve pricing from provider metadata and overrides with unit conversions and a warning event instead of a crash when a price is missing (tests/core/test_pricing.py)
+- [x] Resolve pricing from provider metadata and overrides with unit conversions and a warning event instead of a crash when a price is missing (tests/core/test_pricing.py)
 - [ ] Implement SQL level cost aggregation by run, day, week, month, provider, model, profile, format and stage (tests/core/test_cost_agg.py)
 - [ ] Enforce per run and per call caps, raising a budget error before the call is made (tests/core/test_budget.py)
 - [ ] Implement the on exceed behaviours: downgrade to a cheaper provider, pause the run as paused budget, or notify only (tests/core/test_budget.py)
