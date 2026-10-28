@@ -9,16 +9,19 @@ from pathlib import Path
 from typing import Any
 
 from aivia.cli.registry import register_command
-from aivia.core import config_show
+from aivia.core import config_show, paths
 from aivia.core.config import AppConfig, parse_app_config
 from aivia.core.config import docs as config_docs
+from aivia.core.config import migrations as config_migrations
 from aivia.core.config import schema as config_schema
+from aivia.core.config.resolve import load_config_file
 from aivia.core.errors import ConfigError
 
 __all__ = [
     "configure",
     "run_config",
     "run_docs",
+    "run_migrate",
     "run_schema",
     "run_show",
     "run_validate",
@@ -100,6 +103,20 @@ def _configure_docs(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_config_handler=run_docs)
 
 
+def _configure_migrate(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--config",
+        metavar="PATH",
+        help="config file to migrate instead of the default location",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the diff and the planned version without writing",
+    )
+    parser.set_defaults(_config_handler=run_migrate)
+
+
 def configure(parser: argparse.ArgumentParser) -> None:
     """Add the config group and its subcommands."""
     subparsers = parser.add_subparsers(dest="config_command", metavar="COMMAND")
@@ -127,6 +144,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="Generate the configuration reference document",
     )
     _configure_docs(docs)
+    migrate = subparsers.add_parser(
+        "migrate",
+        help="Upgrade an older user config and print a diff",
+        description="Upgrade an older user config and print a diff",
+    )
+    _configure_migrate(migrate)
 
 
 def run_config(args: argparse.Namespace) -> int:
@@ -134,7 +157,10 @@ def run_config(args: argparse.Namespace) -> int:
     handler = getattr(args, "_config_handler", None)
     if handler is None:
         print("error: missing config command", file=sys.stderr)
-        print("usage: aivia config {show, validate, schema, docs}", file=sys.stderr)
+        print(
+            "usage: aivia config {show, validate, schema, docs, migrate}",
+            file=sys.stderr,
+        )
         return 2
     return int(handler(args))
 
@@ -208,6 +234,61 @@ def run_schema(args: argparse.Namespace) -> int:
         print(f"error: cannot write {target}: {exc}", file=sys.stderr)
         return 1
     print(f"wrote {target}")
+    return 0
+
+
+def run_migrate(args: argparse.Namespace) -> int:
+    """Upgrade the user config, printing the diff and preserving unknown keys."""
+    config_file = paths.resolve_config_file(args.config)
+    if not config_file.exists():
+        print(f"error: config file not found: {config_file}", file=sys.stderr)
+        return 1
+    try:
+        original = config_file.read_text(encoding="utf-8")
+        values = load_config_file(config_file, origin="user")
+        result = config_migrations.migrate_config(values)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"error: cannot read {config_file}: {exc}", file=sys.stderr)
+        return 1
+
+    if not result.changed:
+        print(f"{config_file}: already at schema_version {result.to_version}")
+        return 0
+
+    migrated = config_migrations.dump_migrated_config(
+        result.values,
+        before=values,
+        original_text=original,
+    )
+    diff = config_migrations.render_migration_diff(
+        str(config_file),
+        original,
+        migrated,
+        from_version=result.from_version,
+        to_version=result.to_version,
+    )
+    if diff:
+        print(diff, end="" if diff.endswith("\n") else "\n")
+
+    if args.dry_run:
+        print(
+            f"Dry run: no files written. Would migrate {config_file}: "
+            f"schema_version {result.from_version} -> {result.to_version}"
+        )
+        return 0
+
+    try:
+        config_file.write_text(migrated, encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot write {config_file}: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"Migrated {config_file}: schema_version "
+        f"{result.from_version} -> {result.to_version}"
+    )
     return 0
 
 
@@ -303,6 +384,13 @@ def _schema_version_issue(values: Mapping[str, Any]) -> tuple[str, str] | None:
         return None
     version = values["schema_version"]
     if isinstance(version, int) and not isinstance(version, bool) and version >= 1:
+        if version > config_migrations.CURRENT_SCHEMA_VERSION:
+            return (
+                "schema_version",
+                f"config schema version {version} is newer than supported "
+                f"version {config_migrations.CURRENT_SCHEMA_VERSION}; "
+                "upgrade aivia",
+            )
         return None
     return (
         "schema_version",
