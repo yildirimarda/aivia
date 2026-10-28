@@ -13,11 +13,18 @@ are safe under concurrency: an :class:`asyncio.Lock` serialises token accounting
 and waiting callers reserve their future token so a burst of coroutines cannot
 overdraw the bucket. Time and sleep are injectable so tests never wait in real
 time.
+
+A provider can also declare ``max_concurrency``, the number of simultaneous
+calls it accepts. :class:`ConcurrencyLimiter` enforces that cap with the same
+wait-or-fail policy as the bucket, and every :class:`TokenBucket` owns one when
+its metadata declares a positive cap. Callers acquire a token and a slot
+together and must call :meth:`TokenBucket.release` when the call finishes.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import math
 import time
 from collections.abc import Awaitable, Callable
@@ -35,6 +42,7 @@ from aivia.core.errors import ConfigError, RateLimitError
 from aivia.core.models.provider import RateLimit
 
 __all__ = [
+    "ConcurrencyLimiter",
     "OnLimit",
     "OnLimitBehavior",
     "OnLimitBehaviour",
@@ -81,6 +89,211 @@ def _coerce_on_limit(value: OnRateLimit | str) -> OnRateLimit:
     )
 
 
+def _coerce_limit(value: object, *, label: str = "max_concurrency") -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(
+            f"{label} must be a non-negative integer",
+            details={label: value},
+        )
+    if value < 0:
+        raise ConfigError(
+            f"{label} must be a non-negative integer",
+            details={label: value},
+        )
+    return value
+
+
+class ConcurrencyLimiter:
+    """A concurrency-safe cap on simultaneous provider calls.
+
+    ``max_concurrency`` of ``0`` means the provider declares no concurrency
+    limit. A positive cap admits at most that many callers at once; the rest
+    either queue in arrival order or raise
+    :class:`~aivia.core.errors.RateLimitError`, according to ``on_limit``.
+    A per-call ``wait`` argument overrides the default policy.
+
+    Every successful :meth:`acquire` must be paired with :meth:`release` once
+    the call finishes. The limiter can also be used as an async context
+    manager. ``clock`` is injectable so tests can measure waits without
+    sleeping.
+    """
+
+    def __init__(
+        self,
+        max_concurrency: int = 0,
+        *,
+        limit: int | None = None,
+        config: RateLimiterConfig | None = None,
+        on_limit: OnRateLimit | str | None = None,
+        wait: bool | None = None,
+        name: str | None = None,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        if config is not None and not isinstance(config, RateLimiterConfig):
+            raise TypeError("config must be a RateLimiterConfig")
+        if name is not None and not isinstance(name, str):
+            raise TypeError("name must be a string")
+        if clock is not None and not callable(clock):
+            raise ConfigError("concurrency limit clock must be callable")
+
+        settings = config or RateLimiterConfig()
+        if limit is not None:
+            max_concurrency = limit
+        self._max_concurrency = _coerce_limit(max_concurrency)
+
+        if wait is not None:
+            if not isinstance(wait, bool):
+                raise TypeError("wait must be a boolean")
+            selected = OnRateLimit.WAIT if wait else OnRateLimit.RAISE
+        elif on_limit is not None:
+            selected = _coerce_on_limit(on_limit)
+        else:
+            selected = settings.on_limit
+
+        self._on_limit = selected
+        self._name = name
+        self._clock = clock or time.monotonic
+        self._active = 0
+        self._waiters: list[asyncio.Future[None]] = []
+        self._lock = asyncio.Lock()
+
+    @property
+    def name(self) -> str | None:
+        """The configured provider name, used in error details."""
+        return self._name
+
+    @property
+    def max_concurrency(self) -> int:
+        """The largest number of simultaneous calls, where ``0`` is unlimited."""
+        return self._max_concurrency
+
+    @property
+    def limit(self) -> int:
+        """Alias for :attr:`max_concurrency`."""
+        return self._max_concurrency
+
+    @property
+    def on_limit(self) -> OnRateLimit:
+        """The default behaviour when the cap is reached."""
+        return self._on_limit
+
+    @property
+    def unlimited(self) -> bool:
+        """Whether the provider declared no concurrency limit."""
+        return self._max_concurrency == 0
+
+    @property
+    def active(self) -> int:
+        """The number of calls currently holding a slot."""
+        return self._active
+
+    @property
+    def in_flight(self) -> int:
+        """Alias for :attr:`active`."""
+        return self._active
+
+    def available(self) -> bool:
+        """Return whether one slot can be taken immediately."""
+        return self.unlimited or self._active < self._max_concurrency
+
+    async def acquire(self, *, wait: bool | None = None) -> float:
+        """Take a slot, waiting or raising according to the configured policy.
+
+        Returns the number of seconds the caller waited, which is ``0`` when a
+        slot was available immediately. Waiting callers queue in arrival order.
+        """
+        should_wait = self._on_limit is OnRateLimit.WAIT if wait is None else wait
+        if not isinstance(should_wait, bool):
+            raise TypeError("wait must be a boolean")
+        if self.unlimited:
+            return 0.0
+
+        async with self._lock:
+            if self._active < self._max_concurrency:
+                self._active += 1
+                return 0.0
+            if not should_wait:
+                raise self._limited_error()
+            loop = asyncio.get_running_loop()
+            waiter: asyncio.Future[None] = loop.create_future()
+            self._waiters.append(waiter)
+            started = self._clock()
+
+        try:
+            await waiter
+        except asyncio.CancelledError:
+            if waiter.done() and not waiter.cancelled():
+                self.release()
+            else:
+                with contextlib.suppress(ValueError):
+                    self._waiters.remove(waiter)
+            raise
+        return self._clock() - started
+
+    async def acquire_nowait(self) -> float:
+        """Take a slot or raise immediately when the cap is reached."""
+        return await self.acquire(wait=False)
+
+    async def wait_for_slot(self) -> float:
+        """Wait for a slot, then take it."""
+        return await self.acquire(wait=True)
+
+    def release(self) -> None:
+        """Release a slot, handing it directly to the next waiter if any."""
+        if self.unlimited:
+            return
+        while self._waiters:
+            waiter = self._waiters.pop(0)
+            if not waiter.done():
+                waiter.set_result(None)
+                return
+        if self._active <= 0:
+            raise RuntimeError("concurrency slot released without being acquired")
+        self._active -= 1
+
+    def reset(self) -> None:
+        """Drop every waiter and reset the active count to zero."""
+        for waiter in self._waiters:
+            if not waiter.done():
+                waiter.cancel()
+        self._waiters.clear()
+        self._active = 0
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable snapshot for logs and errors."""
+        payload: dict[str, object] = {
+            "max_concurrency": self._max_concurrency,
+            "active": self._active,
+            "on_limit": self._on_limit.value,
+            "unlimited": self.unlimited,
+        }
+        if self._name is not None:
+            payload["provider"] = self._name
+        return payload
+
+    async def __aenter__(self) -> ConcurrencyLimiter:
+        await self.acquire()
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        self.release()
+
+    def _limited_error(self) -> RateLimitError:
+        provider = f" for provider {self._name!r}" if self._name else ""
+        details: dict[str, object] = {
+            "max_concurrency": self._max_concurrency,
+            "active": self._active,
+        }
+        if self._name is not None:
+            details["provider"] = self._name
+        return RateLimitError(
+            f"concurrency limit reached{provider}; "
+            f"{self._active}/{self._max_concurrency} calls in flight",
+            retry_after=None,
+            details=details,
+        )
+
+
 class TokenBucket:
     """A concurrency-safe token bucket for one provider.
 
@@ -95,6 +308,12 @@ class TokenBucket:
     with the delay as ``retry_after``. A per-call ``wait`` argument overrides
     the default.
 
+    ``max_concurrency`` caps simultaneous calls; ``0`` means unlimited. It is
+    copied from ``rate_limit`` when given and enforced by an owned
+    :class:`ConcurrencyLimiter` using the same wait-or-raise policy. A caller
+    that acquires a bucket must call :meth:`release` when the call finishes so
+    the concurrency slot is returned.
+
     ``clock`` and ``sleep`` are injectable for tests. The bucket starts full so
     a provider can serve one burst immediately.
     """
@@ -107,6 +326,7 @@ class TokenBucket:
         rate: float | None = None,
         capacity: float | None = None,
         rate_limit: RateLimit | None = None,
+        max_concurrency: int | None = None,
         config: RateLimiterConfig | None = None,
         on_limit: OnRateLimit | str | None = None,
         wait: bool | None = None,
@@ -182,6 +402,19 @@ class TokenBucket:
         self._updated_at = self._clock()
         self._lock = asyncio.Lock()
 
+        if max_concurrency is None:
+            concurrency_limit = (
+                rate_limit.max_concurrency if rate_limit is not None else 0
+            )
+        else:
+            concurrency_limit = _coerce_limit(max_concurrency)
+        self._concurrency = ConcurrencyLimiter(
+            concurrency_limit,
+            on_limit=selected,
+            name=name,
+            clock=self._clock,
+        )
+
     @property
     def name(self) -> str | None:
         """The configured provider name, used in error details."""
@@ -223,6 +456,26 @@ class TokenBucket:
         return self._on_limit
 
     @property
+    def max_concurrency(self) -> int:
+        """The largest number of simultaneous calls, where ``0`` is unlimited."""
+        return self._concurrency.max_concurrency
+
+    @property
+    def concurrency(self) -> ConcurrencyLimiter:
+        """The concurrency gate enforcing :attr:`max_concurrency`."""
+        return self._concurrency
+
+    @property
+    def active(self) -> int:
+        """The number of calls currently holding a concurrency slot."""
+        return self._concurrency.active
+
+    @property
+    def in_flight(self) -> int:
+        """Alias for :attr:`active`."""
+        return self._concurrency.active
+
+    @property
     def tokens(self) -> float:
         """The tokens available now, never negative even while reserved."""
         self._refill()
@@ -234,7 +487,9 @@ class TokenBucket:
         return self.tokens
 
     def available(self) -> bool:
-        """Return whether one token can be taken immediately."""
+        """Return whether a token and a concurrency slot can be taken now."""
+        if not self._concurrency.available():
+            return False
         if self._unlimited:
             return True
         self._refill()
@@ -267,19 +522,30 @@ class TokenBucket:
         *,
         wait: bool | None = None,
     ) -> float:
-        """Take *tokens*, waiting or raising according to the configured policy.
+        """Take *tokens* and a concurrency slot, waiting or raising per policy.
 
-        Returns the number of seconds the caller waited, which is ``0`` when a
-        token was available immediately. A waiting caller reserves its token
-        before sleeping, so concurrent waiters queue in token order instead of
-        all waking and overdrawing the bucket.
+        Returns the number of seconds the caller waited, which is ``0`` when
+        both the token and the slot were available immediately. A waiting
+        caller reserves its token before sleeping, so concurrent waiters queue
+        in token order instead of all waking and overdrawing the bucket. The
+        caller must call :meth:`release` once the provider call finishes.
         """
         cost = _coerce_float(tokens, label="tokens")
-        if self._unlimited or cost == 0:
-            return 0.0
         should_wait = self._on_limit is OnRateLimit.WAIT if wait is None else wait
         if not isinstance(should_wait, bool):
             raise TypeError("wait must be a boolean")
+
+        waited_concurrency = await self._concurrency.acquire(wait=should_wait)
+        try:
+            waited_token = await self._acquire_token(cost, should_wait)
+        except BaseException:
+            self._concurrency.release()
+            raise
+        return waited_concurrency + waited_token
+
+    async def _acquire_token(self, cost: float, should_wait: bool) -> float:
+        if self._unlimited or cost == 0:
+            return 0.0
 
         async with self._lock:
             self._refill()
@@ -303,6 +569,10 @@ class TokenBucket:
         """Wait until *tokens* are available, then take them."""
         return await self.acquire(tokens, wait=True)
 
+    def release(self) -> None:
+        """Release the concurrency slot taken by :meth:`acquire`."""
+        self._concurrency.release()
+
     def reset(self, tokens: float | None = None) -> None:
         """Refill the bucket to *tokens*, defaulting to full capacity."""
         if tokens is None:
@@ -317,6 +587,8 @@ class TokenBucket:
             "requests_per_minute": self._requests_per_minute,
             "capacity": self._capacity,
             "tokens": self.tokens,
+            "max_concurrency": self.max_concurrency,
+            "active": self.active,
             "on_limit": self._on_limit.value,
             "unlimited": self._unlimited,
         }

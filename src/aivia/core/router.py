@@ -38,6 +38,9 @@ Each provider also has its own :class:`~aivia.core.ratelimit.TokenBucket`, built
 from the rate limit declared in its metadata. Execution acquires a token before
 calling the provider; a bucket configured to wait sleeps for the next token,
 while a fail-fast bucket makes the router skip or fall back to another provider.
+When the metadata declares ``max_concurrency``, the same limiter also holds a
+slot for the duration of the call, so parallel calls queue or fail instead of
+exceeding the provider's cap.
 """
 
 from __future__ import annotations
@@ -1025,8 +1028,10 @@ class Router:
         failures are recorded on the provider's circuit breaker; a provider
         whose circuit is open is skipped until it half-opens. Before the call
         the provider's token bucket is acquired, which waits for the next token
-        or raises a rate limited error according to the bucket policy. When
-        every candidate fails with a retryable error, the router raises
+        or raises a rate limited error according to the bucket policy. The same
+        acquisition holds a concurrency slot until the operation finishes, so a
+        provider's ``max_concurrency`` is never exceeded. When every candidate
+        fails with a retryable error, the router raises
         :class:`~aivia.core.errors.ProviderExhaustedError` with the attempted
         providers and the last error, chained as the cause. The successful
         selection remains available through :attr:`last_selection`.
@@ -1088,6 +1093,7 @@ class Router:
             try:
                 result = await operation(selection.provider)
             except AiviaError as exc:
+                limiter.release()
                 if not exc.retryable:
                     breaker.release()
                     raise
@@ -1103,9 +1109,11 @@ class Router:
                 breaker.record_failure()
                 last_error = exc
             except BaseException:
+                limiter.release()
                 breaker.release()
                 raise
             else:
+                limiter.release()
                 breaker.record_success()
                 return result
 
