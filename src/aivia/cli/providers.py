@@ -8,13 +8,15 @@ import contextlib
 import math
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from aivia.cli.registry import register_command
 from aivia.core.errors import ConfigError
-from aivia.core.models.provider import ProviderMeta, ProviderPrice
+from aivia.core.models.provider import ProviderMeta
 from aivia.core.redact import redact
+from aivia.providers import docs as provider_docs
 from aivia.providers.base import HealthStatus, Provider, ProviderHealth
 from aivia.providers.registry import registry as provider_registry
 
@@ -22,6 +24,7 @@ __all__ = [
     "LIVE_BUDGET_ENV",
     "configure",
     "run_check",
+    "run_docs",
     "run_list",
     "run_providers",
 ]
@@ -61,6 +64,20 @@ def _configure_check(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_providers_handler=run_check)
 
 
+def _configure_docs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--output",
+        metavar="PATH",
+        help="write the reference to PATH instead of standard output",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail when the reference at PATH (or docs/PROVIDERS.md) is stale",
+    )
+    parser.set_defaults(_providers_handler=run_docs)
+
+
 def configure(parser: argparse.ArgumentParser) -> None:
     """Add the providers group and its subcommands."""
     subparsers = parser.add_subparsers(dest="providers_command", metavar="COMMAND")
@@ -76,6 +93,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="Run live health checks under an explicit budget cap",
     )
     _configure_check(check_parser)
+    docs_parser = subparsers.add_parser(
+        "docs",
+        help="Generate the provider capability matrix",
+        description="Generate the provider capability matrix",
+    )
+    _configure_docs(docs_parser)
 
 
 def run_providers(args: argparse.Namespace) -> int:
@@ -83,36 +106,14 @@ def run_providers(args: argparse.Namespace) -> int:
     handler = getattr(args, "_providers_handler", None)
     if handler is None:
         print("error: missing providers command", file=sys.stderr)
-        print("usage: aivia providers {list, check}", file=sys.stderr)
+        print("usage: aivia providers {list, check, docs}", file=sys.stderr)
         return 2
     return int(handler(args))
 
 
 def _static_metadata(provider: type[Provider]) -> ProviderMeta | None:
     """Return metadata without constructing the provider when possible."""
-    declared = provider.default_metadata
-    if isinstance(declared, ProviderMeta):
-        return declared
-    if isinstance(declared, Mapping):
-        return ProviderMeta.model_validate(declared)
-
-    capabilities = getattr(provider, "capabilities", None)
-    if not isinstance(capabilities, (list, tuple)) or not capabilities:
-        return None
-
-    pricing: dict[str, ProviderPrice] = {}
-    prices = getattr(provider, "prices", None)
-    if isinstance(prices, Mapping):
-        for capability, price in prices.items():
-            if isinstance(capability, str) and isinstance(price, (int, float)):
-                pricing[capability] = ProviderPrice(amount_usd=float(price))
-
-    name = getattr(provider, "mock_name", "")
-    return ProviderMeta(
-        name=name if isinstance(name, str) else "",
-        capabilities=list(capabilities),
-        pricing=pricing,
-    )
+    return provider_docs.static_metadata(provider)
 
 
 def run_list(args: argparse.Namespace) -> int:
@@ -126,6 +127,40 @@ def run_list(args: argparse.Namespace) -> int:
             continue
         rendered = ", ".join(capabilities) if capabilities else "-"
         print(f"{registration.name}\t{rendered}")
+    return 0
+
+
+def run_docs(args: argparse.Namespace) -> int:
+    """Print, write or check the generated provider capability matrix."""
+    text = provider_docs.dump_provider_docs()
+    target = Path(args.output) if args.output is not None else provider_docs.docs_path()
+    if args.check:
+        try:
+            existing = target.read_text(encoding="utf-8")
+        except OSError:
+            existing = None
+        if existing != text:
+            print(
+                f"error: provider reference is stale: {target}",
+                file=sys.stderr,
+            )
+            print(
+                f"regenerate it with: aivia providers docs --output {target}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"provider reference is up to date: {target}")
+        return 0
+    if args.output is None:
+        print(text, end="")
+        return 0
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot write {target}: {exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {target}")
     return 0
 
 
@@ -255,6 +290,6 @@ def run_check(args: argparse.Namespace) -> int:
 register_command(
     "providers",
     run_providers,
-    help="List provider types and run live health checks",
+    help="List provider types, run health checks and generate the reference",
     configure=configure,
 )
