@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import warnings
 from typing import Any, cast
 
 import pytest
@@ -10,7 +11,13 @@ import pytest
 from aivia.core.config import CapabilityChainConfig, CapabilityStrategy
 from aivia.core.errors import ConfigError, ProviderExhaustedError
 from aivia.core.models import ProviderMeta, ProviderPrice
-from aivia.core.router import ProviderRouter, Router, RouteSelection, RouteSkip
+from aivia.core.router import (
+    MissingQualityRankWarning,
+    ProviderRouter,
+    Router,
+    RouteSelection,
+    RouteSkip,
+)
 from aivia.providers import Provider
 
 
@@ -22,6 +29,7 @@ class FakeProvider(Provider):
         name: str,
         capabilities: list[str],
         pricing: dict[str, Any] | float | None = None,
+        quality_rank: int | None = None,
     ) -> None:
         super().__init__(
             ProviderMeta.model_validate(
@@ -29,6 +37,7 @@ class FakeProvider(Provider):
                     "name": name,
                     "capabilities": capabilities,
                     "pricing": {} if pricing is None else pricing,
+                    "quality_rank": quality_rank,
                 }
             )
         )
@@ -373,19 +382,130 @@ def test_selection_is_recorded_with_the_walked_chain() -> None:
     assert router.last_selection is selection
 
 
-def test_an_unimplemented_strategy_fails_clearly() -> None:
-    image = FakeProvider("image", ["image_gen"])
-    router = make_router(image, strategy=CapabilityStrategy.BEST_QUALITY)
+def test_every_router_strategy_is_implemented() -> None:
+    first = FakeProvider("first", ["image_gen"], quality_rank=1)
+    second = FakeProvider("second", ["image_gen"], quality_rank=2)
+    for strategy in CapabilityStrategy:
+        router = make_router(
+            first,
+            second,
+            chain=["first", "second"],
+            strategy=strategy,
+            weights=(
+                {"first": 1.0, "second": 1.0}
+                if strategy is CapabilityStrategy.WEIGHTED_AB
+                else None
+            ),
+        )
 
-    with pytest.raises(ConfigError, match="not implemented: best_quality") as caught:
-        router.select("image_gen")
+        assert router.select("image_gen") in (first, second)
 
-    assert caught.value.details["implemented"] == [
-        "first_available",
-        "cheapest",
-        "round_robin",
-        "weighted_ab",
-    ]
+
+def test_best_quality_picks_the_highest_static_rank() -> None:
+    low = FakeProvider("low", ["image_gen"], quality_rank=1)
+    high = FakeProvider("high", ["image_gen"], quality_rank=9)
+    router = make_router(
+        low,
+        high,
+        chain=["low", "high"],
+        strategy=CapabilityStrategy.BEST_QUALITY,
+    )
+
+    selection = router.select_with_record("image_gen")
+
+    assert selection.provider is high
+    assert selection.strategy is CapabilityStrategy.BEST_QUALITY
+    assert selection.quality_rank == 9
+
+
+def test_best_quality_uses_chain_order_to_break_a_rank_tie() -> None:
+    first = FakeProvider("first", ["image_gen"], quality_rank=5)
+    second = FakeProvider("second", ["image_gen"], quality_rank=5)
+    router = make_router(
+        first,
+        second,
+        chain=["second", "first"],
+        strategy=CapabilityStrategy.BEST_QUALITY,
+    )
+
+    assert router.select("image_gen") is second
+
+
+def test_best_quality_warns_and_prefers_a_ranked_candidate() -> None:
+    unranked = FakeProvider("unranked", ["image_gen"])
+    ranked = FakeProvider("ranked", ["image_gen"], quality_rank=3)
+    router = make_router(
+        unranked,
+        ranked,
+        chain=["unranked", "ranked"],
+        strategy=CapabilityStrategy.BEST_QUALITY,
+    )
+
+    with pytest.warns(
+        MissingQualityRankWarning, match="unranked.*missing a quality rank"
+    ) as caught:
+        selection = router.select_with_record("image_gen")
+
+    assert len(caught) == 1
+    assert selection.provider is ranked
+    assert selection.quality_rank == 3
+
+
+def test_best_quality_warns_for_every_unranked_candidate() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(
+        first,
+        second,
+        chain=["second", "first"],
+        strategy=CapabilityStrategy.BEST_QUALITY,
+    )
+
+    with pytest.warns(MissingQualityRankWarning) as caught:
+        selection = router.select_with_record("image_gen")
+
+    assert len(caught) == 2
+    assert selection.provider is second
+    assert selection.quality_rank is None
+
+
+def test_best_quality_does_not_warn_about_skipped_providers() -> None:
+    text = FakeProvider("text", ["llm"])
+    image = FakeProvider("image", ["image_gen"], quality_rank=1)
+    router = make_router(
+        text,
+        image,
+        chain=["text", "image"],
+        strategy=CapabilityStrategy.BEST_QUALITY,
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        selection = router.select_with_record("image_gen")
+
+    assert caught == []
+    assert selection.provider is image
+    assert selection.skipped == (
+        RouteSkip(
+            provider="text",
+            reason="missing_capabilities",
+            missing=("image_gen",),
+        ),
+    )
+
+
+def test_best_quality_can_be_requested_for_a_single_call() -> None:
+    low = FakeProvider("low", ["image_gen"], quality_rank=2)
+    high = FakeProvider("high", ["image_gen"], quality_rank=4)
+    router = make_router(low, high, chain=["low", "high"])
+
+    selection = router.select_with_record(
+        "image_gen", strategy=CapabilityStrategy.BEST_QUALITY
+    )
+
+    assert selection.provider is high
+    assert selection.strategy is CapabilityStrategy.BEST_QUALITY
+    assert selection.quality_rank == 4
 
 
 def test_unknown_strategy_names_are_rejected() -> None:
