@@ -7,12 +7,9 @@ renders deterministic YAML, optionally with the origin of every leaf.
 
 from __future__ import annotations
 
-import re
-from collections.abc import Mapping
-from typing import Any
-
 import yaml
 
+from aivia.core.config.masking import mask_secrets
 from aivia.core.config.resolve import (
     DEFAULT_ORIGIN,
     PROFILE_ORIGIN_PREFIX,
@@ -23,7 +20,6 @@ from aivia.core.config.resolve import (
     profile_overrides,
     resolve_config,
 )
-from aivia.core.redact import REDACTED, redact
 
 __all__ = [
     "DEFAULT_ORIGIN",
@@ -37,58 +33,6 @@ __all__ = [
     "profile_overrides",
     "resolve_config",
 ]
-
-_SECRET_NAMES = frozenset(
-    {
-        "api_key",
-        "apikey",
-        "auth_token",
-        "bearer_token",
-        "client_secret",
-        "credential",
-        "credentials",
-        "key",
-        "keys",
-        "passwd",
-        "password",
-        "private_key",
-        "pwd",
-        "refresh_token",
-        "secret",
-        "secret_key",
-        "token",
-        "access_token",
-    }
-)
-_SECRET_SUFFIXES = _SECRET_NAMES - {"key", "keys"}
-_NON_ALPHANUMERIC = re.compile(r"[^a-z0-9]+")
-
-
-def _normalise_key(key: object) -> str:
-    return _NON_ALPHANUMERIC.sub("_", str(key).lower()).strip("_")
-
-
-def _is_secret_key(key: object) -> bool:
-    normalised = _normalise_key(key)
-    if normalised in _SECRET_NAMES:
-        return True
-    return any(normalised.endswith(f"_{name}") for name in _SECRET_SUFFIXES)
-
-
-def mask_secrets(value: Any) -> Any:
-    """Return *value* with secret-looking keys and token-like strings masked."""
-    if isinstance(value, Mapping):
-        masked: dict[Any, Any] = {}
-        for key, item in value.items():
-            masked[key] = REDACTED if _is_secret_key(key) else mask_secrets(item)
-        return masked
-    if isinstance(value, list):
-        return [mask_secrets(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(mask_secrets(item) for item in value)
-    if isinstance(value, str):
-        return redact(value)
-    return value
 
 
 def dump_config(
