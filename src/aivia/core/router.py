@@ -6,19 +6,23 @@ adapters only implement the capability itself. A capability names an ordered
 the required capabilities first, so a provider that cannot serve the request is
 never chosen regardless of its position in the chain.
 
-This module implements two strategies. ``first_available`` walks the chain in
+This module implements four strategies. ``first_available`` walks the chain in
 order and returns the first provider that is open and declares every required
 capability. ``cheapest`` compares the price of the remaining candidates and
 uses chain order as the tie breaker. A price configured in
 ``pricing_overrides`` wins over the provider's own metadata, and a provider
 without any price sorts after every priced candidate so missing data never
-looks free. The other strategies are added later; asking for one now fails with
-a clear configuration error instead of silently falling back to the wrong
-policy.
+looks free. ``round_robin`` rotates through the available providers per
+capability and is inherently deterministic. ``weighted_ab`` draws from the
+configured per-provider weights; a seed makes the draw reproducible, and the
+selected weight is recorded on the selection. The remaining strategy is added
+later; asking for it now fails with a clear configuration error instead of
+silently falling back to the wrong policy.
 """
 
 from __future__ import annotations
 
+import random
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
@@ -72,6 +76,8 @@ class RouteSelection:
     required: tuple[str, ...]
     chain: tuple[str, ...] = field(default_factory=tuple)
     skipped: tuple[RouteSkip, ...] = field(default_factory=tuple)
+    seed: int | None = None
+    weight: float | None = None
 
     @property
     def name(self) -> str:
@@ -201,6 +207,42 @@ def _exhausted(
     )
 
 
+def _weighted_choice(
+    available: list[tuple[str, Provider]],
+    weights: Mapping[str, float],
+    rng: random.Random,
+) -> tuple[str, Provider, float]:
+    """Pick one available provider using *weights* and *rng*.
+
+    Providers without a positive weight are not eligible. When every available
+    provider has a zero or missing weight the configuration cannot express a
+    choice, so fail clearly instead of silently ignoring the strategy.
+    """
+    weighted = [
+        (name, provider, weights.get(name, 0.0))
+        for name, provider in available
+        if weights.get(name, 0.0) > 0
+    ]
+    if not weighted:
+        raise ConfigError(
+            "weighted_ab strategy has no positive weight for an available provider",
+            details={
+                "available": [name for name, _ in available],
+                "weights": dict(weights),
+            },
+        )
+
+    total = sum(weight for _, _, weight in weighted)
+    threshold = rng.random() * total
+    cumulative = 0.0
+    for name, provider, weight in weighted:
+        cumulative += weight
+        if threshold < cumulative:
+            return name, provider, weight
+    name, provider, weight = weighted[-1]
+    return name, provider, weight
+
+
 def _coerce_strategy(value: CapabilityStrategy | str | None) -> CapabilityStrategy:
     if value is None:
         return CapabilityStrategy.FIRST_AVAILABLE
@@ -225,10 +267,11 @@ class Router:
     ``providers`` is a mapping from configured provider name to instance or an
     iterable of instances whose metadata name is used. ``configs`` maps a
     capability to its :class:`CapabilityChainConfig`; ``config`` is the default
-    used for capabilities without their own entry. ``strategy`` and ``chain``
-    override that default for callers that do not build a config model. An
-    empty chain means every provider in insertion order, which keeps a small
-    configuration usable without repeating provider names.
+    used for capabilities without their own entry. ``strategy``, ``chain`` and
+    ``weights`` override that default for callers that do not build a config
+    model. ``seed`` makes weighted draws reproducible. An empty chain means
+    every provider in insertion order, which keeps a small configuration usable
+    without repeating provider names.
     """
 
     def __init__(
@@ -241,6 +284,8 @@ class Router:
         configs: Mapping[str, CapabilityChainConfig] | None = None,
         strategy: CapabilityStrategy | str | None = None,
         chain: Iterable[str] | None = None,
+        weights: Mapping[str, float] | None = None,
+        seed: int | None = None,
     ) -> None:
         self._providers = _coerce_providers(providers)
         default = (
@@ -248,12 +293,14 @@ class Router:
             if isinstance(config, CapabilityChainConfig)
             else CapabilityChainConfig()
         )
-        if strategy is not None or chain is not None:
+        if strategy is not None or chain is not None or weights is not None:
             values = default.model_dump()
             if strategy is not None:
                 values["strategy"] = _coerce_strategy(strategy)
             if chain is not None:
                 values["chain"] = list(chain)
+            if weights is not None:
+                values["weights"] = dict(weights)
             default = CapabilityChainConfig.model_validate(values)
         self._default_config = default
         merged: dict[str, CapabilityChainConfig] = {}
@@ -272,6 +319,9 @@ class Router:
             normalised[capability.strip()] = capability_config
         self._configs = normalised
         self._last_selection: RouteSelection | None = None
+        self._seed = seed
+        self._rng = random.Random(seed)
+        self._round_robin: dict[str, int] = {}
 
     @property
     def providers(self) -> Mapping[str, Provider]:
@@ -287,6 +337,11 @@ class Router:
     def last_selection(self) -> RouteSelection | None:
         """The most recent successful selection, if any."""
         return self._last_selection
+
+    @property
+    def seed(self) -> int | None:
+        """The seed used for weighted selection, if one was configured."""
+        return self._seed
 
     def config_for(self, capability: str) -> CapabilityChainConfig:
         """Return the chain configuration for *capability*."""
@@ -350,18 +405,20 @@ class Router:
         *,
         required: Iterable[str] | str | None = None,
         strategy: CapabilityStrategy | str | None = None,
+        seed: int | None = None,
     ) -> Provider:
-        """Return the first available provider for *capability*.
+        """Return the provider selected for *capability*.
 
         The capability itself is always required; *required* adds capabilities
         the request additionally needs, for example ``image_edit`` alongside
         ``image_gen``. ``strategy`` overrides the configured strategy for this
-        call.
+        call. ``seed`` overrides the router seed for one weighted draw.
         """
         return self.select_with_record(
             capability,
             required=required,
             strategy=strategy,
+            seed=seed,
         ).provider
 
     def select_provider(
@@ -370,9 +427,32 @@ class Router:
         *,
         required: Iterable[str] | str | None = None,
         strategy: CapabilityStrategy | str | None = None,
+        seed: int | None = None,
     ) -> Provider:
         """Alias for :meth:`select`."""
-        return self.select(capability, required=required, strategy=strategy)
+        return self.select(
+            capability,
+            required=required,
+            strategy=strategy,
+            seed=seed,
+        )
+
+    def _round_robin_pick(
+        self,
+        capability: str,
+        chain: tuple[str, ...],
+        available: list[tuple[str, Provider]],
+    ) -> Provider:
+        """Return the next available provider in the chain and advance it."""
+        available_by_name = dict(available)
+        cursor = self._round_robin.get(capability, 0) % len(chain)
+        for offset in range(len(chain)):
+            index = (cursor + offset) % len(chain)
+            name = chain[index]
+            if name in available_by_name:
+                self._round_robin[capability] = (index + 1) % len(chain)
+                return available_by_name[name]
+        raise AssertionError("available providers must come from the chain")
 
     def select_with_record(
         self,
@@ -380,6 +460,7 @@ class Router:
         *,
         required: Iterable[str] | str | None = None,
         strategy: CapabilityStrategy | str | None = None,
+        seed: int | None = None,
     ) -> RouteSelection:
         """Select a provider and return the full selection record."""
         names = _coerce_required(capability, required)
@@ -388,21 +469,22 @@ class Router:
         chosen_strategy = (
             configured.strategy if strategy is None else _coerce_strategy(strategy)
         )
-        if chosen_strategy not in (
+        implemented = (
             CapabilityStrategy.FIRST_AVAILABLE,
             CapabilityStrategy.CHEAPEST,
-        ):
+            CapabilityStrategy.ROUND_ROBIN,
+            CapabilityStrategy.WEIGHTED_AB,
+        )
+        if chosen_strategy not in implemented:
             raise ConfigError(
                 f"router strategy not implemented: {chosen_strategy.value}",
                 details={
                     "strategy": chosen_strategy.value,
-                    "implemented": [
-                        CapabilityStrategy.FIRST_AVAILABLE.value,
-                        CapabilityStrategy.CHEAPEST.value,
-                    ],
+                    "implemented": [entry.value for entry in implemented],
                 },
             )
 
+        effective_seed = self._seed if seed is None else seed
         chain = self.chain_for(target)
         skipped: list[RouteSkip] = []
         if chosen_strategy is CapabilityStrategy.FIRST_AVAILABLE:
@@ -419,6 +501,7 @@ class Router:
                     required=names,
                     chain=chain,
                     skipped=tuple(skipped),
+                    seed=effective_seed,
                 )
                 self._last_selection = selection
                 return selection
@@ -436,14 +519,34 @@ class Router:
         if not available:
             raise _exhausted(target, names, chosen_strategy, chain, skipped)
 
-        overrides = configured.pricing_overrides
+        weight: float | None = None
+        if chosen_strategy is CapabilityStrategy.CHEAPEST:
+            overrides = configured.pricing_overrides
 
-        def price_key(entry: tuple[str, Provider]) -> tuple[bool, float]:
-            name, provider = entry
-            price = _price_for(name, provider, target, overrides)
-            return (price is None, price if price is not None else 0.0)
+            def price_key(entry: tuple[str, Provider]) -> tuple[bool, float]:
+                name, provider = entry
+                price = _price_for(name, provider, target, overrides)
+                return (price is None, price if price is not None else 0.0)
 
-        _, chosen = min(available, key=price_key)
+            _, chosen = min(available, key=price_key)
+        elif chosen_strategy is CapabilityStrategy.ROUND_ROBIN:
+            chosen = self._round_robin_pick(target, chain, available)
+        else:
+            unknown = sorted(set(configured.weights) - set(chain))
+            if unknown:
+                names_text = ", ".join(unknown)
+                raise ConfigError(
+                    "weighted_ab weights reference providers not in the chain: "
+                    f"{names_text}",
+                    details={
+                        "capability": target,
+                        "unknown": unknown,
+                        "chain": list(chain),
+                    },
+                )
+            rng = random.Random(seed) if seed is not None else self._rng
+            _, chosen, weight = _weighted_choice(available, configured.weights, rng)
+
         selection = RouteSelection(
             provider=chosen,
             capability=target,
@@ -451,6 +554,8 @@ class Router:
             required=names,
             chain=chain,
             skipped=tuple(skipped),
+            seed=effective_seed,
+            weight=weight,
         )
         self._last_selection = selection
         return selection

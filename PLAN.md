@@ -115,7 +115,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the provider registry with a registration decorator, name lookup, dotted path loading and a clear unknown type error (tests/core/test_registry.py)
 - [x] Implement router selection for the first available strategy honouring required capabilities (tests/core/test_router.py)
 - [x] Implement the cheapest strategy using provider pricing and overrides with chain order as the tie breaker (tests/core/test_router.py)
-- [ ] Implement round robin and weighted strategies with seeded determinism and recorded selection (tests/core/test_router.py)
+- [x] Implement round robin and weighted strategies with seeded determinism and recorded selection (tests/core/test_router.py)
 - [ ] Implement the best quality strategy using static ranks until human ratings exist, warning when a rank is missing (tests/core/test_router.py)
 - [ ] Implement fallback on retryable, timeout and rate limit errors while surfacing permanent and auth errors and raising provider exhausted (tests/core/test_router.py)
 - [ ] Make provider selection budget aware, skipping providers whose estimate exceeds the remaining budget (tests/core/test_router.py)
