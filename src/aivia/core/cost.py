@@ -88,6 +88,18 @@ class CostTracker:
         field of *event*. Provider, operation, units, amount, pricing version
         and the estimated/actual flag are all persisted on the returned event.
         """
+        data = self._merge(event, values)
+        if not data:
+            raise ValueError("a cost event needs at least a provider and an operation")
+
+        record = CostEvent.model_validate(data)
+        return self._repository.create(record)
+
+    @staticmethod
+    def _merge(
+        event: CostEvent | Mapping[str, Any] | None,
+        values: Mapping[str, Any],
+    ) -> dict[str, Any]:
         data: dict[str, Any] = {}
         if isinstance(event, CostEvent):
             data.update(event.model_dump())
@@ -96,11 +108,70 @@ class CostTracker:
                 raise TypeError("event must be a CostEvent or a mapping")
             data.update(dict(event))
         data.update(values)
-        if not data:
-            raise ValueError("a cost event needs at least a provider and an operation")
+        return data
 
-        record = CostEvent.model_validate(data)
-        return self._repository.create(record)
+    def _link_replacement(
+        self,
+        event: CostEvent | Mapping[str, Any] | None,
+        values: dict[str, Any],
+    ) -> None:
+        """Point an actual event at the estimate it replaces, when one exists."""
+        data = self._merge(event, values)
+        if not data:
+            return
+        probe = CostEvent.model_validate(data)
+        if probe.replaces:
+            return
+        candidate = self._unpaired_estimate(probe)
+        if candidate is None:
+            return
+        metadata = dict(probe.metadata)
+        metadata.setdefault("replaces", candidate.id)
+        metadata.setdefault("estimate_event_id", candidate.id)
+        values["metadata"] = metadata
+
+    def _unpaired_estimate(self, actual: CostEvent) -> CostEvent | None:
+        """Return the earliest estimate for *actual*'s call that has no actual."""
+        events = self.events()
+        replaced = {
+            event.replaces
+            for event in events
+            if not event.estimated and event.replaces
+        }
+        key = (
+            actual.run_id,
+            actual.provider,
+            actual.model,
+            actual.operation,
+            actual.unit_kind,
+        )
+        for candidate in events:
+            if not candidate.estimated or candidate.id in replaced:
+                continue
+            if (
+                candidate.run_id,
+                candidate.provider,
+                candidate.model,
+                candidate.operation,
+                candidate.unit_kind,
+            ) == key:
+                return candidate
+        return None
+
+    def _effective_events(self, events: list[CostEvent]) -> list[CostEvent]:
+        """Drop estimates that an actual event has replaced."""
+        replaced = {
+            event.replaces
+            for event in events
+            if not event.estimated and event.replaces
+        }
+        if not replaced:
+            return events
+        return [
+            event
+            for event in events
+            if not (event.estimated and event.id in replaced)
+        ]
 
     def record_event(
         self,
@@ -124,8 +195,13 @@ class CostTracker:
         event: CostEvent | Mapping[str, Any] | None = None,
         **values: Any,
     ) -> CostEvent:
-        """Record a provider-reported amount, marking the event as actual."""
+        """Record a provider-reported amount, marking the event as actual.
+
+        When the event does not already name the estimate it replaces, the
+        earliest unpaired estimate for the same call is linked automatically.
+        """
         values["estimated"] = False
+        self._link_replacement(event, values)
         return self.record(event, **values)
 
     def record_paid_call(
@@ -137,6 +213,8 @@ class CostTracker:
     ) -> CostEvent:
         """Record a paid call, choosing the estimated/actual flag explicitly."""
         values["estimated"] = estimated
+        if not estimated:
+            self._link_replacement(event, values)
         return self.record(event, **values)
 
     def events(
@@ -193,16 +271,21 @@ class CostTracker:
         operation: str | None = None,
         estimated: bool | None = None,
     ) -> float:
-        """Return the summed USD amount of the matching events."""
-        return math.fsum(
-            event.amount_usd
-            for event in self.events(
+        """Return the summed USD amount of the matching events.
+
+        An estimate replaced by a later actual event is not counted, so one
+        call contributes either its estimate or its actual amount, never both.
+        """
+        events = self._effective_events(
+            self.events(
                 run_id=run_id,
                 provider=provider,
                 operation=operation,
-                estimated=estimated,
             )
         )
+        if estimated is not None:
+            events = [event for event in events if event.estimated is estimated]
+        return math.fsum(event.amount_usd for event in events)
 
     def estimated_total(
         self,
@@ -259,11 +342,18 @@ class CostTracker:
         provider: str | None = None,
         operation: str | None = None,
     ) -> dict[str, float | int]:
-        """Return total, estimated, actual and count for the matching events."""
-        events = self.events(
-            run_id=run_id,
-            provider=provider,
-            operation=operation,
+        """Return total, estimated, actual and count for the matching events.
+
+        Estimates replaced by an actual event are excluded from every amount
+        and from the count, because the actual amount already accounts for the
+        call.
+        """
+        events = self._effective_events(
+            self.events(
+                run_id=run_id,
+                provider=provider,
+                operation=operation,
+            )
         )
         estimated = math.fsum(event.amount_usd for event in events if event.estimated)
         actual = math.fsum(event.amount_usd for event in events if not event.estimated)

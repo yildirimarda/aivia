@@ -107,6 +107,17 @@ def _needs_run_join(group: CostGroup) -> bool:
     return group in {CostGroup.PROFILE, CostGroup.FORMAT}
 
 
+def _not_replaced() -> Any:
+    """Exclude estimates whose call has a later actual replacement."""
+    link = func.json_extract(cost_events.c.metadata, "$.replaces")
+    replaced = select(link).where(
+        cost_events.c.estimated.is_(False),
+        link.is_not(None),
+        link != "",
+    )
+    return ~cost_events.c.id.in_(replaced)
+
+
 def _group_expression(group: CostGroup) -> Any:
     if group is CostGroup.RUN:
         return cost_events.c.run_id
@@ -237,6 +248,7 @@ class CostAggregator:
                 func.count().label("count"),
             )
             .select_from(cost_events)
+            .where(_not_replaced())
             .group_by(key)
             .order_by(key)
         )

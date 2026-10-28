@@ -30,6 +30,18 @@ __all__ = [
     "CostKind",
 ]
 
+_LINK_KEYS = (
+    "replaces",
+    "replaces_id",
+    "replaces_event_id",
+    "replaces_estimate_id",
+    "replaced_event_id",
+    "estimate_id",
+    "estimate_event_id",
+    "supersedes",
+    "superseded_event_id",
+)
+
 
 class CostKind(StrEnum):
     """The accepted values for the estimated/actual flag."""
@@ -46,6 +58,17 @@ def _coerce_metadata(value: Any) -> Any:
     if value is None:
         return {}
     return value
+
+
+def _coerce_link(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    identifier = getattr(value, "id", None)
+    if isinstance(identifier, str):
+        return identifier.strip()
+    raise ValueError("a replacement link must be a cost event id or a cost event")
 
 
 class CostEvent(ModelBase):
@@ -149,6 +172,30 @@ class CostEvent(ModelBase):
             values["estimated"] = normalized in {CostKind.ESTIMATED, "estimate"}
         return values
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_replacement_link(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(data)
+        metadata = values.get("metadata")
+        details = dict(metadata) if isinstance(metadata, Mapping) else {}
+        link = ""
+        for key in _LINK_KEYS:
+            if key in values:
+                link = _coerce_link(values.pop(key))
+                break
+        if not link:
+            for key in _LINK_KEYS:
+                if key in details:
+                    link = _coerce_link(details[key])
+                    break
+        if link:
+            details.setdefault("replaces", link)
+            details.setdefault("estimate_event_id", link)
+            values["metadata"] = details
+        return values
+
     @field_validator("units", "amount_usd", mode="before")
     @classmethod
     def _validate_finite(cls, value: Any) -> Any:
@@ -213,6 +260,24 @@ class CostEvent(ModelBase):
     def amount_kind(self) -> str:
         """The estimated/actual flag as a word."""
         return CostKind.ESTIMATED if self.estimated else CostKind.ACTUAL
+
+    @property
+    def replaces(self) -> str:
+        """The id of the estimate this event replaces, if any."""
+        link = self.metadata.get("replaces")
+        if not link:
+            link = self.metadata.get("estimate_event_id")
+        return str(link or "")
+
+    @property
+    def replaces_event_id(self) -> str:
+        """Alias for :attr:`replaces`."""
+        return self.replaces
+
+    @property
+    def estimate_event_id(self) -> str:
+        """Alias for :attr:`replaces`."""
+        return self.replaces
 
 
 CostEventModel = CostEvent

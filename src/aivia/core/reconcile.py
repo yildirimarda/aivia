@@ -545,6 +545,9 @@ class Reconciler:
         if supplied_metadata is not None:
             metadata.update(dict(supplied_metadata))
         metadata.update(_drift_metadata(result))
+        if result.estimate_event_id:
+            metadata.setdefault("replaces", result.estimate_event_id)
+            metadata.setdefault("estimate_event_id", result.estimate_event_id)
         fields.update(values)
         fields["amount_usd"] = actual_amount
         fields["metadata"] = metadata
