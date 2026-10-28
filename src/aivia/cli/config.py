@@ -435,8 +435,19 @@ def run_validate(args: argparse.Namespace) -> int:
     except ConfigError as exc:
         issues.extend(_error_items(exc))
     else:
+        configured_catalog = getattr(
+            getattr(parsed, "models_file", None),
+            "path",
+            model_ids.CATALOG_FILENAME,
+        )
+        config_dir = (
+            Path(args.config).expanduser().resolve().parent
+            if getattr(args, "config", None)
+            and configured_catalog != model_ids.CATALOG_FILENAME
+            else paths.config_dir()
+        )
         try:
-            model_ids.warn_model_ids(parsed)
+            model_ids.warn_model_ids(parsed, config_dir=config_dir)
         except ConfigError as exc:
             issues.append(("models_file", str(exc)))
 

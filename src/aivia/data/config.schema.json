@@ -1030,6 +1030,20 @@
       "title": "LanguagesConfig",
       "type": "object"
     },
+    "ModelsFileConfig": {
+      "additionalProperties": false,
+      "description": "The model catalog path, with a documented default of ``models.yaml``.\n\nA bare string is accepted as shorthand for ``{path: <string>}`` so the\ncanonical ``models_file: models.yaml`` form in the design stays valid.",
+      "properties": {
+        "path": {
+          "default": "models.yaml",
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "title": "ModelsFileConfig",
+      "type": "object"
+    },
     "NameVerifyConfig": {
       "additionalProperties": false,
       "description": "How often a generated name is transcribed and checked before accepting.\n\nVerification regenerates the spoken name up to ``retries`` times when the\ntranscription does not match within ``threshold``.",
@@ -2971,6 +2985,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/LLMConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "models_file": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelsFileConfig"
         },
         {
           "type": "null"

@@ -114,6 +114,7 @@ from aivia.core.config.migrations import (
     rewrite_schema_version,
     schema_version_of,
 )
+from aivia.core.config.models_file import ModelsFileConfig, ModelsFileSettings
 from aivia.core.config.orders import (
     Delivery,
     DeliveryConfig,
@@ -372,6 +373,8 @@ __all__ = [
     "MigrationResult",
     "ModelPrice",
     "ModelPricing",
+    "ModelsFileConfig",
+    "ModelsFileSettings",
     "NameVerificationConfig",
     "NameVerifyConfig",
     "Occasion",

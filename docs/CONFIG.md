@@ -23,6 +23,7 @@ This reference is generated from the registered configuration models, their JSON
 | `jobs` | [JobsConfig](#jobs) or null | Worker concurrency, retry and heartbeat settings for the job queue. |
 | `languages` | [LanguagesConfig](#languages) or null | The available languages plus the one used when none is requested. A config file may write the language entries directly under the section (``languages: {en: {...}, de: {...}}``) or nest them under ``languages``; both forms validate to the same model. |
 | `llm` | [LLMConfig](#llm) or null | Provider chain, per-role models, token prices and the repair limit. |
+| `models_file` | [ModelsFileConfig](#models_file) or null | The model catalog path, with a documented default of ``models.yaml``. A bare string is accepted as shorthand for ``{path: <string>}`` so the canonical ``models_file: models.yaml`` form in the design stays valid. |
 | `occasions` | [OccasionsConfig](#occasions) or null | The configured occasions and the one selected by default. Occasions may be written directly under the section (``occasions: {birthday: {...}}``) or nested under ``occasions``. |
 | `orders` | [OrdersConfig](#orders) or null | Personalized order defaults: levels, name verification and pricing. |
 | `pipeline` | [PipelineConfig](#pipeline) or null | The ordered stages a pipeline runs and the timezone used for schedules. |
@@ -209,6 +210,14 @@ Provider chain, per-role models, token prices and the repair limit.
 | `max_repairs` | integer | `2` | >= 0 |  |
 | `pricing` | map of [TokenPricing](#tokenpricing) |  |  |  |
 | `roles` | map of string |  |  |  |
+
+## `models_file`
+
+The model catalog path, with a documented default of ``models.yaml``. A bare string is accepted as shorthand for ``{path: <string>}`` so the canonical ``models_file: models.yaml`` form in the design stays valid.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `path` | string | `"models.yaml"` | length >= 1 |  |
 
 ## `occasions`
 
