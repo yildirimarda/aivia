@@ -158,7 +158,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Write a sidecar cost file next to every output containing totals, items, providers, models, pricing version and toolchain fingerprint (tests/core/test_sidecar.py)
 - [x] Support actual amounts reported by providers and flag drift above a threshold against the estimate (tests/core/test_reconcile.py)
 - [x] Emit budget alerts once per threshold per period and provide a console notifier any module can fall back on (tests/core/test_budget_alerts.py)
-- [ ] Generate a static HTML dashboard showing spend per day, run and provider plus budget bars (tests/cli/test_dashboard.py)
+- [x] Generate a static HTML dashboard showing spend per day, run and provider plus budget bars (tests/cli/test_dashboard.py)
 - [ ] Add a resume command that continues a paused budget run after explicit confirmation and records who and why (tests/cli/test_resume.py)
 - [ ] Make the router use the pricing resolver so selection and budget checks share overrides and unit conversions (tests/core/test_router.py)
 - [ ] Make budget checks reserve the estimate atomically so concurrent calls cannot both pass the same per run cap (tests/core/test_budget.py)
