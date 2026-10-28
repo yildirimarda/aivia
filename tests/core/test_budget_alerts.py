@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -306,6 +308,115 @@ def test_module_helper_emits_through_a_shared_tracker() -> None:
             12,
             notifier=target,
             tracker=tracker,
+            now=NOW,
+        )
+    )
+
+    assert len(first) == 1
+    assert second == ()
+    assert len(target.calls) == 1
+
+
+def test_emitted_keys_survive_a_restart_with_the_same_period(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "alerts.json"
+    first = BudgetAlertTracker([10, 20], state_file=state)
+
+    assert len(first.check(25, now=NOW)) == 2
+    assert first.state_file == state
+    assert state.exists()
+
+    restarted = BudgetAlertTracker([10, 20], state_file=state)
+
+    assert restarted.emitted == first.emitted
+    assert restarted.check(25, now=NOW) == ()
+
+    tomorrow = NOW + timedelta(days=1)
+    assert len(restarted.check(25, now=tomorrow)) == 2
+
+    after = BudgetAlertTracker([10, 20], state_file=state)
+
+    assert after.check(25, now=NOW) == ()
+    assert after.check(25, now=tomorrow) == ()
+    assert ("2026-03-16", 10.0) in after.emitted
+
+
+def test_peek_does_not_write_state_and_reset_clears_it(tmp_path: Path) -> None:
+    state = tmp_path / "alerts.json"
+    tracker = BudgetAlertTracker([10], state_file=state)
+
+    assert tracker.peek(10, now=NOW)
+    assert not state.exists()
+
+    assert len(tracker.check(10, now=NOW)) == 1
+    assert state.exists()
+
+    tracker.reset()
+
+    assert tracker.emitted == frozenset()
+    assert len(BudgetAlertTracker([10], state_file=state).check(10, now=NOW)) == 1
+
+
+def test_persistent_tracker_uses_the_data_directory_and_path_alias(
+    tmp_path: Path,
+) -> None:
+    tracker = BudgetAlertTracker.persistent([10], data_dir=tmp_path)
+
+    assert tracker.state_file == tmp_path / "budget_alerts.json"
+    assert len(tracker.check(10, now=NOW)) == 1
+    assert tracker.state_file is not None
+    assert tracker.state_file.exists()
+
+    alias = tmp_path / "alias.json"
+
+    assert BudgetAlertTracker([10], path=alias).state_file == alias
+    with pytest.raises(ConfigError):
+        BudgetAlertTracker([10], state_file=alias, path=alias)
+    with pytest.raises(ConfigError):
+        BudgetAlertTracker([10], state_file=cast(Path, 5))
+
+
+def test_a_corrupt_state_file_fails_clearly(tmp_path: Path) -> None:
+    state = tmp_path / "alerts.json"
+
+    state.write_text("{", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        BudgetAlertTracker([10], state_file=state)
+
+    state.write_text(json.dumps({"version": 99}), encoding="utf-8")
+    with pytest.raises(ConfigError):
+        BudgetAlertTracker([10], state_file=state)
+
+    state.write_text(
+        json.dumps({"emitted": [{"threshold_usd": 10}]}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        BudgetAlertTracker([10], state_file=state)
+
+
+def test_the_module_helper_keeps_state_across_calls_without_a_tracker(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "alerts.json"
+    target = MockNotifier()
+
+    first = asyncio.run(
+        emit_budget_alerts(
+            12,
+            notifier=target,
+            thresholds=[10],
+            state_file=state,
+            now=NOW,
+        )
+    )
+    second = asyncio.run(
+        emit_budget_alerts(
+            12,
+            notifier=target,
+            thresholds=[10],
+            state_file=state,
             now=NOW,
         )
     )
