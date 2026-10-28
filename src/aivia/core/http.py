@@ -14,8 +14,12 @@ for the same reason: tests can advance retries without waiting in real time.
 The client returns the final :class:`httpx.Response` by default, including a
 response whose retryable status survived every attempt. Pass
 ``raise_for_status=True`` (or call :func:`raise_for_status`) to convert it to
-the shared :mod:`aivia.core.errors` taxonomy. Retrying a non-idempotent call is
-the caller's decision; pass ``retry=False`` for a single attempt.
+the shared :mod:`aivia.core.errors` taxonomy.
+
+Retries are method aware: methods that HTTP defines as idempotent are retried
+by default, while ``POST`` (and any other non-idempotent method) makes exactly
+one attempt unless the caller opts in with ``retry=True``. ``retry=False``
+always forces a single attempt.
 """
 
 from __future__ import annotations
@@ -85,6 +89,10 @@ _SENSITIVE_PARTS = (
     "apikey",
     "api_key",
     "private-key",
+)
+
+_IDEMPOTENT_METHODS: frozenset[str] = frozenset(
+    {"GET", "HEAD", "OPTIONS", "PUT", "DELETE", "TRACE"}
 )
 
 
@@ -367,6 +375,17 @@ class HttpClient:
             },
         )
 
+    def _retries_enabled(self, method: str, retry: bool | None) -> bool:
+        """Return whether *method* may be attempted more than once.
+
+        ``retry=True`` opts any method in, ``retry=False`` forces a single
+        attempt, and ``None`` uses the method's idempotency: safe and idempotent
+        methods retry, while ``POST`` and other non-idempotent methods do not.
+        """
+        if retry is not None:
+            return retry
+        return method.upper() in _IDEMPOTENT_METHODS
+
     async def request(
         self,
         method: str,
@@ -379,7 +398,7 @@ class HttpClient:
         files: Any = None,
         json: Any = None,
         timeout: float | httpx.Timeout | None = None,
-        retry: bool = True,
+        retry: bool | None = None,
         raise_for_status: bool = False,
         follow_redirects: bool | None = None,
         **kwargs: Any,
@@ -390,11 +409,17 @@ class HttpClient:
         Transport errors, timeouts and responses whose status is in
         ``retry_statuses`` are retried until ``max_attempts`` is reached. The
         final response is returned; pass ``raise_for_status=True`` to raise the
-        mapped error instead. ``retry=False`` makes exactly one attempt.
+        mapped error instead.
+
+        Retries are method aware. ``retry=None`` (the default) retries only
+        idempotent methods, so a ``POST`` makes exactly one attempt unless the
+        caller passes ``retry=True``. ``retry=False`` always makes one attempt.
         """
         timeout_config = self._timeout_for(timeout)
         deadline = self._deadline_for(timeout)
-        attempts = self._config.max_attempts if retry else 1
+        attempts = (
+            self._config.max_attempts if self._retries_enabled(method, retry) else 1
+        )
         redirects = (
             self._config.follow_redirects
             if follow_redirects is None
@@ -491,7 +516,10 @@ class HttpClient:
         return await self.request("OPTIONS", url, **kwargs)
 
     async def post(self, url: str | httpx.URL, **kwargs: Any) -> httpx.Response:
-        """Send a POST request."""
+        """Send a POST request.
+
+        POST is not retried by default; pass ``retry=True`` to opt in.
+        """
         return await self.request("POST", url, **kwargs)
 
     async def put(self, url: str | httpx.URL, **kwargs: Any) -> httpx.Response:
