@@ -125,7 +125,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement deterministic mock providers for every capability, including lavfi generated video and sized audio, with simulated cost and failures (tests/contracts)
 - [x] Add providers list and providers check commands, the latter requiring live mode and a budget cap (tests/cli/test_providers.py)
 - [x] Generate the provider capability matrix document from provider metadata and fail CI when it is stale (tests/test_provider_docs.py)
-- [ ] Validate configured model ids against models.yaml, warning on unknown ids with a closest match and on deprecated ids with a replacement (tests/core/test_model_ids.py)
+- [x] Validate configured model ids against models.yaml, warning on unknown ids with a closest match and on deprecated ids with a replacement (tests/core/test_model_ids.py)
 - [ ] Add a timeout to provider health checks so an unresponsive adapter cannot block a status command (tests/contracts/test_provider_base.py)
 - [ ] Add a providers config section mapping names to type, options and secret references for router chains (tests/core/config/test_providers.py)
 - [ ] Warn or refuse when budget-aware selection cannot estimate an unpriced provider (tests/core/test_router.py)
@@ -134,6 +134,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Enforce provider max concurrency in the router alongside the token bucket so parallel calls queue or fail (tests/core/test_ratelimit.py)
 - [ ] Register an HTTP client config section and pass its retry and timeout policy into provider construction (tests/core/config/test_http.py)
 - [ ] Make HTTP retries method aware so POST only retries when the caller opts in (tests/core/test_http.py)
+- [ ] Register a models_file config section and resolve the model catalog path from it (tests/core/config/test_models_file.py)
 
 ## Milestone 5: Cost tracking, budgets and dashboard
 
