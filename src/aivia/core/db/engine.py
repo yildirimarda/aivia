@@ -11,12 +11,15 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Engine, event
 from sqlalchemy import create_engine as _create_engine
 
 from aivia.core import paths
+
+if TYPE_CHECKING:
+    from aivia.core.config.database import DatabaseConfig
 
 __all__ = [
     "DEFAULT_BUSY_TIMEOUT_MS",
@@ -104,26 +107,37 @@ def create_database_engine(
     url: str | None = None,
     data_dir: str | Path | None = None,
     environ: Mapping[str, str] | None = None,
-    busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
+    config: DatabaseConfig | None = None,
+    busy_timeout_ms: int | None = None,
+    filename: str | None = None,
     echo: bool = False,
 ) -> Engine:
     """Build an engine for the user database, creating its directory.
 
     Pass an explicit *path* or *data_dir* to override the user location, or a
-    *url* such as ``sqlite+pysqlite:///:memory:`` for tests. The pragmas are
+    *url* such as ``sqlite+pysqlite:///:memory:`` for tests. A *config* section
+    supplies the file name and busy timeout; explicit *filename* or
+    *busy_timeout_ms* arguments are rejected alongside it. The pragmas are
     installed before any connection is opened.
     """
     if url is not None and (path is not None or data_dir is not None):
         raise ValueError("pass either url or path/data_dir, not both")
+    if config is not None and (busy_timeout_ms is not None or filename is not None):
+        raise ValueError("pass either config or busy_timeout_ms/filename, not both")
+
+    if busy_timeout_ms is None:
+        busy_timeout_ms = (
+            config.busy_timeout_ms if config is not None else DEFAULT_BUSY_TIMEOUT_MS
+        )
+    if filename is None:
+        filename = config.filename if config is not None else DEFAULT_DATABASE_FILENAME
     _validate_busy_timeout(busy_timeout_ms)
 
     if url is None:
         if path is not None:
             db_path = Path(path).expanduser()
-        elif data_dir is not None:
-            db_path = database_path(data_dir)
         else:
-            db_path = database_path(environ=environ)
+            db_path = database_path(data_dir, environ=environ, filename=filename)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         url = database_url(db_path)
 

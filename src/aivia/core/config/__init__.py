@@ -41,6 +41,7 @@ from aivia.core.config.character import (
     ConsistencyStrategyOrder,
     QAConfig,
 )
+from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.docs import (
     DOCS_FILENAME,
     DOCS_TITLE,
@@ -314,6 +315,7 @@ __all__ = [
     "CoreLLMRole",
     "CoreRole",
     "CronScheduleConfig",
+    "DatabaseConfig",
     "Delivery",
     "DeliveryConfig",
     "DeliveryProviderConfig",

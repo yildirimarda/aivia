@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from alembic import command
 from alembic.config import Config
@@ -18,11 +19,13 @@ from sqlalchemy import Connection, Engine, inspect, text
 
 from aivia.core import paths
 from aivia.core.db.engine import (
-    DEFAULT_BUSY_TIMEOUT_MS,
     create_database_engine,
     database_path,
     database_url,
 )
+
+if TYPE_CHECKING:
+    from aivia.core.config.database import DatabaseConfig
 
 __all__ = [
     "MIGRATIONS_ENV",
@@ -84,14 +87,15 @@ def upgrade_database(
     url: str | None = None,
     data_dir: str | Path | None = None,
     environ: Mapping[str, str] | None = None,
-    busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
+    config: DatabaseConfig | None = None,
+    busy_timeout_ms: int | None = None,
     script_location: str | Path | None = None,
 ) -> None:
     """Upgrade the database to *revision*, creating the file when missing.
 
     Passing *engine* reuses its pragma-enabled connections. Otherwise an engine
-    is built from *path*, *url*, *data_dir* or the user data directory and
-    disposed afterwards.
+    is built from *path*, *url*, *data_dir*, a *config* section or the user
+    data directory and disposed afterwards.
     """
     owns_engine = engine is None
     target = (
@@ -100,6 +104,7 @@ def upgrade_database(
             url=url,
             data_dir=data_dir,
             environ=environ,
+            config=config,
             busy_timeout_ms=busy_timeout_ms,
         )
         if engine is None
@@ -107,11 +112,11 @@ def upgrade_database(
     )
     try:
         with target.begin() as connection:
-            config = alembic_config(
+            alembic_cfg = alembic_config(
                 connection=connection,
                 script_location=script_location,
             )
-            command.upgrade(config, revision)
+            command.upgrade(alembic_cfg, revision)
     finally:
         if owns_engine:
             target.dispose()

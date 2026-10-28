@@ -446,6 +446,26 @@
       "title": "ContentProfileConfig",
       "type": "object"
     },
+    "DatabaseConfig": {
+      "additionalProperties": false,
+      "description": "The SQLite file inside the user data directory and its busy timeout.\n\n``filename`` is a bare file name; the directory is always the user data\ndirectory so a config file cannot point the database at another location.\n``busy_timeout_ms`` is how long SQLite waits for a lock before raising\n``database is locked``.",
+      "properties": {
+        "busy_timeout_ms": {
+          "default": 5000,
+          "minimum": 0,
+          "title": "Busy Timeout Ms",
+          "type": "integer"
+        },
+        "filename": {
+          "default": "aivia.db",
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        }
+      },
+      "title": "DatabaseConfig",
+      "type": "object"
+    },
     "DeliveryConfig": {
       "additionalProperties": false,
       "description": "Delivery providers, the fallback chain and shared retry settings.\n\nProviders may be nested under ``providers`` or written directly as\n``folder``, ``link``, ``email`` and ``webhook`` keys. The ``chain`` lists\nprovider names in fallback order and every entry must name a provider.",
@@ -2643,6 +2663,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/CharacterConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "database": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DatabaseConfig"
         },
         {
           "type": "null"

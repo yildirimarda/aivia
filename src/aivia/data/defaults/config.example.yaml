@@ -160,6 +160,10 @@ storage:
   presign_seconds: 3600
   use_path_style: true
 
+database:
+  filename: aivia.db
+  busy_timeout_ms: 5000
+
 api:
   host: 127.0.0.1
   port: 8765
