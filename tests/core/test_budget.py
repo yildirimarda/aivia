@@ -688,6 +688,28 @@ def test_reserve_records_the_estimate_so_the_next_call_sees_it(
     assert tracker.total(run_id="run_1") == pytest.approx(0.30)
 
 
+def test_a_reservation_is_replaced_by_its_actual_in_spend(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(BudgetConfig(per_run=0.50), tracker)
+    guard.reserve(0.30, run_id="run_1", provider="acme", operation="image_gen")
+    reservation = tracker.events(run_id="run_1")[0]
+
+    actual = tracker.record_actual(
+        provider="acme",
+        operation="image_gen",
+        amount_usd=0.25,
+        run_id="run_1",
+    )
+
+    assert actual.replaces == reservation.id
+    assert guard.spent("run_1") == pytest.approx(0.25)
+    assert tracker.total(run_id="run_1") == pytest.approx(0.25)
+    assert guard.check(0.25, run_id="run_1").allowed is True
+    with pytest.raises(BudgetError):
+        guard.check(0.26, run_id="run_1")
+
+
 def test_concurrent_reservations_cannot_both_pass_the_same_per_run_cap(
     tmp_path: Path,
 ) -> None:

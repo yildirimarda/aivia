@@ -248,6 +248,99 @@ def test_an_empty_ledger_totals_to_zero(tracker: CostTracker) -> None:
     }
 
 
+def test_an_actual_replacement_is_not_counted_twice_in_totals(
+    tracker: CostTracker,
+) -> None:
+    estimate = tracker.record_estimate(
+        provider="acme",
+        model="image-1",
+        operation="image_gen",
+        units=2.0,
+        unit_kind="image",
+        amount_usd=0.20,
+        run_id="run_1",
+    )
+    actual = tracker.record_actual(
+        provider="acme",
+        model="image-1",
+        operation="image_gen",
+        units=2.0,
+        unit_kind="image",
+        amount_usd=0.18,
+        run_id="run_1",
+    )
+
+    assert actual.replaces == estimate.id
+    assert actual.metadata["estimate_event_id"] == estimate.id
+    assert tracker.count() == 2
+    assert tracker.total(run_id="run_1") == pytest.approx(0.18)
+    assert tracker.estimated_total(run_id="run_1") == pytest.approx(0.0)
+    assert tracker.actual_total(run_id="run_1") == pytest.approx(0.18)
+    assert tracker.totals(run_id="run_1") == {
+        "total": pytest.approx(0.18),
+        "estimated": pytest.approx(0.0),
+        "actual": pytest.approx(0.18),
+        "count": 1,
+    }
+
+
+def test_an_explicit_replacement_link_excludes_the_estimate(
+    tracker: CostTracker,
+) -> None:
+    estimate = _record(tracker, amount_usd=0.20, estimated=True)
+    actual = _record(
+        tracker,
+        amount_usd=0.25,
+        estimated=False,
+        replaces=estimate.id,
+    )
+
+    assert actual.replaces == estimate.id
+    assert tracker.total() == pytest.approx(0.25)
+    assert tracker.estimated_total() == pytest.approx(0.0)
+    assert tracker.actual_total() == pytest.approx(0.25)
+
+
+def test_replacements_pair_estimates_and_actuals_in_ledger_order(
+    tracker: CostTracker,
+) -> None:
+    first_estimate = _record(tracker, amount_usd=0.10, estimated=True)
+    second_estimate = _record(tracker, amount_usd=0.20, estimated=True)
+
+    first_actual = tracker.record_actual(
+        provider="acme",
+        model="image-1",
+        operation="image_gen",
+        units=2.0,
+        unit_kind="image",
+        amount_usd=0.11,
+        run_id="run_1",
+    )
+    second_actual = tracker.record_actual(
+        provider="acme",
+        model="image-1",
+        operation="image_gen",
+        units=2.0,
+        unit_kind="image",
+        amount_usd=0.19,
+        run_id="run_1",
+    )
+
+    assert first_actual.replaces == first_estimate.id
+    assert second_actual.replaces == second_estimate.id
+    assert tracker.total() == pytest.approx(0.30)
+    assert tracker.estimated_total() == pytest.approx(0.0)
+
+
+def test_an_estimate_without_an_actual_still_counts(tracker: CostTracker) -> None:
+    estimate = _record(tracker, operation="video_gen", amount_usd=0.30, estimated=True)
+    _record(tracker, operation="image_gen", amount_usd=0.10, estimated=False)
+
+    assert tracker.total() == pytest.approx(0.40)
+    assert tracker.estimated_total() == pytest.approx(0.30)
+    assert estimate.replaces == ""
+
+
 def test_tracker_can_be_built_from_a_repository(engine: Engine) -> None:
     repository = CostEventRepository(engine)
     tracker = CostTracker(repository=repository)

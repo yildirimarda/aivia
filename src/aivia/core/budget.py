@@ -54,7 +54,7 @@ from aivia.core.budget_alerts import (
 )
 from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.cost import CostTracker
-from aivia.core.cost_agg import CostAggregator, CostGroup
+from aivia.core.cost_agg import CostAggregator, CostGroup, _not_replaced
 from aivia.core.db.repos import CostEventRepository
 from aivia.core.db.tables import cost_events
 from aivia.core.errors import BudgetError, ConfigError
@@ -154,6 +154,7 @@ def _sum_events(
 ) -> float:
     """Sum cost events on *connection* over a run or half-open time window."""
     statement = select(func.coalesce(func.sum(cost_events.c.amount_usd), 0.0))
+    statement = statement.where(_not_replaced())
     if run_id is not None:
         statement = statement.where(cost_events.c.run_id == run_id)
     if start is not None:
