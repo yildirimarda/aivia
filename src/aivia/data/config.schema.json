@@ -173,6 +173,12 @@
           "title": "Alerts",
           "type": "array"
         },
+        "confirm_above": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Confirm Above",
+          "type": "number"
+        },
         "on_exceed": {
           "$ref": "#/$defs/OnExceed",
           "default": "pause"

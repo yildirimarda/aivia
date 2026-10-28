@@ -97,6 +97,7 @@ Spending caps, provider monthly limits, alert thresholds and policy.
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
 | `alerts` | array of number |  |  |  |
+| `confirm_above` | number | `0.0` | >= 0 |  |
 | `on_exceed` | [OnExceed](#onexceed) | `"pause"` | one of: `pause`, `downgrade`, `notify` | What to do when a budget cap is reached. |
 | `per_call` | number | `0.0` | >= 0 |  |
 | `per_day` | number | `0.0` | >= 0 |  |
