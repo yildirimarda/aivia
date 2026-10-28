@@ -1,18 +1,21 @@
-"""``aivia config``: inspect the layered configuration."""
+"""``aivia config``: inspect and validate the layered configuration."""
 
 from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from aivia.cli.registry import register_command
 from aivia.core import config_show
+from aivia.core.config import AppConfig, parse_app_config
 from aivia.core.errors import ConfigError
 
-__all__ = ["configure", "run_config", "run_show"]
+__all__ = ["configure", "run_config", "run_show", "run_validate"]
 
 
-def _configure_show(parser: argparse.ArgumentParser) -> None:
+def _configure_resolution(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config",
         metavar="PATH",
@@ -37,6 +40,10 @@ def _configure_show(parser: argparse.ArgumentParser) -> None:
         metavar="KEY=VALUE",
         help="override a dotted key; repeatable and applied after the profile",
     )
+
+
+def _configure_show(parser: argparse.ArgumentParser) -> None:
+    _configure_resolution(parser)
     parser.add_argument(
         "--resolved",
         action="store_true",
@@ -50,6 +57,11 @@ def _configure_show(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_config_handler=run_show)
 
 
+def _configure_validate(parser: argparse.ArgumentParser) -> None:
+    _configure_resolution(parser)
+    parser.set_defaults(_config_handler=run_validate)
+
+
 def configure(parser: argparse.ArgumentParser) -> None:
     """Add the config group and its subcommands."""
     subparsers = parser.add_subparsers(dest="config_command", metavar="COMMAND")
@@ -59,6 +71,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="Print the merged configuration with profile and origin tracking",
     )
     _configure_show(show)
+    validate = subparsers.add_parser(
+        "validate",
+        help="Validate the merged configuration and print every error",
+        description="Validate the merged configuration and print every error",
+    )
+    _configure_validate(validate)
 
 
 def run_config(args: argparse.Namespace) -> int:
@@ -66,7 +84,7 @@ def run_config(args: argparse.Namespace) -> int:
     handler = getattr(args, "_config_handler", None)
     if handler is None:
         print("error: missing config command", file=sys.stderr)
-        print("usage: aivia config {show}", file=sys.stderr)
+        print("usage: aivia config {show, validate}", file=sys.stderr)
         return 2
     return int(handler(args))
 
@@ -87,6 +105,131 @@ def run_show(args: argparse.Namespace) -> int:
         config_show.dump_config(resolved, include_origins=args.origins),
         end="",
     )
+    return 0
+
+
+def _error_path(details: Mapping[str, Any], message: str) -> str:
+    path = details.get("path")
+    if isinstance(path, str) and path:
+        return path
+    preset = details.get("preset")
+    if isinstance(preset, str):
+        if "unknown platform account" in message:
+            return f"presets.{preset}.accounts"
+        if "unknown format" in message:
+            return f"presets.{preset}.format"
+        if "unknown profile" in message:
+            return f"presets.{preset}.profile"
+        return f"presets.{preset}"
+    schedule = details.get("schedule")
+    if isinstance(schedule, str):
+        return f"schedule.schedules.{schedule}.profiles"
+    profile = details.get("profile")
+    if isinstance(profile, str):
+        if f"profile {profile} references unknown platform account" in message:
+            return f"profiles.{profile}.accounts"
+        if f"profile {profile} references unknown format" in message:
+            return f"profiles.{profile}.format"
+    account = details.get("account")
+    if isinstance(account, str):
+        if "unknown credential" in message:
+            return f"publish.accounts.{account}.credential_refs"
+        if "unknown profile" in message:
+            return f"publish.accounts.{account}.profile"
+        return f"publish.accounts.{account}"
+    if isinstance(profile, str):
+        return "publish.default_profile"
+    return ""
+
+
+def _error_items(error: ConfigError) -> list[tuple[str, str]]:
+    """Return every issue carried by *error* as a ``(path, message)`` pair."""
+    details = error.details
+    raw_errors = details.get("errors")
+    if isinstance(raw_errors, Sequence) and not isinstance(raw_errors, (str, bytes)):
+        items: list[tuple[str, str]] = []
+        for entry in raw_errors:
+            if not isinstance(entry, Mapping):
+                continue
+            path = entry.get("path")
+            message = entry.get("message")
+            items.append(
+                (
+                    str(path) if path is not None else "",
+                    str(message) if message is not None else str(error),
+                )
+            )
+        if items:
+            return items
+    unknown = details.get("unknown")
+    if isinstance(unknown, Sequence) and not isinstance(unknown, (str, bytes)):
+        keys = [str(key) for key in unknown]
+        if keys:
+            return [(key, f"unknown config section: {key}") for key in keys]
+    message = str(error)
+    return [(_error_path(details, message), message)]
+
+
+def _format_error(path: str, message: str) -> str:
+    if path and path not in message:
+        return f"{path}: {message}"
+    return message
+
+
+def _schema_version_issue(values: Mapping[str, Any]) -> tuple[str, str] | None:
+    if "schema_version" not in values:
+        return None
+    version = values["schema_version"]
+    if isinstance(version, int) and not isinstance(version, bool) and version >= 1:
+        return None
+    return (
+        "schema_version",
+        "invalid value for schema_version: "
+        f"expected a positive integer, got {version!r}",
+    )
+
+
+def run_validate(args: argparse.Namespace) -> int:
+    """Validate the merged configuration and report every error with its path."""
+    try:
+        resolved = config_show.resolve_config(
+            config_file=args.config,
+            environment=args.environment,
+            profile=args.profile,
+            set_values=args.set_values,
+        )
+    except ConfigError as exc:
+        for path, message in _error_items(exc):
+            print(f"error: {_format_error(path, message)}", file=sys.stderr)
+        return 1
+
+    values = dict(resolved.values)
+    issues: list[tuple[str, str]] = []
+    schema_issue = _schema_version_issue(values)
+    if schema_issue is not None:
+        issues.append(schema_issue)
+    values.pop("schema_version", None)
+
+    registered = set(AppConfig.model_fields)
+    unknown = sorted(str(key) for key in values if key not in registered)
+    if unknown:
+        available = ", ".join(sorted(registered)) or "none"
+        for key in unknown:
+            issues.append(
+                (key, f"unknown config section: {key} (registered: {available})")
+            )
+            values.pop(key)
+
+    try:
+        parse_app_config(values)
+    except ConfigError as exc:
+        issues.extend(_error_items(exc))
+
+    if issues:
+        for path, message in issues:
+            print(f"error: {_format_error(path, message)}", file=sys.stderr)
+        return 1
+    print("configuration is valid")
     return 0
 
 
