@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from aivia.cli.registry import register_command
-from aivia.core import config_show, paths
+from aivia.core import config_show, model_ids, paths
 from aivia.core.config import AppConfig, parse_app_config
 from aivia.core.config import docs as config_docs
 from aivia.core.config import migrations as config_migrations
@@ -431,9 +431,14 @@ def run_validate(args: argparse.Namespace) -> int:
             values.pop(key)
 
     try:
-        parse_app_config(values, context=resolved.error_context())
+        parsed = parse_app_config(values, context=resolved.error_context())
     except ConfigError as exc:
         issues.extend(_error_items(exc))
+    else:
+        try:
+            model_ids.warn_model_ids(parsed)
+        except ConfigError as exc:
+            issues.append(("models_file", str(exc)))
 
     if issues:
         for path, message in issues:

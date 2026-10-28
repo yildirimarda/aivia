@@ -18,6 +18,7 @@ from aivia.core.config import (
     register_core_sections,
     resolve_config,
 )
+from aivia.core.model_ids import CATALOG_FILENAME
 
 
 def defaults_dir() -> Path:
@@ -42,10 +43,19 @@ def test_the_package_ships_exactly_one_default_config() -> None:
     configs = sorted(
         path.name
         for path in defaults_dir().iterdir()
-        if path.is_file() and path.suffix in {".yaml", ".yml"}
+        if path.is_file()
+        and path.suffix in {".yaml", ".yml"}
+        and path.name != CATALOG_FILENAME
     )
 
     assert configs == [DEFAULT_CONFIG_SOURCE]
+
+
+def test_the_package_ships_a_model_catalog() -> None:
+    catalog = defaults_dir() / CATALOG_FILENAME
+
+    assert catalog.is_file()
+    assert "schema_version: 1" in catalog.read_text(encoding="utf-8")
 
 
 def test_the_default_config_covers_every_configuration_area() -> None:

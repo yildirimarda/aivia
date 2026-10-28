@@ -1,0 +1,26 @@
+# Known model ids for this release. Vendors rename and retire models often, so
+# this file is data: update it instead of releasing a new adapter. A deprecated
+# entry must name a replacement that is also listed here.
+
+schema_version: 1
+models:
+  mock-llm:
+    capabilities: [llm]
+  mock-embedding:
+    capabilities: [embeddings]
+  mock-image:
+    capabilities: [image_gen]
+  mock-image-edit:
+    capabilities: [image_edit]
+  mock-video:
+    capabilities: [video_gen]
+  mock-music:
+    capabilities: [music_gen]
+  mock-sfx:
+    capabilities: [sfx]
+  mock-tts:
+    capabilities: [tts]
+  mock-stt:
+    capabilities: [stt]
+  mock-lipsync:
+    capabilities: [lipsync]
