@@ -33,6 +33,11 @@ Each provider has its own :class:`~aivia.core.circuit.CircuitBreaker`. Retryable
 failures are recorded per provider, and a provider whose circuit is open is
 skipped until its cooldown elapses. Selection then half-opens the circuit for a
 single probe, which either closes it on success or reopens it on failure.
+
+Each provider also has its own :class:`~aivia.core.ratelimit.TokenBucket`, built
+from the rate limit declared in its metadata. Execution acquires a token before
+calling the provider; a bucket configured to wait sleeps for the next token,
+while a fail-fast bucket makes the router skip or fall back to another provider.
 """
 
 from __future__ import annotations
@@ -46,7 +51,14 @@ from typing import TypeVar
 
 from aivia.core.circuit import CircuitBreaker
 from aivia.core.config.capability import CapabilityChainConfig, CapabilityStrategy
-from aivia.core.errors import AiviaError, ConfigError, ProviderExhaustedError
+from aivia.core.config.ratelimit import OnRateLimit, RateLimiterConfig
+from aivia.core.errors import (
+    AiviaError,
+    ConfigError,
+    ProviderExhaustedError,
+    RateLimitError,
+)
+from aivia.core.ratelimit import TokenBucket
 from aivia.providers.base import Provider
 
 __all__ = [
@@ -302,12 +314,19 @@ def _rejection(
     provider: Provider,
     required: tuple[str, ...],
     breaker: CircuitBreaker | None = None,
+    limiter: TokenBucket | None = None,
 ) -> RouteSkip | None:
     """Return why *provider* cannot serve *required*, or ``None`` if it can."""
     if provider.closed:
         return RouteSkip(provider=name, reason="closed")
     if breaker is not None and not breaker.available():
         return RouteSkip(provider=name, reason="circuit_open")
+    if (
+        limiter is not None
+        and limiter.on_limit is OnRateLimit.RAISE
+        and not limiter.available()
+    ):
+        return RouteSkip(provider=name, reason="rate_limited")
     missing = tuple(
         requirement for requirement in required if not provider.supports(requirement)
     )
@@ -409,6 +428,11 @@ class Router:
     pre-built breakers by provider name, while ``circuit_breaker_factory``
     builds the remaining ones; the default is a fresh
     :class:`~aivia.core.circuit.CircuitBreaker`.
+
+    Each provider also gets its own token bucket built from its declared
+    :class:`~aivia.core.models.provider.RateLimit`. ``rate_limiters`` injects
+    pre-built buckets by provider name, while ``rate_limiter_factory`` builds
+    the remaining ones; the default bucket uses ``rate_limit_config``.
     """
 
     def __init__(
@@ -425,9 +449,21 @@ class Router:
         seed: int | None = None,
         circuit_breaker_factory: Callable[[str], CircuitBreaker] | None = None,
         circuit_breakers: Mapping[str, CircuitBreaker] | None = None,
+        rate_limiter_factory: Callable[..., TokenBucket] | None = None,
+        rate_limiters: Mapping[str, TokenBucket] | None = None,
+        rate_limit_config: RateLimiterConfig | None = None,
     ) -> None:
+        if rate_limit_config is not None and not isinstance(
+            rate_limit_config, RateLimiterConfig
+        ):
+            raise TypeError("rate_limit_config must be a RateLimiterConfig")
         self._providers = _coerce_providers(providers)
         self._circuits = self._build_circuits(circuit_breaker_factory, circuit_breakers)
+        self._limiters = self._build_limiters(
+            rate_limiter_factory,
+            rate_limiters,
+            rate_limit_config or RateLimiterConfig(),
+        )
         default = (
             config
             if isinstance(config, CapabilityChainConfig)
@@ -506,6 +542,66 @@ class Router:
                 circuits[name] = CircuitBreaker()
         return circuits
 
+    def _build_limiters(
+        self,
+        factory: Callable[..., TokenBucket] | None,
+        injected: Mapping[str, TokenBucket] | None,
+        config: RateLimiterConfig,
+    ) -> dict[str, TokenBucket]:
+        if factory is not None and not callable(factory):
+            raise TypeError("rate_limiter_factory must be callable")
+        supplied: dict[str, TokenBucket] = {}
+        if injected is not None:
+            for name, limiter in injected.items():
+                if not isinstance(name, str) or not name.strip():
+                    raise ConfigError("rate limiter names must be non-empty strings")
+                if not isinstance(limiter, TokenBucket):
+                    raise TypeError(
+                        "rate_limiters values must be TokenBucket instances"
+                    )
+                supplied[name.strip()] = limiter
+            unknown = sorted(set(supplied) - set(self._providers))
+            if unknown:
+                names = ", ".join(unknown)
+                raise ConfigError(
+                    f"rate limiters name unknown providers: {names}",
+                    details={
+                        "unknown": unknown,
+                        "available": list(self._providers),
+                    },
+                )
+
+        limiters: dict[str, TokenBucket] = {}
+        for name, provider in self._providers.items():
+            if name in supplied:
+                limiters[name] = supplied[name]
+            elif factory is not None:
+                limiter = self._call_limiter_factory(factory, name, provider)
+                if not isinstance(limiter, TokenBucket):
+                    raise TypeError(
+                        "rate_limiter_factory must return TokenBucket instances"
+                    )
+                limiters[name] = limiter
+            else:
+                limiters[name] = TokenBucket(
+                    rate_limit=provider.metadata.rate_limit,
+                    name=name,
+                    config=config,
+                )
+        return limiters
+
+    @staticmethod
+    def _call_limiter_factory(
+        factory: Callable[..., TokenBucket],
+        name: str,
+        provider: Provider,
+    ) -> TokenBucket:
+        """Call a factory that accepts either ``(name)`` or ``(name, provider)``."""
+        try:
+            return factory(name, provider)
+        except TypeError:
+            return factory(name)
+
     @property
     def providers(self) -> Mapping[str, Provider]:
         """The configured provider instances keyed by name."""
@@ -537,6 +633,33 @@ class Router:
     def breaker_for(self, provider: str) -> CircuitBreaker:
         """Alias for :meth:`circuit_for`."""
         return self.circuit_for(provider)
+
+    @property
+    def rate_limiters(self) -> Mapping[str, TokenBucket]:
+        """The token bucket for every configured provider, keyed by name."""
+        return dict(self._limiters)
+
+    @property
+    def limiters(self) -> Mapping[str, TokenBucket]:
+        """Alias for :attr:`rate_limiters`."""
+        return self.rate_limiters
+
+    def limiter_for(self, provider: str) -> TokenBucket:
+        """Return the token bucket belonging to *provider*."""
+        if not isinstance(provider, str) or not provider.strip():
+            raise ConfigError("provider name must be a non-empty string")
+        name = provider.strip()
+        try:
+            return self._limiters[name]
+        except KeyError:
+            raise ConfigError(
+                f"unknown provider for rate limiter: {name}",
+                details={"provider": name, "available": list(self._limiters)},
+            ) from None
+
+    def rate_limiter_for(self, provider: str) -> TokenBucket:
+        """Alias for :meth:`limiter_for`."""
+        return self.limiter_for(provider)
 
     @property
     def provider_names(self) -> tuple[str, ...]:
@@ -595,6 +718,10 @@ class Router:
             for provider_name in self.chain_for(capability)
             if not self._providers[provider_name].closed
             and self._circuits[provider_name].available()
+            and not (
+                self._limiters[provider_name].on_limit is OnRateLimit.RAISE
+                and not self._limiters[provider_name].available()
+            )
             and all(
                 self._providers[provider_name].supports(requirement)
                 for requirement in names
@@ -736,7 +863,13 @@ class Router:
                 if name in excluded:
                     skipped.append(RouteSkip(provider=name, reason="excluded"))
                     continue
-                rejection = _rejection(name, provider, names, self._circuits[name])
+                rejection = _rejection(
+                    name,
+                    provider,
+                    names,
+                    self._circuits[name],
+                    self._limiters[name],
+                )
                 if rejection is None:
                     rejection = _budget_rejection(
                         name,
@@ -768,7 +901,12 @@ class Router:
             if name in excluded:
                 skipped.append(RouteSkip(provider=name, reason="excluded"))
                 continue
-            rejection = _rejection(name, provider, names)
+            rejection = _rejection(
+                name,
+                provider,
+                names,
+                limiter=self._limiters[name],
+            )
             if rejection is None:
                 rejection = _budget_rejection(
                     name,
@@ -861,8 +999,10 @@ class Router:
         ``remaining_budget`` and ``units`` are passed to every selection so a
         provider whose estimate exceeds the budget is never called. Retryable
         failures are recorded on the provider's circuit breaker; a provider
-        whose circuit is open is skipped until it half-opens. When every
-        candidate fails with a retryable error, the router raises
+        whose circuit is open is skipped until it half-opens. Before the call
+        the provider's token bucket is acquired, which waits for the next token
+        or raises a rate limited error according to the bucket policy. When
+        every candidate fails with a retryable error, the router raises
         :class:`~aivia.core.errors.ProviderExhaustedError` with the attempted
         providers and the last error, chained as the cause. The successful
         selection remains available through :attr:`last_selection`.
@@ -902,6 +1042,23 @@ class Router:
             breaker = self._circuits[selection.name]
             if not breaker.acquire():
                 excluded.add(selection.name)
+                continue
+
+            limiter = self._limiters[selection.name]
+            try:
+                await limiter.acquire()
+            except RateLimitError as exc:
+                breaker.release()
+                attempted.append(
+                    RouteAttempt(
+                        provider=selection.name,
+                        error=exc.code,
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                    )
+                )
+                excluded.add(selection.name)
+                last_error = exc
                 continue
 
             try:
