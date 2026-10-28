@@ -17,10 +17,19 @@ from aivia.core.db.migrate import (
     upgrade_database,
 )
 from aivia.core.db.schema import NAMING_CONVENTION, metadata
+from aivia.core.db.tables import (
+    CLAIM_INDEX_NAME,
+    IDEMPOTENCY_INDEX_NAME,
+    jobs,
+    runs,
+    stage_runs,
+)
 
 __all__ = [
+    "CLAIM_INDEX_NAME",
     "DEFAULT_BUSY_TIMEOUT_MS",
     "DEFAULT_DATABASE_FILENAME",
+    "IDEMPOTENCY_INDEX_NAME",
     "MIGRATIONS_ENV",
     "NAMING_CONVENTION",
     "alembic_config",
@@ -30,7 +39,10 @@ __all__ = [
     "database_path",
     "database_url",
     "install_sqlite_pragmas",
+    "jobs",
     "metadata",
     "migrations_dir",
+    "runs",
+    "stage_runs",
     "upgrade_database",
 ]
