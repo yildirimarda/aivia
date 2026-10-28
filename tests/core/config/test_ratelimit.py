@@ -42,7 +42,7 @@ class FakeProvider(Provider):
         super().__init__(ProviderMeta.model_validate(payload))
 
 
-def make_router(*providers: FakeProvider, **kwargs: Any) -> Router:
+def make_router(*providers: Provider, **kwargs: Any) -> Router:
     return Router(
         providers={provider.name: provider for provider in providers},
         **kwargs,
@@ -149,6 +149,112 @@ def test_router_keeps_the_provider_rate_but_uses_the_configured_on_limit() -> No
     assert limiter.requests_per_minute == 240
     assert limiter.capacity == 8
     assert limiter.on_limit is OnRateLimit.RAISE
+
+
+def test_router_applies_the_configured_rate_and_burst_when_the_provider_has_none() -> (
+    None
+):
+    image = FakeProvider("image", ["image_gen"])
+    router = make_router(
+        image,
+        rate_limit_config=RateLimiterConfig.from_mapping(
+            {"requests_per_minute": 120, "burst": 10, "on_limit": "raise"}
+        ),
+    )
+
+    limiter = router.limiter_for("image")
+    assert limiter.requests_per_minute == 120
+    assert limiter.capacity == 10
+    assert limiter.on_limit is OnRateLimit.RAISE
+
+
+def test_router_applies_the_configured_burst_when_the_provider_only_sets_a_rate() -> (
+    None
+):
+    image = FakeProvider(
+        "image",
+        ["image_gen"],
+        RateLimit(requests_per_minute=240),
+    )
+    router = make_router(
+        image,
+        rate_limit_config=RateLimiterConfig.from_mapping(
+            {"requests_per_minute": 120, "burst": 10}
+        ),
+    )
+
+    limiter = router.limiter_for("image")
+    assert limiter.requests_per_minute == 240
+    assert limiter.capacity == 10
+
+
+def test_router_applies_the_configured_rate_when_the_provider_only_sets_a_burst() -> (
+    None
+):
+    image = FakeProvider(
+        "image",
+        ["image_gen"],
+        RateLimit(burst=8),
+    )
+    router = make_router(
+        image,
+        rate_limit_config=RateLimiterConfig.from_mapping(
+            {"requests_per_minute": 120, "burst": 10}
+        ),
+    )
+
+    limiter = router.limiter_for("image")
+    assert limiter.requests_per_minute == 120
+    assert limiter.capacity == 8
+
+
+def test_router_uses_the_provider_rate_as_burst_when_config_burst_is_zero() -> None:
+    image = FakeProvider(
+        "image",
+        ["image_gen"],
+        RateLimit(requests_per_minute=240),
+    )
+    router = make_router(
+        image,
+        rate_limit_config=RateLimiterConfig.from_mapping(
+            {"requests_per_minute": 120, "burst": 0}
+        ),
+    )
+
+    limiter = router.limiter_for("image")
+    assert limiter.requests_per_minute == 240
+    assert limiter.capacity == 240
+
+
+def test_router_keeps_an_explicit_unlimited_provider_rate() -> None:
+    image = FakeProvider(
+        "image",
+        ["image_gen"],
+        RateLimit(requests_per_minute=0),
+    )
+    router = make_router(
+        image,
+        rate_limit_config=RateLimiterConfig.from_mapping({"requests_per_minute": 120}),
+    )
+
+    limiter = router.limiter_for("image")
+    assert limiter.unlimited is True
+    assert limiter.requests_per_minute == 0
+
+
+def test_router_applies_the_config_defaults_after_a_provider_name_override() -> None:
+    metadata = ProviderMeta(name="ignored", capabilities=["image_gen"])
+    provider = Provider(metadata=metadata, name="image")
+    router = make_router(
+        provider,
+        rate_limit_config=RateLimiterConfig.from_mapping(
+            {"requests_per_minute": 120, "burst": 10}
+        ),
+    )
+
+    limiter = router.limiter_for("image")
+    assert limiter.requests_per_minute == 120
+    assert limiter.capacity == 10
 
 
 def test_router_uses_the_default_ratelimit_config_when_none_is_given() -> None:

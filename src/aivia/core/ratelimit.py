@@ -298,9 +298,10 @@ class TokenBucket:
     """A concurrency-safe token bucket for one provider.
 
     ``requests_per_minute`` is the sustained refill rate and ``burst`` (or
-    ``capacity``) is the largest allowance. Passing ``rate_limit`` copies both
-    from provider metadata. A sustained rate of ``0`` means the provider
-    declares no limit, so every call is allowed immediately.
+    ``capacity``) is the largest allowance. Passing ``rate_limit`` copies each
+    value the provider explicitly declared; any value it left unset comes from
+    ``config`` instead. A sustained rate of ``0`` means the provider declares
+    no limit, so every call is allowed immediately.
 
     ``on_limit`` selects the default behaviour when no token is available:
     :attr:`~aivia.core.config.ratelimit.OnRateLimit.WAIT` sleeps until the next
@@ -346,8 +347,13 @@ class TokenBucket:
             raise ConfigError("rate limit sleep must be callable")
 
         settings = config or RateLimiterConfig()
-        if rate_limit is not None:
+        declared = (
+            rate_limit.model_fields_set if rate_limit is not None else frozenset()
+        )
+        if rate_limit is not None and "requests_per_minute" in declared:
             minute_rate: float = float(rate_limit.requests_per_minute)
+        elif rate_limit is not None:
+            minute_rate = float(settings.requests_per_minute)
         else:
             minute_rate = (
                 float(requests_per_minute)
@@ -371,7 +377,14 @@ class TokenBucket:
         elif burst is not None:
             allowance = float(burst) if burst > 0 else minute_rate
         elif rate_limit is not None:
-            allowance = float(rate_limit.effective_burst)
+            if "burst" in declared:
+                allowance = (
+                    float(rate_limit.burst) if rate_limit.burst > 0 else minute_rate
+                )
+            elif settings.burst > 0:
+                allowance = float(settings.burst)
+            else:
+                allowance = minute_rate
         elif requests_per_minute is not None or rate is not None:
             allowance = minute_rate
         else:

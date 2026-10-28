@@ -394,6 +394,10 @@ def _coerce_metadata(
         if name is None:
             return metadata
         values = metadata.model_dump()
+        declared = metadata.rate_limit.model_fields_set
+        values["rate_limit"] = {
+            key: value for key, value in values["rate_limit"].items() if key in declared
+        }
     elif isinstance(metadata, Mapping):
         values = dict(metadata)
     else:
