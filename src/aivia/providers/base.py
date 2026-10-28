@@ -19,6 +19,7 @@ and add their own typed methods. The reusable contract test suite in
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from collections.abc import Mapping
 from datetime import datetime
@@ -33,11 +34,15 @@ from aivia.core.models.provider import ProviderMeta
 from aivia.core.redact import redact, redact_data
 
 __all__ = [
+    "DEFAULT_HEALTH_TIMEOUT_SECONDS",
     "HealthStatus",
     "Provider",
     "ProviderHealth",
     "ProviderState",
 ]
+
+DEFAULT_HEALTH_TIMEOUT_SECONDS: float = 5.0
+"""Seconds a health probe may take before it is reported as unhealthy."""
 
 
 class HealthStatus(StrEnum):
@@ -107,6 +112,19 @@ def _elapsed_ms(started: float) -> float:
     return max(0.0, (time.perf_counter() - started) * 1000.0)
 
 
+def _health_timeout(value: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(
+            f"health_timeout_seconds must be a number, got {type(value).__name__}"
+        )
+    timeout = float(value)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError(
+            f"health_timeout_seconds must be a positive finite number, got {value!r}"
+        )
+    return timeout
+
+
 class Provider:
     """Base class for every provider adapter.
 
@@ -119,22 +137,35 @@ class Provider:
     The lifecycle is deliberately small: :meth:`health` may be called at any
     time, :meth:`close` releases resources and is idempotent, and both are
     async because health checks and client shutdown usually touch the network.
+    Every health probe is bounded by :attr:`health_timeout_seconds` so an
+    unresponsive adapter cannot stall a status command.
     """
 
     default_metadata: ClassVar[ProviderMeta | Mapping[str, Any] | None] = None
     """Static metadata a subclass declares when callers do not pass any."""
+
+    health_timeout_seconds: float = DEFAULT_HEALTH_TIMEOUT_SECONDS
+    """Seconds a health probe may take before it is reported as unhealthy.
+
+    Subclasses may override this class attribute, and callers may pass a
+    different value to the constructor for one instance.
+    """
 
     def __init__(
         self,
         metadata: ProviderMeta | Mapping[str, Any] | None = None,
         *,
         name: str | None = None,
+        health_timeout_seconds: float | None = None,
     ) -> None:
         if metadata is None:
             metadata = self.default_metadata
         self._metadata = _coerce_metadata(metadata, name=name)
         self._state = ProviderState.READY
         self._close_lock = asyncio.Lock()
+        if health_timeout_seconds is None:
+            health_timeout_seconds = self.health_timeout_seconds
+        self.health_timeout_seconds = _health_timeout(health_timeout_seconds)
 
     @property
     def metadata(self) -> ProviderMeta:
@@ -175,14 +206,28 @@ class Provider:
 
         A closed provider is always unhealthy. Errors raised by
         :meth:`check_health` are caught, redacted and reported as an unhealthy
-        result so a health probe never crashes the caller.
+        result so a health probe never crashes the caller. A probe that runs
+        longer than :attr:`health_timeout_seconds` is cancelled and reported as
+        unhealthy instead of blocking the caller.
         """
         if self.closed:
             return ProviderHealth.closed()
 
         started = time.perf_counter()
         try:
-            report = await self.check_health()
+            report = await asyncio.wait_for(
+                self.check_health(),
+                timeout=self.health_timeout_seconds,
+            )
+        except TimeoutError:
+            return ProviderHealth(
+                status=HealthStatus.UNHEALTHY,
+                message=(
+                    f"health check timed out after {self.health_timeout_seconds:g}s"
+                ),
+                latency_ms=_elapsed_ms(started),
+                details={"error": "TimeoutError"},
+            )
         except Exception as exc:
             message = redact(str(exc)) or type(exc).__name__
             return ProviderHealth(

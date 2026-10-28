@@ -135,6 +135,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Register an HTTP client config section and pass its retry and timeout policy into provider construction (tests/core/config/test_http.py)
 - [ ] Make HTTP retries method aware so POST only retries when the caller opts in (tests/core/test_http.py)
 - [ ] Register a models_file config section and resolve the model catalog path from it (tests/core/config/test_models_file.py)
+- [ ] Bound provider close during health checks so a stuck adapter cannot block status shutdown (tests/contracts/test_provider_base.py)
 
 ## Milestone 5: Cost tracking, budgets and dashboard
 
