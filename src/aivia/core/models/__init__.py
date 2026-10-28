@@ -24,12 +24,26 @@ from aivia.core.models.base import (
     canonical_json,
     utcnow,
 )
+from aivia.core.models.cost import (
+    CostEvent,
+    CostEventModel,
+    CostEventRecord,
+    CostKind,
+)
 from aivia.core.models.job import (
     Job,
     JobModel,
     JobRecord,
     JobState,
     JobStatus,
+)
+from aivia.core.models.provider import (
+    ProviderMeta,
+    ProviderMetadata,
+    ProviderPrice,
+    ProviderPricing,
+    RateLimit,
+    RateLimits,
 )
 from aivia.core.models.run import (
     Run,
@@ -96,6 +110,10 @@ __all__ = [
     "BeatModel",
     "Candidate",
     "Claim",
+    "CostEvent",
+    "CostEventModel",
+    "CostEventRecord",
+    "CostKind",
     "CostLink",
     "Dialogue",
     "DialogueLine",
@@ -122,6 +140,12 @@ __all__ = [
     "Mode",
     "ModelBase",
     "MotionPrompt",
+    "ProviderMeta",
+    "ProviderMetadata",
+    "ProviderPrice",
+    "ProviderPricing",
+    "RateLimit",
+    "RateLimits",
     "RecordModel",
     "Run",
     "RunKind",
