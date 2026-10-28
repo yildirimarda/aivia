@@ -20,6 +20,7 @@ from pydantic import Field, create_model
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.errors import enrich_config_error
+from aivia.core.config.migrations import CURRENT_SCHEMA_VERSION
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.sections import register_core_sections
 from aivia.core.errors import ConfigError
@@ -40,7 +41,7 @@ _ROOT_KEYS = frozenset({"schema_version"})
 class RootConfig(ConfigModel):
     """Base class for the assembled root configuration model."""
 
-    schema_version: int = Field(default=1, ge=1)
+    schema_version: int = Field(default=CURRENT_SCHEMA_VERSION, ge=1)
     _sections: ClassVar[SectionRegistry | None] = None
 
     @classmethod

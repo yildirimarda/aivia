@@ -16,6 +16,7 @@ from typing import Any, cast
 from pydantic import Field, create_model
 
 from aivia.core.config.base import ConfigModel
+from aivia.core.config.migrations import CURRENT_SCHEMA_VERSION
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.sections import register_core_sections
 from aivia.core.paths import package_resource
@@ -46,7 +47,7 @@ def build_config_schema(
     target = registry if sections is None else sections
     register_core_sections(target)
     fields: dict[str, Any] = {
-        "schema_version": (int, Field(default=1, ge=1)),
+        "schema_version": (int, Field(default=CURRENT_SCHEMA_VERSION, ge=1)),
     }
     fields.update({section.key: (section.model | None, None) for section in target})
     model = cast(

@@ -134,6 +134,20 @@ def test_validate_rejects_an_invalid_schema_version(
     assert "positive integer" in err
 
 
+def test_validate_rejects_a_schema_version_from_a_newer_release(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path / "config.yaml", "schema_version: 99\n")
+
+    code, output, err = validate(config, capsys)
+
+    assert code == 1
+    assert output == ""
+    assert "schema_version" in err
+    assert "newer than supported version" in err
+    assert "upgrade aivia" in err
+
+
 def test_validate_reports_invalid_yaml_without_a_traceback(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
