@@ -8,7 +8,9 @@ import sys
 from aivia.cli.confirm import confirm_spend, confirmation_required
 from aivia.cli.registry import register_command
 from aivia.core.config.budget import BudgetConfig
+from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
+from aivia.core.config.llm import LLMConfig
 from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_app_config
 from aivia.core.errors import ConfigError
@@ -18,6 +20,7 @@ from aivia.providers import docs as provider_docs
 from aivia.providers.registry import registry as provider_registry
 
 __all__ = [
+    "capability_configs",
     "configure",
     "provider_metadata",
     "run_run",
@@ -110,6 +113,19 @@ def provider_metadata(config: object) -> dict[str, ProviderMeta]:
     return metadata
 
 
+def capability_configs(config: object) -> dict[str, CapabilityChainConfig]:
+    """Return configured capability chains for the estimator.
+
+    The LLM section owns a provider chain but not the shared strategy fields,
+    so it maps to a chain config with the default selection strategy. An empty
+    chain is omitted to keep the estimator's historical cheapest default.
+    """
+    section = getattr(config, "llm", None)
+    if isinstance(section, LLMConfig) and section.chain:
+        return {"llm": CapabilityChainConfig(chain=section.chain)}
+    return {}
+
+
 def _resolve_recipe(config: object, name: str) -> tuple[str, FormatRecipeConfig]:
     section = getattr(config, "formats", None)
     formats: dict[str, FormatRecipeConfig] = (
@@ -149,7 +165,10 @@ def _estimate_run(args: argparse.Namespace) -> tuple[object, RecipeEstimate]:
         set_values=args.set_values,
     )
     name, recipe = _resolve_recipe(config, args.format_name)
-    estimate = Estimator(provider_metadata(config)).estimate(name, recipe)
+    estimate = Estimator(
+        provider_metadata(config),
+        configs=capability_configs(config),
+    ).estimate(name, recipe)
     return config, estimate
 
 

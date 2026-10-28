@@ -114,6 +114,37 @@ def test_estimate_prints_one_row_per_stage_and_exits(
     assert total[5] == "$0.040510"
 
 
+def test_estimate_honours_the_configured_llm_chain(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = write_config(
+        tmp_path,
+        """
+providers:
+  outside:
+    type: mock-llm
+  cheap:
+    type: mock-llm
+  dear:
+    type: mock-llm
+llm:
+  chain: [dear, cheap]
+formats:
+  estimate_sample:
+    stages:
+      - stage: write
+    capabilities: [llm]
+""",
+    )
+
+    code, rows, err = estimate(config, capsys)
+
+    assert code == 0
+    assert err == ""
+    assert rows[2][1:3] == ["llm", "dear"]
+
+
 def test_estimate_uses_registered_mocks_when_no_provider_is_configured(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
