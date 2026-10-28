@@ -112,7 +112,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Define the embeddings, text to speech and speech to text protocols including word timestamps (tests/contracts/test_audio_protocols.py)
 - [x] Define the image, image edit, video, music, sfx and stock protocols with capability flags (tests/contracts/test_media_protocols.py)
 - [x] Define the notifier, publisher, delivery, storage, lip sync and character trainer protocols (tests/contracts/test_io_protocols.py)
-- [ ] Implement the provider registry with a registration decorator, name lookup, dotted path loading and a clear unknown type error (tests/core/test_registry.py)
+- [x] Implement the provider registry with a registration decorator, name lookup, dotted path loading and a clear unknown type error (tests/core/test_registry.py)
 - [ ] Implement router selection for the first available strategy honouring required capabilities (tests/core/test_router.py)
 - [ ] Implement the cheapest strategy using provider pricing and overrides with chain order as the tie breaker (tests/core/test_router.py)
 - [ ] Implement round robin and weighted strategies with seeded determinism and recorded selection (tests/core/test_router.py)
