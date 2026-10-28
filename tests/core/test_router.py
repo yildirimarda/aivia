@@ -4,12 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import warnings
+from collections.abc import Mapping
 from typing import Any, cast
 
 import pytest
 
 from aivia.core.config import CapabilityChainConfig, CapabilityStrategy
-from aivia.core.errors import ConfigError, ProviderExhaustedError
+from aivia.core.errors import (
+    AiviaError,
+    AuthError,
+    ConfigError,
+    PermanentError,
+    ProviderExhaustedError,
+    RateLimitError,
+    RetryableError,
+)
+from aivia.core.errors import TimeoutError as AiviaTimeoutError
 from aivia.core.models import ProviderMeta, ProviderPrice
 from aivia.core.router import (
     MissingQualityRankWarning,
@@ -833,3 +843,189 @@ def test_weighted_selection_can_be_requested_with_a_per_call_seed() -> None:
 
     assert selection.seed == 2
     assert selection.provider is second
+
+
+def make_operation(
+    errors: Mapping[str, AiviaError],
+    calls: list[str],
+) -> Any:
+    """Return an async operation recording calls and raising per provider."""
+
+    async def operation(provider: Provider) -> str:
+        calls.append(provider.name)
+        error = errors.get(provider.name)
+        if error is not None:
+            raise error
+        return f"{provider.name}:ok"
+
+    return operation
+
+
+def test_execute_returns_the_first_successful_result() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(first, second, chain=["first", "second"])
+    calls: list[str] = []
+
+    result = asyncio.run(router.execute("image_gen", make_operation({}, calls)))
+
+    assert result == "first:ok"
+    assert calls == ["first"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RetryableError("temporary"),
+        AiviaTimeoutError("too slow"),
+        RateLimitError("slow down", retry_after=2.5),
+    ],
+    ids=["retryable", "timeout", "rate_limit"],
+)
+def test_execute_falls_back_on_retryable_errors(error: AiviaError) -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(first, second, chain=["first", "second"])
+    calls: list[str] = []
+
+    result = asyncio.run(
+        router.execute("image_gen", make_operation({"first": error}, calls))
+    )
+
+    assert result == "second:ok"
+    assert calls == ["first", "second"]
+    assert router.last_selection is not None
+    assert router.last_selection.provider is second
+    assert router.last_selection.skipped == (
+        RouteSkip(provider="first", reason="excluded"),
+    )
+
+
+def test_execute_surfaces_permanent_errors_without_falling_back() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(first, second, chain=["first", "second"])
+    calls: list[str] = []
+    error = PermanentError("cannot retry this")
+
+    with pytest.raises(PermanentError) as caught:
+        asyncio.run(
+            router.execute("image_gen", make_operation({"first": error}, calls))
+        )
+
+    assert caught.value is error
+    assert calls == ["first"]
+
+
+def test_execute_surfaces_auth_errors_without_falling_back() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(first, second, chain=["first", "second"])
+    calls: list[str] = []
+    error = AuthError("invalid key")
+
+    with pytest.raises(AuthError) as caught:
+        asyncio.run(
+            router.execute("image_gen", make_operation({"first": error}, calls))
+        )
+
+    assert caught.value is error
+    assert calls == ["first"]
+
+
+def test_execute_raises_provider_exhausted_after_every_retryable_failure() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(first, second, chain=["first", "second"])
+    calls: list[str] = []
+    errors = {
+        "first": RateLimitError("slow down"),
+        "second": AiviaTimeoutError("too slow"),
+    }
+
+    with pytest.raises(ProviderExhaustedError) as caught:
+        asyncio.run(router.execute("image_gen", make_operation(errors, calls)))
+
+    details = caught.value.details
+    assert details["capability"] == "image_gen"
+    assert details["required"] == ["image_gen"]
+    assert details["chain"] == ["first", "second"]
+    assert details["attempted"] == [
+        {
+            "provider": "first",
+            "error": "rate_limit",
+            "error_type": "RateLimitError",
+            "message": "slow down",
+        },
+        {
+            "provider": "second",
+            "error": "timeout",
+            "error_type": "TimeoutError",
+            "message": "too slow",
+        },
+    ]
+    assert details["last_error"]["code"] == "timeout"
+    assert isinstance(caught.value.__cause__, AiviaTimeoutError)
+    assert calls == ["first", "second"]
+
+
+def test_execute_skips_unavailable_providers_without_calling_them() -> None:
+    text = FakeProvider("text", ["llm"])
+    closed = FakeProvider("closed", ["image_gen"])
+    image = FakeProvider("image", ["image_gen"])
+    router = make_router(text, closed, image, chain=["text", "closed", "image"])
+    asyncio.run(closed.close())
+    calls: list[str] = []
+
+    result = asyncio.run(router.execute("image_gen", make_operation({}, calls)))
+
+    assert result == "image:ok"
+    assert calls == ["image"]
+
+
+def test_execute_falls_back_in_the_strategy_order() -> None:
+    cheap = FakeProvider("cheap", ["image_gen"], pricing={"image_gen": 0.01})
+    pricey = FakeProvider("pricey", ["image_gen"], pricing={"image_gen": 0.50})
+    router = make_router(
+        pricey,
+        cheap,
+        chain=["pricey", "cheap"],
+        strategy=CapabilityStrategy.CHEAPEST,
+    )
+    calls: list[str] = []
+
+    result = asyncio.run(
+        router.execute(
+            "image_gen",
+            make_operation({"cheap": RateLimitError("slow down")}, calls),
+        )
+    )
+
+    assert result == "pricey:ok"
+    assert calls == ["cheap", "pricey"]
+    assert router.last_selection is not None
+    assert router.last_selection.provider is pricey
+
+
+def test_execute_does_not_swallow_unclassified_errors() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(first, second, chain=["first", "second"])
+    calls: list[str] = []
+
+    async def operation(provider: Provider) -> str:
+        calls.append(provider.name)
+        raise ValueError("programming bug")
+
+    with pytest.raises(ValueError, match="programming bug"):
+        asyncio.run(router.execute("image_gen", operation))
+
+    assert calls == ["first"]
+
+
+def test_execute_rejects_a_non_callable_operation() -> None:
+    image = FakeProvider("image", ["image_gen"])
+    router = make_router(image)
+
+    with pytest.raises(TypeError, match="operation must be callable"):
+        asyncio.run(router.execute("image_gen", cast(Any, "not callable")))
