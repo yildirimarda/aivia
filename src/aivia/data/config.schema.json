@@ -777,6 +777,123 @@
       "title": "FormatsConfig",
       "type": "object"
     },
+    "HttpClientConfig": {
+      "additionalProperties": false,
+      "description": "Retry, backoff and timeout policy for :class:`~aivia.core.http.HttpClient`.",
+      "properties": {
+        "backoff_base_seconds": {
+          "default": 0.5,
+          "minimum": 0,
+          "title": "Backoff Base Seconds",
+          "type": "number"
+        },
+        "backoff_max_seconds": {
+          "default": 30.0,
+          "minimum": 0,
+          "title": "Backoff Max Seconds",
+          "type": "number"
+        },
+        "connect_timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Connect Timeout Seconds"
+        },
+        "follow_redirects": {
+          "default": true,
+          "title": "Follow Redirects",
+          "type": "boolean"
+        },
+        "jitter_ratio": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Jitter Ratio",
+          "type": "number"
+        },
+        "max_attempts": {
+          "default": 3,
+          "minimum": 1,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "pool_timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pool Timeout Seconds"
+        },
+        "read_timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Read Timeout Seconds"
+        },
+        "respect_retry_after": {
+          "default": true,
+          "title": "Respect Retry After",
+          "type": "boolean"
+        },
+        "retry_statuses": {
+          "default": [
+            408,
+            425,
+            429,
+            500,
+            502,
+            503,
+            504
+          ],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Retry Statuses",
+          "type": "array"
+        },
+        "timeout_seconds": {
+          "default": 30.0,
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "write_timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Write Timeout Seconds"
+        }
+      },
+      "title": "HttpClientConfig",
+      "type": "object"
+    },
     "JobsConfig": {
       "additionalProperties": false,
       "description": "Worker concurrency, retry and heartbeat settings for the job queue.",
@@ -2810,6 +2927,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/FormatsConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "http": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HttpClientConfig"
         },
         {
           "type": "null"

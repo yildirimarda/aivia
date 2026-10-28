@@ -29,6 +29,8 @@ from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from aivia.core.config.http import HttpClientConfig
+from aivia.core.http import HttpClient
 from aivia.core.models.base import utcnow
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.redact import redact, redact_data
@@ -157,6 +159,7 @@ class Provider:
         *,
         name: str | None = None,
         health_timeout_seconds: float | None = None,
+        http_config: HttpClientConfig | None = None,
     ) -> None:
         if metadata is None:
             metadata = self.default_metadata
@@ -166,6 +169,35 @@ class Provider:
         if health_timeout_seconds is None:
             health_timeout_seconds = self.health_timeout_seconds
         self.health_timeout_seconds = _health_timeout(health_timeout_seconds)
+        if http_config is not None and not isinstance(http_config, HttpClientConfig):
+            raise TypeError("http_config must be an HttpClientConfig")
+        self._http_config = http_config or HttpClientConfig()
+        self._http: HttpClient | None = None
+
+    @property
+    def http_config(self) -> HttpClientConfig:
+        """The retry and timeout policy passed into this provider."""
+        return self._http_config
+
+    @property
+    def http(self) -> HttpClient:
+        """The shared HTTP client built from :attr:`http_config`.
+
+        The client is created lazily and reused so a provider does not open a
+        new connection pool for every call.
+        """
+        if self._http is None:
+            self._http = HttpClient(self._http_config)
+        return self._http
+
+    @property
+    def http_client(self) -> HttpClient:
+        """Alias for :attr:`http`."""
+        return self.http
+
+    def create_http_client(self, **kwargs: Any) -> HttpClient:
+        """Build a new HTTP client with this provider's retry and timeout policy."""
+        return HttpClient(self._http_config, **kwargs)
 
     @property
     def metadata(self) -> ProviderMeta:
@@ -276,6 +308,10 @@ class Provider:
             if self.closed:
                 return
             await self._close()
+            http = self._http
+            self._http = None
+            if http is not None:
+                await http.aclose()
             self._state = ProviderState.CLOSED
 
     async def _close(self) -> None:

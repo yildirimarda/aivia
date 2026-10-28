@@ -143,6 +143,20 @@ ratelimit:
   burst: 0
   on_limit: wait
 
+http:
+  timeout_seconds: 30.0
+  connect_timeout_seconds: null
+  read_timeout_seconds: null
+  write_timeout_seconds: null
+  pool_timeout_seconds: null
+  max_attempts: 3
+  backoff_base_seconds: 0.5
+  backoff_max_seconds: 30.0
+  jitter_ratio: 0.5
+  retry_statuses: [408, 425, 429, 500, 502, 503, 504]
+  respect_retry_after: true
+  follow_redirects: true
+
 quality:
   enabled: true
   min_score: 0.7

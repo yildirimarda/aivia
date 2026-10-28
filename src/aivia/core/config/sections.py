@@ -20,6 +20,7 @@ from aivia.core.config.character import BrandKitConfig, CharacterConfig
 from aivia.core.config.circuit import CircuitBreakerConfig
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatsConfig
+from aivia.core.config.http import HttpClientConfig
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.ops import (
     JobsConfig,
@@ -74,6 +75,7 @@ __all__ = [
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
     "FormatsConfig",
+    "HttpClientConfig",
     "JobsConfig",
     "LLMConfig",
     "LanguageConfig",
@@ -525,6 +527,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("providers", ProvidersConfig),
     ("circuit", CircuitBreakerConfig),
     ("ratelimit", RateLimiterConfig),
+    ("http", HttpClientConfig),
     ("quality", QualityConfig),
     ("scoring", ScoringConfig),
     ("storage", StorageConfig),
