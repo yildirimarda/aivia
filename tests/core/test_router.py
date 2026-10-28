@@ -27,6 +27,7 @@ from aivia.core.router import (
     Router,
     RouteSelection,
     RouteSkip,
+    UnpricedProviderWarning,
 )
 from aivia.providers import Provider
 
@@ -1087,7 +1088,75 @@ def test_budget_aware_selection_does_not_skip_an_unpriced_provider() -> None:
     priced = FakeProvider("priced", ["image_gen"], pricing={"image_gen": 0.50})
     router = make_router(unpriced, priced, chain=["unpriced", "priced"])
 
-    assert router.select("image_gen", remaining_budget=0.0) is unpriced
+    with pytest.warns(
+        UnpricedProviderWarning, match="unpriced.*cannot estimate"
+    ) as caught:
+        selection = router.select_with_record("image_gen", remaining_budget=0.0)
+
+    assert len(caught) == 1
+    assert selection.provider is unpriced
+    assert selection.skipped == ()
+
+
+def test_budget_aware_selection_warns_once_per_unpriced_candidate() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    priced = FakeProvider("priced", ["image_gen"], pricing={"image_gen": 0.01})
+    router = make_router(
+        first,
+        second,
+        priced,
+        chain=["first", "second", "priced"],
+        strategy=CapabilityStrategy.CHEAPEST,
+    )
+
+    with pytest.warns(UnpricedProviderWarning) as caught:
+        selection = router.select_with_record("image_gen", remaining_budget=0.05)
+
+    assert len(caught) == 2
+    assert selection.provider is priced
+
+
+def test_budget_aware_selection_does_not_warn_about_an_excluded_unpriced() -> None:
+    unpriced = FakeProvider("unpriced", ["image_gen"])
+    priced = FakeProvider("priced", ["image_gen"], pricing={"image_gen": 0.01})
+    router = make_router(unpriced, priced, chain=["unpriced", "priced"])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UnpricedProviderWarning)
+        selection = router.select_with_record(
+            "image_gen", remaining_budget=0.05, exclude=["unpriced"]
+        )
+
+    assert selection.provider is priced
+    assert selection.skipped == (RouteSkip(provider="unpriced", reason="excluded"),)
+
+
+def test_selection_without_a_budget_does_not_warn_about_an_unpriced_provider() -> None:
+    unpriced = FakeProvider("unpriced", ["image_gen"])
+    router = make_router(unpriced)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UnpricedProviderWarning)
+        assert router.select("image_gen") is unpriced
+
+
+def test_budget_aware_execute_warns_when_an_unpriced_provider_is_chosen() -> None:
+    unpriced = FakeProvider("unpriced", ["image_gen"])
+    router = make_router(unpriced)
+    calls: list[str] = []
+
+    with pytest.warns(UnpricedProviderWarning, match="cannot estimate"):
+        result = asyncio.run(
+            router.execute(
+                "image_gen",
+                make_operation({}, calls),
+                remaining_budget=0.05,
+            )
+        )
+
+    assert result == "unpriced:ok"
+    assert calls == ["unpriced"]
 
 
 def test_budget_aware_selection_uses_pricing_overrides() -> None:

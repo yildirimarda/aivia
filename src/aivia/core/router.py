@@ -69,6 +69,7 @@ __all__ = [
     "RouteSkip",
     "Router",
     "RouterSelection",
+    "UnpricedProviderWarning",
 ]
 
 T = TypeVar("T")
@@ -76,6 +77,10 @@ T = TypeVar("T")
 
 class MissingQualityRankWarning(UserWarning):
     """A provider lacks the static quality rank the strategy needs to compare it."""
+
+
+class UnpricedProviderWarning(UserWarning):
+    """A provider lacks a price, so budget-aware selection cannot estimate it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,12 +283,19 @@ def _budget_rejection(
 
     The estimate is the provider price for *capability* scaled to *units*. A
     provider without a known price cannot be estimated, so it is left to the
-    strategy rather than being rejected on missing data.
+    strategy rather than being rejected on missing data, but a
+    :class:`UnpricedProviderWarning` is emitted so the gap is visible.
     """
     if remaining_budget is None:
         return None
     price = _price_for(name, provider, capability, overrides)
     if price is None:
+        warnings.warn(
+            f"provider {name!r} has no price for {capability!r}; "
+            "budget-aware selection cannot estimate it",
+            UnpricedProviderWarning,
+            stacklevel=3,
+        )
         return None
     if price * units > remaining_budget:
         return RouteSkip(provider=name, reason="budget_exceeded")
@@ -757,8 +769,8 @@ class Router:
         ``remaining_budget`` is the amount still available for this call. A
         provider whose estimated price for *units* exceeds it is skipped, so
         the strategy picks the best affordable candidate. ``None`` disables the
-        budget check, and a provider without a known price is never skipped
-        because it cannot be estimated.
+        budget check. A provider without a known price cannot be estimated, so
+        it is never skipped, but :class:`UnpricedProviderWarning` is emitted.
         """
         return self.select_with_record(
             capability,
@@ -826,7 +838,8 @@ class Router:
         ``remaining_budget`` and ``units`` make selection budget aware: a
         provider whose estimated price for *units* is greater than the
         remaining budget is reported as skipped with ``budget_exceeded``. An
-        unpriced provider cannot be estimated and is therefore never skipped.
+        unpriced provider cannot be estimated, so it is never skipped, but
+        :class:`UnpricedProviderWarning` is emitted.
         """
         names = _coerce_required(capability, required)
         target = names[0]
