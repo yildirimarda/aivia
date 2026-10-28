@@ -21,11 +21,15 @@ from typing import Any
 
 from sqlalchemy import Engine
 
+from aivia.core.cost_agg import CostAggregate, CostAggregator, CostGroup
 from aivia.core.db.repos import CostEventRepository
 from aivia.core.models.cost import CostEvent, CostKind
 
 __all__ = [
+    "CostAggregate",
+    "CostAggregator",
     "CostEventRecorder",
+    "CostGroup",
     "CostLedger",
     "CostRecorder",
     "CostTracker",
