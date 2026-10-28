@@ -19,9 +19,23 @@ def _configure_show(parser: argparse.ArgumentParser) -> None:
         help="config file to merge instead of the default location",
     )
     parser.add_argument(
+        "--env",
+        "--environment",
+        dest="environment",
+        metavar="NAME",
+        help="merge config.<NAME>.yaml beside the user config",
+    )
+    parser.add_argument(
         "--profile",
         metavar="NAME",
         help="merge the overrides of a configured profile",
+    )
+    parser.add_argument(
+        "--set",
+        dest="set_values",
+        action="append",
+        metavar="KEY=VALUE",
+        help="override a dotted key; repeatable and applied after the profile",
     )
     parser.add_argument(
         "--resolved",
@@ -62,7 +76,9 @@ def run_show(args: argparse.Namespace) -> int:
     try:
         resolved = config_show.resolve_config(
             config_file=args.config,
+            environment=args.environment,
             profile=args.profile,
+            set_values=args.set_values,
         )
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)

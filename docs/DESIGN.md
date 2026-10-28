@@ -156,8 +156,11 @@ in the config directory. `--config` always wins. Resolution works from any worki
 Principles:
 
 - **Everything tunable is configuration.** No magic numbers or vendor names in business logic.
-- **Layered resolution:** packaged defaults → user `config.yaml` → `config.<env>.yaml` → profile `overrides`
-  → CLI `--set key.path=value`. Dicts deep-merge, lists replace.
+- **Layered resolution:** lowest to highest precedence: packaged defaults → user `config.yaml`
+  → `config.<env>.yaml` → profile `overrides` → CLI `--set key.path=value`. Later layers win; dicts
+  deep-merge, lists replace. The environment is selected with `--env` or `AIVA_ENV`; an explicitly
+  selected environment file must exist, and without one no environment file is read. `--set` values are
+  parsed as YAML scalars and applied in the order given.
 - **Secrets are separate.** Keys live in environment variables or a secrets file, referenced by name.
   Tool environment variables use the `AIVA_` prefix.
 - **Validated and discoverable.** Validated at startup with readable errors (file, dotted path, expected vs
