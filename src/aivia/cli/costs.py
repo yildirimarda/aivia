@@ -6,6 +6,7 @@ import argparse
 import math
 import sys
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,13 +16,18 @@ from aivia.core import paths
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.resolve import resolve_app_config
 from aivia.core.cost import CostAggregator, CostTracker
-from aivia.core.cost_agg import CostAggregate
+from aivia.core.cost_agg import CostAggregate, CostGroup
 from aivia.core.db import AssetRepository, RunRepository, create_database_engine
 from aivia.core.errors import ConfigError
 from aivia.core.models.asset import Asset
 from aivia.core.models.cost import CostEvent
 
-__all__ = ["configure", "run_costs", "run_costs_run"]
+__all__ = [
+    "configure",
+    "run_costs",
+    "run_costs_run",
+    "run_costs_summary",
+]
 
 
 def _configure_resolution(parser: argparse.ArgumentParser) -> None:
@@ -76,6 +82,67 @@ def _configure_run(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_costs_handler=run_costs_run)
 
 
+def _configure_summary(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "-g",
+        "--group",
+        dest="groups",
+        action="append",
+        metavar="GROUP",
+        help=(
+            "group the spend by run, day, week, month, provider, model, profile, "
+            "format or stage; repeatable or comma separated (default: day)"
+        ),
+    )
+    parser.add_argument(
+        "--start",
+        "--since",
+        "--from",
+        dest="start",
+        metavar="DATE",
+        help="only count spend on or after this ISO date or datetime",
+    )
+    parser.add_argument(
+        "--end",
+        "--until",
+        "--to",
+        dest="end",
+        metavar="DATE",
+        help="only count spend on or before this ISO date or datetime",
+    )
+    parser.add_argument(
+        "--run",
+        "--run-id",
+        dest="run_id",
+        metavar="RUN_ID",
+        help="only count the spend of one run",
+    )
+    parser.add_argument(
+        "--provider",
+        metavar="NAME",
+        help="only count the spend of one provider",
+    )
+    parser.add_argument(
+        "--model",
+        metavar="NAME",
+        help="only count the spend of one model",
+    )
+    parser.add_argument(
+        "--stage",
+        metavar="NAME",
+        help="only count the spend of one stage",
+    )
+    parser.add_argument(
+        "--database",
+        "--db",
+        dest="database",
+        metavar="PATH",
+        help="database file to read instead of the one in the user data directory",
+    )
+    _configure_resolution(parser)
+    parser.set_defaults(_costs_handler=run_costs_summary)
+
+
 def configure(parser: argparse.ArgumentParser) -> None:
     """Add the costs group and its subcommands."""
     subparsers = parser.add_subparsers(dest="costs_command", metavar="COMMAND")
@@ -87,6 +154,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
         ),
     )
     _configure_run(run_parser)
+    summary_parser = subparsers.add_parser(
+        "summary",
+        help="Summarize spend by a dimension with optional date filters",
+        description="Summarize spend by a dimension with optional date filters",
+    )
+    _configure_summary(summary_parser)
 
 
 def run_costs(args: argparse.Namespace) -> int:
@@ -94,7 +167,7 @@ def run_costs(args: argparse.Namespace) -> int:
     handler = getattr(args, "_costs_handler", None)
     if handler is None:
         print("error: missing costs command", file=sys.stderr)
-        print("usage: aivia costs {run}", file=sys.stderr)
+        print("usage: aivia costs {run,summary}", file=sys.stderr)
         return 2
     return int(handler(args))
 
@@ -132,6 +205,40 @@ def _money(value: float) -> str:
 
 def _units(value: float) -> str:
     return f"{value:g}"
+
+
+def _summary_groups(values: list[str] | None) -> list[CostGroup]:
+    groups: list[CostGroup] = []
+    for raw in values or []:
+        for part in raw.split(","):
+            text = part.strip()
+            if not text:
+                continue
+            try:
+                group = CostGroup(text.lower())
+            except ValueError as exc:
+                allowed = ", ".join(item.value for item in CostGroup)
+                raise ValueError(
+                    f"unknown group {text!r}; expected one of {allowed}"
+                ) from exc
+            if group not in groups:
+                groups.append(group)
+    return groups or [CostGroup.DAY]
+
+
+def _parse_moment(value: str) -> date | datetime:
+    text = value.strip()
+    if not text:
+        raise ValueError("a date filter must not be empty")
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        pass
+    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def _render_aggregates(
@@ -283,6 +390,72 @@ def run_costs_run(args: argparse.Namespace) -> int:
         )
         lines.append("")
         lines.extend(_render_assets(_asset_buckets(assets, events)))
+        print("\n".join(lines))
+    except SQLAlchemyError as exc:
+        print(f"error: cannot read the cost ledger: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        engine.dispose()
+    return 0
+
+
+def run_costs_summary(args: argparse.Namespace) -> int:
+    """Print spend grouped by one or more dimensions, optionally date-filtered."""
+    try:
+        groups = _summary_groups(args.groups)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        start = _parse_moment(args.start) if args.start else None
+        end = _parse_moment(args.end) if args.end else None
+    except ValueError as exc:
+        print(f"error: invalid date: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        database_path, database_config = _resolve_database(args)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if not database_path.exists():
+        print(f"error: database not found: {database_path}", file=sys.stderr)
+        return 1
+
+    run_id = getattr(args, "run_id", None) or None
+    provider = getattr(args, "provider", None) or None
+    model = getattr(args, "model", None) or None
+    stage = getattr(args, "stage", None) or None
+
+    engine = create_database_engine(path=database_path, config=database_config)
+    try:
+        aggregator = CostAggregator(engine)
+        sections: list[list[str]] = []
+        total = 0.0
+        for index, group in enumerate(groups):
+            buckets = aggregator.aggregate(
+                group,
+                start=start,
+                end=end,
+                run_id=run_id,
+                provider=provider,
+                model=model,
+                stage=stage,
+            )
+            if index == 0:
+                total = math.fsum(bucket.total_usd for bucket in buckets)
+            sections.append(
+                _render_aggregates(
+                    f"BY {group.value.upper()}", group.value.upper(), buckets
+                )
+            )
+
+        lines = [f"Total: {_money(total)}"]
+        for section in sections:
+            lines.append("")
+            lines.extend(section)
         print("\n".join(lines))
     except SQLAlchemyError as exc:
         print(f"error: cannot read the cost ledger: {exc}", file=sys.stderr)
