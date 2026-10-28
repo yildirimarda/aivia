@@ -150,7 +150,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Enforce per run and per call caps, raising a budget error before the call is made (tests/core/test_budget.py)
 - [x] Implement the on exceed behaviours: downgrade to a cheaper provider, pause the run as paused budget, or notify only (tests/core/test_budget.py)
 - [x] Enforce day, month and per provider monthly limits computed from events across dates (tests/core/test_budget.py)
-- [ ] Add pre run estimation where each stage reports an estimate and the estimate flag prints the table and exits (tests/cli/test_estimate.py)
+- [x] Add pre run estimation where each stage reports an estimate and the estimate flag prints the table and exits (tests/cli/test_estimate.py)
 - [ ] Require confirmation above the configured threshold, with a yes flag and a refusal path in non interactive mode (tests/cli/test_confirm.py)
 - [ ] Add a costs run command breaking down spend by stage, provider, model and asset (tests/cli/test_costs_run.py)
 - [ ] Add a costs summary command with grouping options and date filters (tests/cli/test_costs_summary.py)
@@ -162,6 +162,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add a resume command that continues a paused budget run after explicit confirmation and records who and why (tests/cli/test_resume.py)
 - [ ] Make the router use the pricing resolver so selection and budget checks share overrides and unit conversions (tests/core/test_router.py)
 - [ ] Make budget checks reserve the estimate atomically so concurrent calls cannot both pass the same per run cap (tests/core/test_budget.py)
+- [ ] Make pre run estimation honour configured provider chains and selection strategy (tests/core/test_estimate.py)
 
 ## Milestone 6: Execution core, storage and API
 
