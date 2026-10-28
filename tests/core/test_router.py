@@ -39,6 +39,8 @@ def make_router(
     chain: list[str] | None = None,
     strategy: CapabilityStrategy = CapabilityStrategy.FIRST_AVAILABLE,
     pricing_overrides: dict[str, float] | None = None,
+    weights: dict[str, float] | None = None,
+    seed: int | None = None,
 ) -> Router:
     return Router(
         providers={provider.name: provider for provider in providers},
@@ -46,7 +48,9 @@ def make_router(
             strategy=strategy,
             chain=chain or [],
             pricing_overrides=pricing_overrides or {},
+            weights=weights or {},
         ),
+        seed=seed,
     )
 
 
@@ -376,7 +380,12 @@ def test_an_unimplemented_strategy_fails_clearly() -> None:
     with pytest.raises(ConfigError, match="not implemented: best_quality") as caught:
         router.select("image_gen")
 
-    assert caught.value.details["implemented"] == ["first_available", "cheapest"]
+    assert caught.value.details["implemented"] == [
+        "first_available",
+        "cheapest",
+        "round_robin",
+        "weighted_ab",
+    ]
 
 
 def test_unknown_strategy_names_are_rejected() -> None:
@@ -415,3 +424,292 @@ def test_provider_instances_must_have_a_name() -> None:
 def test_provider_pool_rejects_non_providers() -> None:
     with pytest.raises(TypeError, match="Provider instances"):
         Router(providers=cast(Any, {"bad": object()}))
+
+
+def test_round_robin_cycles_through_the_chain_in_order() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    third = FakeProvider("third", ["image_gen"])
+    router = make_router(
+        first,
+        second,
+        third,
+        chain=["first", "second", "third"],
+        strategy=CapabilityStrategy.ROUND_ROBIN,
+    )
+
+    selected = [router.select("image_gen") for _ in range(5)]
+
+    assert [provider.name for provider in selected] == [
+        "first",
+        "second",
+        "third",
+        "first",
+        "second",
+    ]
+
+
+def test_round_robin_skips_unavailable_providers_and_keeps_cycling() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    closed = FakeProvider("closed", ["image_gen"])
+    third = FakeProvider("third", ["image_gen"])
+    router = make_router(
+        first,
+        closed,
+        third,
+        chain=["first", "closed", "third"],
+        strategy=CapabilityStrategy.ROUND_ROBIN,
+    )
+    asyncio.run(closed.close())
+
+    assert router.select("image_gen") is first
+    assert router.select("image_gen") is third
+    assert router.select("image_gen") is first
+    assert router.select("image_gen") is third
+
+
+def test_round_robin_keeps_independent_state_per_capability() -> None:
+    text_one = FakeProvider("text_one", ["llm"])
+    text_two = FakeProvider("text_two", ["llm"])
+    image_one = FakeProvider("image_one", ["image_gen"])
+    image_two = FakeProvider("image_two", ["image_gen"])
+    router = make_router(
+        text_one,
+        text_two,
+        image_one,
+        image_two,
+        strategy=CapabilityStrategy.ROUND_ROBIN,
+    )
+
+    assert router.select("llm") is text_one
+    assert router.select("image_gen") is image_one
+    assert router.select("llm") is text_two
+    assert router.select("image_gen") is image_two
+    assert router.select("llm") is text_one
+
+
+def test_round_robin_records_the_selection_and_skips() -> None:
+    text = FakeProvider("text", ["llm"])
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(
+        text,
+        first,
+        second,
+        chain=["text", "first", "second"],
+        strategy=CapabilityStrategy.ROUND_ROBIN,
+        seed=11,
+    )
+
+    selection = router.select_with_record("image_gen")
+
+    assert selection.provider is first
+    assert selection.strategy is CapabilityStrategy.ROUND_ROBIN
+    assert selection.chain == ("text", "first", "second")
+    assert selection.skipped == (
+        RouteSkip(
+            provider="text",
+            reason="missing_capabilities",
+            missing=("image_gen",),
+        ),
+    )
+    assert selection.seed == 11
+    assert selection.weight is None
+    assert router.last_selection is selection
+
+
+def test_round_robin_can_be_requested_for_a_single_call() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(first, second, chain=["first", "second"])
+
+    assert router.select("image_gen", strategy="round_robin") is first
+    assert router.select("image_gen", strategy="round_robin") is second
+    assert router.select("image_gen") is first
+
+
+def test_round_robin_exhaustion_reports_skipped_providers() -> None:
+    text = FakeProvider("text", ["llm"])
+    closed = FakeProvider("closed", ["image_gen"])
+    router = make_router(
+        text,
+        closed,
+        chain=["text", "closed"],
+        strategy=CapabilityStrategy.ROUND_ROBIN,
+    )
+    asyncio.run(closed.close())
+
+    with pytest.raises(ProviderExhaustedError) as caught:
+        router.select("image_gen")
+
+    assert caught.value.details["strategy"] == "round_robin"
+    assert caught.value.details["skipped"] == [
+        {
+            "provider": "text",
+            "reason": "missing_capabilities",
+            "missing": ["image_gen"],
+        },
+        {"provider": "closed", "reason": "closed"},
+    ]
+
+
+def test_weighted_selection_is_deterministic_for_a_seed() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    third = FakeProvider("third", ["image_gen"])
+    weights = {"first": 3.0, "second": 2.0, "third": 1.0}
+
+    def sequence() -> list[str]:
+        router = make_router(
+            first,
+            second,
+            third,
+            chain=["first", "second", "third"],
+            strategy=CapabilityStrategy.WEIGHTED_AB,
+            weights=weights,
+            seed=2026,
+        )
+        return [router.select("image_gen").name for _ in range(12)]
+
+    assert sequence() == sequence()
+
+
+def test_weighted_selection_respects_the_configured_weights() -> None:
+    light = FakeProvider("light", ["image_gen"])
+    heavy = FakeProvider("heavy", ["image_gen"])
+    router = make_router(
+        light,
+        heavy,
+        chain=["light", "heavy"],
+        strategy=CapabilityStrategy.WEIGHTED_AB,
+        weights={"light": 1.0, "heavy": 4.0},
+        seed=7,
+    )
+
+    counts = {"light": 0, "heavy": 0}
+    for _ in range(100):
+        counts[router.select("image_gen").name] += 1
+
+    assert counts["heavy"] > counts["light"]
+
+
+def test_weighted_selection_never_picks_a_zero_weight_provider() -> None:
+    excluded = FakeProvider("excluded", ["image_gen"])
+    included = FakeProvider("included", ["image_gen"])
+    router = make_router(
+        excluded,
+        included,
+        chain=["excluded", "included"],
+        strategy=CapabilityStrategy.WEIGHTED_AB,
+        weights={"excluded": 0.0, "included": 1.0},
+        seed=3,
+    )
+
+    assert {router.select("image_gen") for _ in range(10)} == {included}
+
+
+def test_weighted_selection_treats_a_missing_weight_as_zero() -> None:
+    weighted = FakeProvider("weighted", ["image_gen"])
+    unweighted = FakeProvider("unweighted", ["image_gen"])
+    router = make_router(
+        weighted,
+        unweighted,
+        chain=["weighted", "unweighted"],
+        strategy=CapabilityStrategy.WEIGHTED_AB,
+        weights={"weighted": 1.0},
+        seed=5,
+    )
+
+    assert {router.select("image_gen") for _ in range(10)} == {weighted}
+
+
+def test_weighted_selection_ignores_unavailable_providers() -> None:
+    closed = FakeProvider("closed", ["image_gen"])
+    open_provider = FakeProvider("open", ["image_gen"])
+    router = make_router(
+        closed,
+        open_provider,
+        chain=["closed", "open"],
+        strategy=CapabilityStrategy.WEIGHTED_AB,
+        weights={"closed": 100.0, "open": 1.0},
+        seed=9,
+    )
+    asyncio.run(closed.close())
+
+    selection = router.select_with_record("image_gen")
+
+    assert selection.provider is open_provider
+    assert selection.skipped == (RouteSkip(provider="closed", reason="closed"),)
+    assert selection.weight == 1.0
+    assert selection.seed == 9
+
+
+def test_weighted_selection_records_the_selected_weight() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(
+        first,
+        second,
+        chain=["first", "second"],
+        strategy=CapabilityStrategy.WEIGHTED_AB,
+        weights={"first": 2.0, "second": 5.0},
+        seed=13,
+    )
+
+    selection = router.select_with_record("image_gen")
+
+    assert selection.strategy is CapabilityStrategy.WEIGHTED_AB
+    assert selection.chain == ("first", "second")
+    assert selection.seed == 13
+    assert selection.weight == {"first": 2.0, "second": 5.0}[selection.name]
+
+
+def test_weighted_selection_fails_when_no_available_provider_has_weight() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(
+        first,
+        second,
+        chain=["first", "second"],
+        strategy=CapabilityStrategy.WEIGHTED_AB,
+        weights={"first": 0.0, "second": 0.0},
+    )
+
+    with pytest.raises(ConfigError, match="no positive weight") as caught:
+        router.select("image_gen")
+
+    assert caught.value.details["available"] == ["first", "second"]
+
+
+def test_weighted_selection_rejects_weights_outside_the_chain() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(
+        first,
+        second,
+        strategy=CapabilityStrategy.WEIGHTED_AB,
+        weights={"missing": 1.0},
+    )
+
+    with pytest.raises(ConfigError, match="not in the chain: missing"):
+        router.select("image_gen")
+
+
+def test_weighted_selection_can_be_requested_with_a_per_call_seed() -> None:
+    first = FakeProvider("first", ["image_gen"])
+    second = FakeProvider("second", ["image_gen"])
+    router = make_router(
+        first,
+        second,
+        chain=["first", "second"],
+        weights={"first": 1.0, "second": 1.0},
+    )
+
+    selection = router.select_with_record(
+        "image_gen",
+        strategy=CapabilityStrategy.WEIGHTED_AB,
+        seed=2,
+    )
+
+    assert selection.seed == 2
+    assert selection.provider is second
