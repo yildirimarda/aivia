@@ -166,6 +166,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Prevent totals and budget checks from counting both an estimate and its actual replacement for one call (tests/core/test_cost.py)
 - [ ] Persist emitted budget alert keys so a restart does not repeat an alert within the same period (tests/core/test_budget_alerts.py)
 - [ ] Treat a provider whose price unit cannot convert to the requested unit as unpriced instead of aborting the chain (tests/core/test_router.py)
+- [ ] Release or expire abandoned budget reservations so a failed or cancelled call stops consuming the cap (tests/core/test_budget.py)
 
 ## Milestone 6: Execution core, storage and API
 

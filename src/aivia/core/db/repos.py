@@ -21,7 +21,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any, ClassVar
 
-from sqlalchemy import DateTime, Engine, RowMapping, Table, and_, select
+from sqlalchemy import Connection, DateTime, Engine, RowMapping, Table, and_, select
 
 from aivia.core.db.tables import (
     assets,
@@ -150,6 +150,29 @@ class Repository[RecordT](ABC):
         if stored is None:
             raise RuntimeError(f"{type(self).__name__} could not read back its insert")
         return stored
+
+    def create_in(
+        self,
+        connection: Connection,
+        record: ModelBase | Mapping[str, Any] | None = None,
+        **values: Any,
+    ) -> RecordT:
+        """Insert one record inside an existing transaction and return it.
+
+        The caller owns the transaction, so a read that decides whether the
+        insert may happen and the insert itself can be committed atomically.
+        """
+        data = self._prepare_create(_combine(record, values))
+        connection.execute(self.table.insert().values(**data))
+        key = tuple(data[column] for column in self.key_columns)
+        row = (
+            connection.execute(select(self.table).where(self._key_condition(key)))
+            .mappings()
+            .first()
+        )
+        if row is None:
+            raise RuntimeError(f"{type(self).__name__} could not read back its insert")
+        return self._to_record(row)
 
     def get(self, *key: Any) -> RecordT | None:
         """Return the record with *key*, or ``None`` when it does not exist."""

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -657,3 +659,69 @@ def test_the_policy_pauses_on_a_period_cap(tracker: CostTracker) -> None:
     assert decision.check.scope == "per_day"
     assert decision.run is not None
     assert "per-day cap" in decision.run.pause_reason
+
+
+def test_reserve_records_the_estimate_so_the_next_call_sees_it(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(BudgetConfig(per_run=0.50), tracker)
+
+    first = guard.reserve(
+        0.30,
+        run_id="run_1",
+        provider="acme",
+        operation="image_gen",
+    )
+
+    assert first.allowed is True
+    assert first.spent_usd == pytest.approx(0.0)
+    events = tracker.events(run_id="run_1")
+    assert len(events) == 1
+    assert events[0].estimated is True
+    assert events[0].amount_usd == pytest.approx(0.30)
+
+    with pytest.raises(BudgetError) as caught:
+        guard.reserve(0.30, run_id="run_1")
+
+    assert caught.value.details["scope"] == "per_run"
+    assert caught.value.details["spent_usd"] == pytest.approx(0.30)
+    assert tracker.total(run_id="run_1") == pytest.approx(0.30)
+
+
+def test_concurrent_reservations_cannot_both_pass_the_same_per_run_cap(
+    tmp_path: Path,
+) -> None:
+    engine = create_database_engine(tmp_path / "aivia.db")
+    upgrade_database(engine=engine)
+    try:
+        tracker = CostTracker(engine)
+        guard = BudgetGuard(BudgetConfig(per_run=0.50), tracker)
+        workers = 12
+        barrier = threading.Barrier(workers)
+        outcomes: list[str] = []
+        outcomes_lock = threading.Lock()
+
+        def attempt() -> None:
+            barrier.wait()
+            try:
+                guard.reserve(0.10, run_id="run_1")
+            except BudgetError:
+                outcome = "rejected"
+            else:
+                outcome = "reserved"
+            with outcomes_lock:
+                outcomes.append(outcome)
+
+        threads = [threading.Thread(target=attempt) for _ in range(workers)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+        assert not any(thread.is_alive() for thread in threads)
+
+        assert outcomes.count("reserved") == 5
+        assert outcomes.count("rejected") == 7
+        assert tracker.total(run_id="run_1") == pytest.approx(0.50)
+        assert len(tracker.events(run_id="run_1")) == 5
+    finally:
+        engine.dispose()
