@@ -33,6 +33,7 @@ This reference is generated from the registered configuration models, their JSON
 | `providers` | [ProvidersConfig](#providers) or null | Named provider instances keyed by the names router chains use. Entries may be written directly under the section (``providers: {fal: {...}}``) or nested under ``providers``. Every entry must name a non-empty ``type``. |
 | `publish` | [PublishConfig](#publish) or null | Publishing accounts, dry-run policy and reference validation. |
 | `quality` | [QualityConfig](#quality) or null | Thresholds and retry policy for generated media quality assurance. |
+| `ratelimit` | [RateLimiterConfig](#ratelimit) or null | Default rate and on-limit policy for a provider token bucket. ``requests_per_minute`` is the sustained rate used when a provider does not declare its own limit. ``burst`` is the largest short-term allowance and ``0`` falls back to the sustained rate. ``on_limit`` chooses between waiting for the next token and raising a rate limited error. |
 | `reference` | [ReferenceConfig](#reference) or null | Similarity level, similarity gates, regeneration cap and downloads. |
 | `render` | [RenderConfig](#render) or null | Deterministic renderer settings that never require an AI call. |
 | `retention` | [RetentionConfig](#retention) or null | How long intermediates, cache, logs and personal data are kept. Final outputs are pinned and are never removed unless ``delete_final_outputs`` is explicitly enabled. |
@@ -316,6 +317,16 @@ Thresholds and retry policy for generated media quality assurance.
 | `sample_frames` | integer | `3` | >= 1 |  |
 | `vision` | boolean | `true` |  |  |
 | `weights` | map of number |  |  |  |
+
+## `ratelimit`
+
+Default rate and on-limit policy for a provider token bucket. ``requests_per_minute`` is the sustained rate used when a provider does not declare its own limit. ``burst`` is the largest short-term allowance and ``0`` falls back to the sustained rate. ``on_limit`` chooses between waiting for the next token and raising a rate limited error.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `burst` | integer | `0` | >= 0 |  |
+| `on_limit` | [OnRateLimit](#onratelimit) | `"wait"` | one of: `wait`, `raise` | What a token bucket does when the next token is not available yet. |
+| `requests_per_minute` | integer | `60` | >= 0 |  |
 
 ## `reference`
 
@@ -646,6 +657,12 @@ One variable a personalized occasion asks the customer to provide. A bare name i
 What to do when a budget cap is reached.
 
 Allowed values: `pause`, `downgrade`, `notify`.
+
+### OnRateLimit
+
+What a token bucket does when the next token is not available yet.
+
+Allowed values: `wait`, `raise`.
 
 ### OrderPricingConfig
 

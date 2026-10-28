@@ -1148,6 +1148,15 @@
       "title": "OnExceed",
       "type": "string"
     },
+    "OnRateLimit": {
+      "description": "What a token bucket does when the next token is not available yet.",
+      "enum": [
+        "wait",
+        "raise"
+      ],
+      "title": "OnRateLimit",
+      "type": "string"
+    },
     "OrderPricingConfig": {
       "additionalProperties": false,
       "description": "Currency, line-item amount and one flat tax estimate for receipts.\n\nThis is deliberately not a tax engine: ``tax_rate`` is a single flat rate\nand receipts state that they are not tax invoices (decision D-011).",
@@ -1919,6 +1928,30 @@
         }
       },
       "title": "QualityConfig",
+      "type": "object"
+    },
+    "RateLimiterConfig": {
+      "additionalProperties": false,
+      "description": "Default rate and on-limit policy for a provider token bucket.\n\n``requests_per_minute`` is the sustained rate used when a provider does not\ndeclare its own limit. ``burst`` is the largest short-term allowance and\n``0`` falls back to the sustained rate. ``on_limit`` chooses between\nwaiting for the next token and raising a rate limited error.",
+      "properties": {
+        "burst": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Burst",
+          "type": "integer"
+        },
+        "on_limit": {
+          "$ref": "#/$defs/OnRateLimit",
+          "default": "wait"
+        },
+        "requests_per_minute": {
+          "default": 60,
+          "minimum": 0,
+          "title": "Requests Per Minute",
+          "type": "integer"
+        }
+      },
+      "title": "RateLimiterConfig",
       "type": "object"
     },
     "ReferenceConfig": {
@@ -2931,6 +2964,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/QualityConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "ratelimit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RateLimiterConfig"
         },
         {
           "type": "null"

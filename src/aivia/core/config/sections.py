@@ -32,6 +32,7 @@ from aivia.core.config.planner import PlannerConfig
 from aivia.core.config.profile import ProfilesConfig
 from aivia.core.config.providers import ProviderConfig, ProvidersConfig
 from aivia.core.config.quality import QualityConfig, ScoringConfig
+from aivia.core.config.ratelimit import RateLimiterConfig
 from aivia.core.config.reference import ReferenceConfig
 from aivia.core.config.registry import SectionRegistry, registry
 from aivia.core.config.schedule import (
@@ -95,6 +96,7 @@ __all__ = [
     "PublishAccountConfig",
     "PublishConfig",
     "QualityConfig",
+    "RateLimiterConfig",
     "ReferenceConfig",
     "RenderConfig",
     "Resolution",
@@ -522,6 +524,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("llm", LLMConfig),
     ("providers", ProvidersConfig),
     ("circuit", CircuitBreakerConfig),
+    ("ratelimit", RateLimiterConfig),
     ("quality", QualityConfig),
     ("scoring", ScoringConfig),
     ("storage", StorageConfig),

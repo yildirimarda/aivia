@@ -136,6 +136,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Make HTTP retries method aware so POST only retries when the caller opts in (tests/core/test_http.py)
 - [ ] Register a models_file config section and resolve the model catalog path from it (tests/core/config/test_models_file.py)
 - [ ] Bound provider close during health checks so a stuck adapter cannot block status shutdown (tests/contracts/test_provider_base.py)
+- [ ] Apply the ratelimit section default rate and burst when a provider does not override them (tests/core/config/test_ratelimit.py)
 
 ## Milestone 5: Cost tracking, budgets and dashboard
 
