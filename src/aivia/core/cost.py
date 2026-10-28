@@ -134,9 +134,7 @@ class CostTracker:
         """Return the earliest estimate for *actual*'s call that has no actual."""
         events = self.events()
         replaced = {
-            event.replaces
-            for event in events
-            if not event.estimated and event.replaces
+            event.replaces for event in events if not event.estimated and event.replaces
         }
         key = (
             actual.run_id,
@@ -161,16 +159,12 @@ class CostTracker:
     def _effective_events(self, events: list[CostEvent]) -> list[CostEvent]:
         """Drop estimates that an actual event has replaced."""
         replaced = {
-            event.replaces
-            for event in events
-            if not event.estimated and event.replaces
+            event.replaces for event in events if not event.estimated and event.replaces
         }
         if not replaced:
             return events
         return [
-            event
-            for event in events
-            if not (event.estimated and event.id in replaced)
+            event for event in events if not (event.estimated and event.id in replaced)
         ]
 
     def record_event(
