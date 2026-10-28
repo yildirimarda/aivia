@@ -134,6 +134,37 @@ def test_languages_keep_per_language_rate_font_and_hashtag_style() -> None:
     assert config.languages["de"].hashtag_style == "title"
 
 
+def test_languages_default_must_name_a_configured_language() -> None:
+    with pytest.raises(ConfigError) as caught:
+        LanguagesConfig.from_mapping({"default": "de", "en": {"name": "English"}})
+
+    message = str(caught.value)
+    assert "languages.default" in message
+    assert "de" in message
+    assert "available: en" in message
+
+
+@pytest.mark.parametrize("payload", [{}, {"default": "en"}])
+def test_languages_reject_a_default_without_entries(
+    payload: dict[str, Any],
+) -> None:
+    with pytest.raises(ConfigError) as caught:
+        LanguagesConfig.from_mapping(payload)
+
+    message = str(caught.value)
+    assert "languages.default" in message
+    assert "at least one configured language" in message
+
+
+def test_languages_accept_a_configured_default_in_the_nested_shape() -> None:
+    config = LanguagesConfig.from_mapping(
+        {"default": "tr", "languages": {"tr": {"name": "Turkish"}}}
+    )
+
+    assert config.default == "tr"
+    assert config.languages["tr"].name == "Turkish"
+
+
 def test_example_config_declares_the_language_controls() -> None:
     text = (paths.package_defaults_dir() / "config.example.yaml").read_text(
         encoding="utf-8"

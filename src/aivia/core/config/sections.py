@@ -156,6 +156,20 @@ class LanguagesConfig(ConfigModel):
             return {"default": default, "languages": values}
         return data
 
+    @model_validator(mode="after")
+    def _default_exists(self) -> Self:
+        if not self.languages:
+            raise ValueError(
+                "languages.default requires at least one configured language"
+            )
+        if self.default not in self.languages:
+            available = ", ".join(sorted(self.languages))
+            raise ValueError(
+                f"languages.default is not a configured language: "
+                f"{self.default} (available: {available})"
+            )
+        return self
+
 
 class PipelineConfig(ConfigModel):
     """The ordered stages a pipeline runs and the timezone used for schedules."""
