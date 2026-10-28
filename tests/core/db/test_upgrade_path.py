@@ -21,9 +21,10 @@ from aivia.core.db import (
     alembic_config,
     create_database_engine,
     current_revision,
+    runs,
     upgrade_database,
 )
-from aivia.core.models import Asset, AssetKind, CostEvent, Run, RunKind, RunState
+from aivia.core.models import Asset, AssetKind, CostEvent, RunState
 
 
 def _revisions() -> tuple[str, str]:
@@ -40,16 +41,19 @@ def _revisions() -> tuple[str, str]:
 
 def _seed(engine: Engine) -> None:
     """Write one run, asset and cost event through their repositories."""
-    RunRepository(engine).create(
-        Run(
-            id="run_previous",
-            kind=RunKind.ORDER,
-            state=RunState.SUCCEEDED,
-            cost_usd=1.25,
-            profile="birthday",
-            format="card",
+    with engine.begin() as connection:
+        connection.execute(
+            runs.insert().values(
+                id="run_previous",
+                kind="order",
+                state="succeeded",
+                idempotency_key="",
+                cost_usd=1.25,
+                profile="birthday",
+                format="card",
+            )
         )
-    )
+
     AssetRepository(engine).create(
         Asset(
             id="asset_previous",

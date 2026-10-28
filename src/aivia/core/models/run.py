@@ -381,6 +381,29 @@ class Run(ModelBase):
         default="",
         validation_alias=AliasChoices("pause_reason", "paused_reason"),
     )
+    resumed_by: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "resumed_by",
+            "resume_by",
+            "resumed_user",
+            "who",
+        ),
+    )
+    resume_reason: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "resume_reason",
+            "resumed_reason",
+            "resume_why",
+            "why",
+            "reason",
+        ),
+    )
+    resumed_at: datetime | None = Field(
+        default=None,
+        validation_alias=AliasChoices("resumed_at", "resume_at"),
+    )
 
     @field_validator("kind", mode="before")
     @classmethod
@@ -410,6 +433,8 @@ class Run(ModelBase):
         "error_code",
         "error_message",
         "pause_reason",
+        "resumed_by",
+        "resume_reason",
         mode="before",
     )
     @classmethod
@@ -426,7 +451,7 @@ class Run(ModelBase):
     def _validate_config_snapshot(cls, value: Any) -> Any:
         return {} if value is None else value
 
-    @field_validator("started_at", "finished_at", "paused_at")
+    @field_validator("started_at", "finished_at", "paused_at", "resumed_at")
     @classmethod
     def _normalize_optional_timestamp(cls, value: datetime | None) -> datetime | None:
         if value is None:

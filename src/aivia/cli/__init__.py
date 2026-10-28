@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aivia.cli import config, confirm, costs, init, providers, run
+from aivia.cli import config, confirm, costs, init, providers, resume, run
 from aivia.cli.registry import (
     Command,
     CommandHandler,
@@ -27,6 +27,7 @@ __all__ = [
     "providers",
     "register_command",
     "registry",
+    "resume",
     "run",
     "version_string",
 ]

@@ -12,6 +12,7 @@ import sys
 from typing import TextIO
 
 __all__ = [
+    "confirm_action",
     "confirm_spend",
     "confirmation_required",
 ]
@@ -75,4 +76,39 @@ def confirm_spend(
         return True
 
     print("error: confirmation declined; run cancelled", file=sys.stderr)
+    return False
+
+
+def confirm_action(
+    message: str,
+    *,
+    assume_yes: bool = False,
+    stdin: TextIO | None = None,
+    stdout: TextIO | None = None,
+) -> bool:
+    """Return whether a consequential action may proceed.
+
+    ``assume_yes`` is the non-interactive confirmation flag. Without it, a
+    non-interactive stream is refused with an actionable error. An interactive
+    stream is asked once; anything other than ``y`` or ``yes`` is a refusal.
+    """
+    if assume_yes:
+        return True
+
+    source = sys.stdin if stdin is None else stdin
+    target = sys.stdout if stdout is None else stdout
+    if not _is_interactive(source):
+        print(
+            f"error: {message}; non-interactive runs require --yes",
+            file=sys.stderr,
+        )
+        return False
+
+    target.write(f"{message} [y/N] ")
+    target.flush()
+    answer = source.readline().strip().lower()
+    if answer in _YES_ANSWERS:
+        return True
+
+    print("error: confirmation declined; action cancelled", file=sys.stderr)
     return False
