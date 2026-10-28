@@ -154,7 +154,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Require confirmation above the configured threshold, with a yes flag and a refusal path in non interactive mode (tests/cli/test_confirm.py)
 - [x] Add a costs run command breaking down spend by stage, provider, model and asset (tests/cli/test_costs_run.py)
 - [x] Add a costs summary command with grouping options and date filters (tests/cli/test_costs_summary.py)
-- [ ] Add CSV and JSON cost export whose totals match the summary (tests/cli/test_costs_export.py)
+- [x] Add CSV and JSON cost export whose totals match the summary (tests/cli/test_costs_export.py)
 - [ ] Write a sidecar cost file next to every output containing totals, items, providers, models, pricing version and toolchain fingerprint (tests/core/test_sidecar.py)
 - [ ] Support actual amounts reported by providers and flag drift above a threshold against the estimate (tests/core/test_reconcile.py)
 - [ ] Emit budget alerts once per threshold per period and provide a console notifier any module can fall back on (tests/core/test_budget_alerts.py)
