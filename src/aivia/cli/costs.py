@@ -269,9 +269,7 @@ def run_costs_run(args: argparse.Namespace) -> int:
 
         lines = [f"Run: {run.id}", f"Total: {_money(total)}", ""]
         lines.extend(
-            _render_aggregates(
-                "BY STAGE", "STAGE", aggregator.by_stage(run_id=run_id)
-            )
+            _render_aggregates("BY STAGE", "STAGE", aggregator.by_stage(run_id=run_id))
         )
         lines.append("")
         lines.extend(
@@ -281,9 +279,7 @@ def run_costs_run(args: argparse.Namespace) -> int:
         )
         lines.append("")
         lines.extend(
-            _render_aggregates(
-                "BY MODEL", "MODEL", aggregator.by_model(run_id=run_id)
-            )
+            _render_aggregates("BY MODEL", "MODEL", aggregator.by_model(run_id=run_id))
         )
         lines.append("")
         lines.extend(_render_assets(_asset_buckets(assets, events)))

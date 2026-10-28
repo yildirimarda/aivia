@@ -240,9 +240,7 @@ def test_costs_run_reports_a_missing_run(
     database: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    code, out, err = run_command(
-        capsys, "run_missing", "--database", str(database)
-    )
+    code, out, err = run_command(capsys, "run_missing", "--database", str(database))
 
     assert code == 1
     assert out == ""
