@@ -134,6 +134,10 @@ llm:
 
 providers: {}
 
+circuit:
+  failure_threshold: 5
+  cooldown_seconds: 60.0
+
 quality:
   enabled: true
   min_score: 0.7

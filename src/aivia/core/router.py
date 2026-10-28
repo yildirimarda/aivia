@@ -51,6 +51,7 @@ from typing import TypeVar
 
 from aivia.core.circuit import CircuitBreaker
 from aivia.core.config.capability import CapabilityChainConfig, CapabilityStrategy
+from aivia.core.config.circuit import CircuitBreakerConfig
 from aivia.core.config.ratelimit import OnRateLimit, RateLimiterConfig
 from aivia.core.errors import (
     AiviaError,
@@ -439,7 +440,7 @@ class Router:
     Each provider gets its own circuit breaker. ``circuit_breakers`` injects
     pre-built breakers by provider name, while ``circuit_breaker_factory``
     builds the remaining ones; the default is a fresh
-    :class:`~aivia.core.circuit.CircuitBreaker`.
+    :class:`~aivia.core.circuit.CircuitBreaker` using ``circuit_config``.
 
     Each provider also gets its own token bucket built from its declared
     :class:`~aivia.core.models.provider.RateLimit`. ``rate_limiters`` injects
@@ -461,16 +462,25 @@ class Router:
         seed: int | None = None,
         circuit_breaker_factory: Callable[[str], CircuitBreaker] | None = None,
         circuit_breakers: Mapping[str, CircuitBreaker] | None = None,
+        circuit_config: CircuitBreakerConfig | None = None,
         rate_limiter_factory: Callable[..., TokenBucket] | None = None,
         rate_limiters: Mapping[str, TokenBucket] | None = None,
         rate_limit_config: RateLimiterConfig | None = None,
     ) -> None:
+        if circuit_config is not None and not isinstance(
+            circuit_config, CircuitBreakerConfig
+        ):
+            raise TypeError("circuit_config must be a CircuitBreakerConfig")
         if rate_limit_config is not None and not isinstance(
             rate_limit_config, RateLimiterConfig
         ):
             raise TypeError("rate_limit_config must be a RateLimiterConfig")
         self._providers = _coerce_providers(providers)
-        self._circuits = self._build_circuits(circuit_breaker_factory, circuit_breakers)
+        self._circuits = self._build_circuits(
+            circuit_breaker_factory,
+            circuit_breakers,
+            circuit_config or CircuitBreakerConfig(),
+        )
         self._limiters = self._build_limiters(
             rate_limiter_factory,
             rate_limiters,
@@ -515,6 +525,7 @@ class Router:
         self,
         factory: Callable[[str], CircuitBreaker] | None,
         injected: Mapping[str, CircuitBreaker] | None,
+        config: CircuitBreakerConfig,
     ) -> dict[str, CircuitBreaker]:
         if factory is not None and not callable(factory):
             raise TypeError("circuit_breaker_factory must be callable")
@@ -551,7 +562,7 @@ class Router:
                     )
                 circuits[name] = breaker
             else:
-                circuits[name] = CircuitBreaker()
+                circuits[name] = CircuitBreaker(config=config)
         return circuits
 
     def _build_limiters(

@@ -15,6 +15,7 @@ This reference is generated from the registered configuration models, their JSON
 | `brand` | [BrandKitConfig](#brand) or null | Colours, fonts, logo, watermark, intro/outro and caption style. |
 | `budget` | [BudgetConfig](#budget) or null | Spending caps, provider monthly limits, alert thresholds and policy. |
 | `character` | [CharacterConfig](#character) or null | Consistency chain, QA thresholds, consent flags and reference limit. |
+| `circuit` | [CircuitBreakerConfig](#circuit) or null | Failure threshold and cooldown for one provider circuit. |
 | `database` | [DatabaseConfig](#database) or null | The SQLite file inside the user data directory and its busy timeout. ``filename`` is a bare file name; the directory is always the user data directory so a config file cannot point the database at another location. ``busy_timeout_ms`` is how long SQLite waits for a lock before raising ``database is locked``. |
 | `delivery` | [DeliveryConfig](#delivery) or null | Delivery providers, the fallback chain and shared retry settings. Providers may be nested under ``providers`` or written directly as ``folder``, ``link``, ``email`` and ``webhook`` keys. The ``chain`` lists provider names in fallback order and every entry must name a provider. |
 | `formats` | [FormatsConfig](#formats) or null | Named format recipes. Recipes may be written directly under the section (``formats: {narrated_still: {...}}``) or nested under ``formats`` (or ``recipes``); every form validates to the same mapping. |
@@ -114,6 +115,15 @@ Consistency chain, QA thresholds, consent flags and reference limit.
 | `enabled` | boolean | `true` |  |  |
 | `max_reference_images` | integer | `4` | >= 0 |  |
 | `qa` | [CharacterQAConfig](#characterqaconfig) |  |  | Thresholds and retries used to accept a character-consistent asset. |
+
+## `circuit`
+
+Failure threshold and cooldown for one provider circuit.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `cooldown_seconds` | number | `60.0` | >= 0 |  |
+| `failure_threshold` | integer | `5` | >= 1 |  |
 
 ## `database`
 

@@ -129,7 +129,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a timeout to provider health checks so an unresponsive adapter cannot block a status command (tests/contracts/test_provider_base.py)
 - [x] Add a providers config section mapping names to type, options and secret references for router chains (tests/core/config/test_providers.py)
 - [x] Warn or refuse when budget-aware selection cannot estimate an unpriced provider (tests/core/test_router.py)
-- [ ] Register a circuit breaker config section and pass its threshold and cooldown into router construction (tests/core/config/test_circuit.py)
+- [x] Register a circuit breaker config section and pass its threshold and cooldown into router construction (tests/core/config/test_circuit.py)
 - [ ] Register a rate limiter config section and pass its on-limit behaviour into router construction (tests/core/config/test_ratelimit.py)
 - [ ] Enforce provider max concurrency in the router alongside the token bucket so parallel calls queue or fail (tests/core/test_ratelimit.py)
 - [ ] Register an HTTP client config section and pass its retry and timeout policy into provider construction (tests/core/config/test_http.py)
