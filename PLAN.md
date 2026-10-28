@@ -163,6 +163,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Make the router use the pricing resolver so selection and budget checks share overrides and unit conversions (tests/core/test_router.py)
 - [ ] Make budget checks reserve the estimate atomically so concurrent calls cannot both pass the same per run cap (tests/core/test_budget.py)
 - [ ] Make pre run estimation honour configured provider chains and selection strategy (tests/core/test_estimate.py)
+- [ ] Prevent totals and budget checks from counting both an estimate and its actual replacement for one call (tests/core/test_cost.py)
 
 ## Milestone 6: Execution core, storage and API
 

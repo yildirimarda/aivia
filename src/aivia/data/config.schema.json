@@ -2091,6 +2091,28 @@
       "title": "RateLimiterConfig",
       "type": "object"
     },
+    "ReconcileConfig": {
+      "additionalProperties": false,
+      "description": "Thresholds that turn an estimate/actual difference into a drift flag.",
+      "properties": {
+        "absolute_threshold_usd": {
+          "default": 0.0,
+          "description": "Absolute drift floor that protects small estimates.",
+          "minimum": 0,
+          "title": "Absolute Threshold Usd",
+          "type": "number"
+        },
+        "drift_threshold": {
+          "default": 0.1,
+          "description": "Relative drift above which a reported amount is flagged.",
+          "minimum": 0,
+          "title": "Drift Threshold",
+          "type": "number"
+        }
+      },
+      "title": "ReconcileConfig",
+      "type": "object"
+    },
     "ReferenceConfig": {
       "additionalProperties": false,
       "description": "Similarity level, similarity gates, regeneration cap and downloads.",
@@ -3134,6 +3156,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/RateLimiterConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reconcile": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReconcileConfig"
         },
         {
           "type": "null"

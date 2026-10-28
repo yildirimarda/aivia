@@ -147,6 +147,10 @@ ratelimit:
   burst: 0
   on_limit: wait
 
+reconcile:
+  drift_threshold: 0.1
+  absolute_threshold_usd: 0.0
+
 http:
   timeout_seconds: 30.0
   connect_timeout_seconds: null

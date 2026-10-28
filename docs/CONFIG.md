@@ -36,6 +36,7 @@ This reference is generated from the registered configuration models, their JSON
 | `publish` | [PublishConfig](#publish) or null | Publishing accounts, dry-run policy and reference validation. |
 | `quality` | [QualityConfig](#quality) or null | Thresholds and retry policy for generated media quality assurance. |
 | `ratelimit` | [RateLimiterConfig](#ratelimit) or null | Default rate and on-limit policy for a provider token bucket. ``requests_per_minute`` is the sustained rate used when a provider does not declare its own limit. ``burst`` is the largest short-term allowance and ``0`` falls back to the sustained rate. ``on_limit`` chooses between waiting for the next token and raising a rate limited error. |
+| `reconcile` | [ReconcileConfig](#reconcile) or null | Thresholds that turn an estimate/actual difference into a drift flag. |
 | `reference` | [ReferenceConfig](#reference) or null | Similarity level, similarity gates, regeneration cap and downloads. |
 | `render` | [RenderConfig](#render) or null | Deterministic renderer settings that never require an AI call. |
 | `retention` | [RetentionConfig](#retention) or null | How long intermediates, cache, logs and personal data are kept. Final outputs are pinned and are never removed unless ``delete_final_outputs`` is explicitly enabled. |
@@ -357,6 +358,15 @@ Default rate and on-limit policy for a provider token bucket. ``requests_per_min
 | `burst` | integer | `0` | >= 0 |  |
 | `on_limit` | [OnRateLimit](#onratelimit) | `"wait"` | one of: `wait`, `raise` | What a token bucket does when the next token is not available yet. |
 | `requests_per_minute` | integer | `60` | >= 0 |  |
+
+## `reconcile`
+
+Thresholds that turn an estimate/actual difference into a drift flag.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `absolute_threshold_usd` | number | `0.0` | >= 0 | Absolute drift floor that protects small estimates. |
+| `drift_threshold` | number | `0.1` | >= 0 | Relative drift above which a reported amount is flagged. |
 
 ## `reference`
 

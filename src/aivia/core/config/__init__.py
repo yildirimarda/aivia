@@ -176,6 +176,13 @@ from aivia.core.config.ratelimit import (
     RateLimiterConfig,
     RateLimiterSettings,
 )
+from aivia.core.config.reconcile import (
+    DEFAULT_ABSOLUTE_THRESHOLD_USD,
+    DEFAULT_DRIFT_THRESHOLD,
+    ReconcileConfig,
+    ReconcileSettings,
+    ReconciliationConfig,
+)
 from aivia.core.config.reference import (
     DownloadPolicy,
     ReferenceConfig,
@@ -282,6 +289,8 @@ __all__ = [
     "CORE_SECTIONS",
     "CORE_SECTION_KEYS",
     "CURRENT_SCHEMA_VERSION",
+    "DEFAULT_ABSOLUTE_THRESHOLD_USD",
+    "DEFAULT_DRIFT_THRESHOLD",
     "DEFAULT_ORIGIN",
     "DOCS_FILENAME",
     "DOCS_TITLE",
@@ -434,6 +443,9 @@ __all__ = [
     "RateLimiterConfig",
     "RateLimiterSettings",
     "RecipeConfig",
+    "ReconcileConfig",
+    "ReconcileSettings",
+    "ReconciliationConfig",
     "ReferenceConfig",
     "ReferenceDownloadConfig",
     "ReferenceDownloadPolicy",
