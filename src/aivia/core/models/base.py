@@ -18,7 +18,15 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    AliasPath,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 __all__ = [
     "CURRENT_MODEL_SCHEMA_VERSION",
@@ -100,6 +108,17 @@ class ModelBase(BaseModel):
         for field in cls.model_fields.values():
             if field.alias:
                 known.add(field.alias)
+            alias = field.validation_alias
+            if isinstance(alias, str):
+                known.add(alias)
+            elif isinstance(alias, AliasChoices):
+                for choice in alias.choices:
+                    if isinstance(choice, str):
+                        known.add(choice)
+                    elif isinstance(choice, AliasPath) and choice.path:
+                        first = choice.path[0]
+                        if isinstance(first, str):
+                            known.add(first)
         for key in data:
             if isinstance(key, str) and key not in known:
                 warnings.warn(
