@@ -18,7 +18,9 @@ sorting those candidates after every ranked one. ``round_robin`` rotates
 through the available providers per capability and is inherently
 deterministic. ``weighted_ab`` draws from the configured per-provider weights;
 a seed makes the draw reproducible, and the selected weight is recorded on the
-selection.
+selection. Every strategy can be budget aware: when a remaining budget is
+given, a provider whose estimated price for the requested units exceeds it is
+skipped as ``budget_exceeded`` before the strategy picks a candidate.
 
 :meth:`Router.execute` runs an operation against the selected provider and
 falls back to the next candidate when the provider reports a retryable,
@@ -30,6 +32,7 @@ them. When every candidate fails with a retryable error the router raises
 
 from __future__ import annotations
 
+import math
 import random
 import warnings
 from collections.abc import Awaitable, Callable, Iterable, Mapping
@@ -209,6 +212,64 @@ def _price_for(
     if price is None:
         return None
     return price.cost_for(1.0)
+
+
+def _coerce_remaining_budget(value: float | None) -> float | None:
+    """Validate the remaining budget, where ``None`` disables the check."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(
+            "remaining budget must be a finite number",
+            details={"remaining_budget": value},
+        )
+    budget = float(value)
+    if not math.isfinite(budget):
+        raise ConfigError(
+            "remaining budget must be a finite number",
+            details={"remaining_budget": value},
+        )
+    return budget
+
+
+def _coerce_units(value: float) -> float:
+    """Validate the number of units a request will be charged for."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(
+            "units must be a finite, non-negative number",
+            details={"units": value},
+        )
+    units = float(value)
+    if not math.isfinite(units) or units < 0:
+        raise ConfigError(
+            "units must be a finite, non-negative number",
+            details={"units": value},
+        )
+    return units
+
+
+def _budget_rejection(
+    name: str,
+    provider: Provider,
+    capability: str,
+    overrides: Mapping[str, float],
+    remaining_budget: float | None,
+    units: float,
+) -> RouteSkip | None:
+    """Return why *provider* exceeds the remaining budget, if it does.
+
+    The estimate is the provider price for *capability* scaled to *units*. A
+    provider without a known price cannot be estimated, so it is left to the
+    strategy rather than being rejected on missing data.
+    """
+    if remaining_budget is None:
+        return None
+    price = _price_for(name, provider, capability, overrides)
+    if price is None:
+        return None
+    if price * units > remaining_budget:
+        return RouteSkip(provider=name, reason="budget_exceeded")
+    return None
 
 
 def _quality_rank_for(name: str, provider: Provider) -> int | None:
@@ -468,6 +529,8 @@ class Router:
         required: Iterable[str] | str | None = None,
         strategy: CapabilityStrategy | str | None = None,
         seed: int | None = None,
+        remaining_budget: float | None = None,
+        units: float = 1.0,
     ) -> Provider:
         """Return the provider selected for *capability*.
 
@@ -475,12 +538,20 @@ class Router:
         the request additionally needs, for example ``image_edit`` alongside
         ``image_gen``. ``strategy`` overrides the configured strategy for this
         call. ``seed`` overrides the router seed for one weighted draw.
+
+        ``remaining_budget`` is the amount still available for this call. A
+        provider whose estimated price for *units* exceeds it is skipped, so
+        the strategy picks the best affordable candidate. ``None`` disables the
+        budget check, and a provider without a known price is never skipped
+        because it cannot be estimated.
         """
         return self.select_with_record(
             capability,
             required=required,
             strategy=strategy,
             seed=seed,
+            remaining_budget=remaining_budget,
+            units=units,
         ).provider
 
     def select_provider(
@@ -490,6 +561,8 @@ class Router:
         required: Iterable[str] | str | None = None,
         strategy: CapabilityStrategy | str | None = None,
         seed: int | None = None,
+        remaining_budget: float | None = None,
+        units: float = 1.0,
     ) -> Provider:
         """Alias for :meth:`select`."""
         return self.select(
@@ -497,6 +570,8 @@ class Router:
             required=required,
             strategy=strategy,
             seed=seed,
+            remaining_budget=remaining_budget,
+            units=units,
         )
 
     def _round_robin_pick(
@@ -524,17 +599,27 @@ class Router:
         strategy: CapabilityStrategy | str | None = None,
         seed: int | None = None,
         exclude: Iterable[str] | None = None,
+        remaining_budget: float | None = None,
+        units: float = 1.0,
     ) -> RouteSelection:
         """Select a provider and return the full selection record.
 
         ``exclude`` names providers that must not be selected, which is how
         :meth:`execute` moves on after a retryable failure. Excluded providers
         are reported as skipped with the ``excluded`` reason.
+
+        ``remaining_budget`` and ``units`` make selection budget aware: a
+        provider whose estimated price for *units* is greater than the
+        remaining budget is reported as skipped with ``budget_exceeded``. An
+        unpriced provider cannot be estimated and is therefore never skipped.
         """
         names = _coerce_required(capability, required)
         target = names[0]
         excluded = frozenset(exclude or ())
+        budget = _coerce_remaining_budget(remaining_budget)
+        quantity = _coerce_units(units)
         configured = self.config_for(target)
+        overrides = configured.pricing_overrides
         chosen_strategy = (
             configured.strategy if strategy is None else _coerce_strategy(strategy)
         )
@@ -564,6 +649,15 @@ class Router:
                     skipped.append(RouteSkip(provider=name, reason="excluded"))
                     continue
                 rejection = _rejection(name, provider, names)
+                if rejection is None:
+                    rejection = _budget_rejection(
+                        name,
+                        provider,
+                        target,
+                        overrides,
+                        budget,
+                        quantity,
+                    )
                 if rejection is not None:
                     skipped.append(rejection)
                     continue
@@ -587,6 +681,15 @@ class Router:
                 skipped.append(RouteSkip(provider=name, reason="excluded"))
                 continue
             rejection = _rejection(name, provider, names)
+            if rejection is None:
+                rejection = _budget_rejection(
+                    name,
+                    provider,
+                    target,
+                    overrides,
+                    budget,
+                    quantity,
+                )
             if rejection is not None:
                 skipped.append(rejection)
                 continue
@@ -598,7 +701,6 @@ class Router:
         weight: float | None = None
         quality_rank: int | None = None
         if chosen_strategy is CapabilityStrategy.CHEAPEST:
-            overrides = configured.pricing_overrides
 
             def price_key(entry: tuple[str, Provider]) -> tuple[bool, float]:
                 name, provider = entry
@@ -655,6 +757,8 @@ class Router:
         required: Iterable[str] | str | None = None,
         strategy: CapabilityStrategy | str | None = None,
         seed: int | None = None,
+        remaining_budget: float | None = None,
+        units: float = 1.0,
     ) -> T:
         """Run *operation* with fallback across the capability chain.
 
@@ -666,7 +770,9 @@ class Router:
         provider cannot fix an invalid request, bad credentials, a budget
         refusal or a content policy rejection.
 
-        When every candidate fails with a retryable error, the router raises
+        ``remaining_budget`` and ``units`` are passed to every selection so a
+        provider whose estimate exceeds the budget is never called. When every
+        candidate fails with a retryable error, the router raises
         :class:`~aivia.core.errors.ProviderExhaustedError` with the attempted
         providers and the last error, chained as the cause. The successful
         selection remains available through :attr:`last_selection`.
@@ -688,6 +794,8 @@ class Router:
                     strategy=strategy,
                     seed=seed,
                     exclude=excluded,
+                    remaining_budget=remaining_budget,
+                    units=units,
                 )
             except ProviderExhaustedError as exhausted:
                 if last_error is None:

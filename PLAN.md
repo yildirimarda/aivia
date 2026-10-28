@@ -128,6 +128,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate configured model ids against models.yaml, warning on unknown ids with a closest match and on deprecated ids with a replacement (tests/core/test_model_ids.py)
 - [ ] Add a timeout to provider health checks so an unresponsive adapter cannot block a status command (tests/contracts/test_provider_base.py)
 - [ ] Add a providers config section mapping names to type, options and secret references for router chains (tests/core/config/test_providers.py)
+- [ ] Warn or refuse when budget-aware selection cannot estimate an unpriced provider (tests/core/test_router.py)
 
 ## Milestone 5: Cost tracking, budgets and dashboard
 
