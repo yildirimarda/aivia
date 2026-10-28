@@ -152,7 +152,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Enforce day, month and per provider monthly limits computed from events across dates (tests/core/test_budget.py)
 - [x] Add pre run estimation where each stage reports an estimate and the estimate flag prints the table and exits (tests/cli/test_estimate.py)
 - [x] Require confirmation above the configured threshold, with a yes flag and a refusal path in non interactive mode (tests/cli/test_confirm.py)
-- [ ] Add a costs run command breaking down spend by stage, provider, model and asset (tests/cli/test_costs_run.py)
+- [x] Add a costs run command breaking down spend by stage, provider, model and asset (tests/cli/test_costs_run.py)
 - [ ] Add a costs summary command with grouping options and date filters (tests/cli/test_costs_summary.py)
 - [ ] Add CSV and JSON cost export whose totals match the summary (tests/cli/test_costs_export.py)
 - [ ] Write a sidecar cost file next to every output containing totals, items, providers, models, pricing version and toolchain fingerprint (tests/core/test_sidecar.py)
