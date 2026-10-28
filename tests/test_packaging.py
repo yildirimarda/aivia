@@ -54,6 +54,14 @@ def test_wheel_contains_package_data(wheel: Path) -> None:
     assert "aivia/data/defaults/README.txt" in names
 
 
+def test_wheel_contains_the_database_migrations(wheel: Path) -> None:
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+
+    assert "aivia/data/migrations/env.py" in names
+    assert "aivia/data/migrations/versions/0001_initial.py" in names
+
+
 def test_wheel_contains_bundled_ofl_font_family_and_license(wheel: Path) -> None:
     font_dir = "aivia/assets/fonts/lato/"
     font_files = [

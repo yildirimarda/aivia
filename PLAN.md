@@ -90,7 +90,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add job models with attempts, not before, heartbeat and dead letter state (tests/core/models/test_job.py)
 - [x] Add cost event and provider meta models with capability, pricing, rate limit, quality rank and licensing fields (tests/core/models/test_cost_provider.py)
 - [x] Add post, delivery, plan and composition reference models including attestation fields (tests/core/models/test_io.py)
-- [ ] Configure the database engine and migrations in the user data directory with WAL, busy timeout and foreign keys enabled on every connection (tests/core/db/test_migrate.py)
+- [x] Configure the database engine and migrations in the user data directory with WAL, busy timeout and foreign keys enabled on every connection (tests/core/db/test_migrate.py)
 - [ ] Create the runs, stage runs and jobs tables with a claim index and a unique idempotency key index (tests/core/db/test_tables_core.py)
 - [ ] Create the assets, compositions and cost events tables with indexes on prompt hash, run, provider, creation time and pinned (tests/core/db/test_tables_assets.py)
 - [ ] Create the plans, templates, references, style specs, feedback and ratings tables with one rating per subject (tests/core/db/test_tables_aux.py)
@@ -98,6 +98,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Implement repository classes with create, get, update and list for every aggregate, tested against an in memory database (tests/core/db/test_repos.py)
 - [ ] Add a migration guard test that fails when models and migrations diverge (tests/core/db/test_migrations_in_sync.py)
 - [ ] Add an upgrade path test proving a database from the previous schema version upgrades with runs, orders, costs and assets intact (tests/core/db/test_upgrade_path.py)
+- [ ] Add a database config section for the file name and busy timeout and build the engine from it (tests/core/config/test_database.py)
+- [ ] Add a concurrency test with two writers proving WAL and the busy timeout avoid database is locked (slow, tests/core/db/test_concurrency.py)
 
 ## Milestone 4: Providers, registry, router and mocks
 
