@@ -162,6 +162,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add a resume command that continues a paused budget run after explicit confirmation and records who and why (tests/cli/test_resume.py)
 - [ ] Make the router use the pricing resolver so selection and budget checks share overrides and unit conversions (tests/core/test_router.py)
 - [ ] Make budget checks reserve the estimate atomically so concurrent calls cannot both pass the same per run cap (tests/core/test_budget.py)
+- [ ] Make pre run estimation honour configured provider chains and selection strategy (tests/core/test_estimate.py)
 
 ## Milestone 6: Execution core, storage and API
 
