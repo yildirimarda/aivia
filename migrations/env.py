@@ -7,6 +7,7 @@ from sqlalchemy import Connection
 
 from aivia.core.db.engine import create_database_engine
 from aivia.core.db.schema import metadata
+from aivia.core.db.tables import assets as _asset_tables  # noqa: F401
 from aivia.core.db.tables import core as _core_tables  # noqa: F401
 
 config = context.config
