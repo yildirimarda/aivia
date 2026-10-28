@@ -1,0 +1,2937 @@
+{
+  "$defs": {
+    "AccessibilityConfig": {
+      "additionalProperties": false,
+      "description": "Alt text, subtitles and contrast settings for accessible outputs.",
+      "properties": {
+        "alt_text": {
+          "default": true,
+          "title": "Alt Text",
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "min_contrast": {
+          "default": 4.5,
+          "maximum": 21,
+          "minimum": 1,
+          "title": "Min Contrast",
+          "type": "number"
+        },
+        "subtitle_background": {
+          "default": false,
+          "title": "Subtitle Background",
+          "type": "boolean"
+        },
+        "subtitle_font": {
+          "default": "Lato",
+          "minLength": 1,
+          "title": "Subtitle Font",
+          "type": "string"
+        },
+        "subtitle_font_size": {
+          "default": 32,
+          "exclusiveMinimum": 0,
+          "title": "Subtitle Font Size",
+          "type": "integer"
+        },
+        "subtitle_outline": {
+          "default": true,
+          "title": "Subtitle Outline",
+          "type": "boolean"
+        },
+        "subtitles": {
+          "default": true,
+          "title": "Subtitles",
+          "type": "boolean"
+        }
+      },
+      "title": "AccessibilityConfig",
+      "type": "object"
+    },
+    "ApiConfig": {
+      "additionalProperties": false,
+      "description": "The local HTTP API bind address, authentication and request limits.",
+      "properties": {
+        "api_key_ref": {
+          "default": "AIVA_API_KEY",
+          "title": "Api Key Ref",
+          "type": "string"
+        },
+        "host": {
+          "default": "127.0.0.1",
+          "title": "Host",
+          "type": "string"
+        },
+        "max_body_bytes": {
+          "default": 10000000,
+          "title": "Max Body Bytes",
+          "type": "integer"
+        },
+        "port": {
+          "default": 8765,
+          "title": "Port",
+          "type": "integer"
+        },
+        "rate_limit_per_minute": {
+          "default": 60,
+          "title": "Rate Limit Per Minute",
+          "type": "integer"
+        },
+        "require_auth": {
+          "default": true,
+          "title": "Require Auth",
+          "type": "boolean"
+        }
+      },
+      "title": "ApiConfig",
+      "type": "object"
+    },
+    "BrandKitConfig": {
+      "additionalProperties": false,
+      "description": "Colours, fonts, logo, watermark, intro/outro and caption style.",
+      "properties": {
+        "caption_style": {
+          "default": "",
+          "title": "Caption Style",
+          "type": "string"
+        },
+        "colors": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
+          "title": "Colors"
+        },
+        "fonts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
+          "title": "Fonts"
+        },
+        "intro": {
+          "default": "",
+          "title": "Intro",
+          "type": "string"
+        },
+        "logo": {
+          "default": "",
+          "title": "Logo",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "outro": {
+          "default": "",
+          "title": "Outro",
+          "type": "string"
+        },
+        "watermark": {
+          "default": "",
+          "title": "Watermark",
+          "type": "string"
+        }
+      },
+      "title": "BrandKitConfig",
+      "type": "object"
+    },
+    "BudgetConfig": {
+      "additionalProperties": false,
+      "description": "Spending caps, provider monthly limits, alert thresholds and policy.",
+      "properties": {
+        "alerts": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Alerts",
+          "type": "array"
+        },
+        "on_exceed": {
+          "$ref": "#/$defs/OnExceed",
+          "default": "pause"
+        },
+        "per_call": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Per Call",
+          "type": "number"
+        },
+        "per_day": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Per Day",
+          "type": "number"
+        },
+        "per_instruction": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Per Instruction",
+          "type": "number"
+        },
+        "per_month": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Per Month",
+          "type": "number"
+        },
+        "per_order": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Per Order",
+          "type": "number"
+        },
+        "per_provider": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Per Provider",
+          "type": "object"
+        },
+        "per_run": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Per Run",
+          "type": "number"
+        },
+        "per_video": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Per Video",
+          "type": "number"
+        }
+      },
+      "title": "BudgetConfig",
+      "type": "object"
+    },
+    "CharacterConfig": {
+      "additionalProperties": false,
+      "description": "Consistency chain, QA thresholds, consent flags and reference limit.",
+      "properties": {
+        "consent": {
+          "$ref": "#/$defs/CharacterConsentConfig"
+        },
+        "consistency_strategies": {
+          "items": {
+            "$ref": "#/$defs/ConsistencyStrategy"
+          },
+          "title": "Consistency Strategies",
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_reference_images": {
+          "default": 4,
+          "minimum": 0,
+          "title": "Max Reference Images",
+          "type": "integer"
+        },
+        "qa": {
+          "$ref": "#/$defs/CharacterQAConfig"
+        }
+      },
+      "title": "CharacterConfig",
+      "type": "object"
+    },
+    "CharacterConsentConfig": {
+      "additionalProperties": false,
+      "description": "Rights flags that gate voice cloning and real-person likeness.",
+      "properties": {
+        "real_person_likeness": {
+          "default": false,
+          "title": "Real Person Likeness",
+          "type": "boolean"
+        },
+        "require_ownership": {
+          "default": true,
+          "title": "Require Ownership",
+          "type": "boolean"
+        },
+        "resemblance_warning": {
+          "default": true,
+          "title": "Resemblance Warning",
+          "type": "boolean"
+        },
+        "voice_cloning": {
+          "default": false,
+          "title": "Voice Cloning",
+          "type": "boolean"
+        }
+      },
+      "title": "CharacterConsentConfig",
+      "type": "object"
+    },
+    "CharacterQAConfig": {
+      "additionalProperties": false,
+      "description": "Thresholds and retries used to accept a character-consistent asset.",
+      "properties": {
+        "embedding_threshold": {
+          "default": 0.75,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Embedding Threshold",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "min_score": {
+          "default": 0.8,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Score",
+          "type": "number"
+        },
+        "vision_threshold": {
+          "default": 0.8,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Vision Threshold",
+          "type": "number"
+        }
+      },
+      "title": "CharacterQAConfig",
+      "type": "object"
+    },
+    "ConsistencyStrategy": {
+      "description": "How a scene may be made consistent with a character.",
+      "enum": [
+        "composite",
+        "reference",
+        "adapter",
+        "prompt_only"
+      ],
+      "title": "ConsistencyStrategy",
+      "type": "string"
+    },
+    "ContentProfileConfig": {
+      "additionalProperties": false,
+      "description": "Everything a run needs to produce content for one audience or brand.",
+      "properties": {
+        "accounts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Accounts",
+          "type": "array"
+        },
+        "brand_kit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Kit"
+        },
+        "brief": {
+          "default": "",
+          "title": "Brief",
+          "type": "string"
+        },
+        "character": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character"
+        },
+        "examples": {
+          "$ref": "#/$defs/ExamplesConfig"
+        },
+        "format": {
+          "default": "",
+          "title": "Format",
+          "type": "string"
+        },
+        "keywords": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Keywords",
+          "type": "array"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages",
+          "type": "array"
+        },
+        "niche": {
+          "default": "",
+          "title": "Niche",
+          "type": "string"
+        },
+        "overrides": {
+          "additionalProperties": true,
+          "title": "Overrides",
+          "type": "object"
+        },
+        "sources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "style_bible": {
+          "default": "",
+          "title": "Style Bible",
+          "type": "string"
+        },
+        "tone": {
+          "default": "",
+          "title": "Tone",
+          "type": "string"
+        },
+        "topic_modes": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Topic Modes",
+          "type": "object"
+        },
+        "visual_strategy": {
+          "default": "",
+          "title": "Visual Strategy",
+          "type": "string"
+        },
+        "voice": {
+          "default": "",
+          "title": "Voice",
+          "type": "string"
+        }
+      },
+      "title": "ContentProfileConfig",
+      "type": "object"
+    },
+    "DeliveryConfig": {
+      "additionalProperties": false,
+      "description": "Delivery providers, the fallback chain and shared retry settings.\n\nProviders may be nested under ``providers`` or written directly as\n``folder``, ``link``, ``email`` and ``webhook`` keys. The ``chain`` lists\nprovider names in fallback order and every entry must name a provider.",
+      "properties": {
+        "chain": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Chain",
+          "type": "array"
+        },
+        "default": {
+          "default": "folder",
+          "title": "Default",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_attempts": {
+          "default": 3,
+          "minimum": 1,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "notify_on_failure": {
+          "default": true,
+          "title": "Notify On Failure",
+          "type": "boolean"
+        },
+        "providers": {
+          "additionalProperties": {
+            "$ref": "#/$defs/DeliveryProviderConfig"
+          },
+          "title": "Providers",
+          "type": "object"
+        },
+        "retry_seconds": {
+          "default": 60,
+          "minimum": 0,
+          "title": "Retry Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "DeliveryConfig",
+      "type": "object"
+    },
+    "DeliveryProviderConfig": {
+      "additionalProperties": false,
+      "description": "Fields shared by every delivery provider.\n\nProvider-specific fields are present but only the ones relevant to the\nselected ``type`` are used. Credentials are referenced by name.",
+      "properties": {
+        "allowlist": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowlist",
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "expires_seconds": {
+          "default": 604800,
+          "exclusiveMinimum": 0,
+          "title": "Expires Seconds",
+          "type": "integer"
+        },
+        "from_address": {
+          "default": "",
+          "title": "From Address",
+          "type": "string"
+        },
+        "max_attempts": {
+          "default": 3,
+          "minimum": 1,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "password_ref": {
+          "default": "",
+          "title": "Password Ref",
+          "type": "string"
+        },
+        "path": {
+          "default": "",
+          "title": "Path",
+          "type": "string"
+        },
+        "reply_to": {
+          "default": "",
+          "title": "Reply To",
+          "type": "string"
+        },
+        "retry_seconds": {
+          "default": 60,
+          "minimum": 0,
+          "title": "Retry Seconds",
+          "type": "integer"
+        },
+        "secret_ref": {
+          "default": "",
+          "title": "Secret Ref",
+          "type": "string"
+        },
+        "signature_header": {
+          "default": "X-Aivia-Signature",
+          "title": "Signature Header",
+          "type": "string"
+        },
+        "smtp_host": {
+          "default": "",
+          "title": "Smtp Host",
+          "type": "string"
+        },
+        "smtp_port": {
+          "default": 587,
+          "exclusiveMinimum": 0,
+          "maximum": 65535,
+          "title": "Smtp Port",
+          "type": "integer"
+        },
+        "subject": {
+          "default": "",
+          "title": "Subject",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        },
+        "type": {
+          "default": "",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "default": "",
+          "title": "Url",
+          "type": "string"
+        },
+        "username_ref": {
+          "default": "",
+          "title": "Username Ref",
+          "type": "string"
+        }
+      },
+      "title": "DeliveryProviderConfig",
+      "type": "object"
+    },
+    "DownloadPolicy": {
+      "description": "Whether remote references may be downloaded.",
+      "enum": [
+        "allow",
+        "ask",
+        "deny"
+      ],
+      "title": "DownloadPolicy",
+      "type": "string"
+    },
+    "DurationRangeConfig": {
+      "additionalProperties": false,
+      "description": "Inclusive lower and upper bounds for a generated video in seconds.",
+      "properties": {
+        "max": {
+          "default": 45,
+          "exclusiveMinimum": 0,
+          "title": "Max",
+          "type": "integer"
+        },
+        "min": {
+          "default": 20,
+          "exclusiveMinimum": 0,
+          "title": "Min",
+          "type": "integer"
+        }
+      },
+      "title": "DurationRangeConfig",
+      "type": "object"
+    },
+    "DurationRangeOverrideConfig": {
+      "additionalProperties": false,
+      "description": "A partial duration range used by platform and profile overrides.",
+      "properties": {
+        "max": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        }
+      },
+      "title": "DurationRangeOverrideConfig",
+      "type": "object"
+    },
+    "ExamplesConfig": {
+      "additionalProperties": false,
+      "description": "Liked and disliked examples that steer topic and writing choices.",
+      "properties": {
+        "disliked": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Disliked",
+          "type": "array"
+        },
+        "liked": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Liked",
+          "type": "array"
+        }
+      },
+      "title": "ExamplesConfig",
+      "type": "object"
+    },
+    "FormatRecipeConfig": {
+      "additionalProperties": false,
+      "description": "An ordered recipe that selects stages, options and output handling.\n\n``stages`` keeps its declared order. ``capabilities`` lists the operations\nthe recipe needs, ``output_type`` describes the final artifact and\n``handler`` says whether it is saved, published or delivered.",
+      "properties": {
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "handler": {
+          "$ref": "#/$defs/OutputHandler",
+          "default": "save"
+        },
+        "output_type": {
+          "$ref": "#/$defs/OutputType",
+          "default": "video"
+        },
+        "stages": {
+          "items": {
+            "$ref": "#/$defs/StageConfig"
+          },
+          "title": "Stages",
+          "type": "array"
+        }
+      },
+      "title": "FormatRecipeConfig",
+      "type": "object"
+    },
+    "FormatsConfig": {
+      "additionalProperties": false,
+      "description": "Named format recipes.\n\nRecipes may be written directly under the section\n(``formats: {narrated_still: {...}}``) or nested under ``formats`` (or\n``recipes``); every form validates to the same mapping.",
+      "properties": {
+        "formats": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FormatRecipeConfig"
+          },
+          "title": "Formats",
+          "type": "object"
+        }
+      },
+      "title": "FormatsConfig",
+      "type": "object"
+    },
+    "JobsConfig": {
+      "additionalProperties": false,
+      "description": "Worker concurrency, retry and heartbeat settings for the job queue.",
+      "properties": {
+        "concurrency": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "heartbeat_seconds": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "title": "Heartbeat Seconds",
+          "type": "integer"
+        },
+        "max_attempts": {
+          "default": 3,
+          "minimum": 1,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "max_queue_depth": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Queue Depth",
+          "type": "integer"
+        },
+        "poll_seconds": {
+          "default": 2,
+          "exclusiveMinimum": 0,
+          "title": "Poll Seconds",
+          "type": "integer"
+        },
+        "stale_after_seconds": {
+          "default": 120,
+          "exclusiveMinimum": 0,
+          "title": "Stale After Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "JobsConfig",
+      "type": "object"
+    },
+    "LLMConfig": {
+      "additionalProperties": false,
+      "description": "Provider chain, per-role models, token prices and the repair limit.",
+      "properties": {
+        "chain": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Chain",
+          "type": "array"
+        },
+        "max_repairs": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Max Repairs",
+          "type": "integer"
+        },
+        "pricing": {
+          "additionalProperties": {
+            "$ref": "#/$defs/TokenPricing"
+          },
+          "title": "Pricing",
+          "type": "object"
+        },
+        "roles": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Roles",
+          "type": "object"
+        }
+      },
+      "title": "LLMConfig",
+      "type": "object"
+    },
+    "LanguageConfig": {
+      "additionalProperties": false,
+      "description": "Settings for one language written natively from the shared fact base.",
+      "properties": {
+        "hashtag_style": {
+          "default": "lower",
+          "enum": [
+            "lower",
+            "title",
+            "upper"
+          ],
+          "title": "Hashtag Style",
+          "type": "string"
+        },
+        "locale": {
+          "default": "en_US",
+          "title": "Locale",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "subtitle_font": {
+          "default": "Lato",
+          "minLength": 1,
+          "title": "Subtitle Font",
+          "type": "string"
+        },
+        "words_per_second": {
+          "$ref": "#/$defs/WordsPerSecondConfig"
+        }
+      },
+      "title": "LanguageConfig",
+      "type": "object"
+    },
+    "LanguagesConfig": {
+      "additionalProperties": false,
+      "description": "The available languages plus the one used when none is requested.\n\nA config file may write the language entries directly under the section\n(``languages: {en: {...}, de: {...}}``) or nest them under ``languages``;\nboth forms validate to the same model.",
+      "properties": {
+        "default": {
+          "default": "en",
+          "title": "Default",
+          "type": "string"
+        },
+        "languages": {
+          "additionalProperties": {
+            "$ref": "#/$defs/LanguageConfig"
+          },
+          "title": "Languages",
+          "type": "object"
+        }
+      },
+      "title": "LanguagesConfig",
+      "type": "object"
+    },
+    "NameVerifyConfig": {
+      "additionalProperties": false,
+      "description": "How often a generated name is transcribed and checked before accepting.\n\nVerification regenerates the spoken name up to ``retries`` times when the\ntranscription does not match within ``threshold``.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "language": {
+          "default": "",
+          "title": "Language",
+          "type": "string"
+        },
+        "regenerate": {
+          "default": true,
+          "title": "Regenerate",
+          "type": "boolean"
+        },
+        "retries": {
+          "default": 3,
+          "minimum": 0,
+          "title": "Retries",
+          "type": "integer"
+        },
+        "threshold": {
+          "default": 0.8,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Threshold",
+          "type": "number"
+        }
+      },
+      "title": "NameVerifyConfig",
+      "type": "object"
+    },
+    "OccasionConfig": {
+      "additionalProperties": false,
+      "description": "One config-defined personalization type, such as a birthday.\n\n``variables`` are the fields an order of this occasion may fill.\n``personalization_levels`` restricts which order levels are allowed, while\n``files`` lists optional prompt or template files shipped with a custom\noccasion.",
+      "properties": {
+        "default_level": {
+          "default": "",
+          "title": "Default Level",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "format": {
+          "default": "",
+          "title": "Format",
+          "type": "string"
+        },
+        "formats": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Formats",
+          "type": "array"
+        },
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages",
+          "type": "array"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "personalization_levels": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Personalization Levels",
+          "type": "array"
+        },
+        "prompt": {
+          "default": "",
+          "title": "Prompt",
+          "type": "string"
+        },
+        "template": {
+          "default": "",
+          "title": "Template",
+          "type": "string"
+        },
+        "variables": {
+          "additionalProperties": {
+            "$ref": "#/$defs/OccasionVariableConfig"
+          },
+          "title": "Variables",
+          "type": "object"
+        }
+      },
+      "title": "OccasionConfig",
+      "type": "object"
+    },
+    "OccasionVariableConfig": {
+      "additionalProperties": false,
+      "description": "One variable a personalized occasion asks the customer to provide.\n\nA bare name is accepted as shorthand. ``type`` selects the validation the\norder input applies, ``required`` marks mandatory fields and ``default`` is\nused when an optional variable is omitted. Choice variables list their\nallowed ``options``.",
+      "properties": {
+        "default": {
+          "default": null,
+          "title": "Default"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Length"
+        },
+        "min_length": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Length"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pattern"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/VariableType",
+          "default": "string"
+        }
+      },
+      "title": "OccasionVariableConfig",
+      "type": "object"
+    },
+    "OccasionsConfig": {
+      "additionalProperties": false,
+      "description": "The configured occasions and the one selected by default.\n\nOccasions may be written directly under the section\n(``occasions: {birthday: {...}}``) or nested under ``occasions``.",
+      "properties": {
+        "default": {
+          "default": "",
+          "title": "Default",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "occasions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/OccasionConfig"
+          },
+          "title": "Occasions",
+          "type": "object"
+        }
+      },
+      "title": "OccasionsConfig",
+      "type": "object"
+    },
+    "OnExceed": {
+      "description": "What to do when a budget cap is reached.",
+      "enum": [
+        "pause",
+        "downgrade",
+        "notify"
+      ],
+      "title": "OnExceed",
+      "type": "string"
+    },
+    "OrderPricingConfig": {
+      "additionalProperties": false,
+      "description": "Currency, line-item amount and one flat tax estimate for receipts.\n\nThis is deliberately not a tax engine: ``tax_rate`` is a single flat rate\nand receipts state that they are not tax invoices (decision D-011).",
+      "properties": {
+        "amount": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Amount",
+          "type": "number"
+        },
+        "currency": {
+          "default": "USD",
+          "title": "Currency",
+          "type": "string"
+        },
+        "per_output": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Per Output",
+          "type": "object"
+        },
+        "tax_included": {
+          "default": false,
+          "title": "Tax Included",
+          "type": "boolean"
+        },
+        "tax_label": {
+          "default": "Estimated tax",
+          "title": "Tax Label",
+          "type": "string"
+        },
+        "tax_rate": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Tax Rate",
+          "type": "number"
+        }
+      },
+      "title": "OrderPricingConfig",
+      "type": "object"
+    },
+    "OrdersConfig": {
+      "additionalProperties": false,
+      "description": "Personalized order defaults: levels, name verification and pricing.",
+      "properties": {
+        "allow_custom_occasion": {
+          "default": true,
+          "title": "Allow Custom Occasion",
+          "type": "boolean"
+        },
+        "default_level": {
+          "default": "",
+          "title": "Default Level",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_batch_size": {
+          "default": 100,
+          "minimum": 1,
+          "title": "Max Batch Size",
+          "type": "integer"
+        },
+        "max_message_length": {
+          "default": 1000,
+          "exclusiveMinimum": 0,
+          "title": "Max Message Length",
+          "type": "integer"
+        },
+        "max_name_length": {
+          "default": 80,
+          "exclusiveMinimum": 0,
+          "title": "Max Name Length",
+          "type": "integer"
+        },
+        "max_variables": {
+          "default": 32,
+          "minimum": 0,
+          "title": "Max Variables",
+          "type": "integer"
+        },
+        "name_verify": {
+          "$ref": "#/$defs/NameVerifyConfig"
+        },
+        "name_verify_retries": {
+          "default": 3,
+          "minimum": 0,
+          "title": "Name Verify Retries",
+          "type": "integer"
+        },
+        "personalization_levels": {
+          "additionalProperties": {
+            "$ref": "#/$defs/PersonalizationLevelConfig"
+          },
+          "title": "Personalization Levels",
+          "type": "object"
+        },
+        "pricing": {
+          "$ref": "#/$defs/OrderPricingConfig"
+        },
+        "require_age": {
+          "default": false,
+          "title": "Require Age",
+          "type": "boolean"
+        },
+        "require_message": {
+          "default": false,
+          "title": "Require Message",
+          "type": "boolean"
+        },
+        "timezone": {
+          "default": "UTC",
+          "title": "Timezone",
+          "type": "string"
+        },
+        "variables": {
+          "additionalProperties": {
+            "$ref": "#/$defs/OccasionVariableConfig"
+          },
+          "title": "Variables",
+          "type": "object"
+        }
+      },
+      "title": "OrdersConfig",
+      "type": "object"
+    },
+    "OutputHandler": {
+      "description": "What happens to the final artifact once a run succeeds.",
+      "enum": [
+        "save",
+        "publish",
+        "deliver"
+      ],
+      "title": "OutputHandler",
+      "type": "string"
+    },
+    "OutputType": {
+      "description": "The kind of final artifact a format recipe produces.",
+      "enum": [
+        "video",
+        "audio",
+        "image",
+        "carousel",
+        "web_card"
+      ],
+      "title": "OutputType",
+      "type": "string"
+    },
+    "PersonalizationLevelConfig": {
+      "additionalProperties": false,
+      "description": "One personalization level: the stages it runs and what it costs.\n\n``stages`` is the ordered subset of pipeline stages the level runs.\n``price`` is the line-item amount before the flat tax estimate. The feature\nflags say which optional order variables the level uses.",
+      "properties": {
+        "background": {
+          "default": "",
+          "title": "Background",
+          "type": "string"
+        },
+        "cost_multiplier": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Cost Multiplier",
+          "type": "number"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "format": {
+          "default": "",
+          "title": "Format",
+          "type": "string"
+        },
+        "include_age": {
+          "default": false,
+          "title": "Include Age",
+          "type": "boolean"
+        },
+        "include_interests": {
+          "default": false,
+          "title": "Include Interests",
+          "type": "boolean"
+        },
+        "include_message": {
+          "default": true,
+          "title": "Include Message",
+          "type": "boolean"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "outputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Outputs",
+          "type": "array"
+        },
+        "personalize_name": {
+          "default": true,
+          "title": "Personalize Name",
+          "type": "boolean"
+        },
+        "price": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Price",
+          "type": "number"
+        },
+        "stages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Stages",
+          "type": "array"
+        },
+        "variables": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Variables",
+          "type": "array"
+        }
+      },
+      "title": "PersonalizationLevelConfig",
+      "type": "object"
+    },
+    "PipelineConfig": {
+      "additionalProperties": false,
+      "description": "The ordered stages a pipeline runs and the timezone used for schedules.",
+      "properties": {
+        "stages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Stages",
+          "type": "array"
+        },
+        "timezone": {
+          "default": "UTC",
+          "title": "Timezone",
+          "type": "string"
+        }
+      },
+      "title": "PipelineConfig",
+      "type": "object"
+    },
+    "PlannerApprovalMode": {
+      "description": "Whether a plan needs human approval before it executes.",
+      "enum": [
+        "always",
+        "ask",
+        "never"
+      ],
+      "title": "PlannerApprovalMode",
+      "type": "string"
+    },
+    "PlannerConfig": {
+      "additionalProperties": false,
+      "description": "Step, iteration, approval, tool, preview, default and budget settings.",
+      "properties": {
+        "allowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Tools",
+          "type": "array"
+        },
+        "approval_mode": {
+          "$ref": "#/$defs/PlannerApprovalMode",
+          "default": "ask"
+        },
+        "budget": {
+          "$ref": "#/$defs/BudgetConfig"
+        },
+        "defaults": {
+          "$ref": "#/$defs/PlannerDefaultsConfig"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_iterations": {
+          "default": 3,
+          "minimum": 0,
+          "title": "Max Iterations",
+          "type": "integer"
+        },
+        "max_steps": {
+          "default": 10,
+          "minimum": 1,
+          "title": "Max Steps",
+          "type": "integer"
+        },
+        "preview": {
+          "default": true,
+          "title": "Preview",
+          "type": "boolean"
+        }
+      },
+      "title": "PlannerConfig",
+      "type": "object"
+    },
+    "PlannerDefaultsConfig": {
+      "additionalProperties": true,
+      "description": "Values applied in batch mode when the instruction omits them.\n\nThe common plan settings are typed for discoverability. Additional\nsettings are accepted and kept as attributes so a format or tool can add a\ndefault without a core release.",
+      "properties": {
+        "aspect_ratio": {
+          "default": "",
+          "title": "Aspect Ratio",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Seconds"
+        },
+        "format": {
+          "default": "",
+          "title": "Format",
+          "type": "string"
+        },
+        "language": {
+          "default": "",
+          "title": "Language",
+          "type": "string"
+        },
+        "options": {
+          "additionalProperties": true,
+          "title": "Options",
+          "type": "object"
+        },
+        "output": {
+          "default": "",
+          "title": "Output",
+          "type": "string"
+        },
+        "output_type": {
+          "default": "",
+          "title": "Output Type",
+          "type": "string"
+        },
+        "quality": {
+          "default": "",
+          "title": "Quality",
+          "type": "string"
+        },
+        "resolution": {
+          "default": "",
+          "title": "Resolution",
+          "type": "string"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "style": {
+          "default": "",
+          "title": "Style",
+          "type": "string"
+        },
+        "tool_options": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Tool Options",
+          "type": "object"
+        },
+        "voice": {
+          "default": "",
+          "title": "Voice",
+          "type": "string"
+        }
+      },
+      "title": "PlannerDefaultsConfig",
+      "type": "object"
+    },
+    "PlatformAccountConfig": {
+      "additionalProperties": false,
+      "description": "One publishing account, bound to exactly one platform and language.",
+      "properties": {
+        "credential_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Credential Refs",
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "language": {
+          "default": "",
+          "title": "Language",
+          "type": "string"
+        },
+        "platform": {
+          "default": "",
+          "title": "Platform",
+          "type": "string"
+        }
+      },
+      "title": "PlatformAccountConfig",
+      "type": "object"
+    },
+    "PlatformsConfig": {
+      "additionalProperties": false,
+      "description": "Publishing accounts keyed by ``platform/language``.\n\nEntries may be written directly under the section\n(``platforms: {youtube/en: {...}}``) or nested under ``accounts``.",
+      "properties": {
+        "accounts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/PlatformAccountConfig"
+          },
+          "title": "Accounts",
+          "type": "object"
+        }
+      },
+      "title": "PlatformsConfig",
+      "type": "object"
+    },
+    "PresetConfig": {
+      "additionalProperties": false,
+      "description": "A named set of configuration overrides selected by the CLI or a profile.\n\nA preset may name the content profile it belongs to. When the configured\nprofiles are available, a non-empty profile is checked against them so a\ntypo never silently selects the default profile.",
+      "properties": {
+        "accounts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Accounts",
+          "type": "array"
+        },
+        "brand_kit": {
+          "default": "",
+          "title": "Brand Kit",
+          "type": "string"
+        },
+        "character": {
+          "default": "",
+          "title": "Character",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "format": {
+          "default": "",
+          "title": "Format",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "overrides": {
+          "additionalProperties": true,
+          "title": "Overrides",
+          "type": "object"
+        },
+        "profile": {
+          "default": "",
+          "title": "Profile",
+          "type": "string"
+        },
+        "profiles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Profiles",
+          "type": "array"
+        }
+      },
+      "title": "PresetConfig",
+      "type": "object"
+    },
+    "PresetsConfig": {
+      "additionalProperties": false,
+      "description": "Named presets keyed by name, with an optional default preset.\n\nEntries may be written directly under the section\n(``presets: {short: {...}}``) or nested under ``presets``.",
+      "properties": {
+        "default": {
+          "default": "",
+          "title": "Default",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "presets": {
+          "additionalProperties": {
+            "$ref": "#/$defs/PresetConfig"
+          },
+          "title": "Presets",
+          "type": "object"
+        }
+      },
+      "title": "PresetsConfig",
+      "type": "object"
+    },
+    "PrivacyConfig": {
+      "additionalProperties": false,
+      "description": "Redaction and personal-data handling for logs, prompts and sidecars.",
+      "properties": {
+        "allow_personal_data": {
+          "default": false,
+          "title": "Allow Personal Data",
+          "type": "boolean"
+        },
+        "data_processing_record": {
+          "default": true,
+          "title": "Data Processing Record",
+          "type": "boolean"
+        },
+        "placeholder_mode": {
+          "default": false,
+          "title": "Placeholder Mode",
+          "type": "boolean"
+        },
+        "redact_logs": {
+          "default": true,
+          "title": "Redact Logs",
+          "type": "boolean"
+        },
+        "redact_prompts": {
+          "default": false,
+          "title": "Redact Prompts",
+          "type": "boolean"
+        },
+        "store_prompt_text": {
+          "default": true,
+          "title": "Store Prompt Text",
+          "type": "boolean"
+        }
+      },
+      "title": "PrivacyConfig",
+      "type": "object"
+    },
+    "ProfilesConfig": {
+      "additionalProperties": false,
+      "description": "Named content profiles.\n\nProfiles may be written directly under the section\n(``profiles: {short: {...}}``) or nested under ``profiles``; both forms\nvalidate to the same mapping.",
+      "properties": {
+        "profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ContentProfileConfig"
+          },
+          "title": "Profiles",
+          "type": "object"
+        }
+      },
+      "title": "ProfilesConfig",
+      "type": "object"
+    },
+    "PublishAccountConfig": {
+      "additionalProperties": false,
+      "description": "One publishing account and the secret references it needs.",
+      "properties": {
+        "credential_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Credential Refs",
+          "type": "array"
+        },
+        "dry_run": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dry Run"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "language": {
+          "default": "",
+          "title": "Language",
+          "type": "string"
+        },
+        "options": {
+          "additionalProperties": true,
+          "title": "Options",
+          "type": "object"
+        },
+        "platform": {
+          "default": "",
+          "title": "Platform",
+          "type": "string"
+        },
+        "profile": {
+          "default": "",
+          "title": "Profile",
+          "type": "string"
+        },
+        "visibility": {
+          "default": "",
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "title": "PublishAccountConfig",
+      "type": "object"
+    },
+    "PublishConfig": {
+      "additionalProperties": false,
+      "description": "Publishing accounts, dry-run policy and reference validation.",
+      "properties": {
+        "accounts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/PublishAccountConfig"
+          },
+          "title": "Accounts",
+          "type": "object"
+        },
+        "default_profile": {
+          "default": "",
+          "title": "Default Profile",
+          "type": "string"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "PublishConfig",
+      "type": "object"
+    },
+    "QualityConfig": {
+      "additionalProperties": false,
+      "description": "Thresholds and retry policy for generated media quality assurance.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_retries": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "min_score": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Score",
+          "type": "number"
+        },
+        "sample_frames": {
+          "default": 3,
+          "minimum": 1,
+          "title": "Sample Frames",
+          "type": "integer"
+        },
+        "vision": {
+          "default": true,
+          "title": "Vision",
+          "type": "boolean"
+        },
+        "weights": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Weights",
+          "type": "object"
+        }
+      },
+      "title": "QualityConfig",
+      "type": "object"
+    },
+    "ReferenceConfig": {
+      "additionalProperties": false,
+      "description": "Similarity level, similarity gates, regeneration cap and downloads.",
+      "properties": {
+        "download_policy": {
+          "$ref": "#/$defs/ReferenceDownloadConfig"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_regenerations": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Max Regenerations",
+          "type": "integer"
+        },
+        "similarity_level": {
+          "$ref": "#/$defs/SimilarityLevel",
+          "default": "medium"
+        },
+        "text_threshold": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Text Threshold",
+          "type": "number"
+        },
+        "visual_threshold": {
+          "default": 0.9,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Visual Threshold",
+          "type": "number"
+        }
+      },
+      "title": "ReferenceConfig",
+      "type": "object"
+    },
+    "ReferenceDownloadConfig": {
+      "additionalProperties": false,
+      "description": "Limits and policy for fetching remote reference URLs.\n\n``mode`` decides whether a remote reference is fetched, confirmed or\nrejected. ``max_bytes`` caps the response body, ``timeout_seconds`` caps a\nsingle request, and ``max_redirects`` bounds redirect chains when\n``follow_redirects`` is enabled. A cached download is reused unless\n``cache`` is disabled.",
+      "properties": {
+        "allowed_hosts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Hosts",
+          "type": "array"
+        },
+        "cache": {
+          "default": true,
+          "title": "Cache",
+          "type": "boolean"
+        },
+        "follow_redirects": {
+          "default": true,
+          "title": "Follow Redirects",
+          "type": "boolean"
+        },
+        "max_bytes": {
+          "default": 52428800,
+          "exclusiveMinimum": 0,
+          "title": "Max Bytes",
+          "type": "integer"
+        },
+        "max_redirects": {
+          "default": 5,
+          "minimum": 0,
+          "title": "Max Redirects",
+          "type": "integer"
+        },
+        "mode": {
+          "$ref": "#/$defs/DownloadPolicy",
+          "default": "allow"
+        },
+        "timeout_seconds": {
+          "default": 30.0,
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "title": "ReferenceDownloadConfig",
+      "type": "object"
+    },
+    "RenderConfig": {
+      "additionalProperties": false,
+      "description": "Deterministic renderer settings that never require an AI call.",
+      "properties": {
+        "contrast_strategy": {
+          "default": "outline",
+          "enum": [
+            "outline",
+            "shadow",
+            "box"
+          ],
+          "title": "Contrast Strategy",
+          "type": "string"
+        },
+        "default_font": {
+          "default": "Lato",
+          "minLength": 1,
+          "title": "Default Font",
+          "type": "string"
+        },
+        "fallback_fonts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fallback Fonts",
+          "type": "array"
+        },
+        "font_size": {
+          "default": 48,
+          "exclusiveMinimum": 0,
+          "title": "Font Size",
+          "type": "integer"
+        },
+        "fonts_dir": {
+          "default": "package",
+          "title": "Fonts Dir",
+          "type": "string"
+        },
+        "min_contrast": {
+          "default": 4.5,
+          "maximum": 21,
+          "minimum": 1,
+          "title": "Min Contrast",
+          "type": "number"
+        },
+        "require_bundled_fonts": {
+          "default": true,
+          "title": "Require Bundled Fonts",
+          "type": "boolean"
+        }
+      },
+      "title": "RenderConfig",
+      "type": "object"
+    },
+    "RetentionConfig": {
+      "additionalProperties": false,
+      "description": "How long intermediates, cache, logs and personal data are kept.\n\nFinal outputs are pinned and are never removed unless\n``delete_final_outputs`` is explicitly enabled.",
+      "properties": {
+        "cache_days": {
+          "default": 14,
+          "minimum": 0,
+          "title": "Cache Days",
+          "type": "integer"
+        },
+        "delete_final_outputs": {
+          "default": false,
+          "title": "Delete Final Outputs",
+          "type": "boolean"
+        },
+        "deliveries_days": {
+          "default": 30,
+          "minimum": 0,
+          "title": "Deliveries Days",
+          "type": "integer"
+        },
+        "intermediates_days": {
+          "default": 7,
+          "minimum": 0,
+          "title": "Intermediates Days",
+          "type": "integer"
+        },
+        "logs_days": {
+          "default": 30,
+          "minimum": 0,
+          "title": "Logs Days",
+          "type": "integer"
+        },
+        "orders_days": {
+          "default": 90,
+          "minimum": 0,
+          "title": "Orders Days",
+          "type": "integer"
+        },
+        "personal_data_days": {
+          "default": 30,
+          "minimum": 0,
+          "title": "Personal Data Days",
+          "type": "integer"
+        },
+        "web_card_hits_days": {
+          "default": 30,
+          "minimum": 0,
+          "title": "Web Card Hits Days",
+          "type": "integer"
+        }
+      },
+      "title": "RetentionConfig",
+      "type": "object"
+    },
+    "ReviewConfig": {
+      "additionalProperties": false,
+      "description": "Approval policy for the optional human review stage.\n\n``approval_mode`` is ``always`` (a reviewer must approve every run),\n``ask`` (the default: approve unless a profile says otherwise) or ``never``\n(skip the review stage). When a review is not answered before\n``timeout_seconds``, ``on_timeout`` decides whether it is rejected,\napproved or only escalated with a notification.",
+      "properties": {
+        "allow_regenerate": {
+          "default": true,
+          "title": "Allow Regenerate",
+          "type": "boolean"
+        },
+        "approval_mode": {
+          "default": "ask",
+          "enum": [
+            "always",
+            "ask",
+            "never"
+          ],
+          "title": "Approval Mode",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_regenerations": {
+          "default": 3,
+          "minimum": 0,
+          "title": "Max Regenerations",
+          "type": "integer"
+        },
+        "notify": {
+          "default": true,
+          "title": "Notify",
+          "type": "boolean"
+        },
+        "on_timeout": {
+          "default": "reject",
+          "enum": [
+            "reject",
+            "approve",
+            "notify"
+          ],
+          "title": "On Timeout",
+          "type": "string"
+        },
+        "preview": {
+          "default": true,
+          "title": "Preview",
+          "type": "boolean"
+        },
+        "timeout_seconds": {
+          "default": 86400,
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "ReviewConfig",
+      "type": "object"
+    },
+    "SafetyConfig": {
+      "additionalProperties": false,
+      "description": "Prompt and media screening before a paid or published call.",
+      "properties": {
+        "allow_regenerate": {
+          "default": true,
+          "title": "Allow Regenerate",
+          "type": "boolean"
+        },
+        "block_categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Block Categories",
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "screen_media": {
+          "default": true,
+          "title": "Screen Media",
+          "type": "boolean"
+        },
+        "screen_prompts": {
+          "default": true,
+          "title": "Screen Prompts",
+          "type": "boolean"
+        }
+      },
+      "title": "SafetyConfig",
+      "type": "object"
+    },
+    "ScheduleConfig": {
+      "additionalProperties": false,
+      "description": "Named cron schedules, their timezone and the default entry.\n\nEntries may be written directly under the section\n(``schedule: {daily: {...}}``) or nested under ``schedules``. A single\ntop-level ``cron`` and ``profile`` pair is treated as the ``default`` entry.",
+      "properties": {
+        "cron": {
+          "default": "",
+          "title": "Cron",
+          "type": "string"
+        },
+        "default": {
+          "default": "",
+          "title": "Default",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "profile": {
+          "default": "",
+          "title": "Profile",
+          "type": "string"
+        },
+        "profiles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Profiles",
+          "type": "array"
+        },
+        "schedules": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ScheduleEntryConfig"
+          },
+          "title": "Schedules",
+          "type": "object"
+        },
+        "timezone": {
+          "default": "UTC",
+          "title": "Timezone",
+          "type": "string"
+        }
+      },
+      "title": "ScheduleConfig",
+      "type": "object"
+    },
+    "ScheduleEntryConfig": {
+      "additionalProperties": false,
+      "description": "One cron entry: when to run and which content profile to use.",
+      "properties": {
+        "cron": {
+          "default": "",
+          "title": "Cron",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "jitter_seconds": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Jitter Seconds",
+          "type": "integer"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages",
+          "type": "array"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "options": {
+          "additionalProperties": true,
+          "title": "Options",
+          "type": "object"
+        },
+        "profile": {
+          "default": "",
+          "title": "Profile",
+          "type": "string"
+        },
+        "profiles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Profiles",
+          "type": "array"
+        },
+        "timezone": {
+          "default": "",
+          "title": "Timezone",
+          "type": "string"
+        }
+      },
+      "title": "ScheduleEntryConfig",
+      "type": "object"
+    },
+    "ScoringConfig": {
+      "additionalProperties": false,
+      "description": "Versioned rubric, dimension weights and score thresholds for research.",
+      "properties": {
+        "min_dimension_score": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Dimension Score",
+          "type": "number"
+        },
+        "min_score": {
+          "default": 0.6,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Score",
+          "type": "number"
+        },
+        "rubric_version": {
+          "default": "1",
+          "minLength": 1,
+          "title": "Rubric Version",
+          "type": "string"
+        },
+        "weights": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Weights",
+          "type": "object"
+        }
+      },
+      "title": "ScoringConfig",
+      "type": "object"
+    },
+    "SimilarityLevel": {
+      "description": "How closely generated content should follow the reference.",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "title": "SimilarityLevel",
+      "type": "string"
+    },
+    "StageConfig": {
+      "additionalProperties": false,
+      "description": "One ordered pipeline stage with its recipe-specific options.\n\nA stage may be written as a bare string (``write``) or as a mapping with a\n``stage``/``name``/``id`` field and an optional ``options`` mapping. The\nshorthand ``{write: {mode: facts}}`` is accepted too.",
+      "properties": {
+        "options": {
+          "additionalProperties": true,
+          "title": "Options",
+          "type": "object"
+        },
+        "stage": {
+          "minLength": 1,
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage"
+      ],
+      "title": "StageConfig",
+      "type": "object"
+    },
+    "StorageConfig": {
+      "additionalProperties": false,
+      "description": "Where generated media and intermediates are stored.\n\nCredentials are referenced by name and resolved through the secrets\nloader, never written into the configuration file.",
+      "properties": {
+        "access_key_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Access Key Ref"
+        },
+        "backend": {
+          "default": "local",
+          "enum": [
+            "local",
+            "s3"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "bucket": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bucket"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint"
+        },
+        "local_dir": {
+          "default": "media",
+          "minLength": 1,
+          "title": "Local Dir",
+          "type": "string"
+        },
+        "prefix": {
+          "default": "",
+          "title": "Prefix",
+          "type": "string"
+        },
+        "presign_seconds": {
+          "default": 3600,
+          "exclusiveMinimum": 0,
+          "title": "Presign Seconds",
+          "type": "integer"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "secret_key_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Secret Key Ref"
+        },
+        "use_path_style": {
+          "default": true,
+          "title": "Use Path Style",
+          "type": "boolean"
+        }
+      },
+      "title": "StorageConfig",
+      "type": "object"
+    },
+    "TokenPricing": {
+      "additionalProperties": false,
+      "description": "USD prices for one million input and output tokens of a model.",
+      "properties": {
+        "input_per_million": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Input Per Million",
+          "type": "number"
+        },
+        "output_per_million": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Output Per Million",
+          "type": "number"
+        }
+      },
+      "title": "TokenPricing",
+      "type": "object"
+    },
+    "TracingConfig": {
+      "additionalProperties": false,
+      "description": "Optional tracing export; disabled by default and vendor neutral.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint"
+        },
+        "exporter": {
+          "default": "none",
+          "enum": [
+            "none",
+            "otlp"
+          ],
+          "title": "Exporter",
+          "type": "string"
+        },
+        "sample_ratio": {
+          "default": 1.0,
+          "title": "Sample Ratio",
+          "type": "number"
+        },
+        "service_name": {
+          "default": "aivia",
+          "title": "Service Name",
+          "type": "string"
+        }
+      },
+      "title": "TracingConfig",
+      "type": "object"
+    },
+    "VariableType": {
+      "description": "The value type a personalized order variable accepts.",
+      "enum": [
+        "string",
+        "text",
+        "number",
+        "integer",
+        "boolean",
+        "date",
+        "choice",
+        "file",
+        "image",
+        "audio",
+        "video"
+      ],
+      "title": "VariableType",
+      "type": "string"
+    },
+    "VideoConfig": {
+      "additionalProperties": false,
+      "description": "Video defaults shared by formats, profiles and platform overrides.",
+      "properties": {
+        "duration_seconds": {
+          "$ref": "#/$defs/DurationRangeConfig"
+        },
+        "fps": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "title": "Fps",
+          "type": "integer"
+        },
+        "loudness_lufs": {
+          "default": -14.0,
+          "title": "Loudness Lufs",
+          "type": "number"
+        },
+        "platforms": {
+          "additionalProperties": {
+            "$ref": "#/$defs/VideoOverridesConfig"
+          },
+          "title": "Platforms",
+          "type": "object"
+        },
+        "profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/VideoOverridesConfig"
+          },
+          "title": "Profiles",
+          "type": "object"
+        },
+        "resolution": {
+          "default": "1080x1920",
+          "title": "Resolution",
+          "type": "string"
+        }
+      },
+      "title": "VideoConfig",
+      "type": "object"
+    },
+    "VideoOverridesConfig": {
+      "additionalProperties": false,
+      "description": "Partial video settings applied on top of the base video section.",
+      "properties": {
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DurationRangeOverrideConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fps": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fps"
+        },
+        "loudness_lufs": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Loudness Lufs"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolution"
+        }
+      },
+      "title": "VideoOverridesConfig",
+      "type": "object"
+    },
+    "WordsPerSecondConfig": {
+      "additionalProperties": false,
+      "description": "Inclusive speaking-rate bounds used to estimate and check script length.",
+      "properties": {
+        "max": {
+          "default": 3.5,
+          "exclusiveMinimum": 0,
+          "title": "Max",
+          "type": "number"
+        },
+        "min": {
+          "default": 2.0,
+          "exclusiveMinimum": 0,
+          "title": "Min",
+          "type": "number"
+        }
+      },
+      "title": "WordsPerSecondConfig",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "accessibility": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AccessibilityConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "api": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ApiConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "brand": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BrandKitConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "budget": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BudgetConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "character": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CharacterConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "delivery": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeliveryConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "formats": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FormatsConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "jobs": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JobsConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "languages": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LanguagesConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "llm": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LLMConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "occasions": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OccasionsConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "orders": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OrdersConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "pipeline": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PipelineConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "planner": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlannerConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "platforms": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlatformsConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "presets": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PresetsConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "privacy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrivacyConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "profiles": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProfilesConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "publish": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PublishConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/QualityConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReferenceConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "render": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RenderConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "retention": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RetentionConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "review": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReviewConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "safety": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SafetyConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schedule": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ScheduleConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "scoring": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ScoringConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "storage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StorageConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tracing": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TracingConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "video": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VideoConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "title": "AIVIA configuration",
+  "type": "object"
+}
