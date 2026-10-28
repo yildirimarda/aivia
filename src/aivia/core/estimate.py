@@ -9,9 +9,12 @@ before starting a run and refuse a run it cannot price.
 The estimator never calls a provider and never writes a cost event. It only
 reads the static :class:`~aivia.core.models.provider.ProviderMeta` prices and
 resolves them through the shared
-:class:`~aivia.core.pricing.PricingResolver`. Provider selection is the same
-deterministic cheapest-price choice used by the router: the lowest price wins
-and the provider name breaks ties.
+:class:`~aivia.core.pricing.PricingResolver`. Provider selection is delegated to
+the router, so a stage honours the configured capability chain and its
+selection strategy (``first_available``, ``cheapest``, ``best_quality``,
+``round_robin`` or ``weighted_ab``) instead of always picking the cheapest
+provider. Without an explicit strategy the estimator keeps the historical
+cheapest-price default, with chain order as the tie breaker.
 
 A stage may override the built-in mapping through its options:
 
@@ -27,15 +30,18 @@ A stage may override the built-in mapping through its options:
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from aivia.core.config.capability import CapabilityChainConfig, CapabilityStrategy
 from aivia.core.config.formats import FormatRecipeConfig, StageConfig
-from aivia.core.errors import ConfigError
+from aivia.core.errors import ConfigError, ProviderExhaustedError
 from aivia.core.models.provider import ProviderMeta
-from aivia.core.pricing import PriceSource, PricingResolver, ResolvedPrice
+from aivia.core.pricing import PriceSource, PricingResolver
+from aivia.core.router import Router
+from aivia.providers.base import Provider
 
 __all__ = [
     "EstimateSource",
@@ -341,6 +347,13 @@ class Estimator:
     is used in the report and for pricing overrides; the metadata supplies the
     capabilities and prices. ``overrides`` maps a provider name to a fixed
     price per unit and wins over metadata, matching the pricing resolver.
+
+    ``config`` or ``configs`` supply :class:`CapabilityChainConfig` entries per
+    capability, exactly as the router consumes them, so the estimate walks the
+    same chain with the same strategy as a real run. ``strategy``, ``chain``,
+    ``weights`` and ``seed`` override the default chain for callers that do not
+    build a config model. Per-capability pricing overrides win over the
+    estimator-wide ``overrides``.
     """
 
     def __init__(
@@ -349,6 +362,14 @@ class Estimator:
         *,
         overrides: Mapping[str, float] | None = None,
         pricing_version: str = "",
+        config: CapabilityChainConfig
+        | Mapping[str, CapabilityChainConfig]
+        | None = None,
+        configs: Mapping[str, CapabilityChainConfig] | None = None,
+        strategy: CapabilityStrategy | str | None = None,
+        chain: Iterable[str] | None = None,
+        weights: Mapping[str, float] | None = None,
+        seed: int | None = None,
     ) -> None:
         entries: dict[str, ProviderMeta] = {}
         for name, metadata in (providers or {}).items():
@@ -360,11 +381,119 @@ class Estimator:
                     f"not {type(metadata).__name__}"
                 )
             entries[name.strip()] = metadata
-        self._providers = dict(sorted(entries.items()))
+        self._providers = dict(entries)
         self._resolver = PricingResolver(
             overrides,
             pricing_version=pricing_version,
         )
+        self._default_config, self._configs = self._resolve_configs(
+            config,
+            configs,
+            strategy=strategy,
+            chain=chain,
+            weights=weights,
+        )
+        self._router = Router(
+            providers={
+                name: Provider(metadata, name=name)
+                for name, metadata in self._providers.items()
+            },
+            config=self._default_config,
+            configs=self._configs,
+            seed=seed,
+        )
+        self._resolvers: dict[str, PricingResolver] = {}
+
+    def _resolve_configs(
+        self,
+        config: CapabilityChainConfig | Mapping[str, CapabilityChainConfig] | None,
+        configs: Mapping[str, CapabilityChainConfig] | None,
+        *,
+        strategy: CapabilityStrategy | str | None,
+        chain: Iterable[str] | None,
+        weights: Mapping[str, float] | None,
+    ) -> tuple[CapabilityChainConfig, dict[str, CapabilityChainConfig]]:
+        if config is not None and not isinstance(
+            config, (CapabilityChainConfig, Mapping)
+        ):
+            raise TypeError(
+                "config must be a CapabilityChainConfig or a mapping, "
+                f"not {type(config).__name__}"
+            )
+        configured = (
+            config is not None
+            or configs is not None
+            or strategy is not None
+            or chain is not None
+            or weights is not None
+        )
+        default_strategy = (
+            CapabilityStrategy.FIRST_AVAILABLE
+            if configured
+            else CapabilityStrategy.CHEAPEST
+        )
+        base = (
+            config
+            if isinstance(config, CapabilityChainConfig)
+            else CapabilityChainConfig(strategy=default_strategy)
+        )
+        if strategy is not None or chain is not None or weights is not None:
+            values = base.model_dump()
+            if strategy is not None:
+                values["strategy"] = strategy
+            if chain is not None:
+                values["chain"] = list(chain)
+            if weights is not None:
+                values["weights"] = dict(weights)
+            base = CapabilityChainConfig.model_validate(values)
+
+        merged: dict[str, CapabilityChainConfig] = {}
+        if isinstance(config, Mapping):
+            self._add_configs(merged, config)
+        if configs is not None:
+            self._add_configs(merged, configs)
+        return (
+            self._with_global_overrides(base),
+            {
+                capability: self._with_global_overrides(entry)
+                for capability, entry in merged.items()
+            },
+        )
+
+    @staticmethod
+    def _add_configs(
+        target: dict[str, CapabilityChainConfig],
+        entries: Mapping[str, CapabilityChainConfig],
+    ) -> None:
+        for capability, entry in entries.items():
+            if not isinstance(capability, str) or not capability.strip():
+                raise ConfigError("capability names must be non-empty strings")
+            if not isinstance(entry, CapabilityChainConfig):
+                raise TypeError(
+                    "capability configs must be CapabilityChainConfig instances"
+                )
+            target[capability.strip()] = entry
+
+    def _with_global_overrides(
+        self, config: CapabilityChainConfig
+    ) -> CapabilityChainConfig:
+        if not self._resolver.overrides:
+            return config
+        overrides = dict(self._resolver.overrides)
+        overrides.update(config.pricing_overrides)
+        return config.model_copy(update={"pricing_overrides": overrides})
+
+    def _resolver_for(self, capability: str) -> PricingResolver:
+        try:
+            return self._resolvers[capability]
+        except KeyError:
+            config = self._router.config_for(capability)
+            resolver = PricingResolver(
+                config.pricing_overrides,
+                pricing_version=self._resolver.pricing_version,
+            )
+            self._resolvers[capability] = resolver
+            return resolver
 
     @property
     def providers(self) -> dict[str, ProviderMeta]:
@@ -418,8 +547,13 @@ class Estimator:
                 free=True,
             )
 
-        candidates = self._candidates(capability)
-        if not candidates:
+        try:
+            selection = self._router.select_with_record(
+                capability,
+                units=units,
+                unit_kind=unit_kind or None,
+            )
+        except ProviderExhaustedError:
             return StageEstimate(
                 stage=stage.stage,
                 capability=capability,
@@ -432,28 +566,13 @@ class Estimator:
                 missing=True,
             )
 
-        priced: list[tuple[str, ResolvedPrice]] = []
-        for provider_name, metadata in candidates:
-            if (
-                metadata.pricing_for(capability) is None
-                and provider_name not in self._resolver.overrides
-            ):
-                continue
-            priced.append(
-                (
-                    provider_name,
-                    self._resolver.resolve(
-                        metadata,
-                        capability,
-                        units,
-                        unit_kind or None,
-                        provider_name=provider_name,
-                    ),
-                )
-            )
-
-        if not priced:
-            provider_name = candidates[0][0]
+        provider_name = selection.name
+        metadata = self._providers[provider_name]
+        resolver = self._resolver_for(capability)
+        if (
+            metadata.pricing_for(capability) is None
+            and provider_name not in resolver.overrides
+        ):
             return StageEstimate(
                 stage=stage.stage,
                 capability=capability,
@@ -466,9 +585,12 @@ class Estimator:
                 missing=True,
             )
 
-        provider_name, resolved = min(
-            priced,
-            key=lambda entry: (entry[1].amount_usd, entry[0]),
+        resolved = resolver.resolve(
+            metadata,
+            capability,
+            units,
+            unit_kind or None,
+            provider_name=provider_name,
         )
         return StageEstimate(
             stage=stage.stage,
@@ -484,13 +606,6 @@ class Estimator:
             ),
         )
 
-    def _candidates(self, capability: str) -> list[tuple[str, ProviderMeta]]:
-        return [
-            (name, metadata)
-            for name, metadata in self._providers.items()
-            if capability in metadata.capabilities
-        ]
-
 
 def estimate_recipe(
     name: str,
@@ -499,12 +614,24 @@ def estimate_recipe(
     *,
     overrides: Mapping[str, float] | None = None,
     pricing_version: str = "",
+    config: CapabilityChainConfig | Mapping[str, CapabilityChainConfig] | None = None,
+    configs: Mapping[str, CapabilityChainConfig] | None = None,
+    strategy: CapabilityStrategy | str | None = None,
+    chain: Iterable[str] | None = None,
+    weights: Mapping[str, float] | None = None,
+    seed: int | None = None,
 ) -> RecipeEstimate:
     """Estimate *recipe* without constructing a long-lived estimator."""
     return Estimator(
         providers,
         overrides=overrides,
         pricing_version=pricing_version,
+        config=config,
+        configs=configs,
+        strategy=strategy,
+        chain=chain,
+        weights=weights,
+        seed=seed,
     ).estimate(name, recipe)
 
 

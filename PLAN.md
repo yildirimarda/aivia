@@ -661,3 +661,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
      milestone where they belong with ./run.sh --replan. -->
 
 - [ ] Add a fast test target that excludes slow tests and prove the marker is filtered (tests/test_makefile.py)
+- [ ] Register capability chain sections for media capabilities so estimates and runs share configured chains (tests/core/config/test_capability.py)
