@@ -187,8 +187,7 @@ def run_run(args: argparse.Namespace) -> int:
         return 1
 
     print(
-        "error: run execution is not available yet; "
-        "pass --estimate to preview costs",
+        "error: run execution is not available yet; pass --estimate to preview costs",
         file=sys.stderr,
     )
     return 2
