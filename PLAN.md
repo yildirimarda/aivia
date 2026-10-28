@@ -137,7 +137,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Register a models_file config section and resolve the model catalog path from it (tests/core/config/test_models_file.py)
 - [x] Bound provider close during health checks so a stuck adapter cannot block status shutdown (tests/contracts/test_provider_base.py)
 - [x] Apply the ratelimit section default rate and burst when a provider does not override them (tests/core/config/test_ratelimit.py)
-- [ ] Reject non boolean retry flags so a truthy value cannot silently enable POST retries (tests/core/test_http.py)
+- [x] Reject non boolean retry flags so a truthy value cannot silently enable POST retries (tests/core/test_http.py)
 - [ ] Resolve the default models_file beside an explicit config file and align the validate warning test (tests/cli/test_config_validate.py)
 
 ## Milestone 5: Cost tracking, budgets and dashboard
