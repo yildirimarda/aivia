@@ -8,8 +8,9 @@ per period, so a run that keeps spending does not repeat the same warning while
 a new day or month resets it.
 
 The period is a UTC calendar day by default and may be a UTC calendar month.
-State is kept in :class:`BudgetAlertTracker`; callers that need to survive a
-restart can persist :attr:`BudgetAlertTracker.emitted`. A
+State is kept in :class:`BudgetAlertTracker`; pass ``state_file`` to persist
+:attr:`BudgetAlertTracker.emitted` as JSON and load it again on the next
+process, so a restart does not repeat an alert inside the same period. A
 :class:`BudgetAlertNotifier` turns the due alerts into
 :class:`~aivia.providers.protocols.notify.NotificationMessage` objects and sends
 them through any notifier, falling back to
@@ -18,14 +19,19 @@ them through any notifier, falling back to
 
 from __future__ import annotations
 
+import json
 import math
+import os
+import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from enum import StrEnum
+from pathlib import Path
 from threading import RLock
 from typing import Any, cast
 
+from aivia.core import paths
 from aivia.core.config.budget import BudgetConfig
 from aivia.core.errors import ConfigError
 from aivia.core.models.base import utcnow
@@ -43,6 +49,7 @@ from aivia.providers.protocols.notify import (
 )
 
 __all__ = [
+    "DEFAULT_ALERT_STATE_FILENAME",
     "AlertPeriod",
     "BudgetAlert",
     "BudgetAlertEmitter",
@@ -54,10 +61,17 @@ __all__ = [
     "ConsoleAlertNotifier",
     "ConsoleNotificationProvider",
     "ConsoleNotifier",
+    "budget_alert_state_path",
     "console_notifier",
     "default_notifier",
     "emit_budget_alerts",
 ]
+
+DEFAULT_ALERT_STATE_FILENAME = "budget_alerts.json"
+"""The persisted alert state file inside the user data directory."""
+
+_STATE_VERSION = 1
+"""The on-disk state format version written by this module."""
 
 
 class BudgetAlertPeriod(StrEnum):
@@ -163,6 +177,124 @@ def _period_window(
     return start, start + timedelta(days=1), now.date().isoformat()
 
 
+def budget_alert_state_path(
+    data_dir: str | Path | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+    filename: str = DEFAULT_ALERT_STATE_FILENAME,
+) -> Path:
+    """Return the default persisted alert state file.
+
+    The file lives in the user data directory, which is resolved without
+    consulting the current working directory. Pass *data_dir* to override it.
+    """
+    root = paths.data_dir(environ) if data_dir is None else Path(data_dir)
+    return root.expanduser() / filename
+
+
+def _coerce_state_file(
+    value: str | Path | None,
+    *,
+    label: str = "state_file",
+) -> Path | None:
+    if value is None:
+        return None
+    if not isinstance(value, (str, Path)):
+        raise ConfigError(
+            f"budget alert {label} must be a path",
+            details={label: value},
+        )
+    return Path(value).expanduser()
+
+
+def _load_emitted(path: Path) -> set[tuple[str, float]]:
+    """Read the emitted tokens from *path*, or return none when it is absent."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return set()
+    except OSError as exc:
+        raise ConfigError(
+            f"cannot read budget alert state: {exc}",
+            details={"state_file": str(path)},
+        ) from exc
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(
+            f"budget alert state is not valid JSON: {exc}",
+            details={"state_file": str(path)},
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise ConfigError(
+            "budget alert state must be a JSON object",
+            details={"state_file": str(path)},
+        )
+    version = payload.get("version", _STATE_VERSION)
+    if version != _STATE_VERSION:
+        raise ConfigError(
+            f"unsupported budget alert state version: {version!r}",
+            details={"state_file": str(path), "version": version},
+        )
+    entries = payload.get("emitted", [])
+    if not isinstance(entries, list):
+        raise ConfigError(
+            "budget alert state emitted must be a list",
+            details={"state_file": str(path)},
+        )
+    emitted: set[tuple[str, float]] = set()
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            raise ConfigError(
+                "budget alert state entries must be objects",
+                details={"state_file": str(path), "entry": entry},
+            )
+        period_key = entry.get("period_key")
+        if not isinstance(period_key, str) or not period_key:
+            raise ConfigError(
+                "budget alert state entries need a period_key",
+                details={"state_file": str(path), "entry": entry},
+            )
+        threshold = _coerce_amount(
+            entry.get("threshold_usd"),
+            label="state threshold",
+        )
+        emitted.add((period_key, threshold))
+    return emitted
+
+
+def _write_emitted(path: Path, emitted: Iterable[tuple[str, float]]) -> None:
+    """Atomically replace *path* with the emitted tokens as canonical JSON."""
+    payload = {
+        "version": _STATE_VERSION,
+        "emitted": [
+            {"period_key": period_key, "threshold_usd": threshold}
+            for period_key, threshold in sorted(emitted)
+        ],
+    }
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise
+
+
 @dataclass(frozen=True, slots=True)
 class BudgetAlert:
     """One threshold reached during one alert period.
@@ -226,6 +358,12 @@ class BudgetAlertTracker:
     alerts as emitted while ``peek`` only reports what is due. Time is an
     argument rather than a clock attribute so callers can test month and day
     rollover without waiting.
+
+    Pass ``state_file`` (or its ``path`` alias) to load the emitted tokens from
+    a JSON file and write them back after every change. A new tracker pointed at
+    the same file therefore continues where the previous process stopped, and a
+    threshold already emitted in the current period is not repeated. Without a
+    state file the tracker is purely in-memory.
     """
 
     def __init__(
@@ -234,14 +372,46 @@ class BudgetAlertTracker:
         *,
         thresholds: Iterable[float] | None = None,
         period: BudgetAlertPeriod | str = BudgetAlertPeriod.DAY,
+        state_file: str | Path | None = None,
+        path: str | Path | None = None,
     ) -> None:
         if config is not None and thresholds is not None:
             raise ConfigError("pass either budget alert config or thresholds")
+        if state_file is not None and path is not None:
+            raise ConfigError("pass either state_file or path, not both")
         source = config if config is not None else thresholds
         self._thresholds = tuple(sorted(set(_coerce_thresholds(source))))
         self._period = _coerce_period(period)
-        self._emitted: set[tuple[str, float]] = set()
+        self._state_file = _coerce_state_file(
+            state_file if state_file is not None else path
+        )
         self._lock = RLock()
+        self._emitted: set[tuple[str, float]] = (
+            _load_emitted(self._state_file) if self._state_file is not None else set()
+        )
+
+    @classmethod
+    def persistent(
+        cls,
+        config: BudgetConfig | Mapping[str, Any] | Iterable[float] | None = None,
+        *,
+        thresholds: Iterable[float] | None = None,
+        period: BudgetAlertPeriod | str = BudgetAlertPeriod.DAY,
+        data_dir: str | Path | None = None,
+        environ: Mapping[str, str] | None = None,
+        filename: str = DEFAULT_ALERT_STATE_FILENAME,
+    ) -> BudgetAlertTracker:
+        """Build a tracker backed by the default user data directory."""
+        return cls(
+            config,
+            thresholds=thresholds,
+            period=period,
+            state_file=budget_alert_state_path(
+                data_dir,
+                environ=environ,
+                filename=filename,
+            ),
+        )
 
     @property
     def thresholds(self) -> tuple[float, ...]:
@@ -259,6 +429,11 @@ class BudgetAlertTracker:
         return self._period
 
     @property
+    def state_file(self) -> Path | None:
+        """The file emitted tokens are loaded from and saved to, if any."""
+        return self._state_file
+
+    @property
     def emitted(self) -> frozenset[tuple[str, float]]:
         """Every ``(period_key, threshold)`` pair already emitted."""
         with self._lock:
@@ -268,6 +443,12 @@ class BudgetAlertTracker:
         """Forget every emitted threshold, so the next check may fire again."""
         with self._lock:
             self._emitted.clear()
+            self._persist()
+
+    def _persist(self) -> None:
+        """Write the emitted tokens when a state file is configured."""
+        if self._state_file is not None:
+            _write_emitted(self._state_file, self._emitted)
 
     def period_window(
         self,
@@ -287,6 +468,7 @@ class BudgetAlertTracker:
         start, end, key = _period_window(self._period, _coerce_now(now))
         with self._lock:
             due: list[BudgetAlert] = []
+            changed = False
             for threshold in self._thresholds:
                 token = (key, threshold)
                 if token in self._emitted or not _reaches(spent, threshold):
@@ -303,6 +485,9 @@ class BudgetAlertTracker:
                 )
                 if mark:
                     self._emitted.add(token)
+                    changed = True
+            if changed:
+                self._persist()
             return tuple(due)
 
     def peek(
@@ -369,8 +554,15 @@ class BudgetAlertNotifier:
         thresholds: Iterable[float] | None = None,
         period: BudgetAlertPeriod | str = BudgetAlertPeriod.DAY,
         tracker: BudgetAlertTracker | None = None,
+        state_file: str | Path | None = None,
+        path: str | Path | None = None,
     ) -> None:
-        if tracker is not None and (config is not None or thresholds is not None):
+        if tracker is not None and (
+            config is not None
+            or thresholds is not None
+            or state_file is not None
+            or path is not None
+        ):
             raise ConfigError("pass either a tracker or alert thresholds, not both")
         source = config
         selected: object = notifier
@@ -396,6 +588,8 @@ class BudgetAlertNotifier:
                 source,
                 thresholds=thresholds,
                 period=period,
+                state_file=state_file,
+                path=path,
             )
         self._notifier = (
             cast(Notifier, selected) if selected is not None else ConsoleNotifier()
@@ -508,6 +702,8 @@ async def emit_budget_alerts(
     notifier: Notifier | None = None,
     period: BudgetAlertPeriod | str = BudgetAlertPeriod.DAY,
     tracker: BudgetAlertTracker | None = None,
+    state_file: str | Path | None = None,
+    path: str | Path | None = None,
     now: datetime | None = None,
 ) -> tuple[NotificationReceipt, ...]:
     """Emit the budget alerts due for *spent_usd* without a long-lived object."""
@@ -517,4 +713,6 @@ async def emit_budget_alerts(
         thresholds=thresholds,
         period=period,
         tracker=tracker,
+        state_file=state_file,
+        path=path,
     ).emit(spent_usd, now=now)

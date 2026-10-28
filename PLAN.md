@@ -169,6 +169,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Release or expire abandoned budget reservations so a failed or cancelled call stops consuming the cap (tests/core/test_budget.py)
 - [ ] Exclude replaced estimates from sidecar totals and item counts (tests/core/test_sidecar.py)
 - [ ] Exclude replaced estimates from per asset cost report totals (tests/cli/test_costs_run.py)
+- [ ] Serialize budget alert state writes so parallel workers cannot lose emitted keys (tests/core/test_budget_alerts.py)
 
 ## Milestone 6: Execution core, storage and API
 
