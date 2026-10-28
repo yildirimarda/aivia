@@ -638,3 +638,5 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- Work the agent found while building. Move items from here into the
      milestone where they belong with ./run.sh --replan. -->
+
+- [ ] Add a fast test target that excludes slow tests and prove the marker is filtered (tests/test_makefile.py)
