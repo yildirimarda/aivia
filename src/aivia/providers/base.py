@@ -36,6 +36,7 @@ from aivia.core.models.provider import ProviderMeta
 from aivia.core.redact import redact, redact_data
 
 __all__ = [
+    "DEFAULT_CLOSE_TIMEOUT_SECONDS",
     "DEFAULT_HEALTH_TIMEOUT_SECONDS",
     "HealthStatus",
     "Provider",
@@ -45,6 +46,9 @@ __all__ = [
 
 DEFAULT_HEALTH_TIMEOUT_SECONDS: float = 5.0
 """Seconds a health probe may take before it is reported as unhealthy."""
+
+DEFAULT_CLOSE_TIMEOUT_SECONDS: float = 5.0
+"""Seconds a close hook may take before shutdown gives up."""
 
 
 class HealthStatus(StrEnum):
@@ -127,6 +131,19 @@ def _health_timeout(value: float) -> float:
     return timeout
 
 
+def _close_timeout(value: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(
+            f"close_timeout_seconds must be a number, got {type(value).__name__}"
+        )
+    timeout = float(value)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError(
+            f"close_timeout_seconds must be a positive finite number, got {value!r}"
+        )
+    return timeout
+
+
 class Provider:
     """Base class for every provider adapter.
 
@@ -140,7 +157,8 @@ class Provider:
     time, :meth:`close` releases resources and is idempotent, and both are
     async because health checks and client shutdown usually touch the network.
     Every health probe is bounded by :attr:`health_timeout_seconds` so an
-    unresponsive adapter cannot stall a status command.
+    unresponsive adapter cannot stall a status command. Shutdown is bounded by
+    :attr:`close_timeout_seconds` for the same reason.
     """
 
     default_metadata: ClassVar[ProviderMeta | Mapping[str, Any] | None] = None
@@ -153,12 +171,22 @@ class Provider:
     different value to the constructor for one instance.
     """
 
+    close_timeout_seconds: float = DEFAULT_CLOSE_TIMEOUT_SECONDS
+    """Seconds a close hook may take before shutdown gives up.
+
+    Subclasses may override this class attribute, and callers may pass a
+    different value to the constructor for one instance. When neither sets a
+    dedicated close timeout, shutdown shares the health deadline so a status
+    check bounds both phases with the same budget.
+    """
+
     def __init__(
         self,
         metadata: ProviderMeta | Mapping[str, Any] | None = None,
         *,
         name: str | None = None,
         health_timeout_seconds: float | None = None,
+        close_timeout_seconds: float | None = None,
         http_config: HttpClientConfig | None = None,
     ) -> None:
         if metadata is None:
@@ -169,6 +197,12 @@ class Provider:
         if health_timeout_seconds is None:
             health_timeout_seconds = self.health_timeout_seconds
         self.health_timeout_seconds = _health_timeout(health_timeout_seconds)
+        if close_timeout_seconds is None:
+            if type(self).close_timeout_seconds != Provider.close_timeout_seconds:
+                close_timeout_seconds = self.close_timeout_seconds
+            else:
+                close_timeout_seconds = self.health_timeout_seconds
+        self.close_timeout_seconds = _close_timeout(close_timeout_seconds)
         if http_config is not None and not isinstance(http_config, HttpClientConfig):
             raise TypeError("http_config must be an HttpClientConfig")
         self._http_config = http_config or HttpClientConfig()
@@ -300,19 +334,30 @@ class Provider:
 
         Concurrent callers share one shutdown: the close hook runs once and
         every caller returns after it has completed. If the hook raises, the
-        provider stays open so a later call can retry.
+        provider stays open so a later call can retry. A shutdown that runs
+        longer than :attr:`close_timeout_seconds` is cancelled and raises
+        :class:`TimeoutError` so a stuck adapter cannot block the caller.
         """
         if self.closed:
             return
         async with self._close_lock:
             if self.closed:
                 return
-            await self._close()
-            http = self._http
-            self._http = None
-            if http is not None:
-                await http.aclose()
-            self._state = ProviderState.CLOSED
+            timeout = asyncio.timeout(self.close_timeout_seconds)
+            try:
+                async with timeout:
+                    await self._close()
+                    http = self._http
+                    self._http = None
+                    if http is not None:
+                        await http.aclose()
+                    self._state = ProviderState.CLOSED
+            except TimeoutError as exc:
+                if not timeout.expired():
+                    raise
+                raise TimeoutError(
+                    f"close timed out after {self.close_timeout_seconds:g}s"
+                ) from exc
 
     async def _close(self) -> None:
         """Adapter hook for releasing clients; the default is a no-op."""

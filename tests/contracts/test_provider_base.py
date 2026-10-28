@@ -273,6 +273,68 @@ def test_a_failing_close_hook_leaves_the_provider_open() -> None:
     assert provider.closed is False
 
 
+def test_close_times_out_a_stuck_adapter_and_leaves_it_open() -> None:
+    class HangingCloseProvider(Provider):
+        close_timeout_seconds = 0.01
+
+        async def _close(self) -> None:
+            await asyncio.sleep(10)
+
+    provider = HangingCloseProvider()
+
+    async def shutdown() -> None:
+        await asyncio.wait_for(provider.close(), timeout=1.0)
+
+    with pytest.raises(TimeoutError, match=r"close timed out after 0\.01s"):
+        asyncio.run(shutdown())
+
+    assert provider.closed is False
+
+
+def test_close_timeout_can_be_set_for_one_instance() -> None:
+    class HangingCloseProvider(Provider):
+        async def _close(self) -> None:
+            await asyncio.sleep(10)
+
+    provider = HangingCloseProvider(close_timeout_seconds=0.01)
+
+    async def shutdown() -> None:
+        await asyncio.wait_for(provider.close(), timeout=1.0)
+
+    assert provider.close_timeout_seconds == 0.01
+    with pytest.raises(TimeoutError, match=r"close timed out after 0\.01s"):
+        asyncio.run(shutdown())
+    assert provider.closed is False
+
+
+def test_close_timeout_defaults_to_the_health_deadline() -> None:
+    class HangingCloseProvider(Provider):
+        health_timeout_seconds = 0.01
+
+        async def _close(self) -> None:
+            await asyncio.sleep(10)
+
+    provider = HangingCloseProvider()
+
+    async def shutdown() -> None:
+        await asyncio.wait_for(provider.close(), timeout=1.0)
+
+    assert provider.close_timeout_seconds == 0.01
+    with pytest.raises(TimeoutError, match=r"close timed out after 0\.01s"):
+        asyncio.run(shutdown())
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan")])
+def test_close_timeout_must_be_positive_and_finite(timeout: float) -> None:
+    with pytest.raises(ValueError, match="close_timeout_seconds"):
+        Provider(close_timeout_seconds=timeout)
+
+
+def test_close_timeout_must_be_a_number() -> None:
+    with pytest.raises(TypeError, match="close_timeout_seconds"):
+        Provider(close_timeout_seconds=cast(Any, "5"))
+
+
 def test_context_manager_closes_even_when_the_body_raises() -> None:
     provider = DummyProvider()
 
