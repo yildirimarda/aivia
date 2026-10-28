@@ -5,14 +5,22 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from aivia.cli.registry import register_command
 from aivia.core import config_show
 from aivia.core.config import AppConfig, parse_app_config
+from aivia.core.config import schema as config_schema
 from aivia.core.errors import ConfigError
 
-__all__ = ["configure", "run_config", "run_show", "run_validate"]
+__all__ = [
+    "configure",
+    "run_config",
+    "run_schema",
+    "run_show",
+    "run_validate",
+]
 
 
 def _configure_resolution(parser: argparse.ArgumentParser) -> None:
@@ -62,6 +70,20 @@ def _configure_validate(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_config_handler=run_validate)
 
 
+def _configure_schema(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--output",
+        metavar="PATH",
+        help="write the schema to PATH instead of standard output",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail when the schema at PATH (or the packaged copy) is stale",
+    )
+    parser.set_defaults(_config_handler=run_schema)
+
+
 def configure(parser: argparse.ArgumentParser) -> None:
     """Add the config group and its subcommands."""
     subparsers = parser.add_subparsers(dest="config_command", metavar="COMMAND")
@@ -77,6 +99,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="Validate the merged configuration and print every error",
     )
     _configure_validate(validate)
+    schema = subparsers.add_parser(
+        "schema",
+        help="Export the configuration JSON Schema",
+        description="Export the configuration JSON Schema",
+    )
+    _configure_schema(schema)
 
 
 def run_config(args: argparse.Namespace) -> int:
@@ -84,9 +112,47 @@ def run_config(args: argparse.Namespace) -> int:
     handler = getattr(args, "_config_handler", None)
     if handler is None:
         print("error: missing config command", file=sys.stderr)
-        print("usage: aivia config {show, validate}", file=sys.stderr)
+        print("usage: aivia config {show, validate, schema}", file=sys.stderr)
         return 2
     return int(handler(args))
+
+
+def run_schema(args: argparse.Namespace) -> int:
+    """Print, write or check the deterministic configuration JSON Schema."""
+    text = config_schema.dump_config_schema()
+    target = (
+        Path(args.output)
+        if args.output is not None
+        else config_schema.packaged_schema_path()
+    )
+    if args.check:
+        try:
+            existing = target.read_text(encoding="utf-8")
+        except OSError:
+            existing = None
+        if existing != text:
+            print(
+                f"error: configuration schema is stale: {target}",
+                file=sys.stderr,
+            )
+            print(
+                f"regenerate it with: aivia config schema --output {target}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"configuration schema is up to date: {target}")
+        return 0
+    if args.output is None:
+        print(text, end="")
+        return 0
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot write {target}: {exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {target}")
+    return 0
 
 
 def run_show(args: argparse.Namespace) -> int:
