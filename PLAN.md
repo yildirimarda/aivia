@@ -82,7 +82,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: versioned models and a migration safe SQLite store -->
 
-- [ ] Add the model base with schema version, timestamps, deterministic JSON and a warn on unknown extra fields policy (tests/core/models/test_base.py)
+- [x] Add the model base with schema version, timestamps, deterministic JSON and a warn on unknown extra fields policy (tests/core/models/test_base.py)
 - [ ] Add topic, candidate and claim models carrying source URLs and a fact list contract usable without the research module (tests/core/models/test_topic.py)
 - [ ] Add mode aware script, beat and media prompt models including dialogue lines per speaker (tests/core/models/test_script.py)
 - [ ] Add the asset models with provider, model, prompt hash, license, cost links, analysis fields, alt text and a pinned flag (tests/core/models/test_asset.py)
