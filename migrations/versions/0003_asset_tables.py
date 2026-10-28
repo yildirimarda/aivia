@@ -111,9 +111,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("''"),
         ),
-        sa.Column(
-            "version", sa.Integer(), nullable=False, server_default=sa.text("1")
-        ),
+        sa.Column("version", sa.Integer(), nullable=False, server_default=sa.text("1")),
         sa.Column(
             "renderer_version",
             sa.String(length=128),

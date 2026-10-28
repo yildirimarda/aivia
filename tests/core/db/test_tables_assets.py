@@ -87,9 +87,7 @@ def test_assets_carry_the_asset_record_columns(engine: Engine) -> None:
 
 
 def test_compositions_carry_the_composition_reference_columns(engine: Engine) -> None:
-    columns = {
-        column["name"] for column in inspect(engine).get_columns("compositions")
-    }
+    columns = {column["name"] for column in inspect(engine).get_columns("compositions")}
 
     assert {
         "id",
@@ -191,9 +189,7 @@ def test_the_prompt_hash_index_serves_a_cache_lookup(engine: Engine) -> None:
 
     with engine.connect() as connection:
         plan = connection.execute(
-            text(
-                "EXPLAIN QUERY PLAN SELECT id FROM assets WHERE prompt_hash = :hash"
-            ),
+            text("EXPLAIN QUERY PLAN SELECT id FROM assets WHERE prompt_hash = :hash"),
             {"hash": "hash-1"},
         ).all()
         found = connection.execute(
@@ -258,9 +254,7 @@ def test_assets_can_be_grouped_by_run_provider_and_pinned(engine: Engine) -> Non
             .all()
         )
         by_provider = (
-            connection.execute(
-                select(assets.c.id).where(assets.c.provider == "beta")
-            )
+            connection.execute(select(assets.c.id).where(assets.c.provider == "beta"))
             .scalars()
             .all()
         )
@@ -348,9 +342,7 @@ def test_cost_events_can_be_grouped_by_run_provider_and_time(engine: Engine) -> 
         )
         recent = (
             connection.execute(
-                select(cost_events.c.id).where(
-                    cost_events.c.created_at.is_not(None)
-                )
+                select(cost_events.c.id).where(cost_events.c.created_at.is_not(None))
             )
             .scalars()
             .all()
