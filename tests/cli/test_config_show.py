@@ -200,3 +200,53 @@ def test_show_rejects_a_non_mapping_config_root(
     assert data == {}
     assert output == ""
     assert "root must be a mapping" in err
+
+
+def test_show_applies_the_environment_file_and_set_flags(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path / "config.yaml",
+        """
+pipeline:
+  timezone: UTC
+video:
+  fps: 30
+""".lstrip(),
+    )
+    write_config(
+        tmp_path / "config.dev.yaml",
+        """
+pipeline:
+  timezone: Europe/Paris
+""".lstrip(),
+    )
+
+    code, data, output, _ = show(
+        config,
+        capsys,
+        "--env",
+        "dev",
+        "--set",
+        "video.fps=60",
+        "--origins",
+    )
+
+    assert code == 0
+    assert data["pipeline"]["timezone"] == "Europe/Paris"
+    assert data["video"]["fps"] == 60
+    assert "# pipeline.timezone: env:dev" in output
+    assert "# video.fps: cli" in output
+
+
+def test_show_rejects_a_malformed_set_flag(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path / "config.yaml", "schema_version: 1\n")
+
+    code, data, output, err = show(config, capsys, "--set", "missing-equals")
+
+    assert code == 1
+    assert data == {}
+    assert output == ""
+    assert "expected key.path=value" in err
