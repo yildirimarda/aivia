@@ -333,6 +333,102 @@ def test_retry_false_makes_a_single_attempt() -> None:
     assert sleep.delays == []
 
 
+def test_post_is_not_retried_by_default() -> None:
+    calls: list[int] = []
+    sleep = FakeSleep()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(503)
+
+    client = make_client(handler, sleep=sleep)
+
+    response = asyncio.run(client.post("https://example.test"))
+
+    assert response.status_code == 503
+    assert len(calls) == 1
+    assert sleep.delays == []
+
+
+def test_post_retries_when_the_caller_opts_in() -> None:
+    calls: list[int] = []
+    sleep = FakeSleep()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) < 3:
+            return httpx.Response(503)
+        return httpx.Response(200)
+
+    client = make_client(
+        handler,
+        config=HttpClientConfig(
+            max_attempts=3,
+            backoff_base_seconds=1.0,
+            jitter_ratio=0.0,
+        ),
+        sleep=sleep,
+    )
+
+    response = asyncio.run(client.post("https://example.test", retry=True))
+
+    assert response.status_code == 200
+    assert len(calls) == 3
+    assert sleep.delays == [1.0, 2.0]
+
+
+def test_post_transport_errors_are_not_retried_by_default() -> None:
+    calls: list[int] = []
+    sleep = FakeSleep()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        raise httpx.ConnectError("connection refused", request=request)
+
+    client = make_client(
+        handler,
+        config=HttpClientConfig(
+            max_attempts=3,
+            backoff_base_seconds=1.0,
+            jitter_ratio=0.0,
+        ),
+        sleep=sleep,
+    )
+
+    with pytest.raises(RetryableError) as caught:
+        asyncio.run(client.post("https://example.test"))
+
+    assert caught.value.details["attempt"] == 1
+    assert len(calls) == 1
+    assert sleep.delays == []
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"])
+def test_idempotent_methods_retry_by_default(method: str) -> None:
+    calls: list[int] = []
+    sleep = FakeSleep()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(503 if len(calls) == 1 else 200)
+
+    client = make_client(
+        handler,
+        config=HttpClientConfig(
+            max_attempts=2,
+            backoff_base_seconds=1.0,
+            jitter_ratio=0.0,
+        ),
+        sleep=sleep,
+    )
+
+    response = asyncio.run(client.request(method, "https://example.test"))
+
+    assert response.status_code == 200
+    assert len(calls) == 2
+    assert sleep.delays == [1.0]
+
+
 def test_transport_errors_are_retried_then_succeed() -> None:
     calls: list[int] = []
     sleep = FakeSleep()
