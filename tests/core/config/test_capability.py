@@ -21,6 +21,7 @@ def test_capability_defaults_leave_the_chain_empty_and_the_clip_uncapped() -> No
     assert capability.strategy == CapabilityStrategy.FIRST_AVAILABLE
     assert capability.strategy.value == "first_available"
     assert capability.chain == []
+    assert capability.weights == {}
     assert capability.pricing_overrides == {}
     assert capability.max_clip_seconds == 0.0
     assert capability.split_long_requests is False
@@ -58,7 +59,10 @@ def test_capability_accepts_strategy_chain_pricing_and_clip_controls() -> None:
 def test_every_capability_strategy_is_accepted(
     value: str | CapabilityStrategy, expected: CapabilityStrategy
 ) -> None:
-    capability = CapabilityChainConfig.from_mapping({"strategy": value})
+    payload: dict[str, object] = {"strategy": value}
+    if expected is CapabilityStrategy.WEIGHTED_AB:
+        payload["weights"] = {"fal": 1.0}
+    capability = CapabilityChainConfig.from_mapping(payload)
 
     assert capability.strategy == expected
 
@@ -73,6 +77,109 @@ def test_unknown_strategy_names_the_strategy_field() -> None:
 def test_capability_strategy_aliases_point_at_the_same_enum() -> None:
     assert ChainStrategy is CapabilityStrategy
     assert CapabilityConfig is CapabilityChainConfig
+
+
+def test_weighted_ab_accepts_per_provider_weights() -> None:
+    capability = CapabilityChainConfig.from_mapping(
+        {
+            "strategy": "weighted_ab",
+            "chain": ["fal", "replicate", "local"],
+            "weights": {" fal ": 3, "replicate": 2, "local": 1},
+        }
+    )
+
+    assert capability.strategy == CapabilityStrategy.WEIGHTED_AB
+    assert capability.weights == {"fal": 3.0, "replicate": 2.0, "local": 1.0}
+    assert capability.provider_weights == capability.weights
+    assert capability.weight_sum == 6.0
+
+
+def test_weights_are_optional_for_every_other_strategy() -> None:
+    capability = CapabilityChainConfig.from_mapping(
+        {"strategy": "cheapest", "chain": ["fal", "local"]}
+    )
+
+    assert capability.weights == {}
+
+
+def test_non_weighted_strategies_also_accept_weights() -> None:
+    capability = CapabilityChainConfig.from_mapping(
+        {"strategy": "round_robin", "chain": ["fal"], "weights": {"fal": 0.5}}
+    )
+
+    assert capability.weights == {"fal": 0.5}
+
+
+@pytest.mark.parametrize("weights", [None, {}])
+def test_weighted_ab_requires_per_provider_weights(
+    weights: dict[str, float] | None,
+) -> None:
+    payload: dict[str, object] = {
+        "strategy": "weighted_ab",
+        "chain": ["fal", "local"],
+    }
+    if weights is not None:
+        payload["weights"] = weights
+
+    with pytest.raises(ConfigError) as caught:
+        CapabilityChainConfig.from_mapping(payload)
+
+    assert "weighted_ab" in str(caught.value)
+    assert "weights" in str(caught.value)
+
+
+def test_weights_accept_the_provider_weights_alias() -> None:
+    capability = CapabilityChainConfig.from_mapping(
+        {
+            "strategy": "weighted_ab",
+            "chain": ["fal", "local"],
+            "provider_weights": {"fal": 0.25, "local": 0.75},
+        }
+    )
+
+    assert capability.weights == {"fal": 0.25, "local": 0.75}
+    assert capability.provider_weights == {"fal": 0.25, "local": 0.75}
+
+
+def test_weights_must_reference_providers_in_the_chain() -> None:
+    with pytest.raises(ConfigError) as caught:
+        CapabilityChainConfig.from_mapping(
+            {
+                "strategy": "weighted_ab",
+                "chain": ["fal"],
+                "weights": {"fal": 1.0, "replicate": 1.0},
+            }
+        )
+
+    assert "weights" in str(caught.value)
+    assert "replicate" in str(caught.value)
+
+
+@pytest.mark.parametrize("weight", [-0.01, float("inf"), float("-inf"), float("nan")])
+def test_weights_must_be_finite_and_non_negative(weight: float) -> None:
+    with pytest.raises(ConfigError) as caught:
+        CapabilityChainConfig.from_mapping(
+            {
+                "strategy": "weighted_ab",
+                "chain": ["fal"],
+                "weights": {"fal": weight},
+            }
+        )
+
+    assert "weights" in str(caught.value)
+
+
+def test_weight_keys_must_not_be_empty() -> None:
+    with pytest.raises(ConfigError) as caught:
+        CapabilityChainConfig.from_mapping(
+            {
+                "strategy": "weighted_ab",
+                "chain": ["fal"],
+                "weights": {" ": 1.0},
+            }
+        )
+
+    assert "weights" in str(caught.value)
 
 
 def test_capability_accepts_the_long_and_short_field_aliases() -> None:
@@ -100,11 +207,14 @@ def test_canonical_fields_win_over_aliases() -> None:
             "chain_strategy": "round_robin",
             "chain": ["fal"],
             "providers": ["local"],
+            "weights": {"fal": 1.0},
+            "provider_weights": {"local": 1.0},
         }
     )
 
     assert capability.strategy == CapabilityStrategy.CHEAPEST
     assert capability.chain == ["fal"]
+    assert capability.weights == {"fal": 1.0}
 
 
 @pytest.mark.parametrize("entry", ["", "   "])
@@ -197,9 +307,11 @@ def test_capability_defaults_are_independent_between_instances() -> None:
     second = CapabilityChainConfig.from_mapping({})
 
     first.chain.append("fal")
+    first.weights["fal"] = 1.0
     first.pricing_overrides["fal"] = 1.0
 
     assert second.chain == []
+    assert second.weights == {}
     assert second.pricing_overrides == {}
 
 
