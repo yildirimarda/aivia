@@ -85,7 +85,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the model base with schema version, timestamps, deterministic JSON and a warn on unknown extra fields policy (tests/core/models/test_base.py)
 - [x] Add topic, candidate and claim models carrying source URLs and a fact list contract usable without the research module (tests/core/models/test_topic.py)
 - [x] Add mode aware script, beat and media prompt models including dialogue lines per speaker (tests/core/models/test_script.py)
-- [ ] Add the asset models with provider, model, prompt hash, license, cost links, analysis fields, alt text and a pinned flag (tests/core/models/test_asset.py)
+- [x] Add the asset models with provider, model, prompt hash, license, cost links, analysis fields, alt text and a pinned flag (tests/core/models/test_asset.py)
 - [ ] Add run and stage result models with run kinds, paused budget state, idempotency key and toolchain fingerprint (tests/core/models/test_run.py)
 - [ ] Add job models with attempts, not before, heartbeat and dead letter state (tests/core/models/test_job.py)
 - [ ] Add cost event and provider meta models with capability, pricing, rate limit, quality rank and licensing fields (tests/core/models/test_cost_provider.py)
