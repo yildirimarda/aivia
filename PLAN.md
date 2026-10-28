@@ -66,7 +66,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add schedule, publish and presets config validating cron fields, existing profiles and credential references (tests/core/config/test_schedule.py)
 - [x] Assemble the root config model with cross checks such as platform accounts existing in the platform data (tests/core/config/test_app.py)
 - [x] Implement layered resolution from packaged defaults through user config, environment file, profile overrides and CLI set flags with documented precedence (tests/core/config/test_resolve.py)
-- [ ] Add a config validate command printing every error with its key path and a failing exit code (tests/cli/test_config_validate.py)
+- [x] Add a config validate command printing every error with its key path and a failing exit code (tests/cli/test_config_validate.py)
 - [ ] Export a JSON schema from the registered sections deterministically and fail CI when it is stale (tests/cli/test_config_schema.py)
 - [ ] Prove a configuration without module sections still validates and that a module key without its package errors clearly (tests/core/config/test_module_optional.py)
 - [ ] Maintain a single packaged default config that validates and covers every area of the configuration checklist (tests/test_example_config.py)
