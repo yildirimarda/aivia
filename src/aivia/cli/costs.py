@@ -9,7 +9,7 @@ import json
 import math
 import sys
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 
 from sqlalchemy import Engine
@@ -17,10 +17,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from aivia.cli.registry import register_command
 from aivia.core import paths
+from aivia.core.config.budget import BudgetConfig
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.resolve import resolve_app_config
 from aivia.core.cost import CostAggregator, CostTracker
 from aivia.core.cost_agg import CostAggregate, CostGroup
+from aivia.core.dashboard import build_dashboard, render_dashboard
 from aivia.core.db import AssetRepository, RunRepository, create_database_engine
 from aivia.core.errors import ConfigError
 from aivia.core.models.asset import Asset
@@ -29,6 +31,7 @@ from aivia.core.models.cost import CostEvent
 __all__ = [
     "configure",
     "run_costs",
+    "run_costs_dashboard",
     "run_costs_export",
     "run_costs_run",
     "run_costs_summary",
@@ -195,6 +198,25 @@ def _configure_export(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_costs_handler=run_costs_export)
 
 
+def _configure_dashboard(parser: argparse.ArgumentParser) -> None:
+    _configure_report(parser)
+    parser.add_argument(
+        "-o",
+        "--output",
+        metavar="PATH",
+        help="write the dashboard to PATH instead of standard output",
+    )
+    parser.add_argument(
+        "--now",
+        metavar="DATETIME",
+        help=(
+            "evaluate budget bars at this ISO date or datetime "
+            "instead of the current time"
+        ),
+    )
+    parser.set_defaults(_costs_handler=run_costs_dashboard)
+
+
 def configure(parser: argparse.ArgumentParser) -> None:
     """Add the costs group and its subcommands."""
     subparsers = parser.add_subparsers(dest="costs_command", metavar="COMMAND")
@@ -218,6 +240,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="Export spend as CSV or JSON with the same totals as the summary",
     )
     _configure_export(export_parser)
+    dashboard_parser = subparsers.add_parser(
+        "dashboard",
+        help="Write a static HTML dashboard with spend and budget bars",
+        description="Write a static HTML dashboard with spend and budget bars",
+    )
+    _configure_dashboard(dashboard_parser)
 
 
 def run_costs(args: argparse.Namespace) -> int:
@@ -225,7 +253,10 @@ def run_costs(args: argparse.Namespace) -> int:
     handler = getattr(args, "_costs_handler", None)
     if handler is None:
         print("error: missing costs command", file=sys.stderr)
-        print("usage: aivia costs {run,summary,export}", file=sys.stderr)
+        print(
+            "usage: aivia costs {run,summary,export,dashboard}",
+            file=sys.stderr,
+        )
         return 2
     return int(handler(args))
 
@@ -297,6 +328,24 @@ def _parse_moment(value: str) -> date | datetime:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed
+
+
+def _parse_moment_datetime(value: str) -> datetime:
+    parsed = _parse_moment(value)
+    if isinstance(parsed, datetime):
+        return parsed
+    return datetime.combine(parsed, time.min, tzinfo=UTC)
+
+
+def _resolve_budget(args: argparse.Namespace) -> BudgetConfig:
+    config = resolve_app_config(
+        config_file=args.config,
+        environment=args.environment,
+        profile=args.profile,
+        set_values=args.set_values,
+    )
+    budget = getattr(config, "budget", None)
+    return budget if isinstance(budget, BudgetConfig) else BudgetConfig()
 
 
 def _render_aggregates(
@@ -719,6 +768,49 @@ def run_costs_export(args: argparse.Namespace) -> int:
         return 1
     finally:
         engine.dispose()
+
+
+def run_costs_dashboard(args: argparse.Namespace) -> int:
+    """Write a static HTML dashboard of spend and configured budget caps."""
+    try:
+        start = _parse_moment(args.start) if args.start else None
+        end = _parse_moment(args.end) if args.end else None
+        now = _parse_moment_datetime(args.now) if args.now else None
+    except ValueError as exc:
+        print(f"error: invalid date: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        database_path, database_config = _resolve_database(args)
+        budget = _resolve_budget(args)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if not database_path.exists():
+        print(f"error: database not found: {database_path}", file=sys.stderr)
+        return 1
+
+    engine = create_database_engine(path=database_path, config=database_config)
+    try:
+        data = build_dashboard(
+            engine,
+            budget,
+            now=now,
+            start=start,
+            end=end,
+            run_id=getattr(args, "run_id", None) or None,
+            provider=getattr(args, "provider", None) or None,
+            model=getattr(args, "model", None) or None,
+            stage=getattr(args, "stage", None) or None,
+        )
+    except SQLAlchemyError as exc:
+        print(f"error: cannot read the cost ledger: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        engine.dispose()
+
+    return _emit_export(render_dashboard(data), getattr(args, "output", None))
 
 
 register_command(
