@@ -107,7 +107,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: any capability swappable by config, with fallback, budget awareness and deterministic mocks -->
 
-- [ ] Add the provider base class with metadata, health and close plus a reusable contract test suite (tests/contracts)
+- [x] Add the provider base class with metadata, health and close plus a reusable contract test suite (tests/contracts)
 - [ ] Define the LLM, search and page fetch protocols with typed request and response models and passing fakes (tests/contracts/test_llm_search.py)
 - [ ] Define the embeddings, text to speech and speech to text protocols including word timestamps (tests/contracts/test_audio_protocols.py)
 - [ ] Define the image, image edit, video, music, sfx and stock protocols with capability flags (tests/contracts/test_media_protocols.py)
@@ -126,6 +126,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add providers list and providers check commands, the latter requiring live mode and a budget cap (tests/cli/test_providers.py)
 - [ ] Generate the provider capability matrix document from provider metadata and fail CI when it is stale (tests/test_provider_docs.py)
 - [ ] Validate configured model ids against models.yaml, warning on unknown ids with a closest match and on deprecated ids with a replacement (tests/core/test_model_ids.py)
+- [ ] Add a timeout to provider health checks so an unresponsive adapter cannot block a status command (tests/contracts/test_provider_base.py)
 
 ## Milestone 5: Cost tracking, budgets and dashboard
 
