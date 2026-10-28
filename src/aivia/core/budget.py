@@ -20,20 +20,24 @@ candidate falls back to pausing so no paid call can bypass the cap.
 
 A cap of ``0`` means the cap is not configured and never blocks a call. The
 guard reads spend from the cost ledger through
-:class:`~aivia.core.cost.CostTracker`; it never writes a cost event, resolves a
-price or calls a provider. The media service composes those responsibilities.
+:class:`~aivia.core.cost.CostTracker`. :meth:`BudgetGuard.check` never writes a
+cost event, while :meth:`BudgetGuard.reserve` records the estimate as an
+estimated event in the same transaction that checks it, so concurrent calls
+cannot both pass the same cap. The guard never resolves a price or calls a
+provider; the media service composes those responsibilities.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from enum import StrEnum
-from typing import Any
+from typing import Any, NoReturn
 
-from sqlalchemy import Engine
+from sqlalchemy import Connection, Engine, func, select
 
 from aivia.core.budget_alerts import (
     AlertPeriod,
@@ -52,8 +56,10 @@ from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.cost import CostTracker
 from aivia.core.cost_agg import CostAggregator, CostGroup
 from aivia.core.db.repos import CostEventRepository
+from aivia.core.db.tables import cost_events
 from aivia.core.errors import BudgetError, ConfigError
 from aivia.core.models.base import utcnow
+from aivia.core.models.cost import CostEvent
 from aivia.core.models.run import Run, RunState
 
 __all__ = [
@@ -136,6 +142,42 @@ def _month_window(now: datetime) -> tuple[datetime, datetime]:
     else:
         end = datetime(now.year, now.month + 1, 1, tzinfo=UTC)
     return start, end
+
+
+def _sum_events(
+    connection: Connection,
+    *,
+    run_id: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    provider: str | None = None,
+) -> float:
+    """Sum cost events on *connection* over a run or half-open time window."""
+    statement = select(func.coalesce(func.sum(cost_events.c.amount_usd), 0.0))
+    if run_id is not None:
+        statement = statement.where(cost_events.c.run_id == run_id)
+    if start is not None:
+        statement = statement.where(cost_events.c.created_at >= start)
+    if end is not None:
+        statement = statement.where(cost_events.c.created_at < end)
+    if provider is not None:
+        statement = statement.where(cost_events.c.provider == provider)
+    return float(connection.execute(statement).scalar_one() or 0.0)
+
+
+@contextmanager
+def _write_transaction(engine: Engine) -> Iterator[Connection]:
+    """Open a transaction that takes the write lock before any spend is read.
+
+    SQLite starts a deferred transaction by default, so two reservations could
+    both read the same spend and only then try to write. ``BEGIN IMMEDIATE``
+    acquires the write lock first, making the read and the insert one atomic
+    step and serialising concurrent reservations.
+    """
+    with engine.begin() as connection:
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        yield connection
 
 
 def _coerce_amount(value: object, *, label: str = "amount_usd") -> float:
@@ -639,7 +681,6 @@ class BudgetGuard:
         value = _coerce_amount(amount_usd)
         target = _coerce_run_id(run_id)
         current_provider = _coerce_optional_name(provider, label="provider")
-        per_call = self._config.per_call
         per_run = self._config.per_run
         per_day = self._config.per_day
         per_month = self._config.per_month
@@ -684,21 +725,51 @@ class BudgetGuard:
                     provider=current_provider,
                 )
 
+        return self._result(
+            value,
+            run_id=target,
+            provider=current_provider,
+            operation=_coerce_optional_name(operation, label="operation"),
+            spent=spent,
+            day_spent=day_spent,
+            month_spent=month_spent,
+            provider_spent=provider_spent,
+        )
+
+    def _result(
+        self,
+        amount_usd: float,
+        *,
+        run_id: str,
+        provider: str,
+        operation: str,
+        spent: float,
+        day_spent: float,
+        month_spent: float,
+        provider_spent: float,
+    ) -> BudgetCheck:
+        """Build the check for the already-computed spend totals."""
+        per_call = self._config.per_call
+        per_run = self._config.per_run
+        per_day = self._config.per_day
+        per_month = self._config.per_month
+        per_provider = self._config.per_provider.get(provider, 0.0)
+
         scope: str | None = None
-        if per_call > 0 and _exceeds(value, per_call):
+        if per_call > 0 and _exceeds(amount_usd, per_call):
             scope = _PER_CALL
-        elif per_run > 0 and _exceeds(spent + value, per_run):
+        elif per_run > 0 and _exceeds(spent + amount_usd, per_run):
             scope = _PER_RUN
-        elif per_day and _exceeds(day_spent + value, per_day):
+        elif per_day and _exceeds(day_spent + amount_usd, per_day):
             scope = _PER_DAY
-        elif per_month and _exceeds(month_spent + value, per_month):
+        elif per_month and _exceeds(month_spent + amount_usd, per_month):
             scope = _PER_MONTH
-        elif per_provider and _exceeds(provider_spent + value, per_provider):
+        elif per_provider and _exceeds(provider_spent + amount_usd, per_provider):
             scope = _PER_PROVIDER
 
         return BudgetCheck(
-            run_id=target,
-            amount_usd=value,
+            run_id=run_id,
+            amount_usd=amount_usd,
             spent_usd=spent,
             per_call_cap=per_call,
             per_run_cap=per_run,
@@ -709,8 +780,8 @@ class BudgetGuard:
             month_spent_usd=month_spent,
             provider_spent_usd=provider_spent,
             scope=scope,
-            provider=current_provider,
-            operation=_coerce_optional_name(operation, label="operation"),
+            provider=provider,
+            operation=operation,
         )
 
     def decide(
@@ -904,7 +975,10 @@ class BudgetGuard:
         )
         if result.allowed:
             return result
+        self._raise_budget_error(result)
 
+    def _raise_budget_error(self, result: BudgetCheck) -> NoReturn:
+        """Raise the budget error for an exceeded check."""
         caps = {
             _PER_CALL: result.per_call_cap,
             _PER_RUN: result.per_run_cap,
@@ -953,9 +1027,128 @@ class BudgetGuard:
         """Alias for :meth:`check`."""
         return self.check(amount_usd, **kwargs)
 
-    def reserve(self, amount_usd: float | None = None, **kwargs: Any) -> BudgetCheck:
-        """Alias for :meth:`check`."""
-        return self.check(amount_usd, **kwargs)
+    def reserve(
+        self,
+        amount_usd: float | None = None,
+        *,
+        run_id: str | None = None,
+        provider: str | None = None,
+        operation: str | None = None,
+        estimate: float | None = None,
+        amount: float | None = None,
+        cost_usd: float | None = None,
+        now: datetime | None = None,
+        model: str | None = None,
+        units: float = 0.0,
+        unit_kind: str = "call",
+        pricing_version: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> BudgetCheck:
+        """Check the estimate and atomically record it as a reservation.
+
+        The spend is read and an estimated :class:`CostEvent` is inserted in
+        one transaction that takes SQLite's write lock first, so two concurrent
+        calls cannot both see the same remaining per-run budget and pass. A
+        reservation that would exceed a cap is not written and raises
+        :class:`~aivia.core.errors.BudgetError`, exactly like :meth:`check`.
+
+        A guard without a ledger has nowhere to reserve and falls back to the
+        read-only check; the per-call cap does not need a shared reservation.
+        """
+        if amount_usd is None:
+            for candidate in (estimate, amount, cost_usd):
+                if candidate is not None:
+                    amount_usd = candidate
+                    break
+        if amount_usd is None:
+            raise ConfigError(
+                "a budget check needs the estimated amount",
+                details={"amount_usd": None},
+            )
+        value = _coerce_amount(amount_usd)
+        target = _coerce_run_id(run_id)
+        current_provider = _coerce_optional_name(provider, label="provider")
+        operation_name = _coerce_optional_name(operation, label="operation")
+        if self._tracker is None:
+            return self.check(
+                value,
+                run_id=target,
+                provider=current_provider,
+                operation=operation_name,
+                now=now,
+            )
+
+        per_day = self._config.per_day
+        per_month = self._config.per_month
+        per_provider = self._config.per_provider.get(current_provider, 0.0)
+        moment = (
+            _coerce_now(now)
+            if now is not None or per_day or per_month or per_provider
+            else None
+        )
+        values: dict[str, Any] = {
+            "provider": current_provider,
+            "model": _coerce_optional_name(model, label="model"),
+            "operation": operation_name,
+            "units": units,
+            "unit_kind": unit_kind,
+            "amount_usd": value,
+            "estimated": True,
+            "run_id": target,
+            "pricing_version": _coerce_optional_name(
+                pricing_version, label="pricing_version"
+            ),
+            "metadata": dict(metadata or {}),
+        }
+        if moment is not None:
+            values["created_at"] = moment
+            values["updated_at"] = moment
+        event = CostEvent.model_validate(values)
+        repository = self._tracker.repository
+
+        with _write_transaction(repository.engine) as connection:
+            spent = _sum_events(connection, run_id=target)
+            day_spent = 0.0
+            month_spent = 0.0
+            provider_spent = 0.0
+            if moment is not None and (per_day or per_month or per_provider):
+                day_start, day_end = _day_window(moment)
+                month_start, month_end = _month_window(moment)
+                if per_day:
+                    day_spent = _sum_events(
+                        connection,
+                        start=day_start,
+                        end=day_end,
+                    )
+                if per_month:
+                    month_spent = _sum_events(
+                        connection,
+                        start=month_start,
+                        end=month_end,
+                    )
+                if per_provider:
+                    provider_spent = _sum_events(
+                        connection,
+                        start=month_start,
+                        end=month_end,
+                        provider=current_provider,
+                    )
+            result = self._result(
+                value,
+                run_id=target,
+                provider=current_provider,
+                operation=operation_name,
+                spent=spent,
+                day_spent=day_spent,
+                month_spent=month_spent,
+                provider_spent=provider_spent,
+            )
+            if result.allowed:
+                repository.create_in(connection, event)
+
+        if result.exceeded:
+            self._raise_budget_error(result)
+        return result
 
     def check_budget(
         self, amount_usd: float | None = None, **kwargs: Any

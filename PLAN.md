@@ -161,11 +161,12 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Generate a static HTML dashboard showing spend per day, run and provider plus budget bars (tests/cli/test_dashboard.py)
 - [x] Add a resume command that continues a paused budget run after explicit confirmation and records who and why (tests/cli/test_resume.py)
 - [x] Make the router use the pricing resolver so selection and budget checks share overrides and unit conversions (tests/core/test_router.py)
-- [ ] Make budget checks reserve the estimate atomically so concurrent calls cannot both pass the same per run cap (tests/core/test_budget.py)
+- [x] Make budget checks reserve the estimate atomically so concurrent calls cannot both pass the same per run cap (tests/core/test_budget.py)
 - [ ] Make pre run estimation honour configured provider chains and selection strategy (tests/core/test_estimate.py)
 - [ ] Prevent totals and budget checks from counting both an estimate and its actual replacement for one call (tests/core/test_cost.py)
 - [ ] Persist emitted budget alert keys so a restart does not repeat an alert within the same period (tests/core/test_budget_alerts.py)
 - [ ] Treat a provider whose price unit cannot convert to the requested unit as unpriced instead of aborting the chain (tests/core/test_router.py)
+- [ ] Release or expire abandoned budget reservations so a failed or cancelled call stops consuming the cap (tests/core/test_budget.py)
 
 ## Milestone 6: Execution core, storage and API
 
