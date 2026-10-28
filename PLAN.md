@@ -121,7 +121,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Make provider selection budget aware, skipping providers whose estimate exceeds the remaining budget (tests/core/test_router.py)
 - [x] Add a per provider circuit breaker that opens, cools down and half opens, with the router skipping open providers (tests/core/test_circuit.py)
 - [x] Add a token bucket rate limiter per provider that waits or raises a rate limited error under concurrency (tests/core/test_ratelimit.py)
-- [ ] Add a shared async HTTP client with backoff, jitter, timeouts, redacted header logging and an injectable transport (tests/core/test_http.py)
+- [x] Add a shared async HTTP client with backoff, jitter, timeouts, redacted header logging and an injectable transport (tests/core/test_http.py)
 - [ ] Implement deterministic mock providers for every capability, including lavfi generated video and sized audio, with simulated cost and failures (tests/contracts)
 - [ ] Add providers list and providers check commands, the latter requiring live mode and a budget cap (tests/cli/test_providers.py)
 - [ ] Generate the provider capability matrix document from provider metadata and fail CI when it is stale (tests/test_provider_docs.py)
@@ -132,6 +132,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Register a circuit breaker config section and pass its threshold and cooldown into router construction (tests/core/config/test_circuit.py)
 - [ ] Register a rate limiter config section and pass its on-limit behaviour into router construction (tests/core/config/test_ratelimit.py)
 - [ ] Enforce provider max concurrency in the router alongside the token bucket so parallel calls queue or fail (tests/core/test_ratelimit.py)
+- [ ] Register an HTTP client config section and pass its retry and timeout policy into provider construction (tests/core/config/test_http.py)
+- [ ] Make HTTP retries method aware so POST only retries when the caller opts in (tests/core/test_http.py)
 
 ## Milestone 5: Cost tracking, budgets and dashboard
 

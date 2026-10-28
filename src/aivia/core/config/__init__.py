@@ -73,6 +73,7 @@ from aivia.core.config.formats import (
     StageConfig,
     StageOptions,
 )
+from aivia.core.config.http import HttpClientConfig, HttpConfig
 from aivia.core.config.llm import (
     CORE_LLM_ROLES,
     CORE_ROLES,
@@ -351,6 +352,8 @@ __all__ = [
     "FormatsConfig",
     "Handler",
     "HandlerType",
+    "HttpClientConfig",
+    "HttpConfig",
     "JobsConfig",
     "LLMConfig",
     "LLMPricing",
