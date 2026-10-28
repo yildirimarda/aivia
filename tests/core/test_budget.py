@@ -501,3 +501,159 @@ def test_policy_aliases_and_module_helpers(tracker: CostTracker) -> None:
         assert isinstance(decision, BudgetDecision)
         assert decision.action is BudgetAction.NOTIFY
     assert guard.decide(0.20).to_dict()["action"] == "notify"
+
+
+def test_per_day_cap_sums_only_the_current_utc_day(tracker: CostTracker) -> None:
+    now = datetime(2026, 3, 15, 12, tzinfo=UTC)
+    _record(tracker, amount_usd=0.20, created_at=datetime(2026, 3, 15, 1, tzinfo=UTC))
+    _record(
+        tracker,
+        amount_usd=0.50,
+        created_at=datetime(2026, 3, 14, 23, 59, tzinfo=UTC),
+    )
+    _record(tracker, amount_usd=0.70, created_at=datetime(2026, 3, 16, tzinfo=UTC))
+    guard = BudgetGuard(BudgetConfig(per_day=0.30), tracker)
+
+    allowed = guard.check(0.10, now=now)
+
+    assert allowed.allowed is True
+    assert allowed.day_spent_usd == pytest.approx(0.20)
+    assert allowed.day_projected_usd == pytest.approx(0.30)
+    assert allowed.remaining_usd == pytest.approx(0.10)
+    with pytest.raises(BudgetError) as caught:
+        guard.check(0.11, now=now)
+
+    error = caught.value
+    assert error.details["scope"] == "per_day"
+    assert error.details["cap"] == pytest.approx(0.30)
+    assert error.details["day_spent_usd"] == pytest.approx(0.20)
+    assert error.details["day_projected_usd"] == pytest.approx(0.31)
+    assert "per-day cap" in str(error)
+
+
+def test_per_month_cap_sums_only_the_current_utc_month(tracker: CostTracker) -> None:
+    now = datetime(2026, 3, 15, 12, tzinfo=UTC)
+    _record(tracker, amount_usd=0.20, created_at=datetime(2026, 3, 1, tzinfo=UTC))
+    _record(tracker, amount_usd=0.10, created_at=datetime(2026, 3, 15, tzinfo=UTC))
+    _record(tracker, amount_usd=0.40, created_at=datetime(2026, 2, 28, tzinfo=UTC))
+    _record(tracker, amount_usd=0.50, created_at=datetime(2026, 4, 1, tzinfo=UTC))
+    guard = BudgetGuard(BudgetConfig(per_month=0.50), tracker)
+
+    allowed = guard.check(0.20, now=now)
+
+    assert allowed.allowed is True
+    assert allowed.month_spent_usd == pytest.approx(0.30)
+    assert allowed.month_projected_usd == pytest.approx(0.50)
+    assert allowed.remaining_usd == pytest.approx(0.20)
+    with pytest.raises(BudgetError) as caught:
+        guard.check(0.21, now=now)
+
+    error = caught.value
+    assert error.details["scope"] == "per_month"
+    assert error.details["cap"] == pytest.approx(0.50)
+    assert error.details["month_spent_usd"] == pytest.approx(0.30)
+    assert error.details["month_projected_usd"] == pytest.approx(0.51)
+    assert "per-month cap" in str(error)
+
+
+def test_per_provider_monthly_cap_uses_that_providers_current_month_spend(
+    tracker: CostTracker,
+) -> None:
+    now = datetime(2026, 3, 15, 12, tzinfo=UTC)
+    _record(
+        tracker,
+        provider="acme",
+        amount_usd=0.20,
+        created_at=datetime(2026, 3, 2, tzinfo=UTC),
+    )
+    _record(
+        tracker,
+        provider="acme",
+        amount_usd=0.50,
+        created_at=datetime(2026, 2, 2, tzinfo=UTC),
+    )
+    _record(
+        tracker,
+        provider="other",
+        amount_usd=0.60,
+        created_at=datetime(2026, 3, 2, tzinfo=UTC),
+    )
+    guard = BudgetGuard(BudgetConfig(per_provider={"acme": 0.30}), tracker)
+
+    allowed = guard.check(0.10, provider="acme", now=now)
+
+    assert allowed.allowed is True
+    assert allowed.per_provider_cap == pytest.approx(0.30)
+    assert allowed.provider_spent_usd == pytest.approx(0.20)
+    assert allowed.provider_projected_usd == pytest.approx(0.30)
+    assert allowed.remaining_usd == pytest.approx(0.10)
+    with pytest.raises(BudgetError) as caught:
+        guard.check(0.11, provider="acme", now=now)
+
+    error = caught.value
+    assert error.details["scope"] == "per_provider"
+    assert error.details["cap"] == pytest.approx(0.30)
+    assert error.details["provider_spent_usd"] == pytest.approx(0.20)
+    assert error.details["provider_projected_usd"] == pytest.approx(0.31)
+    assert "provider monthly cap" in str(error)
+
+    assert guard.check(0.11, provider="other", now=now).allowed is True
+    assert guard.check(0.11, provider="unlimited", now=now).allowed is True
+
+
+def test_remaining_applies_the_tightest_period_and_provider_cap(
+    tracker: CostTracker,
+) -> None:
+    now = datetime(2026, 3, 15, 12, tzinfo=UTC)
+    _record(
+        tracker,
+        provider="acme",
+        amount_usd=0.20,
+        created_at=datetime(2026, 3, 15, tzinfo=UTC),
+    )
+    _record(
+        tracker,
+        provider="other",
+        amount_usd=0.30,
+        created_at=datetime(2026, 3, 2, tzinfo=UTC),
+    )
+    guard = BudgetGuard(
+        BudgetConfig(per_day=0.30, per_month=1.00, per_provider={"acme": 0.25}),
+        tracker,
+    )
+
+    result = guard.evaluate(0.01, provider="acme", now=now)
+
+    assert result.day_spent_usd == pytest.approx(0.20)
+    assert result.month_spent_usd == pytest.approx(0.50)
+    assert result.provider_spent_usd == pytest.approx(0.20)
+    assert result.remaining_usd == pytest.approx(0.05)
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"per_day": 1.0},
+        {"per_month": 1.0},
+        {"per_provider": {"acme": 1.0}},
+    ],
+)
+def test_period_caps_require_a_cost_ledger(config: dict[str, Any]) -> None:
+    guard = BudgetGuard(config)
+
+    with pytest.raises(ConfigError):
+        guard.check(0.10, provider="acme")
+
+
+def test_the_policy_pauses_on_a_period_cap(tracker: CostTracker) -> None:
+    now = datetime(2026, 3, 15, 12, tzinfo=UTC)
+    _record(tracker, amount_usd=0.20, created_at=datetime(2026, 3, 15, tzinfo=UTC))
+    run = Run(state=RunState.RUNNING)
+    guard = BudgetGuard(BudgetConfig(per_day=0.30), tracker)
+
+    decision = guard.decide(0.20, provider="acme", run=run, now=now)
+
+    assert decision.action is BudgetAction.PAUSE
+    assert decision.check.scope == "per_day"
+    assert decision.run is not None
+    assert "per-day cap" in decision.run.pause_reason
