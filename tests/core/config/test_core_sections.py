@@ -200,10 +200,13 @@ def test_languages_accept_the_direct_mapping_shape() -> None:
 
 def test_languages_also_accept_the_explicit_languages_key() -> None:
     config = LanguagesConfig.from_mapping(
-        {"languages": {"tr": {"name": "Turkish", "locale": "tr_TR"}}}
+        {
+            "default": "tr",
+            "languages": {"tr": {"name": "Turkish", "locale": "tr_TR"}},
+        }
     )
 
-    assert config.default == "en"
+    assert config.default == "tr"
     assert config.languages["tr"].name == "Turkish"
 
 
