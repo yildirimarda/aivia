@@ -6,6 +6,12 @@ from aivia.providers.base import (
     ProviderHealth,
     ProviderState,
 )
+from aivia.providers.console import (
+    ConsoleNotificationProvider,
+    ConsoleNotifier,
+    console_notifier,
+    default_notifier,
+)
 from aivia.providers.mock import (
     MOCK_EPOCH,
     MockAll,
@@ -164,6 +170,8 @@ __all__ = [
     "AudioFormat",
     "CapabilityProvider",
     "ChatMessage",
+    "ConsoleNotificationProvider",
+    "ConsoleNotifier",
     "ContentPart",
     "Embedding",
     "EmbeddingInputType",
@@ -280,6 +288,8 @@ __all__ = [
     "VideoResult",
     "WordTimestamp",
     "build_mock_providers",
+    "console_notifier",
+    "default_notifier",
     "mock_provider_for",
     "provider_registry",
     "register_mock_providers",

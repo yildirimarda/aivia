@@ -35,6 +35,19 @@ from typing import Any
 
 from sqlalchemy import Engine
 
+from aivia.core.budget_alerts import (
+    AlertPeriod,
+    BudgetAlert,
+    BudgetAlertEmitter,
+    BudgetAlertManager,
+    BudgetAlertNotifier,
+    BudgetAlertPeriod,
+    BudgetAlertState,
+    BudgetAlertTracker,
+    ConsoleAlertNotifier,
+    ConsoleNotifier,
+    emit_budget_alerts,
+)
 from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.cost import CostTracker
 from aivia.core.cost_agg import CostAggregator, CostGroup
@@ -44,7 +57,15 @@ from aivia.core.models.base import utcnow
 from aivia.core.models.run import Run, RunState
 
 __all__ = [
+    "AlertPeriod",
     "BudgetAction",
+    "BudgetAlert",
+    "BudgetAlertEmitter",
+    "BudgetAlertManager",
+    "BudgetAlertNotifier",
+    "BudgetAlertPeriod",
+    "BudgetAlertState",
+    "BudgetAlertTracker",
     "BudgetCheck",
     "BudgetChecker",
     "BudgetController",
@@ -57,10 +78,13 @@ __all__ = [
     "BudgetResolution",
     "BudgetResult",
     "BudgetStatus",
+    "ConsoleAlertNotifier",
+    "ConsoleNotifier",
     "apply_budget_policy",
     "apply_on_exceed",
     "check_budget",
     "decide_budget",
+    "emit_budget_alerts",
     "enforce_budget",
     "ensure_budget",
     "resolve_budget",
