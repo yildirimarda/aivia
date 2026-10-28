@@ -68,7 +68,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement layered resolution from packaged defaults through user config, environment file, profile overrides and CLI set flags with documented precedence (tests/core/config/test_resolve.py)
 - [x] Add a config validate command printing every error with its key path and a failing exit code (tests/cli/test_config_validate.py)
 - [x] Export a JSON schema from the registered sections deterministically and fail CI when it is stale (tests/cli/test_config_schema.py)
-- [ ] Prove a configuration without module sections still validates and that a module key without its package errors clearly (tests/core/config/test_module_optional.py)
+- [x] Prove a configuration without module sections still validates and that a module key without its package errors clearly (tests/core/config/test_module_optional.py)
 - [ ] Maintain a single packaged default config that validates and covers every area of the configuration checklist (tests/test_example_config.py)
 - [ ] Improve config error messages to include file, dotted path, expected versus actual and a hint without a stack trace (tests/core/config/test_errors.py)
 - [ ] Generate the configuration reference document from the schema and docstrings and fail CI when it is stale (tests/cli/test_config_docs.py)
