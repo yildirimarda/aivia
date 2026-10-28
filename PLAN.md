@@ -109,7 +109,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 - [x] Add the provider base class with metadata, health and close plus a reusable contract test suite (tests/contracts)
 - [x] Define the LLM, search and page fetch protocols with typed request and response models and passing fakes (tests/contracts/test_llm_search.py)
-- [ ] Define the embeddings, text to speech and speech to text protocols including word timestamps (tests/contracts/test_audio_protocols.py)
+- [x] Define the embeddings, text to speech and speech to text protocols including word timestamps (tests/contracts/test_audio_protocols.py)
 - [ ] Define the image, image edit, video, music, sfx and stock protocols with capability flags (tests/contracts/test_media_protocols.py)
 - [ ] Define the notifier, publisher, delivery, storage, lip sync and character trainer protocols (tests/contracts/test_io_protocols.py)
 - [ ] Implement the provider registry with a registration decorator, name lookup, dotted path loading and a clear unknown type error (tests/core/test_registry.py)
