@@ -247,6 +247,48 @@ profiles:
     assert "tiktok/en" in err
 
 
+def test_validate_rejects_a_selected_prompt_that_does_not_exist(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path / "config.yaml",
+        """
+schema_version: 1
+prompts:
+  versions:
+    missing: default
+""".lstrip(),
+    )
+
+    code, output, err = validate(config, capsys)
+
+    assert code == 1
+    assert output == ""
+    assert "prompts.versions.missing" in err
+    assert "unknown prompt: missing" in err
+
+
+def test_validate_rejects_a_selected_prompt_source_that_does_not_exist(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path / "config.yaml",
+        """
+schema_version: 1
+prompts:
+  versions:
+    image: user
+""".lstrip(),
+    )
+
+    code, output, err = validate(config, capsys)
+
+    assert code == 1
+    assert output == ""
+    assert "prompts.versions.image" in err
+    assert "has no user version" in err
+
+
 def test_validate_resolves_the_default_models_file_beside_the_explicit_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

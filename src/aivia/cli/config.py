@@ -16,6 +16,7 @@ from aivia.core.config import migrations as config_migrations
 from aivia.core.config import schema as config_schema
 from aivia.core.config.resolve import load_config_file
 from aivia.core.errors import ConfigError
+from aivia.llm import PromptLibrary
 
 __all__ = [
     "configure",
@@ -399,6 +400,24 @@ def _schema_version_issue(values: Mapping[str, Any]) -> tuple[str, str] | None:
     )
 
 
+def _prompt_version_issues(
+    parsed: Any,
+    config_dir: Path,
+) -> list[tuple[str, str]]:
+    """Check every selected prompt version against the available prompt files."""
+    prompts = getattr(parsed, "prompts", None)
+    if prompts is None:
+        return []
+    library = PromptLibrary(config_dir=config_dir)
+    issues: list[tuple[str, str]] = []
+    for name, source in sorted(prompts.versions.items()):
+        try:
+            library.resolve(name, source)
+        except ConfigError as exc:
+            issues.append((f"prompts.versions.{name}", str(exc)))
+    return issues
+
+
 def run_validate(args: argparse.Namespace) -> int:
     """Validate the merged configuration and report every error with its path."""
     try:
@@ -444,6 +463,7 @@ def run_validate(args: argparse.Namespace) -> int:
             model_ids.warn_model_ids(parsed, config_dir=config_dir)
         except ConfigError as exc:
             issues.append(("models_file", str(exc)))
+        issues.extend(_prompt_version_issues(parsed, config_dir))
 
     if issues:
         for path, message in issues:
