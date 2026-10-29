@@ -257,6 +257,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add similarity utilities for cosine, normalized title matching and n gram overlap with documented thresholds (tests/core/test_similarity.py)
 - [ ] Run the shared contract suite plus golden fixtures across all LLM providers offline (tests/contracts/test_llm_providers.py)
 - [ ] Price cached input tokens separately and document whether reported input tokens already include them (tests/providers/llm/test_llm_cost.py)
+- [ ] Make LLM cache hit counting atomic so concurrent lookups do not lose increments (tests/llm/test_cache.py)
 
 ## Milestone 8: Media generation core and toolkit
 

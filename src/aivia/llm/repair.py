@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from aivia.core.config.llm import LLMConfig, TokenPricing
 from aivia.core.cost import CostTracker
 from aivia.core.errors import ConfigError
+from aivia.llm.cache import LLMCache
 from aivia.llm.structured import (
     StructuredOutputError,
     StructuredOutputHelper,
@@ -203,6 +204,10 @@ class RepairLoop:
         metadata: Mapping[str, Any] | None = None,
         record_cost: bool = True,
         prompt_builder: PromptBuilder | None = None,
+        cache: LLMCache | None = None,
+        prompt_version: str = "",
+        cache_parameters: Mapping[str, Any] | None = None,
+        no_cache: bool = False,
     ) -> None:
         limit, helper_config = _resolve_limit(config, max_repairs, repair_limit)
         self._max_repairs = limit
@@ -218,6 +223,10 @@ class RepairLoop:
             pricing_version=pricing_version,
             metadata=metadata,
             record_cost=record_cost,
+            cache=cache,
+            prompt_version=prompt_version,
+            cache_parameters=cache_parameters,
+            no_cache=no_cache,
         )
 
     @property
@@ -378,6 +387,10 @@ async def repair_structured(
     metadata: Mapping[str, Any] | None = None,
     record_cost: bool = True,
     prompt_builder: PromptBuilder | None = None,
+    cache: LLMCache | None = None,
+    prompt_version: str = "",
+    cache_parameters: Mapping[str, Any] | None = None,
+    no_cache: bool = False,
 ) -> StructuredOutputResult:
     """One-shot form of :class:`RepairLoop`."""
     loop = RepairLoop(
@@ -394,6 +407,10 @@ async def repair_structured(
         metadata=metadata,
         record_cost=record_cost,
         prompt_builder=prompt_builder,
+        cache=cache,
+        prompt_version=prompt_version,
+        cache_parameters=cache_parameters,
+        no_cache=no_cache,
     )
     return await loop.complete(request)
 

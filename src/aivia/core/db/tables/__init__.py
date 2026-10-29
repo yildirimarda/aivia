@@ -48,6 +48,10 @@ from aivia.core.db.tables.core import (
     runs,
     stage_runs,
 )
+from aivia.core.db.tables.llm import (
+    LLM_CACHE_PROVIDER_INDEX_NAME,
+    llm_cache,
+)
 from aivia.core.db.tables.orders import (
     DELIVERY_CREATED_AT_INDEX_NAME,
     DELIVERY_ORDER_INDEX_NAME,
@@ -97,6 +101,7 @@ __all__ = [
     "FEEDBACK_CREATED_AT_INDEX_NAME",
     "FEEDBACK_SUBJECT_INDEX_NAME",
     "IDEMPOTENCY_INDEX_NAME",
+    "LLM_CACHE_PROVIDER_INDEX_NAME",
     "ORDER_CREATED_AT_INDEX_NAME",
     "ORDER_IDEMPOTENCY_INDEX_NAME",
     "ORDER_OCCASION_INDEX_NAME",
@@ -133,6 +138,7 @@ __all__ = [
     "deliveries",
     "feedback",
     "jobs",
+    "llm_cache",
     "orders",
     "plans",
     "post_metrics",

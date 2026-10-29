@@ -6,6 +6,17 @@ of any vendor adapter. Provider calls still go through
 id or a price.
 """
 
+from aivia.llm.cache import (
+    CACHE_HIT_OPERATION,
+    CachedLLMProvider,
+    LLMCache,
+    LLMCacheKey,
+    LLMResponseCache,
+    llm_cache_key,
+    llm_response_cache_key,
+    parameters_for_request,
+    provider_name,
+)
 from aivia.llm.repair import (
     RepairHelper,
     RepairingStructuredOutput,
@@ -91,10 +102,15 @@ from aivia.llm.vision import (
 )
 
 __all__ = [
+    "CACHE_HIT_OPERATION",
     "CAPABILITY_VISION",
     "CORE_LLM_ROLES",
     "DEFAULT_ROLE",
     "VISION_CAPABILITY",
+    "CachedLLMProvider",
+    "LLMCache",
+    "LLMCacheKey",
+    "LLMResponseCache",
     "LLMRole",
     "LLMRoleResolver",
     "ModelResolver",
@@ -134,6 +150,8 @@ __all__ = [
     "filter_vision_models",
     "generate_structured",
     "has_vision",
+    "llm_cache_key",
+    "llm_response_cache_key",
     "message_has_images",
     "messages_need_vision",
     "model_for",
@@ -143,8 +161,10 @@ __all__ = [
     "models_by_role",
     "models_for_request",
     "models_with_vision",
+    "parameters_for_request",
     "parse_structured",
     "parse_structured_response",
+    "provider_name",
     "register_role",
     "repair_loop",
     "repair_messages",

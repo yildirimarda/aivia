@@ -89,6 +89,11 @@ from aivia.core.models.job import (
     JobState,
     JobStatus,
 )
+from aivia.core.models.llm import (
+    LLMCacheEntry,
+    LLMCacheRecord,
+    LLMResponseCacheEntry,
+)
 from aivia.core.models.provider import (
     ProviderMeta,
     ProviderMetadata,
@@ -205,6 +210,9 @@ __all__ = [
     "JobRecord",
     "JobState",
     "JobStatus",
+    "LLMCacheEntry",
+    "LLMCacheRecord",
+    "LLMResponseCacheEntry",
     "License",
     "MediaKind",
     "MediaPrompt",

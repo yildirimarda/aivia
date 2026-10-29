@@ -31,6 +31,7 @@ from aivia.core.db.tables import (
     deliveries,
     feedback,
     jobs,
+    llm_cache,
     orders,
     plans,
     post_metrics,
@@ -62,6 +63,7 @@ from aivia.core.models import (
     CostEvent,
     Delivery,
     Job,
+    LLMCacheEntry,
     ModelBase,
     Plan,
     Post,
@@ -80,6 +82,7 @@ __all__ = [
     "DeliveryRepository",
     "FeedbackRepository",
     "JobRepository",
+    "LLMCacheRepository",
     "ModelRepository",
     "OrderRepository",
     "PlanRepository",
@@ -435,6 +438,14 @@ class AssetCacheRepository(ModelRepository[AssetCacheEntry]):
     key_columns = ("cache_key",)
 
 
+class LLMCacheRepository(ModelRepository[LLMCacheEntry]):
+    """Persist request digests that point at cached LLM responses."""
+
+    table = llm_cache
+    model = LLMCacheEntry
+    key_columns = ("cache_key",)
+
+
 class CompositionRepository(ModelRepository[CompositionReference]):
     """Persist references to rendered compositions."""
 
@@ -539,6 +550,7 @@ REPOSITORIES: Mapping[str, type[Repository[Any]]] = {
         JobRepository,
         AssetRepository,
         AssetCacheRepository,
+        LLMCacheRepository,
         CompositionRepository,
         CostEventRepository,
         PlanRepository,
