@@ -178,7 +178,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: durable, resumable runs behind a queue, a storage abstraction and a local API -->
 
-- [ ] Add the stage base class with name, run, estimate and artifact declarations plus a context exposing run directory, config, cost, router, storage and logger (tests/core/stages/test_base.py)
+- [x] Add the stage base class with name, run, estimate and artifact declarations plus a context exposing run directory, config, cost, router, storage and logger (tests/core/stages/test_base.py)
 - [ ] Manage run directories and register artifacts per stage (tests/core/test_run_dirs.py)
 - [ ] Implement the run state machine with legal transitions only and persistence on each change (tests/core/test_run_state.py)
 - [ ] Implement the orchestrator that executes recipe stages in order, persists results and stops on failure with stage and error code (tests/core/test_orchestrator.py)
