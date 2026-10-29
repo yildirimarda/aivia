@@ -33,6 +33,11 @@ from aivia.core.db.repos import RunRepository, StageRunRepository
 from aivia.core.errors import AiviaError, ConfigError
 from aivia.core.models.base import utcnow
 from aivia.core.models.run import Run, RunState, StageResult, StageState
+from aivia.core.resume import (
+    compute_input_hash,
+    compute_output_hash,
+    should_skip_stage,
+)
 from aivia.core.router import Router
 from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.run_state import (
@@ -65,6 +70,9 @@ __all__ = [
     "execute_recipe",
     "execute_stages",
     "orchestrate",
+    "resume_recipe",
+    "resume_run",
+    "resume_stages",
     "run_recipe",
     "run_stages",
 ]
@@ -124,6 +132,20 @@ class OrchestrationResult:
     def stage_results(self) -> tuple[StageResult, ...]:
         """Alias for :attr:`stages`."""
         return self.stages
+
+    @property
+    def skipped_stages(self) -> tuple[StageResult, ...]:
+        """The stages a resume skipped because their inputs were unchanged."""
+        return tuple(
+            result for result in self.stages if result.status is StageState.SKIPPED
+        )
+
+    @property
+    def executed_stages(self) -> tuple[StageResult, ...]:
+        """The stages that actually ran during this pass."""
+        return tuple(
+            result for result in self.stages if result.status is not StageState.SKIPPED
+        )
 
     @property
     def ok(self) -> bool:
@@ -369,17 +391,11 @@ class Orchestrator:
 
         results: list[StageResult] = []
         total_cost = run_record.cost_usd
+        previous_results = self._existing_results(run_record.id)
+        upstream: list[StageResult] = []
 
         for index, stage in enumerate(recipe):
             started = self.clock()
-            self.logger.info(
-                "stage started",
-                extra={
-                    "run_id": run_record.id,
-                    "stage": stage.name,
-                    "index": index,
-                },
-            )
             context = StageContext(
                 run_dir=directory.path,
                 config=self.config,
@@ -389,6 +405,38 @@ class Orchestrator:
                 logger=self.logger.getChild(stage.name),
                 run=run_record,
             )
+            expected_input = compute_input_hash(
+                stage,
+                config=self.config,
+                upstream=upstream,
+            )
+            previous = self._previous_result(
+                run_record.id,
+                stage.name,
+                previous_results,
+            )
+            if should_skip_stage(previous, expected_input):
+                skipped = self._skipped_result(cast(StageResult, previous), index)
+                results.append(skipped)
+                upstream.append(cast(StageResult, previous))
+                self.logger.info(
+                    "stage skipped",
+                    extra={
+                        "run_id": run_record.id,
+                        "stage": stage.name,
+                        "index": index,
+                    },
+                )
+                continue
+
+            self.logger.info(
+                "stage started",
+                extra={
+                    "run_id": run_record.id,
+                    "stage": stage.name,
+                    "index": index,
+                },
+            )
 
             try:
                 outcome = await stage.run(context)
@@ -396,6 +444,7 @@ class Orchestrator:
                     stage, outcome, run_record, index, started
                 )
                 if final.status in _FAILURE_STATES:
+                    final = final.model_copy(update={"input_hash": expected_input})
                     total_cost += final.cost_usd
                     run_record = self._apply_cost(run_record, total_cost)
                     return self._failed(
@@ -408,6 +457,7 @@ class Orchestrator:
                         directory,
                     )
                 final = self._register(stage, final, directory)
+                final = self._with_hashes(final, expected_input, directory)
                 total_cost += final.cost_usd
             except Exception as exc:
                 code = _error_code(exc)
@@ -419,6 +469,7 @@ class Orchestrator:
                     stage=stage.name,
                     status=StageState.FAILED,
                     index=index,
+                    input_hash=expected_input,
                     error_code=code,
                     error_message=message,
                     started_at=started,
@@ -435,7 +486,9 @@ class Orchestrator:
                     cause=exc,
                 )
 
-            results.append(self._persist_result(final))
+            stored = self._persist_result(final)
+            results.append(stored)
+            upstream.append(stored)
             self.logger.info(
                 "stage finished",
                 extra={
@@ -476,6 +529,19 @@ class Orchestrator:
         ) = None,
     ) -> OrchestrationResult:
         """Alias for :meth:`execute`."""
+        return await self.execute(run, stages)
+
+    async def resume(
+        self,
+        run: Run | str | None = None,
+        stages: (
+            Iterable[StageLike | type[Stage]]
+            | Mapping[str, StageLike | type[Stage]]
+            | FormatRecipeConfig
+            | None
+        ) = None,
+    ) -> OrchestrationResult:
+        """Resume a run, reusing succeeded stages whose inputs are unchanged."""
         return await self.execute(run, stages)
 
     def execute_sync(self) -> OrchestrationResult:
@@ -529,7 +595,65 @@ class Orchestrator:
         )
         return directory.create()
 
+    def _existing_results(self, run_id: str) -> dict[str, StageResult]:
+        repository = self.stage_repository
+        lister = getattr(repository, "list", None)
+        if not callable(lister):
+            return {}
+        try:
+            records = lister(run_id=run_id)
+        except (TypeError, ValueError):
+            return {}
+        return {record.stage: record for record in records}
+
+    def _previous_result(
+        self,
+        run_id: str,
+        stage: str,
+        cache: dict[str, StageResult],
+    ) -> StageResult | None:
+        if stage in cache:
+            return cache[stage]
+        repository = self.stage_repository
+        getter = getattr(repository, "get", None)
+        if not callable(getter):
+            return None
+        try:
+            found = cast(StageResult | None, getter(run_id, stage))
+        except (TypeError, ValueError):
+            return None
+        if found is not None:
+            cache[stage] = found
+        return found
+
+    def _skipped_result(self, previous: StageResult, index: int) -> StageResult:
+        metadata = dict(previous.metadata)
+        metadata.setdefault("resumed", True)
+        metadata.setdefault("previous_status", previous.status.value)
+        return previous.model_copy(
+            update={
+                "status": StageState.SKIPPED,
+                "index": index,
+                "metadata": metadata,
+            }
+        )
+
+    def _with_hashes(
+        self,
+        result: StageResult,
+        input_hash: str,
+        directory: RunDirectory,
+    ) -> StageResult:
+        output_hash = result.output_hash
+        if not output_hash:
+            output_hash = compute_output_hash(directory.artifacts(result.stage))
+        return result.model_copy(
+            update={"input_hash": input_hash, "output_hash": output_hash}
+        )
+
     def _start_run(self, run: Run) -> Run:
+        if run.state in {RunState.FAILED, RunState.SUCCEEDED}:
+            return self._restart_run(run)
         if run.state not in _READY_STATES:
             raise IllegalRunTransition(run.state, RunState.RUNNING)
         if run.state is RunState.RUNNING:
@@ -544,6 +668,28 @@ class Orchestrator:
         if self.state_machine is not None:
             return self.state_machine.start(run, now=self.clock())
         return transition_run(run, RunState.RUNNING, now=self.clock())
+
+    def _restart_run(self, run: Run) -> Run:
+        if self.state_machine is not None:
+            return self.state_machine.restart(
+                run,
+                resumed_by="orchestrator",
+                reason="resume after failure",
+                now=self.clock(),
+            )
+        moment = self.clock()
+        return run.model_copy(
+            update={
+                "state": RunState.RUNNING,
+                "finished_at": None,
+                "error_code": "",
+                "error_message": "",
+                "resumed_at": moment,
+                "resumed_by": "orchestrator",
+                "resume_reason": "resume after failure",
+                "updated_at": moment,
+            }
+        )
 
     def _finish_run(self, run: Run, *, succeeded: bool) -> Run:
         if succeeded:
@@ -720,6 +866,25 @@ async def run_recipe(
     """Alias for :func:`execute_recipe`."""
     return await execute_recipe(run, stages, **options)
 
+
+async def resume_recipe(
+    run: Run | str | None,
+    stages: (
+        Iterable[StageLike | type[Stage]]
+        | Mapping[str, StageLike | type[Stage]]
+        | FormatRecipeConfig
+    ),
+    **options: Any,
+) -> OrchestrationResult:
+    """Resume *run*, reusing succeeded stages whose inputs are unchanged."""
+    return await execute_recipe(run, stages, **options)
+
+
+resume_run = resume_recipe
+"""Alias for :func:`resume_recipe`."""
+
+resume_stages = resume_recipe
+"""Alias for :func:`resume_recipe`."""
 
 execute_stages = execute_recipe
 """Alias for :func:`execute_recipe`."""

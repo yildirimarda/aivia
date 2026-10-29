@@ -335,6 +335,45 @@ class RunStateMachine:
             now=now,
         )
 
+    def restart(
+        self,
+        run: Run | str,
+        *,
+        resumed_by: str = "",
+        reason: str = "",
+        now: datetime | None = None,
+    ) -> Run:
+        """Retry a finished run by moving it back to ``running``.
+
+        This is the one explicit exception to the terminal-state rule: a failed
+        run may be retried after the cause is fixed, and a succeeded run may be
+        reopened to verify or regenerate it, reusing the stages that already
+        succeeded. The finish time, failure fields and resume audit fields are
+        rewritten. Any other source state still raises
+        :class:`IllegalRunTransition`.
+        """
+        current = self._current(run)
+        if current.state not in {RunState.FAILED, RunState.SUCCEEDED}:
+            raise IllegalRunTransition(current.state, RunState.RUNNING)
+        moment = now if now is not None else self.clock()
+        persisted = self.repository.update(
+            current.id,
+            state=RunState.RUNNING,
+            finished_at=None,
+            error_code="",
+            error_message="",
+            resumed_at=moment,
+            resumed_by=resumed_by.strip(),
+            resume_reason=reason.strip(),
+            updated_at=moment,
+        )
+        if persisted is None:
+            raise RunNotFoundError(
+                f"run not found: {current.id}",
+                details={"run_id": current.id},
+            )
+        return persisted
+
     def succeed(self, run: Run | str, *, now: datetime | None = None) -> Run:
         """Move a running run to ``succeeded``."""
         return self.transition(run, RunState.SUCCEEDED, now=now)
