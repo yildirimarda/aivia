@@ -165,6 +165,7 @@ class EmbeddingService:
         metadata: Mapping[str, Any] | None = None,
         record_cost: bool = True,
         use_cache: bool = True,
+        remaining_budget: float | None = None,
     ) -> EmbeddingResponse:
         """Run *request* through the router and return validated vectors.
 
@@ -172,6 +173,13 @@ class EmbeddingService:
         :meth:`Router.execute`. The cost event names the provider that finally
         succeeded, never a provider that failed before it. ``use_cache=False``
         bypasses the configured cache for this call.
+
+        ``remaining_budget`` is the amount still available for this call and is
+        passed to the router, so a provider whose estimated embedding price
+        exceeds it is never called. When no affordable provider remains the
+        router refuses the call with
+        :class:`~aivia.core.errors.ProviderExhaustedError` and the skipped
+        entries carry ``budget_exceeded``. ``None`` disables the check.
         """
         if not isinstance(request, EmbeddingRequest):
             raise TypeError("request must be an EmbeddingRequest")
@@ -188,7 +196,11 @@ class EmbeddingService:
                 target = CachedEmbeddingProvider(provider, self._cache)
             return await cast(EmbeddingProvider, target).embed(request)
 
-        response = await self._router.execute(CAPABILITY_EMBEDDINGS, run)
+        response = await self._router.execute(
+            CAPABILITY_EMBEDDINGS,
+            run,
+            remaining_budget=remaining_budget,
+        )
         selection = self._router.last_selection
         if selection is None:
             raise RuntimeError("router completed an embedding call without a selection")
@@ -227,6 +239,7 @@ class EmbeddingService:
         metadata: Mapping[str, Any] | None = None,
         record_cost: bool = True,
         use_cache: bool = True,
+        remaining_budget: float | None = None,
     ) -> EmbeddingOutcome:
         """Run :meth:`embed` and return the response with its price and event."""
         response = await self.embed(
@@ -238,6 +251,7 @@ class EmbeddingService:
             metadata=metadata,
             record_cost=record_cost,
             use_cache=use_cache,
+            remaining_budget=remaining_budget,
         )
         return EmbeddingOutcome(
             response=response,
@@ -262,6 +276,7 @@ async def embed(
     metadata: Mapping[str, Any] | None = None,
     record_cost: bool = True,
     use_cache: bool = True,
+    remaining_budget: float | None = None,
 ) -> EmbeddingResponse:
     """Execute one embedding call without constructing a long-lived service."""
     service = EmbeddingService(
@@ -280,4 +295,5 @@ async def embed(
         metadata=metadata,
         record_cost=record_cost,
         use_cache=use_cache,
+        remaining_budget=remaining_budget,
     )
