@@ -66,6 +66,10 @@ class StructuredOutputError(ValidationError):
 
     code = "structured_output"
 
+    attempts: int
+    repairs: int
+    max_repairs: int
+
     def __init__(
         self,
         message: str,

@@ -5,7 +5,7 @@
 schema_version: 1
 models:
   mock-llm:
-    capabilities: [llm]
+    capabilities: [llm, vision]
   mock-embedding:
     capabilities: [embeddings]
   mock-image:

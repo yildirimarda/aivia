@@ -310,9 +310,9 @@ class RepairLoop:
                 "last_error": str(last_error),
             },
         )
-        exhausted.attempts = limit + 1  # type: ignore[attr-defined]
-        exhausted.repairs = limit  # type: ignore[attr-defined]
-        exhausted.max_repairs = limit  # type: ignore[attr-defined]
+        exhausted.attempts = limit + 1
+        exhausted.repairs = limit
+        exhausted.max_repairs = limit
         exhausted.last_error = last_error  # type: ignore[attr-defined]
         exhausted.last_content = last_error.content  # type: ignore[attr-defined]
         exhausted.last_errors = last_error.errors  # type: ignore[attr-defined]

@@ -25,6 +25,7 @@ __all__ = [
     "CATALOG_FILENAME",
     "CATALOG_SCHEMA_VERSION",
     "CLOSE_MATCH_CUTOFF",
+    "VISION_CAPABILITY",
     "ConfiguredModelId",
     "ModelCatalog",
     "ModelIdIssue",
@@ -44,6 +45,8 @@ __all__ = [
 CATALOG_FILENAME = "models.yaml"
 CATALOG_SCHEMA_VERSION = 1
 CLOSE_MATCH_CUTOFF = 0.6
+VISION_CAPABILITY = "vision"
+"""The catalog capability a model declares when it accepts image input."""
 
 _ENTRY_KEYS = frozenset({"capabilities", "provider", "deprecated", "replacement"})
 _TOP_LEVEL_KEYS = frozenset({"schema_version", "models"})
@@ -69,6 +72,16 @@ class ModelInfo:
     provider: str | None = None
     deprecated: bool = False
     replacement: str | None = None
+
+    def supports(self, capability: str) -> bool:
+        """Whether this model declares *capability*."""
+        name = capability.strip()
+        return bool(name) and name in self.capabilities
+
+    @property
+    def supports_vision(self) -> bool:
+        """Whether this model accepts image input."""
+        return self.supports(VISION_CAPABILITY)
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +176,28 @@ class ModelCatalog:
     def get(self, model_id: str) -> ModelInfo | None:
         """Return the entry for *model_id*, or ``None`` when it is unknown."""
         return self._models.get(model_id.strip())
+
+    def models_with_capability(self, capability: str) -> tuple[str, ...]:
+        """Return every model id that declares *capability*, in id order."""
+        name = capability.strip()
+        if not name:
+            return ()
+        return tuple(
+            model_id for model_id in self.ids() if self._models[model_id].supports(name)
+        )
+
+    def supports(self, model_id: str, capability: str) -> bool:
+        """Whether *model_id* is known and declares *capability*."""
+        info = self.get(model_id)
+        return info is not None and info.supports(capability)
+
+    def supports_vision(self, model_id: str) -> bool:
+        """Whether *model_id* is known and accepts image input."""
+        return self.supports(model_id, VISION_CAPABILITY)
+
+    def vision_models(self) -> tuple[str, ...]:
+        """Return every model id that accepts image input."""
+        return self.models_with_capability(VISION_CAPABILITY)
 
     def closest(self, model_id: str) -> str | None:
         """Return the closest known id, when it is similar enough."""

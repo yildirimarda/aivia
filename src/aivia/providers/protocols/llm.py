@@ -234,6 +234,11 @@ class ChatMessage(ProtocolModel):
             return []
         return [part for part in self.content if isinstance(part, ImagePart)]
 
+    @property
+    def has_images(self) -> bool:
+        """Whether the message carries at least one image part."""
+        return bool(self.images)
+
 
 class LLMUsage(ProtocolModel):
     """Token usage reported by a provider."""
@@ -331,6 +336,26 @@ class LLMRequest(ProtocolModel):
             if message.role is MessageRole.USER:
                 return message.text
         return ""
+
+    @property
+    def images(self) -> list[ImagePart]:
+        """Every image part across the conversation, in order."""
+        return [image for message in self.messages for image in message.images]
+
+    @property
+    def has_images(self) -> bool:
+        """Whether the request carries at least one image part."""
+        return any(message.has_images for message in self.messages)
+
+    @property
+    def requires_vision(self) -> bool:
+        """Whether the request can only be served by a vision capable model."""
+        return self.has_images
+
+    @property
+    def needs_vision(self) -> bool:
+        """Alias for :attr:`requires_vision`."""
+        return self.requires_vision
 
 
 class LLMResponse(ProtocolModel):
