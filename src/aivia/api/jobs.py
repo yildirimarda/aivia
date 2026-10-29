@@ -288,9 +288,7 @@ def _run_values(submission: JobSubmission) -> dict[str, Any]:
     kind = values.get("kind")
     if not kind:
         kind = (
-            submission.kind
-            if submission.kind in _RUN_KINDS
-            else RunKind.PIPELINE.value
+            submission.kind if submission.kind in _RUN_KINDS else RunKind.PIPELINE.value
         )
     values["kind"] = kind
     return values
