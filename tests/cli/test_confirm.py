@@ -101,8 +101,9 @@ def test_yes_flag_allows_an_above_threshold_run_without_prompting(
     code = run_sample(write_config(tmp_path, 0.01), "--yes")
     captured = capsys.readouterr()
 
-    assert code == 2
-    assert "execution is not available" in captured.err
+    assert code == 0
+    assert "State: queued" in captured.out
+    assert "execution is not available" not in captured.err
     assert "Continue?" not in captured.out
 
 
@@ -116,9 +117,9 @@ def test_interactive_run_above_the_threshold_accepts_yes(
     code = run_sample(write_config(tmp_path, 0.01))
     captured = capsys.readouterr()
 
-    assert code == 2
+    assert code == 0
     assert "Continue? [y/N]" in captured.out
-    assert "execution is not available" in captured.err
+    assert "Run: run_" in captured.out
 
 
 def test_interactive_run_above_the_threshold_refuses_no(
@@ -147,9 +148,9 @@ def test_run_below_the_threshold_does_not_prompt(
     code = run_sample(write_config(tmp_path, 1.0))
     captured = capsys.readouterr()
 
-    assert code == 2
+    assert code == 0
     assert "Continue?" not in captured.out
-    assert "execution is not available" in captured.err
+    assert "Run: run_" in captured.out
 
 
 def test_zero_threshold_disables_confirmation(
@@ -162,9 +163,9 @@ def test_zero_threshold_disables_confirmation(
     code = run_sample(write_config(tmp_path, 0.0))
     captured = capsys.readouterr()
 
-    assert code == 2
+    assert code == 0
     assert "non-interactive runs require --yes" not in captured.err
-    assert "execution is not available" in captured.err
+    assert "Run: run_" in captured.out
 
 
 def test_estimate_above_the_threshold_never_prompts(

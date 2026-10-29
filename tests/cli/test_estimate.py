@@ -219,16 +219,27 @@ def test_estimate_rejects_an_unknown_format(
     assert "estimate_sample" in captured.err
 
 
-def test_run_without_estimate_does_not_execute(
+def test_run_without_estimate_enqueues_instead_of_estimating_only(
     priced_config: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    code = main(["run", "--format", "estimate_sample", "--config", str(priced_config)])
+    code = main(
+        [
+            "run",
+            "--format",
+            "estimate_sample",
+            "--enqueue",
+            "--config",
+            str(priced_config),
+        ]
+    )
     captured = capsys.readouterr()
 
-    assert code == 2
-    assert captured.out == ""
-    assert "pass --estimate" in captured.err
+    assert code == 0
+    assert captured.err == ""
+    assert "Run: run_" in captured.out
+    assert "Estimate: $0.040510" in captured.out
+    assert "State: queued" in captured.out
 
 
 def test_estimator_picks_the_cheapest_priced_provider() -> None:

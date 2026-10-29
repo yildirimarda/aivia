@@ -232,8 +232,8 @@ budget:
     )
     captured = capsys.readouterr()
 
-    assert code == 2
-    assert "execution is not available" in captured.err
+    assert code == 0
+    assert "Run: run_" in captured.out
     assert "non-interactive runs require --yes" not in captured.err
 
 

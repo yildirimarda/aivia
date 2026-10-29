@@ -213,6 +213,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Make asset cache store atomic so concurrent identical requests create one entry (tests/core/test_asset_cache.py)
 - [ ] Make providers check honour dry run by checking mock providers without live mode or network (tests/cli/test_providers.py)
 - [ ] Add an api serve command that validates the loopback bind and starts the local server (tests/cli/test_api_serve.py)
+- [ ] Add a worker command that claims and runs queued jobs until stopped (tests/cli/test_worker.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 
