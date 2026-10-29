@@ -71,9 +71,9 @@ The local HTTP API bind address, authentication and request limits.
 | --- | --- | --- | --- | --- |
 | `api_key_ref` | string | `"AIVA_API_KEY"` |  |  |
 | `host` | string | `"127.0.0.1"` |  |  |
-| `max_body_bytes` | integer | `10000000` |  |  |
-| `port` | integer | `8765` |  |  |
-| `rate_limit_per_minute` | integer | `60` |  |  |
+| `max_body_bytes` | integer | `10000000` | > 0 |  |
+| `port` | integer | `8765` | >= 1; <= 65535 |  |
+| `rate_limit_per_minute` | integer | `60` | >= 0 |  |
 | `require_auth` | boolean | `true` |  |  |
 
 ## `brand`

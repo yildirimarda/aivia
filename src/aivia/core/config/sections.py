@@ -226,11 +226,11 @@ class ApiConfig(ConfigModel):
     """The local HTTP API bind address, authentication and request limits."""
 
     host: str = "127.0.0.1"
-    port: int = 8765
+    port: int = Field(default=8765, ge=1, le=65535)
     require_auth: bool = True
     api_key_ref: str = "AIVA_API_KEY"
-    max_body_bytes: int = 10_000_000
-    rate_limit_per_minute: int = 60
+    max_body_bytes: int = Field(default=10_000_000, gt=0)
+    rate_limit_per_minute: int = Field(default=60, ge=0)
 
 
 class SafetyConfig(ConfigModel):
