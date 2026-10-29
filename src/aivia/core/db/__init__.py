@@ -18,6 +18,7 @@ from aivia.core.db.migrate import (
 )
 from aivia.core.db.repos import (
     REPOSITORIES,
+    AssetCacheRepository,
     AssetRepository,
     CompositionRepository,
     CostEventRepository,
@@ -42,6 +43,7 @@ from aivia.core.db.repos import (
 )
 from aivia.core.db.schema import NAMING_CONVENTION, metadata
 from aivia.core.db.tables import (
+    ASSET_CACHE_ASSET_INDEX_NAME,
     ASSET_CREATED_AT_INDEX_NAME,
     ASSET_PINNED_INDEX_NAME,
     ASSET_PROMPT_HASH_INDEX_NAME,
@@ -90,6 +92,7 @@ from aivia.core.db.tables import (
     WEB_CARD_HIT_DAY_INDEX_NAME,
     WEB_CARD_HIT_ORDER_INDEX_NAME,
     WEB_CARD_HIT_VISITOR_INDEX_NAME,
+    asset_cache,
     assets,
     compositions,
     cost_events,
@@ -110,6 +113,7 @@ from aivia.core.db.tables import (
 )
 
 __all__ = [
+    "ASSET_CACHE_ASSET_INDEX_NAME",
     "ASSET_CREATED_AT_INDEX_NAME",
     "ASSET_PINNED_INDEX_NAME",
     "ASSET_PROMPT_HASH_INDEX_NAME",
@@ -163,6 +167,7 @@ __all__ = [
     "WEB_CARD_HIT_DAY_INDEX_NAME",
     "WEB_CARD_HIT_ORDER_INDEX_NAME",
     "WEB_CARD_HIT_VISITOR_INDEX_NAME",
+    "AssetCacheRepository",
     "AssetRepository",
     "CompositionRepository",
     "CostEventRepository",
@@ -184,6 +189,7 @@ __all__ = [
     "TemplateRepository",
     "WebCardHitRepository",
     "alembic_config",
+    "asset_cache",
     "assets",
     "compositions",
     "configure_connection",

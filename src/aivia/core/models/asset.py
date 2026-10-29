@@ -26,6 +26,7 @@ from aivia.core.models.base import ModelBase, canonical_json
 __all__ = [
     "Asset",
     "AssetAnalysis",
+    "AssetCacheEntry",
     "AssetCost",
     "AssetCostLink",
     "AssetKind",
@@ -446,6 +447,95 @@ class AssetCostLink(ModelBase):
     def cost(self) -> float | None:
         """Alias for :attr:`amount_usd`."""
         return self.amount_usd
+
+
+class AssetCacheEntry(ModelBase):
+    """One request digest pointing at the asset that satisfied it.
+
+    The cache key is the primary key, so one request maps to exactly one
+    stored asset. ``parameters`` and ``reference_hashes`` are kept for audit
+    and for rebuilding the key without re-reading the original request.
+    ``hit_count`` counts cache hits that were served without a provider call.
+    """
+
+    cache_key: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices(
+            "cache_key",
+            "key",
+            "digest",
+            "asset_cache_key",
+        ),
+    )
+    asset_id: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices("asset_id", "asset", "id"),
+    )
+    provider: str = Field(
+        default="",
+        validation_alias=AliasChoices("provider", "vendor"),
+    )
+    model: str = Field(
+        default="",
+        validation_alias=AliasChoices("model", "model_id"),
+    )
+    prompt_hash: str = Field(
+        default="",
+        validation_alias=AliasChoices("prompt_hash", "prompt_sha256"),
+    )
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("parameters", "params", "options"),
+    )
+    reference_hashes: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices(
+            "reference_hashes",
+            "references",
+            "reference_digests",
+        ),
+    )
+    hit_count: int = Field(
+        default=0,
+        ge=0,
+        validation_alias=AliasChoices("hit_count", "hits"),
+    )
+
+    @field_validator(
+        "cache_key",
+        "asset_id",
+        "provider",
+        "model",
+        "prompt_hash",
+        mode="before",
+    )
+    @classmethod
+    def _strip_text(cls, value: Any) -> Any:
+        return _strip(value)
+
+    @field_validator("parameters", mode="before")
+    @classmethod
+    def _validate_parameters(cls, value: Any) -> Any:
+        return {} if value is None else value
+
+    @field_validator("reference_hashes", mode="before")
+    @classmethod
+    def _validate_reference_hashes(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
+
+    @property
+    def asset_cache_key(self) -> str:
+        """Alias for :attr:`cache_key`."""
+        return self.cache_key
+
+    @property
+    def hits(self) -> int:
+        """Alias for :attr:`hit_count`."""
+        return self.hit_count
 
 
 class Asset(ModelBase):

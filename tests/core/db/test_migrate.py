@@ -111,7 +111,7 @@ def test_migrations_create_the_database_and_record_the_revision(
     assert database.is_file()
     engine = create_database_engine(database)
     try:
-        assert current_revision(engine) == "0006"
+        assert current_revision(engine) == "0007"
     finally:
         engine.dispose()
 
@@ -124,7 +124,7 @@ def test_migrations_are_idempotent(tmp_path: Path) -> None:
 
     engine = create_database_engine(database)
     try:
-        assert current_revision(engine) == "0006"
+        assert current_revision(engine) == "0007"
     finally:
         engine.dispose()
 
@@ -134,7 +134,7 @@ def test_migrations_accept_a_configured_engine() -> None:
     try:
         upgrade_database(engine=engine)
 
-        assert current_revision(engine) == "0006"
+        assert current_revision(engine) == "0007"
     finally:
         engine.dispose()
 
@@ -148,7 +148,7 @@ def test_migrations_run_in_the_user_data_directory(tmp_path: Path) -> None:
     assert database.is_file()
     engine = create_database_engine(environ=environ)
     try:
-        assert current_revision(engine) == "0006"
+        assert current_revision(engine) == "0007"
     finally:
         engine.dispose()
 

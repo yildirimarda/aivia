@@ -190,7 +190,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the worker loop with backoff retries, dead letter state, graceful shutdown and stale heartbeat recovery (tests/core/jobs/test_worker.py)
 - [x] Add a local storage provider with content addressed paths, dedupe on put and url resolution (tests/providers/test_storage_local.py)
 - [x] Add an S3 compatible storage provider with presigned expiring urls verified against a local mock (tests/providers/test_storage_s3.py)
-- [ ] Add the asset cache keyed by provider, model, prompt, parameters and reference hashes, recording zero cost hits (tests/core/test_asset_cache.py)
+- [x] Add the asset cache keyed by provider, model, prompt, parameters and reference hashes, recording zero cost hits (tests/core/test_asset_cache.py)
 - [ ] Add the core platform data loader and default file with durations, resolutions, aspect ratios, size limits, caption limits, safe areas and disclosure rules (tests/core/test_platforms.py)
 - [ ] Add the CLI framework with global config, profile, set, estimate, dry run, yes, no cache, live and verbose flags plus a command registry (tests/cli/test_globals.py)
 - [ ] Enforce dry run by swapping in mock providers and failing the test on any outbound socket call (tests/e2e/test_dry_run.py)
@@ -210,6 +210,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Cancel an in-flight handler when its heartbeat detects a recovered claim (tests/core/jobs/test_worker.py)
 - [ ] Wire SIGTERM and SIGINT to worker stop so shutdown drains the current job (tests/cli/test_worker_shutdown.py)
 - [ ] Add a storage provider factory that builds local or s3 from storage config and resolves credentials (tests/providers/test_storage_factory.py)
+- [ ] Make asset cache store atomic so concurrent identical requests create one entry (tests/core/test_asset_cache.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 

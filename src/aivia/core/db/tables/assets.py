@@ -19,6 +19,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -31,6 +32,7 @@ from sqlalchemy import (
 from aivia.core.db.schema import metadata
 
 __all__ = [
+    "ASSET_CACHE_ASSET_INDEX_NAME",
     "ASSET_CREATED_AT_INDEX_NAME",
     "ASSET_PINNED_INDEX_NAME",
     "ASSET_PROMPT_HASH_INDEX_NAME",
@@ -42,10 +44,14 @@ __all__ = [
     "COST_EVENT_CREATED_AT_INDEX_NAME",
     "COST_EVENT_PROVIDER_INDEX_NAME",
     "COST_EVENT_RUN_INDEX_NAME",
+    "asset_cache",
     "assets",
     "compositions",
     "cost_events",
 ]
+
+ASSET_CACHE_ASSET_INDEX_NAME = "ix_asset_cache_asset_id"
+"""Find the cache entry pointing at one asset."""
 
 ASSET_PROMPT_HASH_INDEX_NAME = "ix_assets_prompt_hash"
 """Look up a cached asset by the hash of the prompt that produced it."""
@@ -120,6 +126,39 @@ Index(ASSET_RUN_INDEX_NAME, assets.c.run_id)
 Index(ASSET_PROVIDER_INDEX_NAME, assets.c.provider)
 Index(ASSET_CREATED_AT_INDEX_NAME, assets.c.created_at)
 Index(ASSET_PINNED_INDEX_NAME, assets.c.pinned)
+
+asset_cache = Table(
+    "asset_cache",
+    metadata,
+    Column("cache_key", String(64), primary_key=True),
+    Column(
+        "asset_id",
+        String(64),
+        ForeignKey("assets.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("provider", String(128), nullable=False, server_default=text("''")),
+    Column("model", String(128), nullable=False, server_default=text("''")),
+    Column("prompt_hash", String(64), nullable=False, server_default=text("''")),
+    Column("parameters", JSON, nullable=False, server_default=text("'{}'")),
+    Column("reference_hashes", JSON, nullable=False, server_default=text("'[]'")),
+    Column("hit_count", Integer, nullable=False, server_default=text("0")),
+    Column("schema_version", Integer, nullable=False, server_default=text("1")),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.current_timestamp(),
+    ),
+    Column(
+        "updated_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.current_timestamp(),
+    ),
+)
+
+Index(ASSET_CACHE_ASSET_INDEX_NAME, asset_cache.c.asset_id)
 
 compositions = Table(
     "compositions",
