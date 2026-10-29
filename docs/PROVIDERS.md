@@ -10,6 +10,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | Provider | Capabilities | Rate limit | Quality rank | License | Commercial use |
 | --- | --- | --- | --- | --- | --- |
 | `anthropic` | `llm` | 60/min | - | - | unknown |
+| `exa` | `search` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
 | `local` | `storage` | 60/min | - | - | unknown |
 | `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
@@ -41,6 +42,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | Provider | Capability | Price |
 | --- | --- | --- |
 | `anthropic` | - | - |
+| `exa` | - | - |
 | `gemini` | - | - |
 | `local` | `storage` | $0 per call |
 | `mock` | `character_trainer` | $0.5 per call |
@@ -89,6 +91,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | Provider | Capability | Options |
 | --- | --- | --- |
 | `anthropic` | - | - |
+| `exa` | - | - |
 | `gemini` | - | - |
 | `local` | - | - |
 | `mock` | - | - |
@@ -120,6 +123,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | Provider | License | Commercial use | Attribution required | Notes |
 | --- | --- | --- | --- | --- |
 | `anthropic` | - | unknown | no | - |
+| `exa` | - | unknown | no | - |
 | `gemini` | - | unknown | no | - |
 | `local` | - | unknown | no | - |
 | `mock` | - | unknown | no | - |

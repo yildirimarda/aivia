@@ -13,6 +13,12 @@ from aivia.providers.search.cost import (
     SearchPrice,
     search_cost_event,
 )
+from aivia.providers.search.exa import (
+    EXA_DEFAULT_BASE_URL,
+    Exa,
+    ExaProvider,
+    ExaSearchProvider,
+)
 from aivia.providers.search.normalize import (
     SearchNormalizer,
     SearchResultNormalizer,
@@ -46,8 +52,12 @@ from aivia.providers.search.tavily import (
 
 __all__ = [
     "DEFAULT_BASE_URL",
+    "EXA_DEFAULT_BASE_URL",
     "SEARCH_OPERATION",
     "SEARCH_UNIT",
+    "Exa",
+    "ExaProvider",
+    "ExaSearchProvider",
     "RoutedSearch",
     "SearchClient",
     "SearchCost",
