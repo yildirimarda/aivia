@@ -14,6 +14,7 @@ import asyncio
 import sys
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -146,17 +147,57 @@ def _data_dir(run: Run, database_path: Path) -> Path:
     return database_path.parent
 
 
+def _resolution_options(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "config_file": getattr(args, "config", None),
+        "environment": getattr(args, "environment", None),
+        "set_values": getattr(args, "set_values", None),
+    }
+
+
+def _config_for_run(args: argparse.Namespace, run: Run) -> object:
+    """Resolve the config a run should execute with.
+
+    The profile recorded on the run is authoritative: it may differ from the
+    worker's own profile when one worker drains jobs queued by many callers.
+    Worker-level ``--set`` values still apply after the profile, matching the
+    normal resolution order, and a run without a profile keeps the worker's
+    selected profile as its default.
+    """
+    options = _resolution_options(args)
+    profile = (run.profile or "").strip() or (
+        getattr(args, "profile", None) or ""
+    ).strip()
+    options["profile"] = profile or None
+    try:
+        config = resolve_app_config(**options)
+    except ConfigError as exc:
+        raise JobExecutionError(
+            f"cannot resolve config for run {run.id}: {exc}",
+            details={
+                "run_id": run.id,
+                "profile": profile,
+            },
+        ) from exc
+    if getattr(args, "dry_run", False):
+        config = apply_dry_run(config)
+    return config
+
+
 async def execute_job(
     engine: Engine,
     config: object,
     database_path: Path,
     job: Job,
+    *,
+    config_for_run: Callable[[Run], object] | None = None,
 ) -> None:
     """Execute one claimed job, raising when it cannot complete.
 
     Run jobs execute their stored run through the orchestrator. Any other kind
     is rejected as a permanent failure so the queue does not retry work this
-    worker cannot perform.
+    worker cannot perform. When *config_for_run* is given, it supplies the
+    config for the job's run so per-run profile overrides take effect.
     """
     if job.kind != "run":
         raise JobExecutionError(
@@ -175,6 +216,8 @@ async def execute_job(
             details={"job_id": job.id, "run_id": job.run_id},
         )
 
+    if config_for_run is not None:
+        config = config_for_run(run)
     recipe = _recipe(config, job, run)
     stages = run_command.build_stages(recipe)
     orchestrator = Orchestrator(
@@ -205,11 +248,19 @@ def job_handler(
     engine: Engine,
     config: object,
     database_path: Path,
+    *,
+    config_for_run: Callable[[Run], object] | None = None,
 ) -> Callable[[Job], Awaitable[None]]:
     """Return an async handler that executes jobs with :func:`execute_job`."""
 
     async def handler(job: Job) -> None:
-        await execute_job(engine, config, database_path, job)
+        await execute_job(
+            engine,
+            config,
+            database_path,
+            job,
+            config_for_run=config_for_run,
+        )
 
     return handler
 
@@ -257,7 +308,12 @@ def run_worker(args: argparse.Namespace) -> int:
         queue = JobQueue(engine, config=jobs)
         worker = Worker(
             queue,
-            job_handler(engine, config, database_path),
+            job_handler(
+                engine,
+                config,
+                database_path,
+                config_for_run=lambda run: _config_for_run(args, run),
+            ),
             worker_id=getattr(args, "worker_id", None),
             config=jobs,
             kind=getattr(args, "kind", None),
