@@ -153,6 +153,7 @@ from aivia.providers.registry import (
     resolve_provider,
 )
 from aivia.providers.storage_local import LocalStorage, LocalStorageProvider
+from aivia.providers.storage_s3 import S3Storage, S3StorageProvider
 
 __all__ = [
     "CAPABILITY_EMBEDDINGS",
@@ -255,6 +256,8 @@ __all__ = [
     "ProviderRegistration",
     "ProviderRegistry",
     "ProviderState",
+    "S3Storage",
+    "S3StorageProvider",
     "SFXClip",
     "SFXProvider",
     "SFXRequest",
