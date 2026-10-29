@@ -266,7 +266,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Persist the embedding cache in SQLite so vectors survive a restart (tests/providers/test_embeddings.py)
 - [x] Include separately reported cached input tokens in LLM total token counts and cost event units (tests/providers/llm/test_llm_cost.py)
 - [x] Make the embeddings service budget aware by passing the remaining budget to the router and refusing over-budget calls (tests/providers/test_embeddings.py)
-- [ ] Wire the embeddings config chain, dimensions, batch size, cache size and prices into the service and estimator (tests/providers/test_embeddings.py)
+- [x] Wire the embeddings config chain, dimensions, batch size, cache size and prices into the service and estimator (tests/providers/test_embeddings.py)
 
 ## Milestone 8: Media generation core and toolkit
 
