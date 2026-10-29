@@ -205,13 +205,21 @@ def provider_name(provider: Any) -> str:
 def parameters_for_request(request: LLMRequest) -> dict[str, Any]:
     """Return the call parameters that affect an LLM response.
 
-    Messages, role, model, prompt version and free-form metadata are excluded
-    because they are keyed separately or are not sent to the provider.
+    Messages, role, model, prompt name, prompt version and free-form metadata
+    are excluded because they are keyed separately or are not sent to the
+    provider.
     """
     if not isinstance(request, LLMRequest):
         raise TypeError("request must be an LLMRequest")
     data = request.model_dump(mode="json", exclude_none=True)
-    for name in ("messages", "role", "model", "metadata", "prompt_version"):
+    for name in (
+        "messages",
+        "role",
+        "model",
+        "metadata",
+        "prompt_name",
+        "prompt_version",
+    ):
         data.pop(name, None)
     return data
 
