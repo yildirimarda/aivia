@@ -19,6 +19,7 @@ from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.config.character import BrandKitConfig, CharacterConfig
 from aivia.core.config.circuit import CircuitBreakerConfig
 from aivia.core.config.database import DatabaseConfig
+from aivia.core.config.embeddings import EmbeddingsConfig
 from aivia.core.config.formats import FormatsConfig
 from aivia.core.config.http import HttpClientConfig
 from aivia.core.config.llm import LLMConfig
@@ -77,6 +78,7 @@ __all__ = [
     "DeliveryConfig",
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
+    "EmbeddingsConfig",
     "FormatsConfig",
     "HttpClientConfig",
     "JobsConfig",
@@ -529,6 +531,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("render", RenderConfig),
     ("budget", BudgetConfig),
     ("llm", LLMConfig),
+    ("embeddings", EmbeddingsConfig),
     ("prompts", PromptsConfig),
     ("models_file", ModelsFileConfig),
     ("providers", ProvidersConfig),

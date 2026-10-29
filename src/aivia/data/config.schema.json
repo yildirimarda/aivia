@@ -721,6 +721,53 @@
       "title": "DurationRangeOverrideConfig",
       "type": "object"
     },
+    "EmbeddingsConfig": {
+      "additionalProperties": false,
+      "description": "Provider chain, vector dimensions, batching, cache size and model prices.\n\n``chain`` is ordered from most to least preferred and rejects duplicates so\na typo never silently changes routing. ``pricing`` values are USD per\nmillion input tokens; a model without an entry falls back to the provider\nmetadata and the router's pricing overrides.",
+      "properties": {
+        "batch_size": {
+          "default": 64,
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "cache_size": {
+          "default": 10000,
+          "minimum": 1,
+          "title": "Cache Size",
+          "type": "integer"
+        },
+        "chain": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Chain",
+          "type": "array"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dimensions"
+        },
+        "pricing": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Pricing",
+          "type": "object"
+        }
+      },
+      "title": "EmbeddingsConfig",
+      "type": "object"
+    },
     "ExamplesConfig": {
       "additionalProperties": false,
       "description": "Liked and disliked examples that steer topic and writing choices.",
@@ -3193,6 +3240,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/DeliveryConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "embeddings": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EmbeddingsConfig"
         },
         {
           "type": "null"
