@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from aivia.core.db import (
     create_database_engine,
     upgrade_database,
 )
+from aivia.core.errors import QuotaError
 from aivia.core.jobs import JobQueue
 from aivia.core.models import JobState, Run, RunKind, RunState, StageResult, StageState
 
@@ -375,3 +377,89 @@ def test_a_repeated_idempotent_submission_succeeds_when_the_queue_is_full(
     assert second.json()["job_id"] == first.json()["job_id"]
     assert len(RunRepository(engine).list()) == 1
     assert len(JobRepository(engine).list()) == 1
+
+
+@pytest.mark.parametrize("path", ["/api/v1/jobs", "/api/v1/runs"])
+def test_a_rejected_enqueue_rolls_back_the_run_created_for_the_submission(
+    path: str,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = TestClient(
+        create_app(
+            ApiConfig(require_auth=False),
+            engine,
+            environ={},
+            jobs=JobsConfig(max_queue_depth=1),
+        )
+    )
+
+    def reject(self: JobQueue, *args: object, **kwargs: object) -> None:
+        raise QuotaError(
+            "queue is full: depth 1 reached limit 1",
+            details={"depth": 1, "max_queue_depth": 1},
+        )
+
+    monkeypatch.setattr(JobQueue, "enqueue", reject)
+
+    response = client.post(path, json={"kind": "run", "payload": {"prompt": "x"}})
+
+    assert response.status_code == 429
+    assert RunRepository(engine).list() == []
+    assert JobRepository(engine).list() == []
+
+
+def test_concurrent_submissions_leave_a_run_for_every_queued_job(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "aivia.db"
+    setup = create_database_engine(database)
+    upgrade_database(engine=setup)
+    setup.dispose()
+
+    threads = 8
+    barrier = threading.Barrier(threads)
+    statuses: list[int] = []
+    errors: list[BaseException] = []
+    lock = threading.Lock()
+
+    def submit() -> None:
+        engine = create_database_engine(database)
+        try:
+            client = TestClient(
+                create_app(
+                    ApiConfig(require_auth=False),
+                    engine,
+                    environ={},
+                    jobs=JobsConfig(max_queue_depth=1),
+                )
+            )
+            barrier.wait(timeout=5)
+            response = client.post("/api/v1/runs", json={"kind": "run"})
+            with lock:
+                statuses.append(response.status_code)
+        except BaseException as exc:  # pragma: no cover - reported below
+            with lock:
+                errors.append(exc)
+        finally:
+            engine.dispose()
+
+    workers = [threading.Thread(target=submit) for _ in range(threads)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(20)
+    assert not any(worker.is_alive() for worker in workers)
+
+    check = create_database_engine(database)
+    try:
+        runs = RunRepository(check).list()
+        jobs = JobRepository(check).list()
+    finally:
+        check.dispose()
+
+    assert errors == []
+    assert statuses.count(202) == 1
+    assert statuses.count(429) == threads - 1
+    assert len(runs) == len(jobs) == 1
+    assert jobs[0].run_id == runs[0].id

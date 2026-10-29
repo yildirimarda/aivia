@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import Engine
+from sqlalchemy import Connection, Engine
 
 from aivia.core.config import JobsConfig
 from aivia.core.cost import CostAggregator, CostTracker
@@ -136,19 +136,11 @@ def register_job_routes(
         target = database()
         queue = queue_for(target)
         try:
-            if not _reuses_existing_job(target, submission):
-                queue.ensure_capacity()
-            run, _created, reused = _create_or_attach_run(
-                target,
-                submission,
-                requested_run_id=submission.run_id or None,
-            )
-            job = _enqueue_job(
+            run, job = _submit_atomically(
                 queue,
                 submission,
-                run,
+                requested_run_id=submission.run_id or None,
                 job_id=submission.id,
-                reuse=reused,
             )
         except QuotaError as exc:
             raise _queue_full(exc) from exc
@@ -170,21 +162,16 @@ def register_job_routes(
         queue = queue_for(target)
         requested = submission.run_id or submission.id or None
         try:
-            if not _reuses_existing_job(target, submission):
-                queue.ensure_capacity()
-            run, _created, reused = _create_or_attach_run(
-                target,
+            run, job = _submit_atomically(
+                queue,
                 submission,
                 requested_run_id=requested,
+                job_id=None,
+                require_run=True,
             )
-            if run is None:
-                raise HTTPException(
-                    status_code=422,
-                    detail="a run submission needs a kind",
-                )
-            job = _enqueue_job(queue, submission, run, job_id=None, reuse=reused)
         except QuotaError as exc:
             raise _queue_full(exc) from exc
+        assert run is not None
         payload = _run_payload(run)
         payload["run"] = dict(payload)
         payload["job_id"] = job.id
@@ -276,16 +263,56 @@ def register_job_routes(
         }
 
 
+def _submit_atomically(
+    queue: JobQueue,
+    submission: JobSubmission,
+    *,
+    requested_run_id: str | None,
+    job_id: str | None,
+    require_run: bool = False,
+) -> tuple[Run | None, Job]:
+    """Create or reuse the run and enqueue its job under one write lock."""
+    with queue.write_transaction() as connection:
+        run, _created, reused = _create_or_attach_run(
+            queue.engine,
+            submission,
+            requested_run_id=requested_run_id,
+            connection=connection,
+        )
+        if run is None and require_run:
+            raise HTTPException(
+                status_code=422,
+                detail="a run submission needs a kind",
+            )
+        if reused and run is not None:
+            existing = JobRepository(queue.engine).list_in(connection, run_id=run.id)
+            if existing:
+                return run, existing[0]
+        job = _enqueue_job(
+            queue,
+            submission,
+            run,
+            job_id=job_id,
+            connection=connection,
+        )
+        return run, job
+
+
 def _create_or_attach_run(
     engine: Engine,
     submission: JobSubmission,
     *,
     requested_run_id: str | None,
+    connection: Connection | None = None,
 ) -> tuple[Run | None, bool, bool]:
     """Return the target run, whether this call created it and whether reused."""
     repository = RunRepository(engine)
     if requested_run_id:
-        existing = repository.get(requested_run_id)
+        existing = (
+            repository.get(requested_run_id)
+            if connection is None
+            else repository.get_in(connection, requested_run_id)
+        )
         if existing is not None:
             return existing, False, False
 
@@ -296,7 +323,7 @@ def _create_or_attach_run(
         return None, False, False
     run = Run.model_validate(values)
     try:
-        result = create_run_once(repository, run)
+        result = create_run_once(repository, run, connection=connection)
     except IdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     reused = not result.created and run.has_idempotency_key
@@ -331,13 +358,6 @@ def _run_values(submission: JobSubmission) -> dict[str, Any]:
     return values
 
 
-def _reuses_existing_job(engine: Engine, submission: JobSubmission) -> bool:
-    if not submission.idempotency_key:
-        return False
-    existing = RunRepository(engine).find_by_idempotency_key(submission.idempotency_key)
-    return existing is not None
-
-
 def _queue_full(error: QuotaError) -> HTTPException:
     detail = {"message": error.message, "code": error.code, **error.details}
     return HTTPException(
@@ -353,12 +373,8 @@ def _enqueue_job(
     run: Run | None,
     *,
     job_id: str | None,
-    reuse: bool = False,
+    connection: Connection | None = None,
 ) -> Job:
-    if reuse and run is not None:
-        existing = JobRepository(queue.engine).list(run_id=run.id)
-        if existing:
-            return existing[0]
     values: dict[str, Any] = {
         "kind": submission.kind,
         "run_id": run.id if run is not None else submission.run_id,
@@ -369,7 +385,7 @@ def _enqueue_job(
     }
     if job_id:
         values["id"] = job_id
-    return queue.enqueue(Job(**values))
+    return queue.enqueue(Job(**values), connection=connection)
 
 
 def _job_payload(job: Job) -> dict[str, Any]:
