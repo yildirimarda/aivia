@@ -275,7 +275,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the async media job helper with submit, poll, download, timeout, cancel, idempotency key and restart safe persisted job ids (tests/providers/media/test_async_job.py)
 - [x] Define media request and result models for image, video, music and speech with range validation (tests/providers/media/test_dto.py)
 - [x] Add a prompt and option adaptation layer that snaps sizes, clamps durations and rejects unsupported options instead of silently dropping them (tests/providers/media/test_adapt.py)
-- [ ] Add a download and validation helper with format sniffing, dimension checks, size caps, decompression bomb guard and ffprobe checks (tests/core/test_media_probe.py)
+- [x] Add a download and validation helper with format sniffing, dimension checks, size caps, decompression bomb guard and ffprobe checks (tests/core/test_media_probe.py)
 - [ ] Add image utilities for resize, aspect crop, blurred fill padding, conversion and metadata stripping that never modify the original (tests/media/test_image_utils.py)
 - [ ] Add offline and vision based image analysis producing dimensions, dominant colors, a description, detected text, faces and alt text (tests/media/test_image_analysis.py)
 - [ ] Add the fal image provider using the queue pattern with fixtures for success and filtered content (tests/providers/image/test_fal.py)
