@@ -255,8 +255,7 @@ class LocalStorageProvider(Provider):
                     key,
                     path,
                     digest=digest,
-                    content_type=request.content_type
-                    or _guess_content_type(key),
+                    content_type=request.content_type or _guess_content_type(key),
                 )
             if not request.overwrite:
                 raise InvalidRequestError(
