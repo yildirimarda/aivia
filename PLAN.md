@@ -223,7 +223,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Record the current toolchain fingerprint on API submitted runs when the caller omits one (tests/api/test_jobs.py)
 - [x] Record the selected config environment on the run so the worker applies the same environment overrides (tests/cli/test_worker.py)
 - [x] Make CLI run enqueue atomic so a queue-limit race cannot leave an orphan run (tests/cli/test_run.py)
-- [ ] Remove the run directory created for a CLI enqueue that rolls back so no orphan artifacts remain (tests/cli/test_run.py)
+- [x] Remove the run directory created for a CLI enqueue that rolls back so no orphan artifacts remain (tests/cli/test_run.py)
 - [ ] Record the API server config environment on submitted runs so workers apply it (tests/api/test_jobs.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
