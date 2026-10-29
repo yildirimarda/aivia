@@ -65,9 +65,7 @@ __all__ = [
     "snap_size",
 ]
 
-_SIZE_PATTERN = re.compile(
-    r"^(?P<width>\d+)\s*x\s*(?P<height>\d+)$", re.IGNORECASE
-)
+_SIZE_PATTERN = re.compile(r"^(?P<width>\d+)\s*x\s*(?P<height>\d+)$", re.IGNORECASE)
 _RATIO_PATTERN = re.compile(r"^(?P<width>\d+)\s*:\s*(?P<height>\d+)$")
 _TOKEN_SEPARATOR = re.compile(r"[,|]")
 
@@ -246,11 +244,7 @@ def _parse_ratio(value: str) -> float:
 
 
 def _token_values(value: str) -> tuple[str, ...]:
-    return tuple(
-        part.strip()
-        for part in _TOKEN_SEPARATOR.split(value)
-        if part.strip()
-    )
+    return tuple(part.strip() for part in _TOKEN_SEPARATOR.split(value) if part.strip())
 
 
 class MediaConstraints(ProtocolModel):
@@ -581,9 +575,7 @@ def snap_size(
     def distance(size: MediaDimensions) -> tuple[float, float, int, int, int]:
         ratio_penalty = abs(math.log(size.aspect_ratio / target_ratio))
         scale_penalty = (
-            0.0
-            if target_pixels is None
-            else abs(math.log(size.pixels / target_pixels))
+            0.0 if target_pixels is None else abs(math.log(size.pixels / target_pixels))
         )
         return (
             ratio_penalty,

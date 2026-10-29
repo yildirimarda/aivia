@@ -353,9 +353,7 @@ def test_speech_text_uses_the_same_prompt_limit() -> None:
 
 
 def test_media_request_dispatch_preserves_kind_and_original() -> None:
-    media = MediaRequest.for_video(
-        VideoRequest(prompt="a wave", duration_seconds=15.0)
-    )
+    media = MediaRequest.for_video(VideoRequest(prompt="a wave", duration_seconds=15.0))
     constraints = MediaConstraints(max_duration_seconds=10.0)
 
     result = adapt_media_request(media, constraints)
@@ -441,9 +439,7 @@ def test_constraints_reject_invalid_ranges_and_values() -> None:
 
 def test_empty_constraints_leave_every_request_untouched() -> None:
     constraints = MediaConstraints()
-    requests: list[
-        ImageRequest | VideoRequest | MusicRequest | SpeechRequest
-    ] = [
+    requests: list[ImageRequest | VideoRequest | MusicRequest | SpeechRequest] = [
         ImageRequest(prompt="x", width=1000, height=1000, seed=1),
         VideoRequest(prompt="x", duration_seconds=3.0, generate_audio=True),
         MusicRequest(prompt="x", duration_seconds=3.0),
