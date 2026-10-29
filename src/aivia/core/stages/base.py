@@ -127,7 +127,10 @@ class Stage:
             self.name = _normalise_name(name)
         elif self.name:
             self.name = _normalise_name(self.name)
-        self.options: dict[str, Any] = dict(options or {})
+        declared_options = getattr(self, "options", {})
+        self.options: dict[str, Any] = dict(
+            declared_options if options is None else options
+        )
         declared = self.artifacts if artifacts is None else artifacts
         self.artifacts = _normalise_artifacts(declared)
 
