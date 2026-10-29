@@ -448,6 +448,79 @@ def test_a_retryable_failed_result_is_retried_and_each_attempt_is_costed(
     ] == ["timeout", "timeout"]
 
 
+def test_a_retry_removes_declared_artifacts_left_by_a_failed_attempt(
+    engine: Engine,
+    tmp_path: Path,
+) -> None:
+    machine = RunStateMachine(RunRepository(engine))
+    run = machine.create(Run())
+    observed: list[bool] = []
+
+    class _Partial(Stage):
+        def __init__(self) -> None:
+            super().__init__(
+                "render",
+                artifacts=("out.txt", "nested/side.txt"),
+                max_attempts=2,
+            )
+            self.failures = 1
+
+        async def run(self, context: StageContext) -> StageResult:
+            observed.append((context.run_dir / "out.txt").exists())
+            for name in ("out.txt", "nested/side.txt"):
+                target = context.run_dir / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("stale")
+            if self.failures > 0:
+                self.failures -= 1
+                raise ProviderExhaustedError("provider down")
+            for name in ("out.txt", "nested/side.txt"):
+                (context.run_dir / name).write_text("fresh")
+            return StageResult(stage=self.name)
+
+    result = asyncio.run(_orchestrator(engine, run, [_Partial()], tmp_path).execute())
+
+    assert result.ok is True
+    assert observed == [False, False]
+    assert (tmp_path / "out.txt").read_text() == "fresh"
+    assert (tmp_path / "nested" / "side.txt").read_text() == "fresh"
+
+
+def test_a_retry_removes_declared_artifacts_from_a_failed_result(
+    engine: Engine,
+    tmp_path: Path,
+) -> None:
+    machine = RunStateMachine(RunRepository(engine))
+    run = machine.create(Run())
+    observed: list[bool] = []
+
+    class _Rejecting(Stage):
+        def __init__(self) -> None:
+            super().__init__("render", artifacts=("out.txt",), max_attempts=2)
+            self.failures = 1
+
+        async def run(self, context: StageContext) -> StageResult:
+            target = context.run_dir / "out.txt"
+            observed.append(target.exists())
+            if self.failures > 0:
+                self.failures -= 1
+                target.write_text("stale")
+                return StageResult(
+                    stage=self.name,
+                    status=StageState.FAILED,
+                    error_code="timeout",
+                    error_message="provider timed out",
+                )
+            target.write_text("fresh")
+            return StageResult(stage=self.name)
+
+    result = asyncio.run(_orchestrator(engine, run, [_Rejecting()], tmp_path).execute())
+
+    assert result.ok is True
+    assert observed == [False, False]
+    assert (tmp_path / "out.txt").read_text() == "fresh"
+
+
 def test_the_helper_raises_exhaustion_with_the_full_history(tmp_path: Path) -> None:
     events: list[str] = []
     stage = _FlakyStage("render", events, failures=5, max_attempts=2)
