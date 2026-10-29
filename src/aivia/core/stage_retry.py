@@ -9,8 +9,11 @@ attempts on the stage result; a stage itself never implements a retry loop.
 Only errors the shared taxonomy marks as retryable are retried, plus a timeout
 raised by the per-attempt deadline and any extra codes a stage opts into.
 Permanent errors stop immediately because a second attempt cannot change the
-outcome. When the last allowed attempt still fails, the failure is reported as
-:class:`StageRetryExhausted` carrying every attempt for the run record.
+outcome. Before a retry the stage's declared artifacts are removed, so a
+partially written file from the failed attempt cannot be mistaken for the
+retry's output. When the last allowed attempt still fails, the failure is
+reported as :class:`StageRetryExhausted` carrying every attempt for the run
+record.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 from aivia.core.errors import AiviaError
 from aivia.core.errors import TimeoutError as AiviaTimeoutError
 from aivia.core.models.base import utcnow
+from aivia.core.run_dirs import RunDirectory
 
 if TYPE_CHECKING:
     from aivia.core.models.run import StageResult
@@ -102,6 +106,29 @@ def _outcome_cost(outcome: object) -> float:
         return 0.0
     value = float(cost)
     return value if math.isfinite(value) and value > _ZERO_DELAY else _ZERO_DELAY
+
+
+def _remove_declared_artifacts(stage: Stage, context: StageContext) -> None:
+    """Delete the files a failed attempt may have left behind before a retry.
+
+    Only the stage's declared artifacts are removed, and only when they resolve
+    inside the run directory. An undeclared file is never touched, so a retry
+    starts from the same empty slate as the first attempt.
+    """
+    declared = getattr(stage, "artifacts", ())
+    if not declared:
+        return
+    directory = RunDirectory(context.run_dir)
+    for artifact in declared:
+        try:
+            path = directory.resolve(artifact)
+        except (TypeError, ValueError):
+            continue
+        try:
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+        except FileNotFoundError:
+            continue
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +453,7 @@ async def execute_stage_with_retry(
                     selected,
                     prior_cost_usd=prior_cost,
                 ) from error
+            _remove_declared_artifacts(stage, context)
             await pause(selected.delay_for(number))
             continue
 
@@ -445,6 +473,7 @@ async def execute_stage_with_retry(
             )
             if retryable and number < selected.max_attempts:
                 prior_cost += _outcome_cost(outcome)
+                _remove_declared_artifacts(stage, context)
                 await pause(selected.delay_for(number))
                 continue
             return StageRetryOutcome(
