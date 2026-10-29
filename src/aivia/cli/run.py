@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import shutil
 import sys
 from pathlib import Path
 
@@ -310,6 +311,7 @@ def _create_run(
     environment: str = "",
     *,
     connection: Connection | None = None,
+    created_dirs: list[Path] | None = None,
 ) -> IdempotentRun:
     run = Run(
         kind=RunKind.PIPELINE,
@@ -323,7 +325,9 @@ def _create_run(
     )
 
     def prepare(candidate: Run) -> None:
-        RunDirectories(_data_dir(args)).create(candidate)
+        directory = RunDirectories(_data_dir(args)).create(candidate)
+        if created_dirs is not None:
+            created_dirs.append(directory.path)
 
     return create_run_once(
         RunRepository(engine),
@@ -331,6 +335,12 @@ def _create_run(
         prepare=prepare,
         connection=connection,
     )
+
+
+def _discard_run_directories(directories: list[Path]) -> None:
+    """Remove run directories created for a submission that did not persist."""
+    while directories:
+        shutil.rmtree(directories.pop(), ignore_errors=True)
 
 
 def build_stages(recipe: FormatRecipeConfig) -> list[Stage]:
@@ -440,27 +450,34 @@ def run_run(args: argparse.Namespace) -> int:
     try:
         queue = JobQueue(engine, config=_jobs_config(config))
         if enqueue:
-            with queue.write_transaction() as connection:
-                created = _create_run(
-                    engine,
-                    args,
-                    name,
-                    estimate,
-                    environment,
-                    connection=connection,
-                )
-                run = created.run
-                if not created.created:
-                    _print_existing(run)
-                    return 0
-                job = queue.enqueue(
-                    Job(
-                        kind="run",
-                        run_id=run.id,
-                        payload={"format": name, "profile": run.profile},
-                    ),
-                    connection=connection,
-                )
+            created_dirs: list[Path] = []
+            try:
+                with queue.write_transaction() as connection:
+                    created = _create_run(
+                        engine,
+                        args,
+                        name,
+                        estimate,
+                        environment,
+                        connection=connection,
+                        created_dirs=created_dirs,
+                    )
+                    run = created.run
+                    if not created.created:
+                        _discard_run_directories(created_dirs)
+                        _print_existing(run)
+                        return 0
+                    job = queue.enqueue(
+                        Job(
+                            kind="run",
+                            run_id=run.id,
+                            payload={"format": name, "profile": run.profile},
+                        ),
+                        connection=connection,
+                    )
+            except BaseException:
+                _discard_run_directories(created_dirs)
+                raise
             _print_created(run, estimate, job=job)
             return 0
 
