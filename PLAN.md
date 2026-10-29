@@ -276,7 +276,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Define media request and result models for image, video, music and speech with range validation (tests/providers/media/test_dto.py)
 - [x] Add a prompt and option adaptation layer that snaps sizes, clamps durations and rejects unsupported options instead of silently dropping them (tests/providers/media/test_adapt.py)
 - [x] Add a download and validation helper with format sniffing, dimension checks, size caps, decompression bomb guard and ffprobe checks (tests/core/test_media_probe.py)
-- [ ] Add image utilities for resize, aspect crop, blurred fill padding, conversion and metadata stripping that never modify the original (tests/media/test_image_utils.py)
+- [x] Add image utilities for resize, aspect crop, blurred fill padding, conversion and metadata stripping that never modify the original (tests/media/test_image_utils.py)
 - [ ] Add offline and vision based image analysis producing dimensions, dominant colors, a description, detected text, faces and alt text (tests/media/test_image_analysis.py)
 - [ ] Add the fal image provider using the queue pattern with fixtures for success and filtered content (tests/providers/image/test_fal.py)
 - [ ] Add the Replicate image provider with a versioned model id from config (tests/providers/image/test_replicate.py)
@@ -335,6 +335,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Emit alt text and SRT and VTT sidecars for every audio and video output when accessibility output is enabled (tests/media/test_accessibility.py)
 - [ ] Make async media job idempotency keys unique across processes so a repeated key cannot submit twice (tests/providers/media/test_async_job.py)
 - [ ] Apply the media adaptation layer to every image, video, music and speech provider request before submission (tests/media/test_adapt_integration.py)
+- [ ] Reject oversized or decompression-bomb images in image utilities before decoding (tests/media/test_image_utils.py)
 
 ## Milestone 9: Composition and rendering
 
