@@ -203,6 +203,26 @@ from aivia.providers.storage_local import LocalStorage, LocalStorageProvider
 from aivia.providers.storage_s3 import S3Storage, S3StorageProvider
 
 if TYPE_CHECKING:
+    from aivia.providers.embeddings import (
+        BatchedEmbeddingProvider,
+        CachedEmbeddingProvider,
+        EmbeddingCache,
+        EmbeddingCacheKey,
+        EmbeddingCacheStats,
+        EmbeddingCostCalculator,
+        EmbeddingOutcome,
+        EmbeddingService,
+        EmbeddingTokenCost,
+        LocalEmbeddingProvider,
+        LocalEmbeddings,
+        LocalEmbeddingsProvider,
+        OpenAIEmbeddingProvider,
+        OpenAIEmbeddings,
+        OpenAIEmbeddingsProvider,
+        Voyage,
+        VoyageEmbeddingProvider,
+        VoyageEmbeddings,
+    )
     from aivia.providers.pagefetch import (
         HttpPageFetchProvider,
         PageFetch,
@@ -247,6 +267,32 @@ if TYPE_CHECKING:
         TavilySearchProvider,
     )
 
+_LAZY_EMBEDDING_PROVIDERS = frozenset(
+    {
+        "BatchedEmbeddingProvider",
+        "CachedEmbeddingProvider",
+        "EmbeddingCache",
+        "EmbeddingCacheKey",
+        "EmbeddingCacheStats",
+        "EmbeddingCostCalculator",
+        "EmbeddingOutcome",
+        "EmbeddingService",
+        "EmbeddingTokenCost",
+        "LocalEmbeddingProvider",
+        "LocalEmbeddings",
+        "LocalEmbeddingsProvider",
+        "OpenAIEmbeddingProvider",
+        "OpenAIEmbeddings",
+        "OpenAIEmbeddingsProvider",
+        "Voyage",
+        "VoyageEmbeddingProvider",
+        "VoyageEmbeddings",
+        "batch_inputs",
+        "embed",
+        "embedding_cost_event",
+        "normalize_vector",
+    }
+)
 _LAZY_BRAVE_PROVIDERS = frozenset({"Brave", "BraveProvider", "BraveSearchProvider"})
 _LAZY_EXA_PROVIDERS = frozenset({"Exa", "ExaProvider", "ExaSearchProvider"})
 _LAZY_LLM_SEARCH_PROVIDERS = frozenset(
@@ -284,6 +330,12 @@ _LAZY_PAGE_FETCH_PROVIDERS = frozenset(
 
 def __getattr__(name: str) -> Any:
     """Load an adapter only when it is explicitly requested."""
+    if name in _LAZY_EMBEDDING_PROVIDERS:
+        from aivia.providers import embeddings as embeddings_package
+
+        value = getattr(embeddings_package, name)
+        globals()[name] = value
+        return value
     if name in _LAZY_PAGE_FETCH_PROVIDERS:
         from aivia.providers.pagefetch import (
             HttpPageFetchProvider,
@@ -419,6 +471,13 @@ __all__ = [
     "DEFAULT_API_VERSION",
     "DEFAULT_BASE_URL",
     "DEFAULT_MAX_TOKENS",
+    "EMBEDDING_DEFAULT_BATCH_SIZE",
+    "EMBEDDING_DEFAULT_CACHE_SIZE",
+    "EMBEDDING_DEFAULT_DIMENSIONS",
+    "EMBEDDING_DEFAULT_MODEL",
+    "EMBEDDING_OPERATION",
+    "EMBEDDING_TOKENS_PER_MILLION",
+    "EMBEDDING_TOKEN_UNIT",
     "LLM_OPERATION",
     "MOCK_EPOCH",
     "TOKENS_PER_MILLION",
@@ -427,19 +486,28 @@ __all__ = [
     "AnthropicLLMProvider",
     "AnthropicProvider",
     "AudioFormat",
+    "BatchedEmbeddingProvider",
     "Brave",
     "BraveProvider",
     "BraveSearchProvider",
+    "CachedEmbeddingProvider",
     "CapabilityProvider",
     "ChatMessage",
     "ConsoleNotificationProvider",
     "ConsoleNotifier",
     "ContentPart",
     "Embedding",
+    "EmbeddingCache",
+    "EmbeddingCacheKey",
+    "EmbeddingCacheStats",
+    "EmbeddingCostCalculator",
     "EmbeddingInputType",
+    "EmbeddingOutcome",
     "EmbeddingProvider",
     "EmbeddingRequest",
     "EmbeddingResponse",
+    "EmbeddingService",
+    "EmbeddingTokenCost",
     "EmbeddingUsage",
     "Exa",
     "ExaProvider",
@@ -473,6 +541,9 @@ __all__ = [
     "LLMTokenCost",
     "LLMUsage",
     "LLMWebSearchProvider",
+    "LocalEmbeddingProvider",
+    "LocalEmbeddings",
+    "LocalEmbeddingsProvider",
     "LocalStorage",
     "LocalStorageProvider",
     "MediaDimensions",
@@ -530,6 +601,9 @@ __all__ = [
     "OpenAICompatible",
     "OpenAICompatibleLLMProvider",
     "OpenAICompatibleProvider",
+    "OpenAIEmbeddingProvider",
+    "OpenAIEmbeddings",
+    "OpenAIEmbeddingsProvider",
     "OpenAILLMProvider",
     "OpenAIProvider",
     "PageFetch",
@@ -590,8 +664,12 @@ __all__ = [
     "VideoRequest",
     "VideoResponse",
     "VideoResult",
+    "Voyage",
+    "VoyageEmbeddingProvider",
+    "VoyageEmbeddings",
     "WebPageFetchProvider",
     "WordTimestamp",
+    "batch_inputs",
     "build_mock_providers",
     "build_provider",
     "build_provider_instances",
@@ -604,11 +682,14 @@ __all__ = [
     "create_providers",
     "create_storage_provider",
     "default_notifier",
+    "embed",
+    "embedding_cost_event",
     "extract_main_text",
     "extract_readable",
     "host_is_allowed",
     "is_blocked_ip",
     "mock_provider_for",
+    "normalize_vector",
     "provider_from_config",
     "provider_instances_from_config",
     "provider_registry",
