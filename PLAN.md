@@ -201,7 +201,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Reject or defer submissions above the queue depth limit with a quota error carrying the current depth (tests/core/jobs/test_backpressure.py)
 - [x] Support an idempotency key on runs, returning the existing run for a repeated key and conflicting on a different payload (tests/cli/test_run_idempotency.py)
 - [x] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
-- [ ] Verify registered artifact hashes on resume and refuse to skip a stage whose files changed or vanished (tests/core/test_artifact_integrity.py)
+- [x] Verify registered artifact hashes on resume and refuse to skip a stage whose files changed or vanished (tests/core/test_artifact_integrity.py)
 - [ ] Route the resume command through the run state machine so every lifecycle change is validated (tests/cli/test_resume.py)
 - [ ] Include a stage implementation version in the input hash so code changes force re-execution (tests/core/test_resume.py)
 - [ ] Hash the contents of declared external input files so editing a source forces a rerun (tests/core/test_resume.py)
