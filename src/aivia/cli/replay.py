@@ -241,6 +241,22 @@ def _snapshot_config(snapshot: ConfigSnapshot) -> dict[str, Any]:
     return copy.deepcopy(dict(raw))
 
 
+def _stage_config(config: dict[str, Any]) -> object:
+    """Return the configuration a replay stage should receive.
+
+    A normal run hands its stages a validated application config. Replay tries
+    to do the same for the recorded values. The snapshot is masked before it is
+    stored, so a mask can make a recorded value invalid, for example a redacted
+    literal or an omitted prompt. In that case the recorded mapping is passed
+    through unchanged so the stage still sees the values the original run
+    recorded.
+    """
+    try:
+        return resolve_app_config(config)
+    except ConfigError:
+        return config
+
+
 def _apply_seeds(config: dict[str, Any], seeds: Any) -> dict[str, Any]:
     """Apply recorded seeds to *config*, using dotted keys as nested paths."""
     if not isinstance(seeds, Mapping):
@@ -354,7 +370,7 @@ def _create_replay_run(
 def _execute_replay(
     engine: Engine,
     replay: Run,
-    config: Mapping[str, Any],
+    config: object,
     stages: list[Stage],
     database_path: Path,
 ) -> OrchestrationResult:
@@ -460,6 +476,7 @@ def run_replay(args: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
 
+        stage_config = _stage_config(config)
         recorded_toolchain = _recorded_fingerprint(original, snapshot)
         current_toolchain = detect_toolchain()
         toolchain_drifts = diff_toolchain(recorded_toolchain, current_toolchain)
@@ -476,7 +493,7 @@ def run_replay(args: argparse.Namespace) -> int:
             result = _execute_replay(
                 engine,
                 replay,
-                config,
+                stage_config,
                 _build_stages(recipe),
                 database_path,
             )

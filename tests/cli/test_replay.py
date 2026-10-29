@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from aivia.core.db import (
     upgrade_database,
 )
 from aivia.core.models import Run, RunState, StageResult, ToolchainFingerprint
+from aivia.core.redact import REDACTED, clear_secrets, register_secret
 from aivia.core.snapshot import (
     build_config_snapshot,
     read_config_snapshot,
@@ -98,6 +100,32 @@ class _OriginalStage(Stage):
 
     async def run(self, context: StageContext) -> StageResult:
         (context.run_dir / "script.md").write_text("original", encoding="utf-8")
+        return StageResult(stage=self.name, artifacts=["script.md"])
+
+
+class _AttributeStage(Stage):
+    name = "write"
+    artifacts = ("script.md",)
+
+    async def run(self, context: StageContext) -> StageResult:
+        seed = context.config.planner.defaults.seed
+        (context.run_dir / "script.md").write_text(f"seed={seed}", encoding="utf-8")
+        return StageResult(stage=self.name, artifacts=["script.md"])
+
+
+class _SnapshotStage(Stage):
+    name = "write"
+    artifacts = ("script.md",)
+
+    async def run(self, context: StageContext) -> StageResult:
+        config = context.config
+        assert isinstance(config, Mapping)
+        strategy = config["render"]["contrast_strategy"]
+        seed = config["planner"]["defaults"]["seed"]
+        (context.run_dir / "script.md").write_text(
+            f"{strategy}:{seed}",
+            encoding="utf-8",
+        )
         return StageResult(stage=self.name, artifacts=["script.md"])
 
 
@@ -336,6 +364,105 @@ formats:
     assert stored_original is not None
     assert stored_original.run_dir == original.run_dir
     assert stored_original.state is RunState.SUCCEEDED
+
+
+def test_replay_passes_a_validated_app_config_to_stages(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_id = _run_original(
+        capsys,
+        config,
+        database,
+        monkeypatch,
+        _AttributeStage,
+    )
+    monkeypatch.setattr(
+        "aivia.cli.replay.build_stages",
+        lambda recipe: [_AttributeStage() for _stage in recipe.stages],
+    )
+
+    code, out, err = command(
+        capsys,
+        "replay",
+        original_id,
+        "--database",
+        str(database),
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "Drift: none" in out
+    _, replay_id = replay_ids_from(out)
+    replay = _stored_run(database, replay_id)
+    assert replay is not None
+    assert Path(replay.run_dir, "script.md").read_text(encoding="utf-8") == "seed=7"
+
+
+def test_replay_falls_back_to_snapshot_values_when_masking_breaks_validation(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_secrets()
+    try:
+        register_secret("shadow")
+        config = write_config(
+            tmp_path,
+            """
+render:
+  contrast_strategy: shadow
+planner:
+  defaults:
+    seed: 7
+formats:
+  sample:
+    stages:
+      - stage: write
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+        )
+        original_id = _run_original(
+            capsys,
+            config,
+            database,
+            monkeypatch,
+            _OriginalStage,
+        )
+        original = _stored_run(database, original_id)
+        assert original is not None
+        snapshot = read_config_snapshot(Path(original.run_dir))
+        assert snapshot["config"]["render"]["contrast_strategy"] == REDACTED
+
+        monkeypatch.setattr(
+            "aivia.cli.replay.build_stages",
+            lambda recipe: [_SnapshotStage() for _stage in recipe.stages],
+        )
+
+        code, out, err = command(
+            capsys,
+            "replay",
+            original_id,
+            "--database",
+            str(database),
+        )
+
+        assert code == 0
+        assert err == ""
+        _, replay_id = replay_ids_from(out)
+        replay = _stored_run(database, replay_id)
+        assert replay is not None
+        assert (
+            Path(replay.run_dir, "script.md").read_text(encoding="utf-8")
+            == f"{REDACTED}:7"
+        )
+    finally:
+        clear_secrets()
 
 
 def test_replay_reports_changed_artifacts_as_drift(
