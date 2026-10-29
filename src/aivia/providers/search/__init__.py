@@ -5,6 +5,12 @@ the service that executes a typed search request through the router. Vendor
 adapters live in their own modules and are registered separately.
 """
 
+from aivia.providers.search.brave import (
+    BRAVE_DEFAULT_BASE_URL,
+    Brave,
+    BraveProvider,
+    BraveSearchProvider,
+)
 from aivia.providers.search.cost import (
     SEARCH_OPERATION,
     SEARCH_UNIT,
@@ -51,10 +57,14 @@ from aivia.providers.search.tavily import (
 )
 
 __all__ = [
+    "BRAVE_DEFAULT_BASE_URL",
     "DEFAULT_BASE_URL",
     "EXA_DEFAULT_BASE_URL",
     "SEARCH_OPERATION",
     "SEARCH_UNIT",
+    "Brave",
+    "BraveProvider",
+    "BraveSearchProvider",
     "Exa",
     "ExaProvider",
     "ExaSearchProvider",

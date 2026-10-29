@@ -203,6 +203,11 @@ from aivia.providers.storage_local import LocalStorage, LocalStorageProvider
 from aivia.providers.storage_s3 import S3Storage, S3StorageProvider
 
 if TYPE_CHECKING:
+    from aivia.providers.search.brave import (
+        Brave,
+        BraveProvider,
+        BraveSearchProvider,
+    )
     from aivia.providers.search.exa import (
         Exa,
         ExaProvider,
@@ -214,12 +219,28 @@ if TYPE_CHECKING:
         TavilySearchProvider,
     )
 
+_LAZY_BRAVE_PROVIDERS = frozenset({"Brave", "BraveProvider", "BraveSearchProvider"})
 _LAZY_EXA_PROVIDERS = frozenset({"Exa", "ExaProvider", "ExaSearchProvider"})
 _LAZY_TAVILY_PROVIDERS = frozenset({"Tavily", "TavilyProvider", "TavilySearchProvider"})
 
 
 def __getattr__(name: str) -> Any:
     """Load a search adapter only when it is explicitly requested."""
+    if name in _LAZY_BRAVE_PROVIDERS:
+        from aivia.providers.search.brave import (
+            Brave,
+            BraveProvider,
+            BraveSearchProvider,
+        )
+
+        brave_values = {
+            "Brave": Brave,
+            "BraveProvider": BraveProvider,
+            "BraveSearchProvider": BraveSearchProvider,
+        }
+        brave_value = brave_values[name]
+        globals()[name] = brave_value
+        return brave_value
     if name in _LAZY_EXA_PROVIDERS:
         from aivia.providers.search.exa import (
             Exa,
@@ -277,6 +298,9 @@ __all__ = [
     "AnthropicLLMProvider",
     "AnthropicProvider",
     "AudioFormat",
+    "Brave",
+    "BraveProvider",
+    "BraveSearchProvider",
     "CapabilityProvider",
     "ChatMessage",
     "ConsoleNotificationProvider",
