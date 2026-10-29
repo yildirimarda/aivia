@@ -165,6 +165,8 @@ def test_run_enqueues_a_job_without_executing(
     finally:
         engine.dispose()
 
+    assert Path(run.run_dir).is_dir()
+
 
 def test_run_enqueues_when_no_stage_implementation_is_registered(
     config: Path,
@@ -390,6 +392,7 @@ formats:
 
 
 def test_a_rejected_enqueue_rolls_back_the_run_created_for_the_submission(
+    tmp_path: Path,
     config: Path,
     database: Path,
     capsys: pytest.CaptureFixture[str],
@@ -417,6 +420,9 @@ def test_a_rejected_enqueue_rolls_back_the_run_created_for_the_submission(
     assert code == 1
     assert out == ""
     assert "queue is full" in err
+
+    runs = tmp_path / "data" / "runs"
+    assert not runs.exists() or list(runs.iterdir()) == []
 
     engine = create_database_engine(database)
     try:
@@ -486,6 +492,9 @@ formats:
     assert code == 1
     assert out == ""
     assert "queue is full" in err
+
+    runs = tmp_path / "data" / "runs"
+    assert not runs.exists() or list(runs.iterdir()) == []
 
     engine = create_database_engine(database)
     try:
