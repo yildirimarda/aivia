@@ -271,6 +271,78 @@ def test_costs_run_requires_a_run_id(
     assert "a run id is required" in err
 
 
+def test_costs_run_excludes_a_replaced_estimate_from_asset_totals(
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).create(
+            Run(id="run_replaced", profile="daily", format="short")
+        )
+        tracker = CostTracker(engine)
+        estimate = tracker.record_estimate(
+            provider="acme",
+            model="image-1",
+            operation="image_gen",
+            units=2.0,
+            unit_kind="image",
+            amount_usd=0.20,
+            run_id=run.id,
+        )
+        actual = tracker.record_actual(
+            provider="acme",
+            model="image-1",
+            operation="image_gen",
+            units=1.0,
+            unit_kind="image",
+            amount_usd=0.10,
+            run_id=run.id,
+            metadata={"replaces": estimate.id},
+        )
+        AssetRepository(engine).create(
+            Asset(
+                id="asset_hero",
+                kind=AssetKind.IMAGE,
+                label="hero",
+                run_id=run.id,
+                cost_links=[
+                    AssetCostLink(cost_event_id=estimate.id),
+                    AssetCostLink(cost_event_id=actual.id),
+                ],
+            )
+        )
+    finally:
+        engine.dispose()
+
+    code, out, err = run_command(capsys, "run_replaced", "--database", str(database))
+
+    assert code == 0
+    assert err == ""
+    assert section(out, "BY ASSET") == [
+        [
+            "ASSET",
+            "LABEL",
+            "KIND",
+            "TOTAL",
+            "ESTIMATED",
+            "ACTUAL",
+            "UNITS",
+            "COUNT",
+        ],
+        [
+            "asset_hero",
+            "hero",
+            "image",
+            "$0.100000",
+            "$0.000000",
+            "$0.100000",
+            "1",
+            "1",
+        ],
+    ]
+
+
 def test_costs_run_reports_an_empty_ledger_for_an_existing_run(
     database: Path,
     capsys: pytest.CaptureFixture[str],

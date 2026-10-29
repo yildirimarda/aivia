@@ -394,6 +394,14 @@ class _AssetSpend:
 
 
 def _asset_buckets(assets: list[Asset], events: list[CostEvent]) -> list[_AssetSpend]:
+    replaced = {
+        event.replaces for event in events if not event.estimated and event.replaces
+    }
+    if replaced:
+        events = [
+            event for event in events if not (event.estimated and event.id in replaced)
+        ]
+
     by_id = {asset.id: asset for asset in assets}
     asset_for_event: dict[str, str] = {}
     for asset in assets:
