@@ -231,6 +231,62 @@ def test_a_submission_environment_wins_over_the_server_environment(
     assert stored.environment == "other"
 
 
+def test_a_submission_records_the_api_server_profile(engine: Engine) -> None:
+    client = TestClient(
+        create_app(
+            ApiConfig(require_auth=False),
+            engine,
+            profile="short",
+        )
+    )
+
+    response = client.post("/api/v1/runs", json={"kind": "run"})
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["profile"] == "short"
+    stored = RunRepository(engine).get(body["run_id"])
+    assert stored is not None
+    assert stored.profile == "short"
+
+
+def test_a_submission_profile_wins_over_the_server_profile(engine: Engine) -> None:
+    client = TestClient(
+        create_app(
+            ApiConfig(require_auth=False),
+            engine,
+            profile="short",
+        )
+    )
+
+    response = client.post(
+        "/api/v1/runs",
+        json={"kind": "run", "profile": "  daily  "},
+    )
+
+    assert response.status_code == 202
+    stored = RunRepository(engine).get(response.json()["run_id"])
+    assert stored is not None
+    assert stored.profile == "daily"
+
+
+def test_a_blank_server_profile_is_not_recorded(engine: Engine) -> None:
+    client = TestClient(
+        create_app(
+            ApiConfig(require_auth=False),
+            engine,
+            profile="   ",
+        )
+    )
+
+    response = client.post("/api/v1/runs", json={"kind": "run"})
+
+    assert response.status_code == 202
+    stored = RunRepository(engine).get(response.json()["run_id"])
+    assert stored is not None
+    assert stored.profile == ""
+
+
 def test_a_submission_can_attach_to_an_existing_run(
     client: TestClient,
     engine: Engine,

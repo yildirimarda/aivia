@@ -63,6 +63,7 @@ __all__ = [
     "resolve_app_config",
     "resolve_config",
     "selected_environment",
+    "selected_profile",
 ]
 
 DEFAULT_ORIGIN = "defaults"
@@ -283,6 +284,18 @@ def selected_environment(
         selected or None,
         os.environ if environ is None else environ,
     )
+
+
+def selected_profile(profile: str | None = None) -> str | None:
+    """Return the profile selected by *profile*, or None for a blank option.
+
+    Unlike :func:`resolve_config` this reads no config file. Callers use it to
+    record which profile was selected before its overrides are applied. A blank
+    *profile* means no selection, matching an unset option.
+    """
+    if not isinstance(profile, str):
+        return profile
+    return profile.strip() or None
 
 
 def environment_file(
