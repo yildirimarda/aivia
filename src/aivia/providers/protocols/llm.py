@@ -426,6 +426,14 @@ class LLMResponse(ProtocolModel):
         """Whether the model requested at least one tool call."""
         return bool(self.tool_calls)
 
+    @property
+    def citations(self) -> list[dict[str, Any]]:
+        """Web search citations reported by a provider, when present."""
+        value = self.metadata.get("citations")
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, dict)]
+
 
 @runtime_checkable
 class LLMProvider(CapabilityProvider, Protocol):

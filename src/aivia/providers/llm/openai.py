@@ -41,6 +41,10 @@ from aivia.core.http import error_for_response
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.secrets import SecretsLoader
 from aivia.providers.base import Provider
+from aivia.providers.llm.web_search import (
+    openai_citations,
+    split_web_search_tools,
+)
 from aivia.providers.protocols.llm import (
     CAPABILITY_LLM,
     ChatMessage,
@@ -151,6 +155,7 @@ class _Message(BaseModel):
     role: str = "assistant"
     content: str | None = None
     tool_calls: list[_ToolCall] = Field(default_factory=list)
+    annotations: list[Any] = Field(default_factory=list)
 
 
 class _Choice(BaseModel):
@@ -442,20 +447,24 @@ class OpenAILLMProvider(Provider):
             body["stop"] = list(request.stop)
         if request.seed is not None:
             body["seed"] = request.seed
+        function_tools, native_search = split_web_search_tools(request.tools)
         if request.tools and request.tool_choice is not ToolChoice.NONE:
-            body["tools"] = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.parameters
-                        or {"type": "object", "properties": {}},
-                    },
-                }
-                for tool in request.tools
-            ]
-            body["tool_choice"] = _TOOL_CHOICES[request.tool_choice]
+            if function_tools:
+                body["tools"] = [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.parameters
+                            or {"type": "object", "properties": {}},
+                        },
+                    }
+                    for tool in function_tools
+                ]
+                body["tool_choice"] = _TOOL_CHOICES[request.tool_choice]
+            if native_search:
+                body["web_search_options"] = {}
         return body
 
     def _raise_for_response(self, response: httpx.Response) -> None:
@@ -525,6 +534,12 @@ class OpenAILLMProvider(Provider):
                 choice.finish_reason or "",
                 FinishReason.STOP,
             )
+            metadata: dict[str, Any] = {}
+            if choice.finish_reason is not None:
+                metadata["finish_reason"] = choice.finish_reason
+            citations = openai_citations(message.annotations)
+            if citations:
+                metadata["citations"] = citations
             return LLMResponse(
                 content=message.content or "",
                 model=parsed.model or request.model or self._default_model or "",
@@ -538,11 +553,7 @@ class OpenAILLMProvider(Provider):
                 finish_reason=finish_reason,
                 tool_calls=tool_calls,
                 request_id=parsed.id,
-                metadata=(
-                    {"finish_reason": choice.finish_reason}
-                    if choice.finish_reason is not None
-                    else {}
-                ),
+                metadata=metadata,
             )
         except (PydanticValidationError, ValueError) as exc:
             raise ValidationError(

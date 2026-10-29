@@ -43,6 +43,10 @@ from aivia.core.http import error_for_response
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.secrets import SecretsLoader
 from aivia.providers.base import Provider
+from aivia.providers.llm.web_search import (
+    gemini_citations,
+    split_web_search_tools,
+)
 from aivia.providers.protocols.llm import (
     CAPABILITY_LLM,
     ChatMessage,
@@ -148,6 +152,52 @@ class _Content(BaseModel):
     parts: list[_Part] = Field(default_factory=list)
 
 
+class _GroundingWeb(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    uri: str = ""
+    title: str = ""
+
+
+class _GroundingChunk(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    web: _GroundingWeb | None = None
+
+
+class _GroundingSegment(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    text: str = ""
+
+
+class _GroundingSupport(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    segment: _GroundingSegment = Field(default_factory=_GroundingSegment)
+    grounding_chunk_indices: list[int] = Field(
+        default_factory=list,
+        alias="groundingChunkIndices",
+    )
+
+
+class _GroundingMetadata(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    grounding_chunks: list[_GroundingChunk] = Field(
+        default_factory=list,
+        alias="groundingChunks",
+    )
+    grounding_supports: list[_GroundingSupport] = Field(
+        default_factory=list,
+        alias="groundingSupports",
+    )
+    web_search_queries: list[str] = Field(
+        default_factory=list,
+        alias="webSearchQueries",
+    )
+
+
 class _Candidate(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
@@ -156,6 +206,10 @@ class _Candidate(BaseModel):
     safety_ratings: list[_SafetyRating] = Field(
         default_factory=list,
         alias="safetyRatings",
+    )
+    grounding_metadata: _GroundingMetadata | None = Field(
+        default=None,
+        alias="groundingMetadata",
     )
 
 
@@ -553,25 +607,31 @@ class GeminiLLMProvider(Provider):
             generation_config["stopSequences"] = list(request.stop)
         if request.seed is not None:
             generation_config["seed"] = request.seed
+        function_tools, native_search = split_web_search_tools(request.tools)
         if request.tools and request.tool_choice is not ToolChoice.NONE:
-            body["tools"] = [
-                {
-                    "functionDeclarations": [
-                        {
-                            "name": tool.name,
-                            "description": tool.description,
-                            "parameters": tool.parameters
-                            or {"type": "object", "properties": {}},
-                        }
-                    ]
+            tools_payload: list[dict[str, Any]] = []
+            if native_search:
+                tools_payload.append({"googleSearch": {}})
+            if function_tools:
+                tools_payload.append(
+                    {
+                        "functionDeclarations": [
+                            {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "parameters": tool.parameters
+                                or {"type": "object", "properties": {}},
+                            }
+                            for tool in function_tools
+                        ]
+                    }
+                )
+                body["toolConfig"] = {
+                    "functionCallingConfig": {
+                        "mode": _TOOL_MODES[request.tool_choice],
+                    }
                 }
-                for tool in request.tools
-            ]
-            body["toolConfig"] = {
-                "functionCallingConfig": {
-                    "mode": _TOOL_MODES[request.tool_choice],
-                }
-            }
+            body["tools"] = tools_payload
         return body
 
     def _raise_for_response(self, response: httpx.Response) -> None:
@@ -675,6 +735,15 @@ class GeminiLLMProvider(Provider):
                 candidate.finish_reason or "",
                 FinishReason.STOP,
             )
+            metadata: dict[str, Any] = {}
+            if candidate.finish_reason is not None:
+                metadata["finish_reason"] = candidate.finish_reason
+            if candidate.grounding_metadata is not None:
+                citations = gemini_citations(
+                    candidate.grounding_metadata.model_dump(by_alias=True)
+                )
+                if citations:
+                    metadata["citations"] = citations
             return LLMResponse(
                 content=content,
                 model=(
@@ -692,11 +761,7 @@ class GeminiLLMProvider(Provider):
                 finish_reason=finish_reason,
                 tool_calls=tool_calls,
                 request_id=parsed.response_id,
-                metadata=(
-                    {"finish_reason": candidate.finish_reason}
-                    if candidate.finish_reason is not None
-                    else {}
-                ),
+                metadata=metadata,
             )
         except ContentPolicyError:
             raise
