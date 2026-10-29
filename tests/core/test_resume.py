@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -44,8 +44,14 @@ class _ArtifactStage(Stage):
         text: str = "content",
         cost: float = 0.25,
         options: dict[str, Any] | None = None,
+        inputs: Iterable[str] | None = None,
     ) -> None:
-        super().__init__(name, options=options, artifacts=(artifact,))
+        super().__init__(
+            name,
+            options=options,
+            artifacts=(artifact,),
+            inputs=inputs,
+        )
         self.artifact = artifact
         self.events = events
         self.text = text
@@ -471,3 +477,123 @@ def test_a_changed_stage_version_reruns_that_stage(
     assert events == ["write"]
     assert [item.stage for item in second.skipped_stages] == ["compose", "render"]
     assert second.stages[0].input_hash != stored_write.input_hash
+
+
+class _ExternalInputStage(Stage):
+    def __init__(
+        self,
+        name: str,
+        artifact: str,
+        events: list[str],
+        source: Path,
+    ) -> None:
+        super().__init__(name, artifacts=(artifact,), inputs=(source,))
+        self.artifact = artifact
+        self.events = events
+        self.source = source
+
+    async def run(self, context: StageContext) -> StageResult:
+        self.events.append(self.name)
+        content = self.source.read_text(encoding="utf-8")
+        (context.run_dir / self.artifact).write_text(content, encoding="utf-8")
+        return StageResult(
+            run_id=context.run.id if context.run is not None else "",
+            stage=self.name,
+            artifacts=[self.artifact],
+        )
+
+
+def test_the_input_hash_includes_declared_external_input_contents(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.md"
+    source.write_text("first", encoding="utf-8")
+    stage = Stage("write", inputs=[source])
+
+    first = compute_input_hash(stage)
+
+    assert stage.inputs == (str(source),)
+    source.write_text("second", encoding="utf-8")
+    assert compute_input_hash(stage) != first
+    source.write_text("first", encoding="utf-8")
+    assert compute_input_hash(stage) == first
+
+
+def test_input_declaration_aliases_are_accepted(tmp_path: Path) -> None:
+    source = tmp_path / "source.md"
+    source.write_text("first", encoding="utf-8")
+
+    for stage in (
+        Stage("write", input_files=[source]),
+        Stage("write", external_inputs=[source]),
+        Stage("write", source_files=[source]),
+    ):
+        assert stage.inputs == (str(source),)
+        assert stage.input_files == (str(source),)
+        assert stage.external_inputs == (str(source),)
+
+
+def test_a_missing_declared_input_is_stable_and_appearing_changes_the_hash(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.md"
+    stage = Stage("write", inputs=[source])
+
+    missing = compute_input_hash(stage)
+
+    assert compute_input_hash(stage) == missing
+    source.write_text("now present", encoding="utf-8")
+    assert compute_input_hash(stage) != missing
+
+
+def test_a_relative_declared_input_resolves_against_the_base_directory(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.md"
+    source.write_text("first", encoding="utf-8")
+    stage = Stage("write", inputs=["source.md"])
+
+    first = compute_input_hash(stage, base_dir=tmp_path)
+
+    source.write_text("second", encoding="utf-8")
+    assert compute_input_hash(stage, base_dir=tmp_path) != first
+
+
+def test_editing_a_declared_external_input_reruns_the_stage_and_dependents(
+    engine: Engine,
+    tmp_path: Path,
+) -> None:
+    machine = RunStateMachine(RunRepository(engine))
+    run = machine.create(Run())
+    events: list[str] = []
+    source = tmp_path / "source.md"
+    source.write_text("first", encoding="utf-8")
+
+    def stages() -> list[Stage]:
+        return [
+            _ExternalInputStage("write", "script.md", events, source),
+            _ArtifactStage("compose", "clip.mp4", events),
+            _FlakyStage(events, failures=0),
+        ]
+
+    first = asyncio.run(_orchestrator(engine, run, stages(), tmp_path).execute())
+    assert first.ok is True
+    assert events == ["write", "compose", "render"]
+    stored_write = StageRunRepository(engine).get(run.id, "write")
+    assert stored_write is not None
+
+    events.clear()
+    source.write_text("second", encoding="utf-8")
+    changed = asyncio.run(_orchestrator(engine, run.id, stages(), tmp_path).execute())
+
+    assert changed.ok is True
+    assert events == ["write", "compose", "render"]
+    assert changed.skipped_stages == ()
+    assert changed.stages[0].input_hash != stored_write.input_hash
+
+    events.clear()
+    unchanged = asyncio.run(_orchestrator(engine, run.id, stages(), tmp_path).execute())
+
+    assert unchanged.ok is True
+    assert events == []
+    assert len(unchanged.skipped_stages) == 3
