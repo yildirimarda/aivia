@@ -10,6 +10,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | Provider | Capabilities | Rate limit | Quality rank | License | Commercial use |
 | --- | --- | --- | --- | --- | --- |
 | `anthropic` | `llm` | 60/min | - | - | unknown |
+| `brave` | `search` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
 | `local` | `storage` | 60/min | - | - | unknown |
@@ -42,6 +43,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | Provider | Capability | Price |
 | --- | --- | --- |
 | `anthropic` | - | - |
+| `brave` | - | - |
 | `exa` | - | - |
 | `gemini` | - | - |
 | `local` | `storage` | $0 per call |
@@ -91,6 +93,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | Provider | Capability | Options |
 | --- | --- | --- |
 | `anthropic` | - | - |
+| `brave` | - | - |
 | `exa` | - | - |
 | `gemini` | - | - |
 | `local` | - | - |
@@ -123,6 +126,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | Provider | License | Commercial use | Attribution required | Notes |
 | --- | --- | --- | --- | --- |
 | `anthropic` | - | unknown | no | - |
+| `brave` | - | unknown | no | - |
 | `exa` | - | unknown | no | - |
 | `gemini` | - | unknown | no | - |
 | `local` | - | unknown | no | - |
