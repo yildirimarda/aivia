@@ -261,7 +261,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Fail config validate when a selected prompt version names a missing prompt or source (tests/cli/test_config_validate.py)
 - [x] Reject prompt template includes and extends so a prompt cannot read files outside the prompts directory (tests/llm/test_prompts.py)
 - [x] Make the search service budget aware by passing the remaining budget to the router and refusing over-budget calls (tests/providers/search/test_budget.py)
-- [ ] Map the web search tool to each LLM adapter's native search and return citations (tests/providers/llm/test_web_search.py)
+- [x] Map the web search tool to each LLM adapter's native search and return citations (tests/providers/llm/test_web_search.py)
 - [ ] Add an embeddings config section for chain, dimensions, batch size, cache size and model prices (tests/core/config/test_embeddings.py)
 - [ ] Persist the embedding cache in SQLite so vectors survive a restart (tests/providers/test_embeddings.py)
 - [ ] Include separately reported cached input tokens in LLM total token counts and cost event units (tests/providers/llm/test_llm_cost.py)
