@@ -585,13 +585,31 @@ class Estimator:
                 missing=True,
             )
 
-        resolved = resolver.resolve(
-            metadata,
-            capability,
-            units,
-            unit_kind or None,
-            provider_name=provider_name,
-        )
+        try:
+            resolved = resolver.resolve(
+                metadata,
+                capability,
+                units,
+                unit_kind or None,
+                provider_name=provider_name,
+            )
+        except ConfigError as exc:
+            if "from_unit" not in exc.details or "to_unit" not in exc.details:
+                raise
+            return StageEstimate(
+                stage=stage.stage,
+                capability=capability,
+                provider=provider_name,
+                units=units,
+                unit_kind=unit_kind or "call",
+                amount_usd=0.0,
+                source=EstimateSource.MISSING,
+                note=(
+                    f"cannot convert {exc.details['from_unit']!r} "
+                    f"to {exc.details['to_unit']!r}"
+                ),
+                missing=True,
+            )
         return StageEstimate(
             stage=stage.stage,
             capability=capability,

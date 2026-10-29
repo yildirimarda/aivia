@@ -7,7 +7,7 @@ import pytest
 from aivia.core.config import CapabilityChainConfig, CapabilityStrategy
 from aivia.core.config.formats import FormatRecipeConfig
 from aivia.core.errors import ConfigError
-from aivia.core.estimate import Estimator
+from aivia.core.estimate import EstimateSource, Estimator
 from aivia.core.models.provider import ProviderMeta, ProviderPrice
 from aivia.core.router import MissingQualityRankWarning
 
@@ -239,3 +239,36 @@ def test_without_a_strategy_the_estimator_still_prefers_the_cheapest() -> None:
     result = Estimator(providers).estimate("sample", recipe({"stage": "write"}))
 
     assert result.stages[0].provider == "cheap"
+
+
+def test_an_incompatible_price_unit_is_a_missing_estimate() -> None:
+    providers = {
+        "text": ProviderMeta(
+            name="text",
+            capabilities=["llm"],
+            pricing={"llm": ProviderPrice(amount_usd=0.10)},
+        ),
+        "per_image": ProviderMeta(
+            name="per_image",
+            capabilities=["tts"],
+            pricing={"tts": ProviderPrice(amount_usd=0.01, unit="image")},
+        ),
+    }
+
+    result = Estimator(providers).estimate(
+        "sample",
+        recipe(
+            {"stage": "write"},
+            {"stage": "voice", "options": {"seconds": 12.5}},
+        ),
+    )
+
+    assert result.stages[0].amount_usd == pytest.approx(0.10)
+    stage = result.stages[1]
+    assert stage.missing is True
+    assert stage.amount_usd == 0.0
+    assert stage.source is EstimateSource.MISSING
+    assert stage.unit_kind == "seconds"
+    assert "cannot convert" in stage.note
+    assert result.complete is False
+    assert result.total_usd == pytest.approx(0.10)
