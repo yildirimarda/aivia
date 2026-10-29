@@ -12,7 +12,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from collections.abc import Awaitable, Callable, Mapping
+import time
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -285,9 +286,46 @@ def _resolve(args: argparse.Namespace) -> tuple[object, Path, JobsConfig]:
     return config, database_path, _jobs_config(config)
 
 
-async def _run_until_stopped(worker: Worker, max_jobs: int | None) -> int:
-    with stop_on_signals(worker):
-        return await worker.run(max_jobs=max_jobs)
+class _WorkerGroup:
+    """Stop every claim loop with one graceful stop request."""
+
+    def __init__(self, workers: Sequence[Worker]) -> None:
+        self.workers = workers
+
+    def request_stop(self) -> None:
+        for worker in self.workers:
+            worker.request_stop()
+
+
+def _worker_ids(base: str | None, count: int) -> list[str | None]:
+    if count == 1:
+        return [base]
+    stem = (base or f"worker-{time.time_ns():x}").strip()
+    return [f"{stem}-{index + 1}" for index in range(count)]
+
+
+def _quotas(max_jobs: int | None, count: int) -> list[int | None]:
+    if max_jobs is None:
+        return [None] * count
+    if max_jobs < 0:
+        raise ValueError("max_jobs must be a non-negative integer or None")
+    base, extra = divmod(max_jobs, count)
+    return [base + (1 if index < extra else 0) for index in range(count)]
+
+
+async def _run_until_stopped(
+    workers: Sequence[Worker],
+    max_jobs: int | None,
+) -> int:
+    quotas = _quotas(max_jobs, len(workers))
+    with stop_on_signals(_WorkerGroup(workers)):
+        results = await asyncio.gather(
+            *(
+                worker.run(max_jobs=quota)
+                for worker, quota in zip(workers, quotas, strict=True)
+            )
+        )
+    return sum(results)
 
 
 def run_worker(args: argparse.Namespace) -> int:
@@ -306,29 +344,43 @@ def run_worker(args: argparse.Namespace) -> int:
 
     try:
         queue = JobQueue(engine, config=jobs)
-        worker = Worker(
-            queue,
-            job_handler(
-                engine,
-                config,
-                database_path,
-                config_for_run=lambda run: _config_for_run(args, run),
-            ),
-            worker_id=getattr(args, "worker_id", None),
-            config=jobs,
-            kind=getattr(args, "kind", None),
+        handler = job_handler(
+            engine,
+            config,
+            database_path,
+            config_for_run=lambda run: _config_for_run(args, run),
         )
-        processed = asyncio.run(_run_until_stopped(worker, _max_jobs(args)))
+        workers = [
+            Worker(
+                queue,
+                handler,
+                worker_id=worker_id,
+                config=jobs,
+                kind=getattr(args, "kind", None),
+            )
+            for worker_id in _worker_ids(
+                getattr(args, "worker_id", None), jobs.concurrency
+            )
+        ]
+        processed = asyncio.run(_run_until_stopped(workers, _max_jobs(args)))
     except (OSError, SQLAlchemyError, ValueError) as exc:
         print(f"error: cannot run the worker: {exc}", file=sys.stderr)
         return 1
     finally:
         engine.dispose()
 
+    succeeded = sum(worker.succeeded for worker in workers)
+    failed = sum(worker.failed for worker in workers)
+    dead_lettered = sum(worker.dead_lettered for worker in workers)
+    if len(workers) == 1:
+        label = f"Worker {workers[0].worker_id}"
+    else:
+        names = ", ".join(worker.worker_id for worker in workers)
+        label = f"Workers {names}"
     print(
-        f"Worker {worker.worker_id} processed {processed} job(s): "
-        f"{worker.succeeded} succeeded, {worker.failed} failed, "
-        f"{worker.dead_lettered} dead-lettered"
+        f"{label} processed {processed} job(s): "
+        f"{succeeded} succeeded, {failed} failed, "
+        f"{dead_lettered} dead-lettered"
     )
     return 0
 
