@@ -241,7 +241,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a repair loop that re prompts with the validation error up to the configured limit then raises a structured output error (tests/llm/test_repair.py)
 - [x] Support image input for vision capable providers and filter out models without vision when a task needs it (tests/llm/test_vision.py)
 - [x] Resolve models by role using the config enum as the single source of truth, with unknown roles listing the allowed values (tests/llm/test_roles.py)
-- [ ] Cache LLM responses by provider, model, prompt version, messages and parameters, recording hits at zero cost and honouring a no cache flag (tests/llm/test_cache.py)
+- [x] Cache LLM responses by provider, model, prompt version, messages and parameters, recording hits at zero cost and honouring a no cache flag (tests/llm/test_cache.py)
 - [ ] Load prompt templates from the user directory with packaged defaults as fallback, rendered in a sandboxed environment with strict undefined variables (tests/llm/test_prompts.py)
 - [ ] Select prompt versions per config and per profile and list user and default versions (tests/cli/test_prompts.py)
 - [ ] Record the prompt name and version on every call, omitting content when redaction is enabled (tests/llm/test_prompt_log.py)
