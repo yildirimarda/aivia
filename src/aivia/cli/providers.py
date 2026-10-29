@@ -13,11 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aivia.cli.registry import register_command
+from aivia.core.dry_run import DRY_RUN_PROVIDER_TYPE
 from aivia.core.errors import ConfigError
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.redact import redact
 from aivia.providers import docs as provider_docs
 from aivia.providers.base import HealthStatus, Provider, ProviderHealth
+from aivia.providers.mock import register_mock_providers
 from aivia.providers.registry import registry as provider_registry
 
 __all__ = [
@@ -30,6 +32,7 @@ __all__ = [
 ]
 
 LIVE_BUDGET_ENV = "AIVA_LIVE_BUDGET_USD"
+_NO_SPEND = 0.0
 
 
 def _configure_list(parser: argparse.ArgumentParser) -> None:
@@ -232,7 +235,28 @@ def _resolve_budget(value: float | None) -> float:
     return budget
 
 
-def _resolve_names(names: Sequence[str]) -> list[tuple[str, type[Provider]]]:
+def _mock_provider_type() -> type[Provider]:
+    """Register the mock types if needed and return the all-in-one mock."""
+    register_mock_providers(provider_registry)
+    return provider_registry.resolve(DRY_RUN_PROVIDER_TYPE)
+
+
+def _resolve_names(
+    names: Sequence[str],
+    *,
+    dry_run: bool = False,
+) -> list[tuple[str, type[Provider]]]:
+    if dry_run:
+        registrations = provider_registry.registrations()
+        provider = _mock_provider_type()
+        if names:
+            for name in names:
+                provider_registry.resolve(name)
+            return [(name, provider) for name in names]
+        if not registrations:
+            registrations = provider_registry.registrations()
+        return [(registration.name, provider) for registration in registrations]
+
     if not names:
         return [
             (registration.name, registration.provider)
@@ -243,21 +267,26 @@ def _resolve_names(names: Sequence[str]) -> list[tuple[str, type[Provider]]]:
 
 def run_check(args: argparse.Namespace) -> int:
     """Run health checks, refusing to touch the network without live mode."""
-    if not args.live:
+    dry_run = bool(getattr(args, "dry_run", False))
+    if not args.live and not dry_run:
         print(
-            "error: providers check requires live mode; pass --live",
+            "error: providers check requires live mode; pass --live or --dry-run",
             file=sys.stderr,
         )
         return 1
 
-    try:
-        budget = _resolve_budget(args.budget)
-    except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
+    budget: float
+    if dry_run:
+        budget = _NO_SPEND
+    else:
+        try:
+            budget = _resolve_budget(args.budget)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
     try:
-        items = _resolve_names(args.names)
+        items = _resolve_names(args.names, dry_run=dry_run)
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -280,9 +309,10 @@ def run_check(args: argparse.Namespace) -> int:
         if health.status is HealthStatus.UNHEALTHY:
             failures += 1
 
+    suffix = " (in dry run; mock providers)" if dry_run else ""
     print(
         f"checked {len(results)} provider(s) with a ${budget:.2f} budget cap: "
-        f"{failures} failed"
+        f"{failures} failed{suffix}"
     )
     return 1 if failures else 0
 
