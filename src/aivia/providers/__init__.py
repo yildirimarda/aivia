@@ -246,6 +246,11 @@ if TYPE_CHECKING:
         FalImageProvider,
         FalProvider,
     )
+    from aivia.providers.image.replicate import (
+        Replicate,
+        ReplicateImageProvider,
+        ReplicateProvider,
+    )
     from aivia.providers.pagefetch import (
         HttpPageFetchProvider,
         PageFetch,
@@ -322,6 +327,9 @@ _LAZY_EMBEDDING_PROVIDERS = frozenset(
 _LAZY_BRAVE_PROVIDERS = frozenset({"Brave", "BraveProvider", "BraveSearchProvider"})
 _LAZY_EXA_PROVIDERS = frozenset({"Exa", "ExaProvider", "ExaSearchProvider"})
 _LAZY_FAL_PROVIDERS = frozenset({"Fal", "FalImageProvider", "FalProvider"})
+_LAZY_REPLICATE_PROVIDERS = frozenset(
+    {"Replicate", "ReplicateImageProvider", "ReplicateProvider"}
+)
 _LAZY_LLM_SEARCH_PROVIDERS = frozenset(
     {
         "LLMNative",
@@ -439,6 +447,21 @@ def __getattr__(name: str) -> Any:
         fal_value = fal_values[name]
         globals()[name] = fal_value
         return fal_value
+    if name in _LAZY_REPLICATE_PROVIDERS:
+        from aivia.providers.image.replicate import (
+            Replicate,
+            ReplicateImageProvider,
+            ReplicateProvider,
+        )
+
+        replicate_values = {
+            "Replicate": Replicate,
+            "ReplicateImageProvider": ReplicateImageProvider,
+            "ReplicateProvider": ReplicateProvider,
+        }
+        replicate_value = replicate_values[name]
+        globals()[name] = replicate_value
+        return replicate_value
     if name in _LAZY_LLM_SEARCH_PROVIDERS:
         from aivia.providers.search.llm_search import (
             LLMNative,
@@ -680,6 +703,9 @@ __all__ = [
     "ProviderState",
     "ReadableContent",
     "ReadablePageFetchProvider",
+    "Replicate",
+    "ReplicateImageProvider",
+    "ReplicateProvider",
     "S3Storage",
     "S3StorageProvider",
     "SFXClip",

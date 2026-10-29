@@ -1,0 +1,8 @@
+{
+  "id": "pred-rep-1",
+  "status": "starting",
+  "urls": {
+    "get": "https://api.replicate.com/v1/predictions/pred-rep-1",
+    "cancel": "https://api.replicate.com/v1/predictions/pred-rep-1/cancel"
+  }
+}

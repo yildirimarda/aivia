@@ -1,0 +1,16 @@
+{
+  "id": "pred-rep-1",
+  "status": "succeeded",
+  "input": {
+    "prompt": "a calm ocean at sunrise",
+    "seed": 7
+  },
+  "output": [
+    "https://replicate.delivery/pbxt/success-1.png",
+    "https://replicate.delivery/pbxt/success-2.png"
+  ],
+  "urls": {
+    "get": "https://api.replicate.com/v1/predictions/pred-rep-1",
+    "cancel": "https://api.replicate.com/v1/predictions/pred-rep-1/cancel"
+  }
+}
