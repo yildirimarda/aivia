@@ -220,9 +220,7 @@ def test_parses_rfc_published_dates_and_falls_back_to_the_request_query() -> Non
     response = asyncio.run(provider.search(SearchRequest(query=QUERY)))
 
     assert response.query == QUERY
-    assert response.results[0].published_at == datetime(
-        2025, 1, 1, 12, 0, tzinfo=UTC
-    )
+    assert response.results[0].published_at == datetime(2025, 1, 1, 12, 0, tzinfo=UTC)
 
 
 def test_uses_a_response_request_id_header_when_the_body_omits_it() -> None:

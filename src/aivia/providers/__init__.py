@@ -209,9 +209,7 @@ if TYPE_CHECKING:
         TavilySearchProvider,
     )
 
-_LAZY_SEARCH_PROVIDERS = frozenset(
-    {"Tavily", "TavilyProvider", "TavilySearchProvider"}
-)
+_LAZY_SEARCH_PROVIDERS = frozenset({"Tavily", "TavilyProvider", "TavilySearchProvider"})
 
 
 def __getattr__(name: str) -> Any:
@@ -232,6 +230,7 @@ def __getattr__(name: str) -> Any:
         globals()[name] = value
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "CAPABILITY_EMBEDDINGS",
