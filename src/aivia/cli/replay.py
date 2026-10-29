@@ -5,7 +5,9 @@ recorded seeds to that configuration and executes the recipe again in a fresh
 run directory. The original run, its artifacts and its manifest are never
 modified. After the replay finishes the registered artifacts of both runs are
 compared by path and content hash so a changed, added or removed output is
-reported as drift.
+reported as drift. The replay also records the toolchain it actually ran under
+and reports any renderer, ffmpeg or font-set component that differs from the
+fingerprint stored with the original.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from aivia.core.config.resolve import resolve_app_config
 from aivia.core.cost import CostTracker
 from aivia.core.db import RunRepository, create_database_engine
 from aivia.core.errors import ConfigError
-from aivia.core.models import Run, RunState
+from aivia.core.models import Run, RunState, ToolchainFingerprint
 from aivia.core.orchestrator import OrchestrationResult, Orchestrator
 from aivia.core.run_dirs import ArtifactRecord, RunDirectories, RunDirectory
 from aivia.core.snapshot import (
@@ -41,6 +43,11 @@ from aivia.core.snapshot import (
     write_config_snapshot,
 )
 from aivia.core.stages import Stage
+from aivia.core.toolchain import (
+    ToolchainDrift,
+    detect_toolchain,
+    diff_toolchain,
+)
 
 __all__ = [
     "ArtifactDrift",
@@ -182,7 +189,7 @@ def configure(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--fail-on-drift",
         action="store_true",
-        help="exit non-zero when any artifact differs from the original",
+        help="exit non-zero when any artifact or toolchain component differs",
     )
     _configure_resolution(parser)
 
@@ -293,19 +300,38 @@ def _recorded_toolchain(snapshot: ConfigSnapshot) -> dict[str, str] | None:
     }
 
 
+def _recorded_fingerprint(
+    original: Run,
+    snapshot: ConfigSnapshot,
+) -> ToolchainFingerprint:
+    """Return the toolchain recorded on the run, falling back to its snapshot."""
+    recorded = original.toolchain_fingerprint
+    from_snapshot = _recorded_toolchain(snapshot) or {}
+    return ToolchainFingerprint(
+        renderer_version=(
+            recorded.renderer_version or from_snapshot.get("renderer_version", "")
+        ),
+        ffmpeg_version=(
+            recorded.ffmpeg_version or from_snapshot.get("ffmpeg_version", "")
+        ),
+        font_set=recorded.font_set or from_snapshot.get("font_set", ""),
+    )
+
+
 def _create_replay_run(
     engine: Engine,
     original: Run,
     snapshot: ConfigSnapshot,
     config: Mapping[str, Any],
     database_path: Path,
+    toolchain: ToolchainFingerprint,
 ) -> Run:
     replay = Run(
         kind=original.kind,
         state=RunState.QUEUED,
         profile=original.profile,
         format=original.format,
-        toolchain_fingerprint=original.toolchain_fingerprint,
+        toolchain_fingerprint=toolchain,
         estimated_cost_usd=original.estimated_cost_usd,
     )
     directory = RunDirectories(database_path.parent).create(replay)
@@ -316,7 +342,7 @@ def _create_replay_run(
         providers=snapshot.get("providers"),
         models=snapshot.get("models"),
         model_roles=snapshot.get("model_roles"),
-        toolchain_fingerprint=_recorded_toolchain(snapshot),
+        toolchain_fingerprint=toolchain,
         profile=original.profile,
         environment=snapshot.get("environment"),
     )
@@ -353,6 +379,9 @@ def _render_report(
     original: Run,
     result: OrchestrationResult,
     drifts: tuple[ArtifactDrift, ...],
+    *,
+    toolchain_drifts: tuple[ToolchainDrift, ...] = (),
+    toolchain_known: bool = False,
 ) -> str:
     changed = sum(1 for item in drifts if item.status == "changed")
     added = sum(1 for item in drifts if item.status == "added")
@@ -367,8 +396,19 @@ def _render_report(
             f"Artifacts: {unchanged} unchanged, {changed} changed, "
             f"{added} added, {removed} removed"
         ),
-        "Drift: none" if not drifted else f"Drift: {len(drifted)}",
     ]
+    if not toolchain_known:
+        lines.append("Toolchain: unknown")
+    elif not toolchain_drifts:
+        lines.append("Toolchain: unchanged")
+    else:
+        components = ", ".join(item.component for item in toolchain_drifts)
+        lines.append(f"Toolchain drift: {components}")
+        lines.extend(
+            f"{item.component}\t{item.original}\t{item.replay}"
+            for item in toolchain_drifts
+        )
+    lines.append("Drift: none" if not drifted else f"Drift: {len(drifted)}")
     if drifted:
         lines.extend(["", "STAGE\tPATH\tSTATUS\tORIGINAL\tREPLAY"])
         for item in drifted:
@@ -420,6 +460,10 @@ def run_replay(args: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
 
+        recorded_toolchain = _recorded_fingerprint(original, snapshot)
+        current_toolchain = detect_toolchain()
+        toolchain_drifts = diff_toolchain(recorded_toolchain, current_toolchain)
+
         try:
             replay = _create_replay_run(
                 engine,
@@ -427,6 +471,7 @@ def run_replay(args: argparse.Namespace) -> int:
                 snapshot,
                 config,
                 database_path,
+                current_toolchain,
             )
             result = _execute_replay(
                 engine,
@@ -443,11 +488,19 @@ def run_replay(args: argparse.Namespace) -> int:
             _original_artifacts(original),
             _original_artifacts(result.run),
         )
-        print(_render_report(original, result, drifts))
+        print(
+            _render_report(
+                original,
+                result,
+                drifts,
+                toolchain_drifts=toolchain_drifts,
+                toolchain_known=recorded_toolchain.is_known,
+            )
+        )
         if result.failed:
             return 1
-        if getattr(args, "fail_on_drift", False) and any(
-            item.drifted for item in drifts
+        if getattr(args, "fail_on_drift", False) and (
+            any(item.drifted for item in drifts) or toolchain_drifts
         ):
             return 1
         return 0
