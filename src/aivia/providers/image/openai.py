@@ -134,9 +134,7 @@ _CONTENT_POLICY_MARKERS = (
 _GPT_IMAGE_SIZES = ("1024x1024", "1536x1024", "1024x1536")
 _DALLE3_SIZES = ("1024x1024", "1792x1024", "1024x1792")
 _DALLE2_SIZES = ("256x256", "512x512", "1024x1024")
-_ALL_SIZES = tuple(
-    dict.fromkeys((*_GPT_IMAGE_SIZES, *_DALLE3_SIZES, *_DALLE2_SIZES))
-)
+_ALL_SIZES = tuple(dict.fromkeys((*_GPT_IMAGE_SIZES, *_DALLE3_SIZES, *_DALLE2_SIZES)))
 
 _CONTENT_TYPE_FORMATS = {
     "image/png": ImageFormat.PNG,
@@ -653,8 +651,7 @@ class OpenAIImageProvider(Provider):
             images=images,
             model=_text(body.get("model")) or model,
             provider=self.name,
-            request_id=_text(body.get("id"))
-            or response.headers.get("x-request-id"),
+            request_id=_text(body.get("id")) or response.headers.get("x-request-id"),
             metadata=metadata,
         )
 

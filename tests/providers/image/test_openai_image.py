@@ -225,15 +225,7 @@ def test_generate_accepts_a_data_url_base64_result() -> None:
     routes[("POST", ENDPOINT)] = [
         (
             200,
-            {
-                "data": [
-                    {
-                        "b64_json": (
-                            "data:image/jpeg;base64," + _b64(JPEG)
-                        )
-                    }
-                ]
-            },
+            {"data": [{"b64_json": ("data:image/jpeg;base64," + _b64(JPEG))}]},
         )
     ]
     _, handler = _routes(routes)
