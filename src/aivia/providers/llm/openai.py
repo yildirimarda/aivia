@@ -277,9 +277,7 @@ def _message_payload(message: ChatMessage) -> dict[str, Any]:
         return {
             "role": "assistant",
             "content": message.text or None,
-            "tool_calls": [
-                _tool_call_payload(call) for call in message.tool_calls
-            ],
+            "tool_calls": [_tool_call_payload(call) for call in message.tool_calls],
         }
     if isinstance(message.content, str):
         return {"role": message.role.value, "content": message.content}
@@ -330,10 +328,7 @@ def _error_class(
     if status in {408, 504}:
         return TimeoutError
     if status >= 500:
-        if (
-            error_type in _CONTENT_POLICY_TYPES
-            or error_code in _CONTENT_POLICY_TYPES
-        ):
+        if error_type in _CONTENT_POLICY_TYPES or error_code in _CONTENT_POLICY_TYPES:
             return ContentPolicyError
         return RetryableError
     if error_code is not None and error_code in _ERROR_CLASSES:
@@ -437,9 +432,7 @@ class OpenAILLMProvider(Provider):
         body: dict[str, Any] = {
             "model": model,
             "max_tokens": max_tokens,
-            "messages": [
-                _message_payload(message) for message in request.messages
-            ],
+            "messages": [_message_payload(message) for message in request.messages],
         }
         if request.temperature is not None:
             body["temperature"] = request.temperature

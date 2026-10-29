@@ -107,9 +107,7 @@ def _capture(
 
 
 def test_metadata_and_registration_describe_the_provider() -> None:
-    provider = _provider(
-        lambda request: httpx.Response(200, json=_completion_body())
-    )
+    provider = _provider(lambda request: httpx.Response(200, json=_completion_body()))
 
     assert provider.name == "openai"
     assert provider.capabilities == (CAPABILITY_LLM,)
@@ -540,9 +538,7 @@ def test_a_timeout_is_mapped_to_the_shared_timeout_error() -> None:
         httpx.Response(200, json={"choices": []}),
         httpx.Response(
             200,
-            json=_completion_body(
-                usage={"prompt_tokens": -1, "completion_tokens": 4}
-            ),
+            json=_completion_body(usage={"prompt_tokens": -1, "completion_tokens": 4}),
         ),
         httpx.Response(
             200,
