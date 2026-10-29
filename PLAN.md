@@ -252,7 +252,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the Exa search provider (tests/providers/search/test_exa.py)
 - [x] Add the Brave search provider (tests/providers/search/test_brave.py)
 - [x] Add SerpAPI and an LLM native search provider using the web search capability (tests/providers/search/test_serpapi_llm.py)
-- [ ] Add a page fetch provider with readability extraction, size and time limits, SSRF guarding and a host allowlist (tests/providers/test_pagefetch.py)
+- [x] Add a page fetch provider with readability extraction, size and time limits, SSRF guarding and a host allowlist (tests/providers/test_pagefetch.py)
 - [ ] Add OpenAI, Voyage and local embedding providers with batching, cost tracking, dimension config and caching (tests/providers/test_embeddings.py)
 - [ ] Add similarity utilities for cosine, normalized title matching and n gram overlap with documented thresholds (tests/core/test_similarity.py)
 - [ ] Run the shared contract suite plus golden fixtures across all LLM providers offline (tests/contracts/test_llm_providers.py)
