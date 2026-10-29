@@ -239,7 +239,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Convert reported token usage into cost events using configured per million input and output prices (tests/providers/llm/test_llm_cost.py)
 - [x] Add a structured output helper that validates responses against a pydantic schema and records tokens and cost (tests/llm/test_structured.py)
 - [x] Add a repair loop that re prompts with the validation error up to the configured limit then raises a structured output error (tests/llm/test_repair.py)
-- [ ] Support image input for vision capable providers and filter out models without vision when a task needs it (tests/llm/test_vision.py)
+- [x] Support image input for vision capable providers and filter out models without vision when a task needs it (tests/llm/test_vision.py)
 - [ ] Resolve models by role using the config enum as the single source of truth, with unknown roles listing the allowed values (tests/llm/test_roles.py)
 - [ ] Cache LLM responses by provider, model, prompt version, messages and parameters, recording hits at zero cost and honouring a no cache flag (tests/llm/test_cache.py)
 - [ ] Load prompt templates from the user directory with packaged defaults as fallback, rendered in a sandboxed environment with strict undefined variables (tests/llm/test_prompts.py)
