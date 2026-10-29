@@ -77,6 +77,7 @@ EXPECTED_KEYS = {
     "presets",
     "privacy",
     "profiles",
+    "prompts",
     "providers",
     "publish",
     "quality",

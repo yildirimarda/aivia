@@ -164,6 +164,13 @@ from aivia.core.config.profile import (
     TopicModeConfig,
     TopicModesConfig,
 )
+from aivia.core.config.prompts import (
+    PromptsConfig,
+    PromptSource,
+    PromptVersion,
+    PromptVersionSource,
+    normalise_prompt_source,
+)
 from aivia.core.config.providers import ProviderConfig, ProvidersConfig
 from aivia.core.config.quality import QualityConfig, ScoringConfig
 from aivia.core.config.ratelimit import (
@@ -428,6 +435,10 @@ __all__ = [
     "ProfileExamplesConfig",
     "ProfileVideoConfig",
     "ProfilesConfig",
+    "PromptSource",
+    "PromptVersion",
+    "PromptVersionSource",
+    "PromptsConfig",
     "ProviderConfig",
     "ProvidersConfig",
     "PublishAccount",
@@ -512,6 +523,7 @@ __all__ = [
     "merge_layers",
     "merge_video_specs",
     "migrate_config",
+    "normalise_prompt_source",
     "packaged_schema_path",
     "parse_app_config",
     "parse_resolution",

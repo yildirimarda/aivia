@@ -32,6 +32,7 @@ This reference is generated from the registered configuration models, their JSON
 | `presets` | [PresetsConfig](#presets) or null | Named presets keyed by name, with an optional default preset. Entries may be written directly under the section (``presets: {short: {...}}``) or nested under ``presets``. |
 | `privacy` | [PrivacyConfig](#privacy) or null | Redaction and personal-data handling for logs, prompts and sidecars. |
 | `profiles` | [ProfilesConfig](#profiles) or null | Named content profiles. Profiles may be written directly under the section (``profiles: {short: {...}}``) or nested under ``profiles``; both forms validate to the same mapping. |
+| `prompts` | [PromptsConfig](#prompts) or null | The selected version of each prompt, with ``auto`` as the fallback. The canonical form is ``prompts: {versions: {image: default}}``. A direct mapping (``prompts: {image: default}``) and aliases such as ``select`` are accepted as well, because the section is small enough that a nesting level should not be a source of configuration errors. |
 | `providers` | [ProvidersConfig](#providers) or null | Named provider instances keyed by the names router chains use. Entries may be written directly under the section (``providers: {fal: {...}}``) or nested under ``providers``. Every entry must name a non-empty ``type``. |
 | `publish` | [PublishConfig](#publish) or null | Publishing accounts, dry-run policy and reference validation. |
 | `quality` | [QualityConfig](#quality) or null | Thresholds and retry policy for generated media quality assurance. |
@@ -320,6 +321,14 @@ Named content profiles. Profiles may be written directly under the section (``pr
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
 | `profiles` | map of [ContentProfileConfig](#contentprofileconfig) |  |  |  |
+
+## `prompts`
+
+The selected version of each prompt, with ``auto`` as the fallback. The canonical form is ``prompts: {versions: {image: default}}``. A direct mapping (``prompts: {image: default}``) and aliases such as ``select`` are accepted as well, because the section is small enough that a nesting level should not be a source of configuration errors.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `versions` | map of [PromptVersionSource](#promptversionsource) |  |  |  |
 
 ## `providers`
 
@@ -808,6 +817,12 @@ A named set of configuration overrides selected by the CLI or a profile. A prese
 | `overrides` | object |  |  |  |
 | `profile` | string | `""` |  |  |
 | `profiles` | array of string |  |  |  |
+
+### PromptVersionSource
+
+Which copy of a prompt is selected.
+
+Allowed values: `auto`, `user`, `default`.
 
 ### ProviderConfig
 

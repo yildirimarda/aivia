@@ -17,13 +17,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 from typing import Any
 
 from jinja2 import StrictUndefined, TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 
 from aivia.core import paths
+from aivia.core.config.prompts import PromptVersionSource, normalise_prompt_source
 from aivia.core.errors import ConfigError, ValidationError
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "PromptLibrary",
     "PromptNotFoundError",
     "PromptRenderError",
+    "PromptSelection",
     "PromptTemplate",
     "create_prompt_environment",
     "load_prompt",
@@ -72,7 +74,7 @@ def create_prompt_environment() -> SandboxedEnvironment:
 
 
 def _normalise_name(name: str | Path) -> PurePosixPath:
-    if isinstance(name, Path):
+    if isinstance(name, PurePath):
         name = name.as_posix()
     if not isinstance(name, str) or not name.strip():
         raise ConfigError("prompt name must be a non-empty string")
@@ -208,25 +210,69 @@ class PromptLibrary:
     def _default_path(self, relative: PurePosixPath) -> Path:
         return self.packaged_dir.joinpath(*relative.parts)
 
-    def resolve(self, name: str | Path) -> Path:
-        """Return the file for *name*, preferring the user copy.
+    def _paths(
+        self,
+        relative: PurePosixPath,
+    ) -> tuple[Path | None, Path | None]:
+        """Return the first user and packaged file for *relative*."""
+        user = next(
+            (
+                path
+                for candidate in _candidates(relative)
+                if (path := self._user_path(candidate)).is_file()
+            ),
+            None,
+        )
+        packaged = next(
+            (
+                path
+                for candidate in _candidates(relative)
+                if (path := self._default_path(candidate)).is_file()
+            ),
+            None,
+        )
+        return user, packaged
 
-        Raises :class:`PromptNotFoundError` listing the directories searched
-        when neither the user nor the packaged directory contains the prompt.
+    def resolve(
+        self,
+        name: str | Path,
+        source: str | PromptVersionSource | None = None,
+    ) -> Path:
+        """Return the file for *name* selected by *source*.
+
+        ``None`` and ``auto`` prefer the user copy and fall back to the
+        packaged default. ``user`` and ``default`` require that copy. Raises
+        :class:`PromptNotFoundError` listing the directories searched when no
+        matching version exists.
         """
         relative = _normalise_name(name)
-        candidates = _candidates(relative)
-        for candidate in candidates:
-            user = self._user_path(candidate)
-            if user.is_file():
-                return user
-        for candidate in candidates:
-            packaged = self._default_path(candidate)
-            if packaged.is_file():
-                return packaged
+        user, packaged = self._paths(relative)
+        requested = normalise_prompt_source(source)
+        selected = {
+            PromptVersionSource.AUTO: user or packaged,
+            PromptVersionSource.USER: user,
+            PromptVersionSource.DEFAULT: packaged,
+        }[requested]
+        if selected is not None:
+            return selected
         searched = (self.user_dir, self.packaged_dir)
         available = self.names()
         hint = f"; available: {', '.join(available)}" if available else ""
+        if user is not None or packaged is not None:
+            versions = [
+                version
+                for version, path in (("user", user), ("default", packaged))
+                if path is not None
+            ]
+            raise PromptNotFoundError(
+                f"prompt {relative} has no {requested.value} version "
+                f"(available: {', '.join(versions)})",
+                details={
+                    "prompt": relative.as_posix(),
+                    "source": requested.value,
+                    "available": versions,
+                },
+            )
         raise PromptNotFoundError(
             f"unknown prompt: {relative} "
             f"(searched {', '.join(map(str, searched))}{hint})",
@@ -237,9 +283,13 @@ class PromptLibrary:
             },
         )
 
-    def load(self, name: str | Path) -> PromptTemplate:
+    def load(
+        self,
+        name: str | Path,
+        source: str | PromptVersionSource | None = None,
+    ) -> PromptTemplate:
         """Load *name* as a :class:`PromptTemplate` without rendering it."""
-        path = self.resolve(name)
+        path = self.resolve(name, source)
         if path.is_relative_to(self.user_dir):
             return _load_path(path.relative_to(self.user_dir).as_posix(), path, "user")
         return _load_path(
@@ -253,10 +303,12 @@ class PromptLibrary:
         name: str | Path,
         /,
         variables: Mapping[str, Any] | None = None,
+        *,
+        source: str | PromptVersionSource | None = None,
         **values: Any,
     ) -> str:
         """Load and render *name* in the sandboxed environment."""
-        template = self.load(name)
+        template = self.load(name, source)
         return _render(
             template,
             self.environment,
@@ -288,6 +340,37 @@ class PromptLibrary:
                 names.add(path.relative_to(directory).as_posix())
         return tuple(sorted(names))
 
+    def select(
+        self,
+        name: str | Path,
+        source: str | PromptVersionSource | None = None,
+    ) -> PromptTemplate:
+        """Load the version of *name* selected by *source*."""
+        return self.load(name, source)
+
+    def version(
+        self,
+        name: str | Path,
+        source: str | PromptVersionSource | None = None,
+    ) -> PromptTemplate:
+        """Alias for :meth:`select`."""
+        return self.select(name, source)
+
+    def selection(
+        self,
+        name: str | Path,
+        source: str | PromptVersionSource | None = None,
+    ) -> PromptSelection:
+        """Return every version of *name* plus the selected one."""
+        relative = _normalise_name(name).as_posix()
+        versions = self.versions(relative)
+        selected = self.load(relative, source)
+        return PromptSelection(
+            name=selected.name,
+            versions=versions,
+            selected=selected,
+        )
+
     def versions(self, name: str | Path) -> tuple[PromptTemplate, ...]:
         """Return the user and packaged copies of *name*, user copy first."""
         relative = _normalise_name(name)
@@ -303,9 +386,37 @@ class PromptLibrary:
         return tuple(templates)
 
 
+@dataclass(frozen=True, slots=True)
+class PromptSelection:
+    """The available versions of one prompt and the selected version."""
+
+    name: str
+    versions: tuple[PromptTemplate, ...]
+    selected: PromptTemplate
+
+    @property
+    def user(self) -> PromptTemplate | None:
+        """The user copy when it exists."""
+        return next((template for template in self.versions if template.is_user), None)
+
+    @property
+    def default(self) -> PromptTemplate | None:
+        """The packaged copy when it exists."""
+        return next(
+            (template for template in self.versions if template.is_default),
+            None,
+        )
+
+    @property
+    def source(self) -> str:
+        """The source of the selected version."""
+        return self.selected.source
+
+
 def resolve_prompt_path(
     name: str | Path,
     *,
+    source: str | PromptVersionSource | None = None,
     config_dir: str | Path | None = None,
     defaults_dir: str | Path | None = None,
     environ: Mapping[str, str] | None = None,
@@ -316,12 +427,13 @@ def resolve_prompt_path(
         defaults_dir=defaults_dir,
         environ=environ,
     )
-    return library.resolve(name)
+    return library.resolve(name, source)
 
 
 def load_prompt(
     name: str | Path,
     *,
+    source: str | PromptVersionSource | None = None,
     config_dir: str | Path | None = None,
     defaults_dir: str | Path | None = None,
     environ: Mapping[str, str] | None = None,
@@ -332,7 +444,7 @@ def load_prompt(
         defaults_dir=defaults_dir,
         environ=environ,
     )
-    return library.load(name)
+    return library.load(name, source)
 
 
 def render_prompt(
@@ -340,6 +452,7 @@ def render_prompt(
     /,
     variables: Mapping[str, Any] | None = None,
     *,
+    source: str | PromptVersionSource | None = None,
     config_dir: str | Path | None = None,
     defaults_dir: str | Path | None = None,
     environ: Mapping[str, str] | None = None,
@@ -351,7 +464,7 @@ def render_prompt(
         defaults_dir=defaults_dir,
         environ=environ,
     )
-    return library.render(name, variables, **values)
+    return library.render(name, variables, source=source, **values)
 
 
 def prompt_names(
