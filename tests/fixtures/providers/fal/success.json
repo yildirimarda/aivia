@@ -1,0 +1,18 @@
+{
+  "images": [
+    {
+      "url": "https://fal.media/files/success-1.png",
+      "width": 1024,
+      "height": 768,
+      "content_type": "image/png"
+    },
+    {
+      "url": "https://fal.media/files/success-2.png",
+      "width": 1024,
+      "height": 768,
+      "content_type": "image/png"
+    }
+  ],
+  "seed": 7,
+  "prompt": "a calm ocean at sunrise"
+}
