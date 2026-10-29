@@ -188,7 +188,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add per profile locks and a global parallel run limit so scheduled runs never overlap unsafely (tests/core/test_locks.py)
 - [x] Implement the job queue with atomic claim, heartbeat, complete and fail so two workers never claim the same job (tests/core/jobs/test_queue.py)
 - [x] Implement the worker loop with backoff retries, dead letter state, graceful shutdown and stale heartbeat recovery (tests/core/jobs/test_worker.py)
-- [ ] Add a local storage provider with content addressed paths, dedupe on put and url resolution (tests/providers/test_storage_local.py)
+- [x] Add a local storage provider with content addressed paths, dedupe on put and url resolution (tests/providers/test_storage_local.py)
 - [ ] Add an S3 compatible storage provider with presigned expiring urls verified against a local mock (tests/providers/test_storage_s3.py)
 - [ ] Add the asset cache keyed by provider, model, prompt, parameters and reference hashes, recording zero cost hits (tests/core/test_asset_cache.py)
 - [ ] Add the core platform data loader and default file with durations, resolutions, aspect ratios, size limits, caption limits, safe areas and disclosure rules (tests/core/test_platforms.py)
