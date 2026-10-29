@@ -1,0 +1,9 @@
+{
+  "id": "pred-rep-1",
+  "status": "failed",
+  "error": "The prompt was flagged as NSFW.",
+  "urls": {
+    "get": "https://api.replicate.com/v1/predictions/pred-rep-1",
+    "cancel": "https://api.replicate.com/v1/predictions/pred-rep-1/cancel"
+  }
+}

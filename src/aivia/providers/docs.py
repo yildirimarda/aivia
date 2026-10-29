@@ -84,6 +84,7 @@ def _load_builtin_adapters() -> None:
     from aivia.providers.embeddings import openai as _openai_embeddings  # noqa: F401
     from aivia.providers.embeddings import voyage as _voyage_embeddings  # noqa: F401
     from aivia.providers.image import fal as _fal  # noqa: F401
+    from aivia.providers.image import replicate as _replicate  # noqa: F401
     from aivia.providers.search import brave as _brave  # noqa: F401
     from aivia.providers.search import exa as _exa  # noqa: F401
     from aivia.providers.search import tavily as _tavily  # noqa: F401

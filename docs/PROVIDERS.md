@@ -41,6 +41,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | `llm` | 60/min | - | - | unknown |
 | `openai-embeddings` | `embeddings` | 60/min | - | - | unknown |
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
+| `replicate` | `image_gen` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
 | `tavily` | `search` | 60/min | - | - | unknown |
@@ -99,6 +100,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | - |
 | `openai-embeddings` | - | - |
 | `openai_compatible` | - | - |
+| `replicate` | - | - |
 | `s3` | `storage` | $0 per call |
 | `serpapi` | - | - |
 | `tavily` | - | - |
@@ -140,6 +142,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | - |
 | `openai-embeddings` | - | - |
 | `openai_compatible` | - | - |
+| `replicate` | - | - |
 | `s3` | - | - |
 | `serpapi` | - | - |
 | `tavily` | - | - |
@@ -181,6 +184,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | unknown | no | - |
 | `openai-embeddings` | - | unknown | no | - |
 | `openai_compatible` | - | unknown | no | - |
+| `replicate` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
 | `serpapi` | - | unknown | no | - |
 | `tavily` | - | unknown | no | - |
