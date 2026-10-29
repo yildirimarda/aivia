@@ -127,12 +127,14 @@ def test_jobs_defaults_match_a_single_careful_worker() -> None:
     assert jobs.poll_seconds == 2
     assert jobs.stale_after_seconds == 120
     assert jobs.max_queue_depth == 0
+    assert jobs.max_parallel_runs == 1
 
 
 @pytest.mark.parametrize(
     ("values", "field"),
     [
         ({"concurrency": 0}, "concurrency"),
+        ({"max_parallel_runs": 0}, "max_parallel_runs"),
         ({"max_attempts": 0}, "max_attempts"),
         ({"heartbeat_seconds": 0}, "heartbeat_seconds"),
         ({"poll_seconds": 0}, "poll_seconds"),
@@ -271,4 +273,5 @@ def test_the_packaged_example_declares_the_operations_sections() -> None:
     assert review.require_approval is True
     assert retention.delete_final_outputs is False
     assert jobs.stale_after_seconds > jobs.heartbeat_seconds
+    assert jobs.max_parallel_runs >= 1
     assert storage.backend == "local"

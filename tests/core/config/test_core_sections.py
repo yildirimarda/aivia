@@ -185,6 +185,7 @@ def test_registering_a_core_key_with_another_model_still_fails() -> None:
         (DatabaseConfig, "busy_timeout_ms", 5_000),
         (ApiConfig, "host", "127.0.0.1"),
         (JobsConfig, "concurrency", 1),
+        (JobsConfig, "max_parallel_runs", 1),
         (SafetyConfig, "enabled", True),
         (RetentionConfig, "delete_final_outputs", False),
         (ReviewConfig, "approval_mode", "ask"),
