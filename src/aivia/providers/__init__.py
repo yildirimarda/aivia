@@ -246,6 +246,16 @@ if TYPE_CHECKING:
         FalImageProvider,
         FalProvider,
     )
+    from aivia.providers.image.google import (
+        Google,
+        GoogleImage,
+        GoogleImagen,
+        GoogleImagenProvider,
+        GoogleImageProvider,
+        GoogleImages,
+        GoogleImagesProvider,
+        GoogleProvider,
+    )
     from aivia.providers.image.openai import (
         OpenAIImage,
         OpenAIImageProvider,
@@ -333,6 +343,18 @@ _LAZY_EMBEDDING_PROVIDERS = frozenset(
 _LAZY_BRAVE_PROVIDERS = frozenset({"Brave", "BraveProvider", "BraveSearchProvider"})
 _LAZY_EXA_PROVIDERS = frozenset({"Exa", "ExaProvider", "ExaSearchProvider"})
 _LAZY_FAL_PROVIDERS = frozenset({"Fal", "FalImageProvider", "FalProvider"})
+_LAZY_GOOGLE_IMAGE_PROVIDERS = frozenset(
+    {
+        "Google",
+        "GoogleImage",
+        "GoogleImageProvider",
+        "GoogleImages",
+        "GoogleImagesProvider",
+        "GoogleImagen",
+        "GoogleImagenProvider",
+        "GoogleProvider",
+    }
+)
 _LAZY_OPENAI_IMAGE_PROVIDERS = frozenset(
     {
         "OpenAIImage",
@@ -461,6 +483,31 @@ def __getattr__(name: str) -> Any:
         fal_value = fal_values[name]
         globals()[name] = fal_value
         return fal_value
+    if name in _LAZY_GOOGLE_IMAGE_PROVIDERS:
+        from aivia.providers.image.google import (
+            Google,
+            GoogleImage,
+            GoogleImagen,
+            GoogleImagenProvider,
+            GoogleImageProvider,
+            GoogleImages,
+            GoogleImagesProvider,
+            GoogleProvider,
+        )
+
+        google_image_values = {
+            "Google": Google,
+            "GoogleImage": GoogleImage,
+            "GoogleImageProvider": GoogleImageProvider,
+            "GoogleImages": GoogleImages,
+            "GoogleImagesProvider": GoogleImagesProvider,
+            "GoogleImagen": GoogleImagen,
+            "GoogleImagenProvider": GoogleImagenProvider,
+            "GoogleProvider": GoogleProvider,
+        }
+        google_image_value = google_image_values[name]
+        globals()[name] = google_image_value
+        return google_image_value
     if name in _LAZY_OPENAI_IMAGE_PROVIDERS:
         from aivia.providers.image.openai import (
             OpenAIImage,
@@ -626,6 +673,14 @@ __all__ = [
     "Gemini",
     "GeminiLLMProvider",
     "GeminiProvider",
+    "Google",
+    "GoogleImage",
+    "GoogleImageProvider",
+    "GoogleImagen",
+    "GoogleImagenProvider",
+    "GoogleImages",
+    "GoogleImagesProvider",
+    "GoogleProvider",
     "HealthStatus",
     "HttpPageFetchProvider",
     "ImageDetail",

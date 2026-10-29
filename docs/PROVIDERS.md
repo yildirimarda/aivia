@@ -14,6 +14,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `exa` | `search` | 60/min | - | - | unknown |
 | `fal` | `image_gen` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
+| `google` | `image_gen` | 60/min | - | - | unknown |
+| `google-image` | `image_gen` | 60/min | - | - | unknown |
+| `google_image` | `image_gen` | 60/min | - | - | unknown |
 | `http` | `page_fetch` | 60/min | - | - | unknown |
 | `llm_native` | `search` | 60/min | - | - | unknown |
 | `llm_search` | `search` | 60/min | - | - | unknown |
@@ -58,6 +61,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `exa` | - | - |
 | `fal` | - | - |
 | `gemini` | - | - |
+| `google` | - | - |
+| `google-image` | - | - |
+| `google_image` | - | - |
 | `http` | `page_fetch` | $0 per call |
 | `llm_native` | - | - |
 | `llm_search` | - | - |
@@ -119,6 +125,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `exa` | - | - |
 | `fal` | - | - |
 | `gemini` | - | - |
+| `google` | - | - |
+| `google-image` | - | - |
+| `google_image` | - | - |
 | `http` | - | - |
 | `llm_native` | - | - |
 | `llm_search` | - | - |
@@ -163,6 +172,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `exa` | - | unknown | no | - |
 | `fal` | - | unknown | no | - |
 | `gemini` | - | unknown | no | - |
+| `google` | - | unknown | no | - |
+| `google-image` | - | unknown | no | - |
+| `google_image` | - | unknown | no | - |
 | `http` | - | unknown | no | - |
 | `llm_native` | - | unknown | no | - |
 | `llm_search` | - | unknown | no | - |
