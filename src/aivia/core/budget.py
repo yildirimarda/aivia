@@ -32,7 +32,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, time, timedelta
 from enum import StrEnum
 from typing import Any, NoReturn
@@ -81,6 +81,9 @@ __all__ = [
     "BudgetManager",
     "BudgetOutcome",
     "BudgetPolicy",
+    "BudgetRelease",
+    "BudgetReservation",
+    "BudgetReservationRelease",
     "BudgetResolution",
     "BudgetResult",
     "BudgetStatus",
@@ -93,9 +96,16 @@ __all__ = [
     "emit_budget_alerts",
     "enforce_budget",
     "ensure_budget",
+    "expire_abandoned_reservations",
+    "expire_reservations",
+    "release_reservation",
+    "release_reservations",
     "resolve_budget",
     "would_exceed_budget",
 ]
+
+DEFAULT_RESERVATION_TTL = 3600.0
+"""How long a reservation may hold budget before :meth:`BudgetGuard.expire`."""
 
 _PER_CALL = "per_call"
 _PER_RUN = "per_run"
@@ -218,6 +228,25 @@ def _coerce_optional_name(value: object, *, label: str) -> str:
     return value.strip()
 
 
+def _coerce_age_seconds(value: object, *, label: str = "older_than") -> float:
+    """Return a reservation age as a finite, non-negative number of seconds."""
+    if isinstance(value, timedelta):
+        age = value.total_seconds()
+    elif isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(
+            f"{label} must be a timedelta or a non-negative number of seconds",
+            details={label: value},
+        )
+    else:
+        age = float(value)
+    if not math.isfinite(age) or age < 0:
+        raise ConfigError(
+            f"{label} must be a finite, non-negative number of seconds",
+            details={label: value},
+        )
+    return age
+
+
 def _coerce_config(value: object) -> BudgetConfig:
     if value is None:
         return BudgetConfig()
@@ -270,6 +299,7 @@ class BudgetCheck:
     scope: str | None = None
     provider: str = ""
     operation: str = ""
+    reservation_id: str = ""
 
     @property
     def allowed(self) -> bool:
@@ -344,6 +374,21 @@ class BudgetCheck:
         """Alias for :attr:`remaining_usd`."""
         return self.remaining_usd
 
+    @property
+    def event_id(self) -> str:
+        """The id of the estimated event this check reserved, when any."""
+        return self.reservation_id
+
+    @property
+    def id(self) -> str:
+        """Alias for :attr:`reservation_id`."""
+        return self.reservation_id
+
+    @property
+    def is_reservation(self) -> bool:
+        """Whether :meth:`BudgetGuard.reserve` wrote a reservation for this check."""
+        return bool(self.reservation_id)
+
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable representation for logs and errors."""
         return {
@@ -364,11 +409,73 @@ class BudgetCheck:
             "remaining_usd": self.remaining_usd,
             "scope": self.scope,
             "allowed": self.allowed,
+            "reservation_id": self.reservation_id,
         }
 
 
+class BudgetRelease(int):
+    """The reservations released by one call, counted like an ``int``.
+
+    The value is the number of reservations released. ``events`` holds the
+    zero-amount actual events written to close them, and ``event_ids`` their
+    ids, so a caller can audit or log the release without another query.
+    """
+
+    events: tuple[CostEvent, ...]
+    reservations: tuple[CostEvent, ...]
+
+    def __new__(
+        cls,
+        events: Iterable[CostEvent] = (),
+        reservations: Iterable[CostEvent] = (),
+    ) -> BudgetRelease:
+        items = tuple(events)
+        released = int.__new__(cls, len(items))
+        released.events = items
+        released.reservations = tuple(reservations)
+        return released
+
+    @property
+    def count(self) -> int:
+        """How many reservations were released."""
+        return int(self)
+
+    @property
+    def event_ids(self) -> tuple[str, ...]:
+        """The ids of the release events written."""
+        return tuple(event.id for event in self.events)
+
+    @property
+    def reservation_ids(self) -> tuple[str, ...]:
+        """The ids of the estimates that were closed."""
+        return tuple(event.id for event in self.reservations)
+
+    @property
+    def released_usd(self) -> float:
+        """The total amount of budget returned to the caps."""
+        if self.reservations:
+            return math.fsum(event.amount_usd for event in self.reservations)
+        return math.fsum(event.amount_usd for event in self.events)
+
+    def __len__(self) -> int:
+        return int(self)
+
+    def __iter__(self) -> Iterator[CostEvent]:
+        return iter(self.events)
+
+    def __getitem__(self, index: int) -> CostEvent:
+        return self.events[index]
+
+    def __getattr__(self, name: str) -> Any:
+        if len(self.events) == 1:
+            return getattr(self.events[0], name)
+        raise AttributeError(name)
+
+
+BudgetReservationRelease = BudgetRelease
 BudgetResult = BudgetCheck
 BudgetStatus = BudgetCheck
+BudgetReservation = BudgetCheck
 
 
 class BudgetAction(StrEnum):
@@ -1145,11 +1252,246 @@ class BudgetGuard:
                 provider_spent=provider_spent,
             )
             if result.allowed:
-                repository.create_in(connection, event)
+                stored = repository.create_in(connection, event)
+                result = replace(result, reservation_id=stored.id)
 
         if result.exceeded:
             self._raise_budget_error(result)
         return result
+
+    def _release_reservations(
+        self,
+        *,
+        reservation_id: str,
+        run_id: str | None,
+        provider: str | None,
+        operation: str | None,
+        cutoff: datetime | None,
+        reason: str,
+        now: datetime | None,
+    ) -> BudgetRelease:
+        """Write zero-amount actual events that close matching reservations."""
+        if self._tracker is None:
+            raise ConfigError(
+                "releasing a budget reservation needs a cost ledger",
+                details={"tracker": None},
+            )
+        moment = _coerce_now(now)
+        statement = select(cost_events).where(
+            cost_events.c.estimated.is_(True),
+            _not_replaced(),
+        )
+        if reservation_id:
+            statement = statement.where(cost_events.c.id == reservation_id)
+        if run_id is not None:
+            statement = statement.where(cost_events.c.run_id == _coerce_run_id(run_id))
+        if provider is not None:
+            statement = statement.where(
+                cost_events.c.provider
+                == _coerce_optional_name(provider, label="provider")
+            )
+        if operation is not None:
+            statement = statement.where(
+                cost_events.c.operation
+                == _coerce_optional_name(operation, label="operation")
+            )
+        if cutoff is not None:
+            statement = statement.where(cost_events.c.created_at < cutoff)
+        statement = statement.order_by(
+            cost_events.c.created_at,
+            cost_events.c.id,
+        )
+
+        repository = self._tracker.repository
+        released: list[CostEvent] = []
+        reservations: list[CostEvent] = []
+        with _write_transaction(repository.engine) as connection:
+            rows = connection.execute(statement).mappings().all()
+            for row in rows:
+                reservation = CostEvent.model_validate(dict(row))
+                metadata: dict[str, Any] = {
+                    "released": True,
+                    "replaces": reservation.id,
+                    "estimate_event_id": reservation.id,
+                }
+                if reason:
+                    metadata["release_reason"] = reason
+                release = CostEvent.model_validate(
+                    {
+                        "provider": reservation.provider,
+                        "model": reservation.model,
+                        "operation": reservation.operation,
+                        "units": 0.0,
+                        "unit_kind": reservation.unit_kind,
+                        "amount_usd": 0.0,
+                        "estimated": False,
+                        "run_id": reservation.run_id,
+                        "pricing_version": reservation.pricing_version,
+                        "metadata": metadata,
+                        "created_at": moment,
+                        "updated_at": moment,
+                    }
+                )
+                stored = repository.create_in(connection, release)
+                reservation_metadata = dict(reservation.metadata)
+                reservation_metadata["released"] = True
+                reservation_metadata["released_at"] = moment.isoformat()
+                if reason:
+                    reservation_metadata["release_reason"] = reason
+                connection.execute(
+                    cost_events.update()
+                    .where(cost_events.c.id == reservation.id)
+                    .values(metadata=reservation_metadata, updated_at=moment)
+                )
+                released.append(stored)
+                reservations.append(reservation)
+        return BudgetRelease(released, reservations)
+
+    def release(
+        self,
+        reservation: str | CostEvent | BudgetCheck | Mapping[str, Any] | None = None,
+        *,
+        event: CostEvent | Mapping[str, Any] | None = None,
+        reservation_id: str | None = None,
+        event_id: str | None = None,
+        estimate_id: str | None = None,
+        run_id: str | None = None,
+        provider: str | None = None,
+        operation: str | None = None,
+        reason: str = "",
+        now: datetime | None = None,
+    ) -> BudgetRelease:
+        """Release one or more reservations so their budget is available again.
+
+        Pass a :class:`BudgetCheck` returned by :meth:`reserve`, its event id, a
+        :class:`~aivia.core.models.cost.CostEvent`, or filters such as
+        ``run_id`` and ``operation`` to release every matching reservation. The
+        estimate is closed by a zero-amount actual event that names it in
+        ``metadata.replaces``, so it stops counting towards every cap while the
+        ledger keeps the audit trail. Releasing an already closed reservation is
+        a no-op.
+        """
+        identifier = ""
+        candidate = reservation if reservation is not None else event
+        if candidate is not None:
+            if isinstance(candidate, BudgetCheck):
+                identifier = candidate.reservation_id
+            elif isinstance(candidate, CostEvent):
+                identifier = candidate.id
+            elif isinstance(candidate, Mapping):
+                raw = (
+                    candidate.get("id")
+                    or candidate.get("reservation_id")
+                    or candidate.get("event_id")
+                )
+                identifier = _coerce_optional_name(raw, label="reservation_id")
+            elif isinstance(candidate, str):
+                identifier = candidate.strip()
+            else:
+                raise ConfigError(
+                    "a reservation must be an id, cost event or budget check",
+                    details={"reservation": type(candidate).__name__},
+                )
+        for value in (reservation_id, event_id, estimate_id):
+            if value is not None:
+                identifier = _coerce_optional_name(value, label="reservation_id")
+                break
+        if not identifier and run_id is None and provider is None and operation is None:
+            raise ConfigError(
+                "releasing a reservation needs an id, run_id, provider or operation",
+                details={"reservation_id": identifier},
+            )
+        return self._release_reservations(
+            reservation_id=identifier,
+            run_id=run_id,
+            provider=provider,
+            operation=operation,
+            cutoff=None,
+            reason=reason,
+            now=now,
+        )
+
+    def release_reservation(self, *args: Any, **kwargs: Any) -> BudgetRelease:
+        """Alias for :meth:`release`."""
+        return self.release(*args, **kwargs)
+
+    def release_reservations(self, *args: Any, **kwargs: Any) -> BudgetRelease:
+        """Alias for :meth:`release`."""
+        return self.release(*args, **kwargs)
+
+    def expire(
+        self,
+        older_than: timedelta | float | int | None = None,
+        *,
+        ttl: timedelta | float | int | None = None,
+        ttl_seconds: float | None = None,
+        max_age: timedelta | float | int | None = None,
+        max_age_seconds: float | None = None,
+        age: timedelta | float | int | None = None,
+        age_seconds: float | None = None,
+        older_than_seconds: float | None = None,
+        now: datetime | None = None,
+        run_id: str | None = None,
+        provider: str | None = None,
+        operation: str | None = None,
+        reason: str = "expired",
+    ) -> BudgetRelease:
+        """Release reservations older than *older_than*, returning the count.
+
+        ``older_than`` accepts a :class:`~datetime.timedelta` or a number of
+        seconds. When omitted, the configured
+        :attr:`~aivia.core.config.budget.BudgetConfig.reservation_ttl_seconds`
+        is used, falling back to one hour. A reservation whose call has already
+        been replaced by an actual amount is never expired.
+        """
+        if self._tracker is None:
+            raise ConfigError(
+                "expiring budget reservations needs a cost ledger",
+                details={"tracker": None},
+            )
+        selected: object | None = older_than
+        for candidate in (
+            ttl,
+            ttl_seconds,
+            max_age,
+            max_age_seconds,
+            age,
+            age_seconds,
+            older_than_seconds,
+        ):
+            if selected is None and candidate is not None:
+                selected = candidate
+        if selected is None:
+            configured = self._config.reservation_ttl_seconds
+            selected = configured if configured is not None else DEFAULT_RESERVATION_TTL
+        age_value = _coerce_age_seconds(selected)
+        moment = _coerce_now(now)
+        cutoff = moment - timedelta(seconds=age_value)
+        return self._release_reservations(
+            reservation_id="",
+            run_id=run_id,
+            provider=provider,
+            operation=operation,
+            cutoff=cutoff,
+            reason=reason,
+            now=moment,
+        )
+
+    def expire_reservations(self, *args: Any, **kwargs: Any) -> BudgetRelease:
+        """Alias for :meth:`expire`."""
+        return self.expire(*args, **kwargs)
+
+    def expire_abandoned(self, *args: Any, **kwargs: Any) -> BudgetRelease:
+        """Alias for :meth:`expire`."""
+        return self.expire(*args, **kwargs)
+
+    def expire_abandoned_reservations(self, *args: Any, **kwargs: Any) -> BudgetRelease:
+        """Alias for :meth:`expire`."""
+        return self.expire(*args, **kwargs)
+
+    def expire_stale(self, *args: Any, **kwargs: Any) -> BudgetRelease:
+        """Alias for :meth:`expire`."""
+        return self.expire(*args, **kwargs)
 
     def check_budget(
         self, amount_usd: float | None = None, **kwargs: Any
@@ -1209,6 +1551,60 @@ def _guard(
     tracker: CostTracker | CostEventRepository | Engine | None,
 ) -> BudgetGuard:
     return BudgetGuard(config, tracker)
+
+
+def release_reservation(
+    reservation: str | CostEvent | BudgetCheck | Mapping[str, Any] | None = None,
+    *,
+    config: BudgetConfig | Mapping[str, Any] | None = None,
+    tracker: CostTracker | CostEventRepository | Engine | None = None,
+    **kwargs: Any,
+) -> BudgetRelease:
+    """Release one reservation without constructing a long-lived guard."""
+    return _guard(config, tracker).release(reservation, **kwargs)
+
+
+def expire_reservations(
+    older_than: timedelta | float | int | None = None,
+    *,
+    config: BudgetConfig | Mapping[str, Any] | None = None,
+    tracker: CostTracker | CostEventRepository | Engine | None = None,
+    **kwargs: Any,
+) -> BudgetRelease:
+    """Expire abandoned reservations without constructing a long-lived guard."""
+    return _guard(config, tracker).expire(older_than, **kwargs)
+
+
+def expire_abandoned_reservations(
+    older_than: timedelta | float | int | None = None,
+    *,
+    config: BudgetConfig | Mapping[str, Any] | None = None,
+    tracker: CostTracker | CostEventRepository | Engine | None = None,
+    **kwargs: Any,
+) -> BudgetRelease:
+    """Alias for :func:`expire_reservations`."""
+    return expire_reservations(
+        older_than,
+        config=config,
+        tracker=tracker,
+        **kwargs,
+    )
+
+
+def release_reservations(
+    reservation: str | CostEvent | BudgetCheck | Mapping[str, Any] | None = None,
+    *,
+    config: BudgetConfig | Mapping[str, Any] | None = None,
+    tracker: CostTracker | CostEventRepository | Engine | None = None,
+    **kwargs: Any,
+) -> BudgetRelease:
+    """Alias for :func:`release_reservation`."""
+    return release_reservation(
+        reservation,
+        config=config,
+        tracker=tracker,
+        **kwargs,
+    )
 
 
 def check_budget(

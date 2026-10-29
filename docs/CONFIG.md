@@ -108,6 +108,7 @@ Spending caps, provider monthly limits, alert thresholds and policy.
 | `per_provider` | map of number |  |  |  |
 | `per_run` | number | `0.0` | >= 0 |  |
 | `per_video` | number | `0.0` | >= 0 |  |
+| `reservation_ttl_seconds` | number | `3600.0` | >= 0 |  |
 
 ## `character`
 
