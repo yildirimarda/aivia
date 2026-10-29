@@ -180,7 +180,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 - [x] Add the stage base class with name, run, estimate and artifact declarations plus a context exposing run directory, config, cost, router, storage and logger (tests/core/stages/test_base.py)
 - [x] Manage run directories and register artifacts per stage (tests/core/test_run_dirs.py)
-- [ ] Implement the run state machine with legal transitions only and persistence on each change (tests/core/test_run_state.py)
+- [x] Implement the run state machine with legal transitions only and persistence on each change (tests/core/test_run_state.py)
 - [ ] Implement the orchestrator that executes recipe stages in order, persists results and stops on failure with stage and error code (tests/core/test_orchestrator.py)
 - [ ] Support resume from failure by skipping succeeded stages whose input hash is unchanged (tests/core/test_resume.py)
 - [ ] Apply per stage timeout and retry policy with recorded attempts and exhaustion (tests/core/test_stage_retry.py)
