@@ -1,6 +1,7 @@
 """Table definitions attached to the shared database metadata."""
 
 from aivia.core.db.tables.assets import (
+    ASSET_CACHE_ASSET_INDEX_NAME,
     ASSET_CREATED_AT_INDEX_NAME,
     ASSET_PINNED_INDEX_NAME,
     ASSET_PROMPT_HASH_INDEX_NAME,
@@ -12,6 +13,7 @@ from aivia.core.db.tables.assets import (
     COST_EVENT_CREATED_AT_INDEX_NAME,
     COST_EVENT_PROVIDER_INDEX_NAME,
     COST_EVENT_RUN_INDEX_NAME,
+    asset_cache,
     assets,
     compositions,
     cost_events,
@@ -75,6 +77,7 @@ from aivia.core.db.tables.orders import (
 )
 
 __all__ = [
+    "ASSET_CACHE_ASSET_INDEX_NAME",
     "ASSET_CREATED_AT_INDEX_NAME",
     "ASSET_PINNED_INDEX_NAME",
     "ASSET_PROMPT_HASH_INDEX_NAME",
@@ -123,6 +126,7 @@ __all__ = [
     "WEB_CARD_HIT_DAY_INDEX_NAME",
     "WEB_CARD_HIT_ORDER_INDEX_NAME",
     "WEB_CARD_HIT_VISITOR_INDEX_NAME",
+    "asset_cache",
     "assets",
     "compositions",
     "cost_events",

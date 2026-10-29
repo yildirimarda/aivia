@@ -24,6 +24,7 @@ from typing import Any, ClassVar
 from sqlalchemy import Connection, DateTime, Engine, RowMapping, Table, and_, select
 
 from aivia.core.db.tables import (
+    asset_cache,
     assets,
     compositions,
     cost_events,
@@ -56,6 +57,7 @@ from aivia.core.ids import (
 )
 from aivia.core.models import (
     Asset,
+    AssetCacheEntry,
     CompositionReference,
     CostEvent,
     Delivery,
@@ -71,6 +73,7 @@ from aivia.core.models import (
 
 __all__ = [
     "REPOSITORIES",
+    "AssetCacheRepository",
     "AssetRepository",
     "CompositionRepository",
     "CostEventRepository",
@@ -375,6 +378,14 @@ class AssetRepository(ModelRepository[Asset]):
     id_factory = new_asset_id
 
 
+class AssetCacheRepository(ModelRepository[AssetCacheEntry]):
+    """Persist the request digest that points at a cached asset."""
+
+    table = asset_cache
+    model = AssetCacheEntry
+    key_columns = ("cache_key",)
+
+
 class CompositionRepository(ModelRepository[CompositionReference]):
     """Persist references to rendered compositions."""
 
@@ -478,6 +489,7 @@ REPOSITORIES: Mapping[str, type[Repository[Any]]] = {
         StageRunRepository,
         JobRepository,
         AssetRepository,
+        AssetCacheRepository,
         CompositionRepository,
         CostEventRepository,
         PlanRepository,

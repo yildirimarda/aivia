@@ -3,6 +3,7 @@
 from aivia.core.models.asset import (
     Asset,
     AssetAnalysis,
+    AssetCacheEntry,
     AssetCost,
     AssetCostLink,
     AssetKind,
@@ -152,6 +153,7 @@ __all__ = [
     "ApprovalMode",
     "Asset",
     "AssetAnalysis",
+    "AssetCacheEntry",
     "AssetCost",
     "AssetCostLink",
     "AssetKind",

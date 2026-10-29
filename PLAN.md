@@ -210,6 +210,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Cancel an in-flight handler when its heartbeat detects a recovered claim (tests/core/jobs/test_worker.py)
 - [ ] Wire SIGTERM and SIGINT to worker stop so shutdown drains the current job (tests/cli/test_worker_shutdown.py)
 - [ ] Add a storage provider factory that builds local or s3 from storage config and resolves credentials (tests/providers/test_storage_factory.py)
+- [ ] Make asset cache store atomic so concurrent identical requests create one entry (tests/core/test_asset_cache.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 
