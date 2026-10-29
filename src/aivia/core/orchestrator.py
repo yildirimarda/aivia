@@ -620,9 +620,7 @@ class Orchestrator:
         elif isinstance(outcome, Mapping):
             result = StageResult.model_validate(dict(outcome))
         else:
-            raise TypeError(
-                "stage run must return a StageResult, a mapping or None"
-            )
+            raise TypeError("stage run must return a StageResult, a mapping or None")
         status = result.status
         if status in {StageState.PENDING, StageState.RUNNING}:
             status = StageState.SUCCEEDED

@@ -398,4 +398,3 @@ def test_execute_recipe_function_returns_the_orchestration_result(
     assert result.ok is True
     assert events == ["write"]
     assert result.run.state is RunState.SUCCEEDED
-
