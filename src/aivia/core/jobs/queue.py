@@ -41,6 +41,7 @@ __all__ = [
     "JobQueueError",
 ]
 
+
 class JobQueueError(AiviaError):
     """Base class for job queue failures."""
 
