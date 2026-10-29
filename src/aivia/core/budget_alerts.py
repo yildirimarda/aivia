@@ -23,13 +23,14 @@ import json
 import math
 import os
 import tempfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from enum import StrEnum
 from pathlib import Path
 from threading import RLock
-from typing import Any, cast
+from typing import Any, BinaryIO, cast
 
 from aivia.core import paths
 from aivia.core.config.budget import BudgetConfig
@@ -295,6 +296,43 @@ def _write_emitted(path: Path, emitted: Iterable[tuple[str, float]]) -> None:
         raise
 
 
+def _lock_handle(handle: BinaryIO, *, unlock: bool) -> None:
+    """Take or release an exclusive advisory lock on *handle*."""
+    if os.name == "nt":
+        import importlib
+
+        msvcrt: Any = importlib.import_module("msvcrt")
+        handle.seek(0)
+        msvcrt.locking(
+            handle.fileno(),
+            msvcrt.LK_UNLCK if unlock else msvcrt.LK_LOCK,
+            1,
+        )
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN if unlock else fcntl.LOCK_EX)
+
+
+@contextmanager
+def _state_lock(path: Path) -> Iterator[None]:
+    """Hold an exclusive inter-process lock for a state file.
+
+    The lock lives in a sibling ``.lock`` file because :func:`_write_emitted`
+    replaces the state file, which would otherwise change the inode an advisory
+    lock is attached to. Locking a stable file lets trackers in separate worker
+    processes serialise their read-merge-write cycles.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(f"{path.name}.lock")
+    with lock_path.open("a+b") as handle:
+        _lock_handle(handle, unlock=False)
+        try:
+            yield
+        finally:
+            _lock_handle(handle, unlock=True)
+
+
 @dataclass(frozen=True, slots=True)
 class BudgetAlert:
     """One threshold reached during one alert period.
@@ -363,7 +401,9 @@ class BudgetAlertTracker:
     a JSON file and write them back after every change. A new tracker pointed at
     the same file therefore continues where the previous process stopped, and a
     threshold already emitted in the current period is not repeated. Without a
-    state file the tracker is purely in-memory.
+    state file the tracker is purely in-memory. Writes are serialised across
+    processes with a sibling lock file, and every check merges what other workers
+    have written, so parallel workers cannot lose each other's emitted keys.
     """
 
     def __init__(
@@ -442,8 +482,12 @@ class BudgetAlertTracker:
     def reset(self) -> None:
         """Forget every emitted threshold, so the next check may fire again."""
         with self._lock:
-            self._emitted.clear()
-            self._persist()
+            if self._state_file is None:
+                self._emitted.clear()
+                return
+            with _state_lock(self._state_file):
+                self._emitted.clear()
+                self._persist()
 
     def _persist(self) -> None:
         """Write the emitted tokens when a state file is configured."""
@@ -457,6 +501,39 @@ class BudgetAlertTracker:
         """Return the current period's start, end and stable key."""
         return _period_window(self._period, _coerce_now(now))
 
+    def _due_locked(
+        self,
+        spent: float,
+        start: datetime,
+        end: datetime,
+        key: str,
+        *,
+        mark: bool,
+    ) -> tuple[BudgetAlert, ...]:
+        """Compute due alerts while the caller holds every required lock."""
+        due: list[BudgetAlert] = []
+        changed = False
+        for threshold in self._thresholds:
+            token = (key, threshold)
+            if token in self._emitted or not _reaches(spent, threshold):
+                continue
+            due.append(
+                BudgetAlert(
+                    threshold_usd=threshold,
+                    spent_usd=spent,
+                    period=self._period,
+                    period_key=key,
+                    period_start=start,
+                    period_end=end,
+                )
+            )
+            if mark:
+                self._emitted.add(token)
+                changed = True
+        if changed:
+            self._persist()
+        return tuple(due)
+
     def _due(
         self,
         spent_usd: float,
@@ -467,28 +544,11 @@ class BudgetAlertTracker:
         spent = _coerce_amount(spent_usd)
         start, end, key = _period_window(self._period, _coerce_now(now))
         with self._lock:
-            due: list[BudgetAlert] = []
-            changed = False
-            for threshold in self._thresholds:
-                token = (key, threshold)
-                if token in self._emitted or not _reaches(spent, threshold):
-                    continue
-                due.append(
-                    BudgetAlert(
-                        threshold_usd=threshold,
-                        spent_usd=spent,
-                        period=self._period,
-                        period_key=key,
-                        period_start=start,
-                        period_end=end,
-                    )
-                )
-                if mark:
-                    self._emitted.add(token)
-                    changed = True
-            if changed:
-                self._persist()
-            return tuple(due)
+            if self._state_file is None:
+                return self._due_locked(spent, start, end, key, mark=mark)
+            with _state_lock(self._state_file):
+                self._emitted.update(_load_emitted(self._state_file))
+                return self._due_locked(spent, start, end, key, mark=mark)
 
     def peek(
         self,

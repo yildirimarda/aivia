@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
@@ -424,6 +425,67 @@ def test_the_module_helper_keeps_state_across_calls_without_a_tracker(
     assert len(first) == 1
     assert second == ()
     assert len(target.calls) == 1
+
+
+def test_a_stale_tracker_merges_keys_written_by_another_worker(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "alerts.json"
+    first = BudgetAlertTracker([10, 20], state_file=state)
+    second = BudgetAlertTracker([10, 20], state_file=state)
+
+    assert [alert.threshold_usd for alert in first.check(12, now=NOW)] == [10.0]
+    assert [alert.threshold_usd for alert in second.check(22, now=NOW)] == [20.0]
+
+    assert first.check(22, now=NOW) == ()
+    assert second.check(12, now=NOW) == ()
+    reloaded = BudgetAlertTracker([10, 20], state_file=state)
+
+    assert reloaded.emitted == {
+        ("2026-03-15", 10.0),
+        ("2026-03-15", 20.0),
+    }
+
+
+def test_parallel_workers_do_not_lose_each_others_emitted_keys(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "alerts.json"
+    thresholds = (10.0, 20.0, 30.0, 40.0)
+    trackers = [
+        BudgetAlertTracker([threshold], state_file=state) for threshold in thresholds
+    ]
+    barrier = threading.Barrier(len(trackers))
+    emitted: list[int] = []
+    errors: list[BaseException] = []
+    results_lock = threading.Lock()
+
+    def worker(tracker: BudgetAlertTracker, threshold: float) -> None:
+        barrier.wait()
+        try:
+            alerts = tracker.check(threshold, now=NOW)
+        except BaseException as exc:
+            with results_lock:
+                errors.append(exc)
+        else:
+            with results_lock:
+                emitted.append(len(alerts))
+
+    threads = [
+        threading.Thread(target=worker, args=(tracker, threshold))
+        for tracker, threshold in zip(trackers, thresholds, strict=True)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+    assert not any(thread.is_alive() for thread in threads)
+    assert not errors
+    assert emitted == [1, 1, 1, 1]
+
+    reloaded = BudgetAlertTracker(list(thresholds), state_file=state)
+
+    assert reloaded.emitted == {("2026-03-15", threshold) for threshold in thresholds}
 
 
 def test_budget_guard_reexports_the_alert_api() -> None:
