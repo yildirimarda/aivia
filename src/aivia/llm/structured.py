@@ -23,10 +23,12 @@ from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
 from aivia.core.config.llm import LLMConfig, TokenPricing
+from aivia.core.config.sections import PrivacyConfig
 from aivia.core.cost import CostTracker
 from aivia.core.errors import ConfigError, ValidationError
 from aivia.core.models.cost import CostEvent
 from aivia.llm.cache import LLMCache, LLMCacheKey
+from aivia.llm.prompt_log import PromptLog
 from aivia.providers.llm.cost import LLM_OPERATION, LLMCostCalculator, LLMTokenCost
 from aivia.providers.protocols.llm import LLMRequest, LLMResponse, LLMUsage
 
@@ -325,7 +327,10 @@ class StructuredOutputHelper:
         metadata: Mapping[str, Any] | None = None,
         record_cost: bool = True,
         cache: LLMCache | None = None,
+        prompt_name: str = "",
         prompt_version: str = "",
+        prompt_log: PromptLog | None = None,
+        privacy: PrivacyConfig | None = None,
         cache_parameters: Mapping[str, Any] | None = None,
         no_cache: bool = False,
     ) -> None:
@@ -333,8 +338,14 @@ class StructuredOutputHelper:
             raise TypeError("provider must expose an async complete method")
         if cache is not None and not isinstance(cache, LLMCache):
             raise TypeError("cache must be an LLMCache")
+        if not isinstance(prompt_name, str):
+            raise TypeError("prompt_name must be a string")
         if not isinstance(prompt_version, str):
             raise TypeError("prompt_version must be a string")
+        if prompt_log is not None and not isinstance(prompt_log, PromptLog):
+            raise TypeError("prompt_log must be a PromptLog")
+        if privacy is not None and not isinstance(privacy, PrivacyConfig):
+            raise TypeError("privacy must be a PrivacyConfig")
         if not isinstance(no_cache, bool):
             raise TypeError("no_cache must be a boolean")
 
@@ -377,7 +388,11 @@ class StructuredOutputHelper:
         self._metadata = dict(metadata or {})
         self._record_cost = record_cost
         self._cache = cache
+        self._prompt_name = prompt_name.strip()
         self._prompt_version = prompt_version.strip()
+        self._prompt_log = (
+            prompt_log if prompt_log is not None else PromptLog(privacy=privacy)
+        )
         self._cache_parameters = dict(cache_parameters or {})
         self._no_cache = no_cache
 
@@ -407,9 +422,41 @@ class StructuredOutputHelper:
         return self._cache
 
     @property
+    def prompt_name(self) -> str:
+        """The prompt name recorded for every call, when the request has none."""
+        return self._prompt_name
+
+    @property
     def prompt_version(self) -> str:
-        """The prompt version included in every cache key."""
+        """The prompt version included in every cache key and prompt log."""
         return self._prompt_version
+
+    @property
+    def prompt_log(self) -> PromptLog:
+        """The prompt log used to record every call."""
+        return self._prompt_log
+
+    def _record_prompt(
+        self,
+        request: LLMRequest,
+        *,
+        response: LLMResponse | None,
+        cache_hit: bool,
+        run_id: str,
+        operation: str,
+    ) -> None:
+        name = self._prompt_name or request.prompt_name
+        version = self._prompt_version or request.prompt_version
+        self._prompt_log.record(
+            name,
+            version,
+            request.last_user_text or None,
+            provider="" if response is None else response.provider,
+            model=(request.model or "" if response is None else response.model),
+            run_id=run_id,
+            operation=operation,
+            cache_hit=cache_hit,
+        )
 
     def _cache_key_for(self, request: LLMRequest) -> LLMCacheKey | None:
         if self._cache is None or self._no_cache:
@@ -472,15 +519,25 @@ class StructuredOutputHelper:
                 update={"response_schema": _schema_json(model)}
             )
 
+        effective_run_id = self._run_id if run_id is None else run_id
+        effective_operation = self._operation if operation is None else operation
+
         cache = self._cache
         cache_key = self._cache_key_for(prepared)
         if cache is not None and cache_key is not None:
             cached = cache.lookup(
                 cache_key,
-                run_id=self._run_id if run_id is None else run_id,
-                operation=self._operation if operation is None else operation,
+                run_id=effective_run_id,
+                operation=effective_operation,
             )
             if cached is not None:
+                self._record_prompt(
+                    prepared,
+                    response=cached,
+                    cache_hit=True,
+                    run_id=effective_run_id,
+                    operation=effective_operation,
+                )
                 return StructuredOutputResult(
                     value=parse_structured(cached, model),
                     response=cached,
@@ -489,17 +546,41 @@ class StructuredOutputHelper:
                     cache_key=cache_key.digest,
                 )
 
-        response = await self._provider.complete(prepared)
+        try:
+            response = await self._provider.complete(prepared)
+        except BaseException:
+            self._record_prompt(
+                prepared,
+                response=None,
+                cache_hit=False,
+                run_id=effective_run_id,
+                operation=effective_operation,
+            )
+            raise
         if not isinstance(response, LLMResponse):
+            self._record_prompt(
+                prepared,
+                response=None,
+                cache_hit=False,
+                run_id=effective_run_id,
+                operation=effective_operation,
+            )
             raise TypeError("provider complete must return an LLMResponse")
+        self._record_prompt(
+            prepared,
+            response=response,
+            cache_hit=False,
+            run_id=effective_run_id,
+            operation=effective_operation,
+        )
 
         call_metadata = dict(self._metadata)
         if metadata is not None:
             call_metadata.update(metadata)
         cost, event = self._cost_for(
             response,
-            run_id=self._run_id if run_id is None else run_id,
-            operation=self._operation if operation is None else operation,
+            run_id=effective_run_id,
+            operation=effective_operation,
             metadata=call_metadata,
             record_cost=(self._record_cost if record_cost is None else record_cost),
             tracker=self._tracker if tracker is None else tracker,
@@ -571,7 +652,10 @@ async def complete_structured(
     metadata: Mapping[str, Any] | None = None,
     record_cost: bool = True,
     cache: LLMCache | None = None,
+    prompt_name: str = "",
     prompt_version: str = "",
+    prompt_log: PromptLog | None = None,
+    privacy: PrivacyConfig | None = None,
     cache_parameters: Mapping[str, Any] | None = None,
     no_cache: bool = False,
 ) -> StructuredOutputResult:
@@ -588,7 +672,10 @@ async def complete_structured(
         metadata=metadata,
         record_cost=record_cost,
         cache=cache,
+        prompt_name=prompt_name,
         prompt_version=prompt_version,
+        prompt_log=prompt_log,
+        privacy=privacy,
         cache_parameters=cache_parameters,
         no_cache=no_cache,
     )

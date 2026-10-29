@@ -244,7 +244,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Cache LLM responses by provider, model, prompt version, messages and parameters, recording hits at zero cost and honouring a no cache flag (tests/llm/test_cache.py)
 - [x] Load prompt templates from the user directory with packaged defaults as fallback, rendered in a sandboxed environment with strict undefined variables (tests/llm/test_prompts.py)
 - [x] Select prompt versions per config and per profile and list user and default versions (tests/cli/test_prompts.py)
-- [ ] Record the prompt name and version on every call, omitting content when redaction is enabled (tests/llm/test_prompt_log.py)
+- [x] Record the prompt name and version on every call, omitting content when redaction is enabled (tests/llm/test_prompt_log.py)
 - [ ] Add an untrusted input wrapper that places user text, filenames and extracted text inside delimited data blocks with a data only instruction (tests/llm/test_untrusted.py)
 - [ ] Add language utilities for code normalization, detection and per language accessors such as words per second and fonts (tests/llm/test_languages.py)
 - [ ] Normalize search results into one model, dedupe by url and route search calls through the router with cost tracking (tests/providers/search/test_normalize.py)
@@ -700,3 +700,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Register capability chain sections for media capabilities so estimates and runs share configured chains (tests/core/config/test_capability.py)
 - [ ] Make asset cache hit counting atomic so concurrent lookups do not lose increments (tests/core/test_asset_cache.py)
 - [ ] Build run and estimate routers through the provider factory so configured options and secrets apply (tests/core/test_provider_wiring.py)
+- [ ] Isolate prompt loading tests from the real user config directory so local prompts cannot change default assertions (tests/llm/test_prompts.py)

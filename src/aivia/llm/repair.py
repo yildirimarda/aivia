@@ -24,9 +24,11 @@ from typing import Any, cast
 from pydantic import BaseModel
 
 from aivia.core.config.llm import LLMConfig, TokenPricing
+from aivia.core.config.sections import PrivacyConfig
 from aivia.core.cost import CostTracker
 from aivia.core.errors import ConfigError
 from aivia.llm.cache import LLMCache
+from aivia.llm.prompt_log import PromptLog
 from aivia.llm.structured import (
     StructuredOutputError,
     StructuredOutputHelper,
@@ -205,7 +207,10 @@ class RepairLoop:
         record_cost: bool = True,
         prompt_builder: PromptBuilder | None = None,
         cache: LLMCache | None = None,
+        prompt_name: str = "",
         prompt_version: str = "",
+        prompt_log: PromptLog | None = None,
+        privacy: PrivacyConfig | None = None,
         cache_parameters: Mapping[str, Any] | None = None,
         no_cache: bool = False,
     ) -> None:
@@ -224,7 +229,10 @@ class RepairLoop:
             metadata=metadata,
             record_cost=record_cost,
             cache=cache,
+            prompt_name=prompt_name,
             prompt_version=prompt_version,
+            prompt_log=prompt_log,
+            privacy=privacy,
             cache_parameters=cache_parameters,
             no_cache=no_cache,
         )
@@ -388,7 +396,10 @@ async def repair_structured(
     record_cost: bool = True,
     prompt_builder: PromptBuilder | None = None,
     cache: LLMCache | None = None,
+    prompt_name: str = "",
     prompt_version: str = "",
+    prompt_log: PromptLog | None = None,
+    privacy: PrivacyConfig | None = None,
     cache_parameters: Mapping[str, Any] | None = None,
     no_cache: bool = False,
 ) -> StructuredOutputResult:
@@ -408,7 +419,10 @@ async def repair_structured(
         record_cost=record_cost,
         prompt_builder=prompt_builder,
         cache=cache,
+        prompt_name=prompt_name,
         prompt_version=prompt_version,
+        prompt_log=prompt_log,
+        privacy=privacy,
         cache_parameters=cache_parameters,
         no_cache=no_cache,
     )

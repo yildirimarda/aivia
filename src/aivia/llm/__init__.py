@@ -17,6 +17,12 @@ from aivia.llm.cache import (
     parameters_for_request,
     provider_name,
 )
+from aivia.llm.prompt_log import (
+    PromptLog,
+    PromptLogEntry,
+    PromptLogSink,
+    prompt_content_for_log,
+)
 from aivia.llm.prompts import (
     DEFAULT_PROMPTS_DIR,
     PROMPT_EXTENSIONS,
@@ -134,6 +140,9 @@ __all__ = [
     "ModelResolver",
     "ModelRoleResolver",
     "PromptLibrary",
+    "PromptLog",
+    "PromptLogEntry",
+    "PromptLogSink",
     "PromptNotFoundError",
     "PromptRenderError",
     "PromptSelection",
@@ -189,6 +198,7 @@ __all__ = [
     "parameters_for_request",
     "parse_structured",
     "parse_structured_response",
+    "prompt_content_for_log",
     "prompt_names",
     "provider_name",
     "register_role",

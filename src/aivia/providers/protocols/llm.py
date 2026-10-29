@@ -274,6 +274,7 @@ class LLMRequest(ProtocolModel):
     messages: list[ChatMessage] = Field(min_length=1)
     role: str = "default"
     model: str | None = None
+    prompt_name: str = ""
     prompt_version: str = ""
     max_tokens: int | None = Field(default=None, ge=1)
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
@@ -304,7 +305,7 @@ class LLMRequest(ProtocolModel):
             return text or None
         return value
 
-    @field_validator("prompt_version", mode="before")
+    @field_validator("prompt_name", "prompt_version", mode="before")
     @classmethod
     def _strip_prompt_version(cls, value: Any) -> Any:
         if isinstance(value, str):
