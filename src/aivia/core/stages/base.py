@@ -115,6 +115,7 @@ class Stage:
     """
 
     name: str = ""
+    version: int | str = 1
     artifacts: tuple[str, ...] = ()
     timeout_seconds: float | None = None
     max_attempts: int = 1
@@ -131,6 +132,8 @@ class Stage:
         *,
         options: Mapping[str, Any] | None = None,
         artifacts: Iterable[str] | None = None,
+        version: int | str | None = None,
+        implementation_version: int | str | None = None,
         retry_policy: StageRetryPolicy | Mapping[str, Any] | None = None,
         timeout_seconds: float | None = None,
         max_attempts: int | None = None,
@@ -145,6 +148,10 @@ class Stage:
         elif self.name:
             self.name = _normalise_name(self.name)
         self.options: dict[str, Any] = dict(options or {})
+        if implementation_version is not None:
+            version = implementation_version
+        if version is not None:
+            self.version = version
         declared = self.artifacts if artifacts is None else artifacts
         self.artifacts = _normalise_artifacts(declared)
         self.retry_policy = self._build_retry_policy(
@@ -221,6 +228,15 @@ class Stage:
     def stage_name(self) -> str:
         """Alias for :attr:`name`."""
         return self.name
+
+    @property
+    def implementation_version(self) -> int | str:
+        """The version of this stage implementation, used when resuming."""
+        return self.version
+
+    @implementation_version.setter
+    def implementation_version(self, value: int | str) -> None:
+        self.version = value
 
     @property
     def artifact_declarations(self) -> tuple[str, ...]:

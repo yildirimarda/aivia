@@ -15,6 +15,7 @@ from aivia.core.db.migrate import upgrade_database
 from aivia.core.errors import AiviaError
 from aivia.core.models.run import Run, RunState, StageResult, StageState
 from aivia.core.orchestrator import Orchestrator, resume_recipe
+from aivia.core.resume import compute_input_hash
 from aivia.core.run_state import RunStateMachine
 from aivia.core.stages import Stage, StageContext
 
@@ -411,3 +412,62 @@ def test_a_failed_stage_is_never_skipped_even_when_its_input_matches(
     assert events == ["render"]
     assert result.ok is True
     assert result.stages[0].status is StageState.SUCCEEDED
+
+
+def test_the_input_hash_includes_the_stage_implementation_version() -> None:
+    stage = Stage("write")
+    original = compute_input_hash(stage)
+
+    stage.version = "2"
+
+    assert compute_input_hash(stage) != original
+    assert compute_input_hash(Stage("write", version="2")) != original
+    assert compute_input_hash(Stage("write", implementation_version="2")) != original
+
+
+def test_a_changed_stage_version_reruns_that_stage(
+    engine: Engine,
+    tmp_path: Path,
+) -> None:
+    machine = RunStateMachine(RunRepository(engine))
+    run = machine.create(Run())
+    events: list[str] = []
+
+    first = asyncio.run(
+        _orchestrator(
+            engine,
+            run,
+            [
+                _ArtifactStage("write", "script.md", events),
+                _ArtifactStage("compose", "clip.mp4", events),
+                _FlakyStage(events, failures=0),
+            ],
+            tmp_path,
+        ).execute()
+    )
+    assert first.ok is True
+    assert events == ["write", "compose", "render"]
+
+    stored_write = StageRunRepository(engine).get(run.id, "write")
+    assert stored_write is not None
+
+    events.clear()
+    changed = _ArtifactStage("write", "script.md", events)
+    changed.version = 2
+    second = asyncio.run(
+        _orchestrator(
+            engine,
+            run.id,
+            [
+                changed,
+                _ArtifactStage("compose", "clip.mp4", events),
+                _FlakyStage(events, failures=0),
+            ],
+            tmp_path,
+        ).execute()
+    )
+
+    assert second.ok is True
+    assert events == ["write"]
+    assert [item.stage for item in second.skipped_stages] == ["compose", "render"]
+    assert second.stages[0].input_hash != stored_write.input_hash
