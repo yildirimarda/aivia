@@ -23,6 +23,14 @@ from aivia.providers.llm.openai import (
     OpenAILLMProvider,
     OpenAIProvider,
 )
+from aivia.providers.llm.openai_compat import (
+    OpenAICompat,
+    OpenAICompatible,
+    OpenAICompatibleLLMProvider,
+    OpenAICompatibleProvider,
+    OpenAICompatLLMProvider,
+    OpenAICompatProvider,
+)
 
 __all__ = [
     "DEFAULT_API_VERSION",
@@ -35,6 +43,12 @@ __all__ = [
     "GeminiLLMProvider",
     "GeminiProvider",
     "OpenAI",
+    "OpenAICompat",
+    "OpenAICompatLLMProvider",
+    "OpenAICompatProvider",
+    "OpenAICompatible",
+    "OpenAICompatibleLLMProvider",
+    "OpenAICompatibleProvider",
     "OpenAILLMProvider",
     "OpenAIProvider",
 ]
