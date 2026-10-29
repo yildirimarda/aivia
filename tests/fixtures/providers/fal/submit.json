@@ -1,0 +1,6 @@
+{
+  "request_id": "req-fal-1",
+  "status_url": "https://queue.fal.run/fal-ai/flux/requests/req-fal-1/status",
+  "response_url": "https://queue.fal.run/fal-ai/flux/requests/req-fal-1",
+  "cancel_url": "https://queue.fal.run/fal-ai/flux/requests/req-fal-1/cancel"
+}

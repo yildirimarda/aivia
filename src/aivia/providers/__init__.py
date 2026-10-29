@@ -241,6 +241,11 @@ if TYPE_CHECKING:
         embedding_service_from_config,
         service_from_config,
     )
+    from aivia.providers.image.fal import (
+        Fal,
+        FalImageProvider,
+        FalProvider,
+    )
     from aivia.providers.pagefetch import (
         HttpPageFetchProvider,
         PageFetch,
@@ -316,6 +321,7 @@ _LAZY_EMBEDDING_PROVIDERS = frozenset(
 )
 _LAZY_BRAVE_PROVIDERS = frozenset({"Brave", "BraveProvider", "BraveSearchProvider"})
 _LAZY_EXA_PROVIDERS = frozenset({"Exa", "ExaProvider", "ExaSearchProvider"})
+_LAZY_FAL_PROVIDERS = frozenset({"Fal", "FalImageProvider", "FalProvider"})
 _LAZY_LLM_SEARCH_PROVIDERS = frozenset(
     {
         "LLMNative",
@@ -418,6 +424,21 @@ def __getattr__(name: str) -> Any:
         exa_value = exa_values[name]
         globals()[name] = exa_value
         return exa_value
+    if name in _LAZY_FAL_PROVIDERS:
+        from aivia.providers.image.fal import (
+            Fal,
+            FalImageProvider,
+            FalProvider,
+        )
+
+        fal_values = {
+            "Fal": Fal,
+            "FalImageProvider": FalImageProvider,
+            "FalProvider": FalProvider,
+        }
+        fal_value = fal_values[name]
+        globals()[name] = fal_value
+        return fal_value
     if name in _LAZY_LLM_SEARCH_PROVIDERS:
         from aivia.providers.search.llm_search import (
             LLMNative,
@@ -544,6 +565,9 @@ __all__ = [
     "Exa",
     "ExaProvider",
     "ExaSearchProvider",
+    "Fal",
+    "FalImageProvider",
+    "FalProvider",
     "FinishReason",
     "Gemini",
     "GeminiLLMProvider",

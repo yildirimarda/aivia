@@ -12,6 +12,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `anthropic` | `llm` | 60/min | - | - | unknown |
 | `brave` | `search` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
+| `fal` | `image_gen` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
 | `http` | `page_fetch` | 60/min | - | - | unknown |
 | `llm_native` | `search` | 60/min | - | - | unknown |
@@ -52,6 +53,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `anthropic` | - | - |
 | `brave` | - | - |
 | `exa` | - | - |
+| `fal` | - | - |
 | `gemini` | - | - |
 | `http` | `page_fetch` | $0 per call |
 | `llm_native` | - | - |
@@ -109,6 +111,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `anthropic` | - | - |
 | `brave` | - | - |
 | `exa` | - | - |
+| `fal` | - | - |
 | `gemini` | - | - |
 | `http` | - | - |
 | `llm_native` | - | - |
@@ -149,6 +152,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `anthropic` | - | unknown | no | - |
 | `brave` | - | unknown | no | - |
 | `exa` | - | unknown | no | - |
+| `fal` | - | unknown | no | - |
 | `gemini` | - | unknown | no | - |
 | `http` | - | unknown | no | - |
 | `llm_native` | - | unknown | no | - |
