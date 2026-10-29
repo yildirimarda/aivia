@@ -25,6 +25,18 @@ from aivia.providers.search.exa import (
     ExaProvider,
     ExaSearchProvider,
 )
+from aivia.providers.search.llm_search import (
+    DEFAULT_TOOL_NAME,
+    WEB_SEARCH_TOOL,
+    LLMNative,
+    LLMNativeProvider,
+    LLMNativeSearchProvider,
+    LLMSearch,
+    LLMSearchProvider,
+    LLMWebSearchProvider,
+    NativeSearch,
+    NativeSearchProvider,
+)
 from aivia.providers.search.normalize import (
     SearchNormalizer,
     SearchResultNormalizer,
@@ -40,6 +52,12 @@ from aivia.providers.search.normalize import (
     normalize_search_result,
     normalize_search_results,
     url_key,
+)
+from aivia.providers.search.serpapi import (
+    SERPAPI_DEFAULT_BASE_URL,
+    SerpAPI,
+    SerpAPIProvider,
+    SerpAPISearchProvider,
 )
 from aivia.providers.search.service import (
     RoutedSearch,
@@ -59,15 +77,26 @@ from aivia.providers.search.tavily import (
 __all__ = [
     "BRAVE_DEFAULT_BASE_URL",
     "DEFAULT_BASE_URL",
+    "DEFAULT_TOOL_NAME",
     "EXA_DEFAULT_BASE_URL",
     "SEARCH_OPERATION",
     "SEARCH_UNIT",
+    "SERPAPI_DEFAULT_BASE_URL",
+    "WEB_SEARCH_TOOL",
     "Brave",
     "BraveProvider",
     "BraveSearchProvider",
     "Exa",
     "ExaProvider",
     "ExaSearchProvider",
+    "LLMNative",
+    "LLMNativeProvider",
+    "LLMNativeSearchProvider",
+    "LLMSearch",
+    "LLMSearchProvider",
+    "LLMWebSearchProvider",
+    "NativeSearch",
+    "NativeSearchProvider",
     "RoutedSearch",
     "SearchClient",
     "SearchCost",
@@ -78,6 +107,9 @@ __all__ = [
     "SearchPrice",
     "SearchResultNormalizer",
     "SearchService",
+    "SerpAPI",
+    "SerpAPIProvider",
+    "SerpAPISearchProvider",
     "Tavily",
     "TavilyProvider",
     "TavilySearchProvider",

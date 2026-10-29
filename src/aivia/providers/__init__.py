@@ -213,6 +213,21 @@ if TYPE_CHECKING:
         ExaProvider,
         ExaSearchProvider,
     )
+    from aivia.providers.search.llm_search import (
+        LLMNative,
+        LLMNativeProvider,
+        LLMNativeSearchProvider,
+        LLMSearch,
+        LLMSearchProvider,
+        LLMWebSearchProvider,
+        NativeSearch,
+        NativeSearchProvider,
+    )
+    from aivia.providers.search.serpapi import (
+        SerpAPI,
+        SerpAPIProvider,
+        SerpAPISearchProvider,
+    )
     from aivia.providers.search.tavily import (
         Tavily,
         TavilyProvider,
@@ -221,6 +236,21 @@ if TYPE_CHECKING:
 
 _LAZY_BRAVE_PROVIDERS = frozenset({"Brave", "BraveProvider", "BraveSearchProvider"})
 _LAZY_EXA_PROVIDERS = frozenset({"Exa", "ExaProvider", "ExaSearchProvider"})
+_LAZY_LLM_SEARCH_PROVIDERS = frozenset(
+    {
+        "LLMNative",
+        "LLMNativeProvider",
+        "LLMNativeSearchProvider",
+        "LLMSearch",
+        "LLMSearchProvider",
+        "LLMWebSearchProvider",
+        "NativeSearch",
+        "NativeSearchProvider",
+    }
+)
+_LAZY_SERPAPI_PROVIDERS = frozenset(
+    {"SerpAPI", "SerpAPIProvider", "SerpAPISearchProvider"}
+)
 _LAZY_TAVILY_PROVIDERS = frozenset({"Tavily", "TavilyProvider", "TavilySearchProvider"})
 
 
@@ -256,6 +286,46 @@ def __getattr__(name: str) -> Any:
         exa_value = exa_values[name]
         globals()[name] = exa_value
         return exa_value
+    if name in _LAZY_LLM_SEARCH_PROVIDERS:
+        from aivia.providers.search.llm_search import (
+            LLMNative,
+            LLMNativeProvider,
+            LLMNativeSearchProvider,
+            LLMSearch,
+            LLMSearchProvider,
+            LLMWebSearchProvider,
+            NativeSearch,
+            NativeSearchProvider,
+        )
+
+        llm_search_values = {
+            "LLMNative": LLMNative,
+            "LLMNativeProvider": LLMNativeProvider,
+            "LLMNativeSearchProvider": LLMNativeSearchProvider,
+            "LLMSearch": LLMSearch,
+            "LLMSearchProvider": LLMSearchProvider,
+            "LLMWebSearchProvider": LLMWebSearchProvider,
+            "NativeSearch": NativeSearch,
+            "NativeSearchProvider": NativeSearchProvider,
+        }
+        llm_search_value = llm_search_values[name]
+        globals()[name] = llm_search_value
+        return llm_search_value
+    if name in _LAZY_SERPAPI_PROVIDERS:
+        from aivia.providers.search.serpapi import (
+            SerpAPI,
+            SerpAPIProvider,
+            SerpAPISearchProvider,
+        )
+
+        serpapi_values = {
+            "SerpAPI": SerpAPI,
+            "SerpAPIProvider": SerpAPIProvider,
+            "SerpAPISearchProvider": SerpAPISearchProvider,
+        }
+        serpapi_value = serpapi_values[name]
+        globals()[name] = serpapi_value
+        return serpapi_value
     if name in _LAZY_TAVILY_PROVIDERS:
         from aivia.providers.search.tavily import (
             Tavily,
@@ -332,11 +402,17 @@ __all__ = [
     "ImageResponse",
     "ImageResult",
     "LLMCostCalculator",
+    "LLMNative",
+    "LLMNativeProvider",
+    "LLMNativeSearchProvider",
     "LLMProvider",
     "LLMRequest",
     "LLMResponse",
+    "LLMSearch",
+    "LLMSearchProvider",
     "LLMTokenCost",
     "LLMUsage",
+    "LLMWebSearchProvider",
     "LocalStorage",
     "LocalStorageProvider",
     "MediaDimensions",
@@ -385,6 +461,8 @@ __all__ = [
     "MusicRequest",
     "MusicResponse",
     "MusicTrack",
+    "NativeSearch",
+    "NativeSearchProvider",
     "OpenAI",
     "OpenAICompat",
     "OpenAICompatLLMProvider",
@@ -421,6 +499,9 @@ __all__ = [
     "SearchRequest",
     "SearchResponse",
     "SearchResult",
+    "SerpAPI",
+    "SerpAPIProvider",
+    "SerpAPISearchProvider",
     "StockAsset",
     "StockMediaKind",
     "StockOrientation",

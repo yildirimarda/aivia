@@ -261,6 +261,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Fail config validate when a selected prompt version names a missing prompt or source (tests/cli/test_config_validate.py)
 - [ ] Reject prompt template includes and extends so a prompt cannot read files outside the prompts directory (tests/llm/test_prompts.py)
 - [ ] Make the search service budget aware by passing the remaining budget to the router and refusing over-budget calls (tests/providers/search/test_budget.py)
+- [ ] Map the web search tool to each LLM adapter's native search and return citations (tests/providers/llm/test_web_search.py)
 
 ## Milestone 8: Media generation core and toolkit
 
