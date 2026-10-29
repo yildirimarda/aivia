@@ -2898,8 +2898,21 @@
     },
     "TokenPricing": {
       "additionalProperties": false,
-      "description": "USD prices for one million input and output tokens of a model.",
+      "description": "USD prices for one million tokens of a model.\n\n``input_per_million`` and ``output_per_million`` are required in spirit but\ndefault to zero for backward compatibility. ``cached_input_per_million``\nprices prompt tokens a provider served from a cache. Leaving it unset means\ncached input is charged at the ordinary input price. Whether the provider's\nreported input count already contains the cached tokens is recorded on\n:class:`~aivia.providers.protocols.llm.LLMUsage`; the calculator uses that\nflag so cached tokens are never counted twice.",
       "properties": {
+        "cached_input_per_million": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cached Input Per Million"
+        },
         "input_per_million": {
           "default": 0.0,
           "minimum": 0,

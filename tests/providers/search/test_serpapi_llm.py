@@ -553,6 +553,7 @@ def test_llm_search_maps_citation_metadata_to_results() -> None:
         "input_tokens": 12,
         "output_tokens": 4,
         "cached_input_tokens": 0,
+        "cached_input_included_in_input": True,
     }
 
     first = result.results[0]

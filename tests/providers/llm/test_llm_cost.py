@@ -37,14 +37,18 @@ def _config(
     *,
     input_per_million: float = 3.0,
     output_per_million: float = 15.0,
+    cached_input_per_million: float | None = None,
 ) -> LLMConfig:
+    pricing: dict[str, float | None] = {
+        "input_per_million": input_per_million,
+        "output_per_million": output_per_million,
+    }
+    if cached_input_per_million is not None:
+        pricing["cached_input_per_million"] = cached_input_per_million
     return LLMConfig.from_mapping(
         {
             "pricing": {
-                MODEL: {
-                    "input_per_million": input_per_million,
-                    "output_per_million": output_per_million,
-                }
+                MODEL: pricing,
             }
         }
     )
@@ -56,6 +60,7 @@ def _response(
     input_tokens: int = 1_000,
     output_tokens: int = 500,
     cached_input_tokens: int = 100,
+    cached_input_included_in_input: bool = True,
 ) -> LLMResponse:
     return LLMResponse(
         content="hello",
@@ -65,6 +70,7 @@ def _response(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cached_input_tokens=cached_input_tokens,
+            cached_input_included_in_input=cached_input_included_in_input,
         ),
     )
 
@@ -80,12 +86,81 @@ def test_reported_usage_is_priced_with_the_configured_per_million_prices() -> No
     assert cost.input_tokens == 1_000
     assert cost.output_tokens == 500
     assert cost.cached_input_tokens == 100
+    assert cost.uncached_input_tokens == 900
+    assert cost.cached_input_included_in_input is True
     assert cost.total_tokens == 1_500
     assert cost.input_cost_usd == pytest.approx(0.003)
+    assert cost.cached_input_cost_usd == pytest.approx(0.0003)
     assert cost.output_cost_usd == pytest.approx(0.0075)
     assert cost.amount_usd == pytest.approx(0.0105)
     assert cost.cost_usd == pytest.approx(0.0105)
     assert cost.pricing_version == "2026-01"
+
+
+def test_cached_input_is_priced_separately_when_included_in_the_input_count() -> None:
+    calculator = LLMCostCalculator(
+        _config(input_per_million=3.0, cached_input_per_million=0.3)
+    )
+
+    cost = calculator.cost_for(
+        _response(input_tokens=1_000_000, output_tokens=0, cached_input_tokens=400_000)
+    )
+
+    assert cost.uncached_input_tokens == 600_000
+    assert cost.cached_input_tokens == 400_000
+    assert cost.cached_input_cost_usd == pytest.approx(0.12)
+    assert cost.input_cost_usd == pytest.approx(1.92)
+    assert cost.amount_usd == pytest.approx(1.92)
+
+
+def test_cached_input_is_priced_separately_when_reported_outside_the_input_count() -> (
+    None
+):
+    calculator = LLMCostCalculator(
+        _config(input_per_million=3.0, cached_input_per_million=0.3)
+    )
+
+    cost = calculator.cost_for(
+        _response(
+            input_tokens=600_000,
+            output_tokens=0,
+            cached_input_tokens=400_000,
+            cached_input_included_in_input=False,
+        )
+    )
+
+    assert cost.cached_input_included_in_input is False
+    assert cost.uncached_input_tokens == 600_000
+    assert cost.cached_input_tokens == 400_000
+    assert cost.cached_input_cost_usd == pytest.approx(0.12)
+    assert cost.input_cost_usd == pytest.approx(1.92)
+    assert cost.amount_usd == pytest.approx(1.92)
+
+
+def test_an_unset_cached_price_falls_back_to_the_input_price() -> None:
+    calculator = LLMCostCalculator(_config(input_per_million=3.0))
+
+    cost = calculator.cost_for(
+        _response(input_tokens=1_000_000, output_tokens=0, cached_input_tokens=400_000)
+    )
+
+    assert cost.cached_input_cost_usd == pytest.approx(1.2)
+    assert cost.input_cost_usd == pytest.approx(3.0)
+    assert cost.amount_usd == pytest.approx(3.0)
+
+
+def test_cached_tokens_are_capped_at_the_reported_input_count() -> None:
+    calculator = LLMCostCalculator(
+        _config(input_per_million=3.0, cached_input_per_million=0.3)
+    )
+
+    cost = calculator.cost_for(
+        _response(input_tokens=100, output_tokens=0, cached_input_tokens=500)
+    )
+
+    assert cost.uncached_input_tokens == 0
+    assert cost.cached_input_tokens == 100
+    assert cost.amount_usd == pytest.approx(0.00003)
 
 
 def test_the_cost_event_carries_the_split_amount_and_pricing_version() -> None:
@@ -111,7 +186,10 @@ def test_the_cost_event_carries_the_split_amount_and_pricing_version() -> None:
         "input_tokens": 1_000,
         "output_tokens": 500,
         "cached_input_tokens": 100,
+        "uncached_input_tokens": 900,
+        "cached_input_included_in_input": True,
         "input_cost_usd": pytest.approx(0.003),
+        "cached_input_cost_usd": pytest.approx(0.0003),
         "output_cost_usd": pytest.approx(0.0075),
         "stage": "write",
     }

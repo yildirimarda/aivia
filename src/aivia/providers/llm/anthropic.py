@@ -472,6 +472,7 @@ class AnthropicLLMProvider(Provider):
                     input_tokens=parsed.usage.input_tokens,
                     output_tokens=parsed.usage.output_tokens,
                     cached_input_tokens=parsed.usage.cache_read_input_tokens,
+                    cached_input_included_in_input=False,
                 ),
                 finish_reason=finish_reason,
                 tool_calls=tool_calls,

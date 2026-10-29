@@ -259,14 +259,40 @@ _PRICING_ALIASES: dict[str, tuple[str, ...]] = {
         "completion_per_million_tokens",
         "completion_price_per_million",
     ),
+    "cached_input_per_million": (
+        "cached",
+        "cached_input",
+        "cache_read",
+        "cached_price",
+        "cached_input_price",
+        "cached_input_cost",
+        "cached_input_per_1m",
+        "cached_input_per_mtok",
+        "cached_input_per_million_tokens",
+        "cached_input_price_per_million",
+        "cached_input_usd_per_million",
+        "per_million_cached_input",
+        "cache_read_per_million",
+        "cache_read_input_per_million",
+    ),
 }
 
 
 class TokenPricing(ConfigModel):
-    """USD prices for one million input and output tokens of a model."""
+    """USD prices for one million tokens of a model.
+
+    ``input_per_million`` and ``output_per_million`` are required in spirit but
+    default to zero for backward compatibility. ``cached_input_per_million``
+    prices prompt tokens a provider served from a cache. Leaving it unset means
+    cached input is charged at the ordinary input price. Whether the provider's
+    reported input count already contains the cached tokens is recorded on
+    :class:`~aivia.providers.protocols.llm.LLMUsage`; the calculator uses that
+    flag so cached tokens are never counted twice.
+    """
 
     input_per_million: float = Field(default=0.0, ge=0)
     output_per_million: float = Field(default=0.0, ge=0)
+    cached_input_per_million: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="before")
     @classmethod
@@ -281,17 +307,35 @@ class TokenPricing(ConfigModel):
                     values.setdefault(canonical, value)
         return values
 
-    @field_validator("input_per_million", "output_per_million")
+    @field_validator(
+        "input_per_million",
+        "output_per_million",
+        "cached_input_per_million",
+    )
     @classmethod
-    def _validate_price(cls, value: float) -> float:
+    def _validate_price(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
         if not math.isfinite(value):
             raise ValueError("token price must be finite")
         return float(value)
 
     @property
+    def cached_input_price(self) -> float:
+        """The effective cached input price, falling back to the input price."""
+        if self.cached_input_per_million is None:
+            return self.input_per_million
+        return self.cached_input_per_million
+
+    @property
     def input(self) -> float:
         """Alias for :attr:`input_per_million`."""
         return self.input_per_million
+
+    @property
+    def cached(self) -> float:
+        """Alias for :attr:`cached_input_price`."""
+        return self.cached_input_price
 
     @property
     def output(self) -> float:

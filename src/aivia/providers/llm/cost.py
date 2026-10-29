@@ -48,10 +48,13 @@ LLM_OPERATION = "llm"
 class LLMTokenCost:
     """The priced breakdown of one provider-reported token usage.
 
-    ``input_cost_usd`` and ``output_cost_usd`` are the two priced components;
-    :attr:`amount_usd` is their sum. ``cached_input_tokens`` is reported for
-    provenance but is not priced separately, because providers disagree on
-    whether those tokens are already included in ``input_tokens``.
+    ``input_cost_usd`` is the combined cost of the ordinary and cached input
+    tokens, ``cached_input_cost_usd`` is the cached part alone and
+    ``output_cost_usd`` is the output part; :attr:`amount_usd` is their sum.
+    ``uncached_input_tokens`` is the part of ``input_tokens`` charged at the
+    ordinary input price. ``cached_input_included_in_input`` records whether
+    the provider already counted the cached tokens inside ``input_tokens``, so
+    a caller can explain the split after the fact.
     """
 
     provider: str
@@ -59,7 +62,10 @@ class LLMTokenCost:
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int
+    uncached_input_tokens: int
+    cached_input_included_in_input: bool
     input_cost_usd: float
+    cached_input_cost_usd: float
     output_cost_usd: float
     pricing_version: str = ""
 
@@ -86,7 +92,10 @@ class LLMTokenCost:
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "cached_input_tokens": self.cached_input_tokens,
+            "uncached_input_tokens": self.uncached_input_tokens,
+            "cached_input_included_in_input": self.cached_input_included_in_input,
             "input_cost_usd": self.input_cost_usd,
+            "cached_input_cost_usd": self.cached_input_cost_usd,
             "output_cost_usd": self.output_cost_usd,
             "amount_usd": self.amount_usd,
             "pricing_version": self.pricing_version,
@@ -101,15 +110,25 @@ def _token_cost(
     model: str,
     pricing_version: str = "",
 ) -> LLMTokenCost:
-    input_cost = usage.input_tokens * pricing.input_per_million / TOKENS_PER_MILLION
+    if usage.cached_input_included_in_input:
+        cached_tokens = min(usage.cached_input_tokens, usage.input_tokens)
+        uncached_tokens = usage.input_tokens - cached_tokens
+    else:
+        cached_tokens = usage.cached_input_tokens
+        uncached_tokens = usage.input_tokens
+    uncached_cost = uncached_tokens * pricing.input_per_million / TOKENS_PER_MILLION
+    cached_cost = cached_tokens * pricing.cached_input_price / TOKENS_PER_MILLION
     output_cost = usage.output_tokens * pricing.output_per_million / TOKENS_PER_MILLION
     return LLMTokenCost(
         provider=provider,
         model=model,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
-        cached_input_tokens=usage.cached_input_tokens,
-        input_cost_usd=input_cost,
+        cached_input_tokens=cached_tokens,
+        uncached_input_tokens=uncached_tokens,
+        cached_input_included_in_input=usage.cached_input_included_in_input,
+        input_cost_usd=uncached_cost + cached_cost,
+        cached_input_cost_usd=cached_cost,
         output_cost_usd=output_cost,
         pricing_version=pricing_version,
     )
@@ -202,7 +221,10 @@ class LLMCostCalculator:
             "input_tokens": cost.input_tokens,
             "output_tokens": cost.output_tokens,
             "cached_input_tokens": cost.cached_input_tokens,
+            "uncached_input_tokens": cost.uncached_input_tokens,
+            "cached_input_included_in_input": cost.cached_input_included_in_input,
             "input_cost_usd": cost.input_cost_usd,
+            "cached_input_cost_usd": cost.cached_input_cost_usd,
             "output_cost_usd": cost.output_cost_usd,
         }
         if metadata is not None:

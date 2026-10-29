@@ -687,6 +687,7 @@ class GeminiLLMProvider(Provider):
                         usage.candidates_token_count + usage.thoughts_token_count
                     ),
                     cached_input_tokens=usage.cached_content_token_count,
+                    cached_input_included_in_input=True,
                 ),
                 finish_reason=finish_reason,
                 tool_calls=tool_calls,

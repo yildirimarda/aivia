@@ -143,7 +143,10 @@ def test_a_response_is_validated_and_its_tokens_and_cost_are_recorded(
         "input_tokens": 1_000,
         "output_tokens": 500,
         "cached_input_tokens": 100,
+        "uncached_input_tokens": 900,
+        "cached_input_included_in_input": True,
         "input_cost_usd": pytest.approx(0.003),
+        "cached_input_cost_usd": pytest.approx(0.0003),
         "output_cost_usd": pytest.approx(0.0075),
         "stage": "write",
     }

@@ -264,6 +264,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Map the web search tool to each LLM adapter's native search and return citations (tests/providers/llm/test_web_search.py)
 - [ ] Add an embeddings config section for chain, dimensions, batch size, cache size and model prices (tests/core/config/test_embeddings.py)
 - [ ] Persist the embedding cache in SQLite so vectors survive a restart (tests/providers/test_embeddings.py)
+- [ ] Include separately reported cached input tokens in LLM total token counts and cost event units (tests/providers/llm/test_llm_cost.py)
 
 ## Milestone 8: Media generation core and toolkit
 
