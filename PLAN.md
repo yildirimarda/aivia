@@ -169,9 +169,10 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Release or expire abandoned budget reservations so a failed or cancelled call stops consuming the cap (tests/core/test_budget.py)
 - [x] Exclude replaced estimates from sidecar totals and item counts (tests/core/test_sidecar.py)
 - [x] Exclude replaced estimates from per asset cost report totals (tests/cli/test_costs_run.py)
-- [ ] Serialize budget alert state writes so parallel workers cannot lose emitted keys (tests/core/test_budget_alerts.py)
+- [x] Serialize budget alert state writes so parallel workers cannot lose emitted keys (tests/core/test_budget_alerts.py)
 - [ ] Treat an incompatible price unit as a missing estimate instead of aborting pre-run estimation (tests/core/test_estimate.py)
 - [ ] Exclude replaced estimates from the costs run overall total so it matches the stage breakdown (tests/cli/test_costs_run.py)
+- [ ] Prune emitted budget alert keys from past periods so the state file stays bounded (tests/core/test_budget_alerts.py)
 
 ## Milestone 6: Execution core, storage and API
 
