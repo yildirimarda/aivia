@@ -221,8 +221,9 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Honour jobs.concurrency in the worker command by running that many claim loops under one graceful stop (tests/cli/test_worker.py)
 - [x] Make run submission and job enqueue atomic so a queue-limit race cannot leave an orphan run (tests/api/test_jobs.py)
 - [x] Record the current toolchain fingerprint on API submitted runs when the caller omits one (tests/api/test_jobs.py)
-- [ ] Record the selected config environment on the run so the worker applies the same environment overrides (tests/cli/test_worker.py)
+- [x] Record the selected config environment on the run so the worker applies the same environment overrides (tests/cli/test_worker.py)
 - [ ] Make CLI run enqueue atomic so a queue-limit race cannot leave an orphan run (tests/cli/test_run.py)
+- [ ] Record the API server config environment on submitted runs so workers apply it (tests/api/test_jobs.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 

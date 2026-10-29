@@ -337,6 +337,7 @@ class Run(ModelBase):
         ),
     )
     profile: str = ""
+    environment: str = ""
     format: str = Field(
         default="",
         validation_alias=AliasChoices("format", "format_name", "recipe"),
@@ -437,6 +438,7 @@ class Run(ModelBase):
         "idempotency_key",
         "idempotency_payload_hash",
         "profile",
+        "environment",
         "format",
         "run_dir",
         "error_code",

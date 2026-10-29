@@ -159,17 +159,21 @@ def _resolution_options(args: argparse.Namespace) -> dict[str, Any]:
 def _config_for_run(args: argparse.Namespace, run: Run) -> object:
     """Resolve the config a run should execute with.
 
-    The profile recorded on the run is authoritative: it may differ from the
-    worker's own profile when one worker drains jobs queued by many callers.
-    Worker-level ``--set`` values still apply after the profile, matching the
-    normal resolution order, and a run without a profile keeps the worker's
-    selected profile as its default.
+    The profile and config environment recorded on the run are authoritative:
+    they may differ from the worker's own selection when one worker drains jobs
+    queued by many callers. Worker-level ``--set`` values still apply after the
+    profile, matching the normal resolution order, and a run without either
+    keeps the worker's selected value as its default.
     """
     options = _resolution_options(args)
     profile = (run.profile or "").strip() or (
         getattr(args, "profile", None) or ""
     ).strip()
+    environment = (run.environment or "").strip() or (
+        getattr(args, "environment", None) or ""
+    ).strip()
     options["profile"] = profile or None
+    options["environment"] = environment or None
     try:
         config = resolve_app_config(**options)
     except ConfigError as exc:
@@ -178,6 +182,7 @@ def _config_for_run(args: argparse.Namespace, run: Run) -> object:
             details={
                 "run_id": run.id,
                 "profile": profile,
+                "environment": environment,
             },
         ) from exc
     if getattr(args, "dry_run", False):

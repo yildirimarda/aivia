@@ -62,6 +62,7 @@ runs = Table(
     ),
     Column("toolchain_fingerprint", JSON, nullable=False, server_default=text("'{}'")),
     Column("profile", Text, nullable=False, server_default=text("''")),
+    Column("environment", Text, nullable=False, server_default=text("''")),
     Column("format", Text, nullable=False, server_default=text("''")),
     Column("run_dir", Text, nullable=False, server_default=text("''")),
     Column("config_snapshot", JSON, nullable=False, server_default=text("'{}'")),
