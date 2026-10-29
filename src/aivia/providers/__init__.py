@@ -19,6 +19,9 @@ from aivia.providers.llm import (
     Anthropic,
     AnthropicLLMProvider,
     AnthropicProvider,
+    OpenAI,
+    OpenAILLMProvider,
+    OpenAIProvider,
 )
 from aivia.providers.mock import (
     MOCK_EPOCH,
@@ -265,6 +268,9 @@ __all__ = [
     "MusicRequest",
     "MusicResponse",
     "MusicTrack",
+    "OpenAI",
+    "OpenAILLMProvider",
+    "OpenAIProvider",
     "PageFetchProvider",
     "PageFetchRequest",
     "PageFetchResponse",

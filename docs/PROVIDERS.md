@@ -30,6 +30,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-stt` | `stt` | 60/min | - | - | unknown |
 | `mock-tts` | `tts` | 60/min | - | - | unknown |
 | `mock-video` | `video_gen` | 60/min | - | - | unknown |
+| `openai` | `llm` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 
 ## Pricing
@@ -74,6 +75,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-stt` | `stt` | $0.0001 per call |
 | `mock-tts` | `tts` | $0.00001 per call |
 | `mock-video` | `video_gen` | $0.05 per call |
+| `openai` | - | - |
 | `s3` | `storage` | $0 per call |
 
 ## Supported options
@@ -101,6 +103,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-stt` | - | - |
 | `mock-tts` | - | - |
 | `mock-video` | - | - |
+| `openai` | - | - |
 | `s3` | - | - |
 
 ## Licensing
@@ -128,4 +131,5 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-stt` | - | unknown | no | - |
 | `mock-tts` | - | unknown | no | - |
 | `mock-video` | - | unknown | no | - |
+| `openai` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
