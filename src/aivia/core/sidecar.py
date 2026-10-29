@@ -245,6 +245,16 @@ def sidecar_path(output: str | Path) -> Path:
     return target.with_name(target.name + SIDECAR_SUFFIX)
 
 
+def _effective_events(events: list[CostEvent]) -> list[CostEvent]:
+    """Drop estimates that an actual event has replaced."""
+    replaced = {
+        event.replaces for event in events if not event.estimated and event.replaces
+    }
+    if not replaced:
+        return events
+    return [event for event in events if not (event.estimated and event.id in replaced)]
+
+
 def _common_run_id(events: list[CostEvent]) -> str:
     run_ids = {event.run_id.strip() for event in events if event.run_id.strip()}
     return next(iter(run_ids)) if len(run_ids) == 1 else ""
@@ -291,8 +301,11 @@ def build_cost_sidecar(
     records or mappings using the model's aliases. When *pricing_version* is
     omitted it is derived from the events; a single version is recorded as-is
     and a mixed ledger leaves it empty while filling ``pricing_versions``.
+
+    An estimate replaced by a later actual event is omitted entirely, so one
+    call contributes either its estimate or its actual amount, never both.
     """
-    records = _coerce_events(events)
+    records = _effective_events(_coerce_events(events))
     items = tuple(SidecarCostItem.from_event(event) for event in records)
     versions = _pricing_versions(records)
     chosen_version, versions = _resolve_pricing_version(versions, pricing_version)

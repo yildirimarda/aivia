@@ -170,6 +170,121 @@ def test_events_may_be_mappings_and_empty_runs_still_get_a_valid_sidecar() -> No
     assert mapped.items[0].provider == "acme"
 
 
+def test_a_replaced_estimate_is_excluded_from_totals_and_items() -> None:
+    estimate = _event(estimated=True, amount_usd=0.20, units=2.0)
+    actual = _event(
+        estimated=False,
+        amount_usd=0.18,
+        units=2.0,
+        metadata={"replaces": estimate.id},
+    )
+
+    sidecar = build_cost_sidecar(
+        "clip.mp4",
+        [estimate, actual],
+        toolchain_fingerprint=_fingerprint(),
+    )
+
+    assert sidecar.totals.total_usd == pytest.approx(0.18)
+    assert sidecar.totals.estimated_usd == pytest.approx(0.0)
+    assert sidecar.totals.actual_usd == pytest.approx(0.18)
+    assert sidecar.totals.units == pytest.approx(2.0)
+    assert sidecar.totals.count == 1
+    assert [item.cost_event_id for item in sidecar.items] == [actual.id]
+
+
+def test_an_estimate_without_an_actual_replacement_still_counts() -> None:
+    estimate = _event(
+        operation="video_gen",
+        estimated=True,
+        amount_usd=0.30,
+        units=3.0,
+    )
+    actual = _event(
+        operation="image_gen",
+        estimated=False,
+        amount_usd=0.10,
+        units=1.0,
+    )
+
+    sidecar = build_cost_sidecar(
+        "clip.mp4",
+        [estimate, actual],
+        toolchain_fingerprint=_fingerprint(),
+    )
+
+    assert sidecar.totals.total_usd == pytest.approx(0.40)
+    assert sidecar.totals.estimated_usd == pytest.approx(0.30)
+    assert sidecar.totals.actual_usd == pytest.approx(0.10)
+    assert sidecar.totals.count == 2
+    assert [item.cost_event_id for item in sidecar.items] == [estimate.id, actual.id]
+
+
+def test_a_replacement_link_may_come_from_a_mapping_alias() -> None:
+    estimate = _event(estimated=True, amount_usd=0.20)
+    actual = _event(estimated=False, amount_usd=0.18)
+
+    sidecar = build_cost_sidecar(
+        "clip.mp4",
+        [
+            estimate,
+            {
+                **actual.model_dump(),
+                "replaces_event_id": estimate.id,
+            },
+        ],
+        toolchain_fingerprint=_fingerprint(),
+    )
+
+    assert sidecar.totals.total_usd == pytest.approx(0.18)
+    assert sidecar.totals.count == 1
+    assert [item.cost_event_id for item in sidecar.items] == [actual.id]
+
+
+def test_a_replacement_from_an_estimate_does_not_exclude_another_estimate() -> None:
+    first = _event(estimated=True, amount_usd=0.20)
+    second = _event(
+        estimated=True,
+        amount_usd=0.30,
+        metadata={"replaces": first.id},
+    )
+
+    sidecar = build_cost_sidecar(
+        "clip.mp4",
+        [first, second],
+        toolchain_fingerprint=_fingerprint(),
+    )
+
+    assert sidecar.totals.total_usd == pytest.approx(0.50)
+    assert sidecar.totals.estimated_usd == pytest.approx(0.50)
+    assert sidecar.totals.count == 2
+
+
+def test_write_omits_a_replaced_estimate_from_the_json(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "clip.mp4"
+    output.write_bytes(b"media")
+    estimate = _event(estimated=True, amount_usd=0.20)
+    actual = _event(
+        estimated=False,
+        amount_usd=0.18,
+        metadata={"replaces": estimate.id},
+    )
+
+    written = write_cost_sidecar(
+        output,
+        [estimate, actual],
+        toolchain_fingerprint=_fingerprint(),
+        generated_at=GENERATED_AT,
+    )
+
+    payload = json.loads(written.read_text(encoding="utf-8"))
+    assert payload["totals"]["total_usd"] == pytest.approx(0.18)
+    assert payload["totals"]["count"] == 1
+    assert [item["cost_event_id"] for item in payload["items"]] == [actual.id]
+
+
 def test_write_puts_canonical_json_next_to_the_output(tmp_path: Path) -> None:
     output = tmp_path / "run" / "clip.mp4"
     output.parent.mkdir(parents=True)
