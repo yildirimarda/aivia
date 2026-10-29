@@ -113,11 +113,7 @@ class DataBlock:
         if source is not None:
             attributes += f' source="{_attribute(source)}"'
         body = escape(_as_text(self.content, "content"), quote=False)
-        return (
-            f"<{DATA_BLOCK_TAG}{attributes}>\n"
-            f"{body}\n"
-            f"</{DATA_BLOCK_TAG}>"
-        )
+        return f"<{DATA_BLOCK_TAG}{attributes}>\n{body}\n</{DATA_BLOCK_TAG}>"
 
     @property
     def text(self) -> str:
