@@ -13,6 +13,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | `search` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
+| `llm_native` | `search` | 60/min | - | - | unknown |
+| `llm_search` | `search` | 60/min | - | - | unknown |
 | `local` | `storage` | 60/min | - | - | unknown |
 | `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
 | `mock-character-trainer` | `character_trainer` | 60/min | - | - | unknown |
@@ -36,6 +38,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | `llm` | 60/min | - | - | unknown |
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
+| `serpapi` | `search` | 60/min | - | - | unknown |
 | `tavily` | `search` | 60/min | - | - | unknown |
 
 ## Pricing
@@ -46,6 +49,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | - | - |
 | `exa` | - | - |
 | `gemini` | - | - |
+| `llm_native` | - | - |
+| `llm_search` | - | - |
 | `local` | `storage` | $0 per call |
 | `mock` | `character_trainer` | $0.5 per call |
 | `mock` | `delivery` | $0 per call |
@@ -86,6 +91,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | - |
 | `openai_compatible` | - | - |
 | `s3` | `storage` | $0 per call |
+| `serpapi` | - | - |
 | `tavily` | - | - |
 
 ## Supported options
@@ -96,6 +102,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | - | - |
 | `exa` | - | - |
 | `gemini` | - | - |
+| `llm_native` | - | - |
+| `llm_search` | - | - |
 | `local` | - | - |
 | `mock` | - | - |
 | `mock-character-trainer` | - | - |
@@ -119,6 +127,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | - |
 | `openai_compatible` | - | - |
 | `s3` | - | - |
+| `serpapi` | - | - |
 | `tavily` | - | - |
 
 ## Licensing
@@ -129,6 +138,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | - | unknown | no | - |
 | `exa` | - | unknown | no | - |
 | `gemini` | - | unknown | no | - |
+| `llm_native` | - | unknown | no | - |
+| `llm_search` | - | unknown | no | - |
 | `local` | - | unknown | no | - |
 | `mock` | - | unknown | no | - |
 | `mock-character-trainer` | - | unknown | no | - |
@@ -152,4 +163,5 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | unknown | no | - |
 | `openai_compatible` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
+| `serpapi` | - | unknown | no | - |
 | `tavily` | - | unknown | no | - |
