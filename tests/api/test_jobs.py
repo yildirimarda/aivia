@@ -22,7 +22,15 @@ from aivia.core.db import (
 )
 from aivia.core.errors import QuotaError
 from aivia.core.jobs import JobQueue
-from aivia.core.models import JobState, Run, RunKind, RunState, StageResult, StageState
+from aivia.core.models import (
+    JobState,
+    Run,
+    RunKind,
+    RunState,
+    StageResult,
+    StageState,
+    ToolchainFingerprint,
+)
 
 KEY = "test-api-key"
 AUTH = {"X-API-Key": KEY}
@@ -106,6 +114,60 @@ def test_submitting_a_run_returns_the_run_and_its_job(
     assert run is not None
     assert run.kind is RunKind.MEDIA
     assert run.profile == "one-off"
+
+
+def test_a_submission_records_the_current_toolchain_when_omitted(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fingerprint = ToolchainFingerprint(
+        renderer_version="renderer-1",
+        ffmpeg_version="ffmpeg-7",
+        font_set="fonts-abc",
+    )
+    monkeypatch.setattr("aivia.api.jobs.detect_toolchain", lambda: fingerprint)
+
+    response = client.post("/api/v1/runs", json={"kind": "run"})
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["toolchain_fingerprint"]["renderer_version"] == "renderer-1"
+    assert body["toolchain_fingerprint"]["ffmpeg_version"] == "ffmpeg-7"
+    assert body["toolchain_fingerprint"]["font_set"] == "fonts-abc"
+
+    stored = RunRepository(engine).get(body["run_id"])
+    assert stored is not None
+    assert stored.toolchain_fingerprint == fingerprint
+
+
+def test_a_submission_keeps_an_explicit_toolchain_fingerprint(
+    client: TestClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fingerprint = ToolchainFingerprint(
+        renderer_version="caller-renderer",
+        ffmpeg_version="caller-ffmpeg",
+        font_set="caller-fonts",
+    )
+    monkeypatch.setattr(
+        "aivia.api.jobs.detect_toolchain",
+        lambda: pytest.fail("detection must not run for an explicit fingerprint"),
+    )
+
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "kind": "run",
+            "toolchain_fingerprint": fingerprint.model_dump(mode="json"),
+        },
+    )
+
+    assert response.status_code == 202
+    stored = RunRepository(engine).get(response.json()["run_id"])
+    assert stored is not None
+    assert stored.toolchain_fingerprint == fingerprint
 
 
 def test_a_submission_can_attach_to_an_existing_run(
