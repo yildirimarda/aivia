@@ -20,7 +20,7 @@ from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.ops import JobsConfig
 from aivia.core.config.providers import ProvidersConfig
-from aivia.core.config.resolve import resolve_app_config
+from aivia.core.config.resolve import resolve_app_config, resolve_config
 from aivia.core.cost import CostTracker
 from aivia.core.db import (
     RunRepository,
@@ -258,13 +258,14 @@ def _has_idempotent_run(engine: Engine, args: argparse.Namespace) -> bool:
 
 def _resolve_plan(
     args: argparse.Namespace,
-) -> tuple[object, str, FormatRecipeConfig, RecipeEstimate]:
-    config = resolve_app_config(
+) -> tuple[object, str, FormatRecipeConfig, RecipeEstimate, str]:
+    resolved = resolve_config(
         config_file=args.config,
         environment=args.environment,
         profile=args.profile,
         set_values=args.set_values,
     )
+    config = resolved.to_app_config()
     if getattr(args, "dry_run", False):
         config = apply_dry_run(config)
     name, recipe = _resolve_recipe(config, args.format_name)
@@ -272,11 +273,11 @@ def _resolve_plan(
         provider_metadata(config),
         configs=capability_configs(config),
     ).estimate(name, recipe)
-    return config, name, recipe, estimate
+    return config, name, recipe, estimate, resolved.environment or ""
 
 
 def _estimate_run(args: argparse.Namespace) -> tuple[object, RecipeEstimate]:
-    config, _name, _recipe, estimate = _resolve_plan(args)
+    config, _name, _recipe, estimate, _environment = _resolve_plan(args)
     return config, estimate
 
 
@@ -311,12 +312,14 @@ def _create_run(
     args: argparse.Namespace,
     name: str,
     estimate: RecipeEstimate,
+    environment: str = "",
 ) -> IdempotentRun:
     run = Run(
         kind=RunKind.PIPELINE,
         state=RunState.QUEUED,
         idempotency_key=(getattr(args, "idempotency_key", None) or "").strip(),
         profile=(getattr(args, "profile", None) or "").strip(),
+        environment=environment.strip(),
         format=name,
         toolchain_fingerprint=detect_toolchain(),
         estimated_cost_usd=estimate.total_usd,
@@ -396,7 +399,7 @@ def run_run(args: argparse.Namespace) -> int:
         return 2
 
     try:
-        config, name, recipe, estimate = _resolve_plan(args)
+        config, name, recipe, estimate, environment = _resolve_plan(args)
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -436,7 +439,7 @@ def run_run(args: argparse.Namespace) -> int:
         queue = JobQueue(engine, config=_jobs_config(config))
         if enqueue and not _has_idempotent_run(engine, args):
             queue.ensure_capacity()
-        created = _create_run(engine, args, name, estimate)
+        created = _create_run(engine, args, name, estimate, environment)
         run = created.run
         if not created.created:
             _print_existing(run)

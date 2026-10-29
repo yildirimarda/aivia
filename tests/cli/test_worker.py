@@ -26,6 +26,11 @@ def write_config(tmp_path: Path, text: str) -> Path:
     return path
 
 
+def write_environment(config: Path, name: str, timezone: str) -> None:
+    path = config.with_name(f"config.{name}.yaml")
+    path.write_text(f"pipeline:\n  timezone: {timezone}\n", encoding="utf-8")
+
+
 @pytest.fixture
 def config(tmp_path: Path) -> Path:
     return write_config(
@@ -321,6 +326,79 @@ def test_worker_prefers_the_run_profile_over_its_own_profile(
     assert run is not None and run.run_dir
     script = Path(run.run_dir, "script.md")
     assert script.read_text(encoding="utf-8") == "Europe/Istanbul"
+
+
+def test_worker_applies_the_environment_recorded_on_the_run(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_environment(config, "staging", "Asia/Tokyo")
+    monkeypatch.setattr(
+        "aivia.cli.run.build_stages",
+        lambda recipe: [WriteTimezone() for _stage in recipe.stages],
+    )
+    run_id = enqueue_run(capsys, config, database, "--env", "staging")
+
+    code, out, err = worker_command(capsys, config, database, "--once")
+
+    assert code == 0
+    assert err == ""
+    assert "1 succeeded" in out
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+        assert run.environment == "staging"
+    finally:
+        engine.dispose()
+
+    assert run is not None and run.run_dir
+    script = Path(run.run_dir, "script.md")
+    assert script.read_text(encoding="utf-8") == "Asia/Tokyo"
+
+
+def test_worker_prefers_the_run_environment_over_its_own(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_environment(config, "staging", "Asia/Tokyo")
+    write_environment(config, "other", "America/New_York")
+    monkeypatch.setattr(
+        "aivia.cli.run.build_stages",
+        lambda recipe: [WriteTimezone() for _stage in recipe.stages],
+    )
+    run_id = enqueue_run(capsys, config, database, "--env", "staging")
+
+    code, out, err = worker_command(
+        capsys,
+        config,
+        database,
+        "--env",
+        "other",
+        "--once",
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "1 succeeded" in out
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+    finally:
+        engine.dispose()
+
+    assert run is not None and run.run_dir
+    script = Path(run.run_dir, "script.md")
+    assert script.read_text(encoding="utf-8") == "Asia/Tokyo"
 
 
 class Overlap(Stage):
