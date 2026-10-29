@@ -347,29 +347,54 @@ class Worker:
         return processed
 
     async def _execute(self, job: Job) -> WorkerOutcome:
-        heartbeat = asyncio.create_task(self._heartbeat_loop(job.id))
+        lost_claim = asyncio.Event()
+        handler = asyncio.create_task(self._run_handler(job))
+        heartbeat = asyncio.create_task(
+            self._heartbeat_loop(job.id, handler=handler, lost_claim=lost_claim)
+        )
         try:
-            result = self.handler(job)
-            if inspect.isawaitable(result):
-                await result
+            await handler
         except asyncio.CancelledError:
             await self._stop_heartbeat(heartbeat)
+            if lost_claim.is_set():
+                return self._record_lost_claim(job)
             self._requeue_cancelled(job)
             raise
         except Exception as error:
             await self._stop_heartbeat(heartbeat)
+            if lost_claim.is_set():
+                return self._record_lost_claim(job)
             return self._record_failure(job, error)
         else:
             await self._stop_heartbeat(heartbeat)
+            if lost_claim.is_set():
+                return self._record_lost_claim(job)
             return self._record_success(job)
 
-    async def _heartbeat_loop(self, job_id: str) -> None:
+    async def _run_handler(self, job: Job) -> None:
+        result = self.handler(job)
+        if inspect.isawaitable(result):
+            await result
+
+    async def _heartbeat_loop(
+        self,
+        job_id: str,
+        *,
+        handler: asyncio.Task[None] | None = None,
+        lost_claim: asyncio.Event | None = None,
+    ) -> None:
         while True:
             await self._sleep(self.heartbeat_seconds)
             try:
                 self.queue.heartbeat(job_id, self.worker_id, now=self._clock())
             except (JobNotClaimedError, JobNotFoundError):
-                self.logger.warning("lost claim on job %s; stopping heartbeat", job_id)
+                self.logger.warning(
+                    "lost claim on job %s; cancelling the in-flight handler", job_id
+                )
+                if lost_claim is not None:
+                    lost_claim.set()
+                if handler is not None and not handler.done():
+                    handler.cancel()
                 return
             except Exception:
                 self.logger.exception("heartbeat failed for job %s", job_id)
@@ -384,6 +409,18 @@ class Worker:
         task.cancel()
         with suppress(asyncio.CancelledError, Exception):
             await task
+
+    def _record_lost_claim(self, job: Job) -> WorkerOutcome:
+        self.logger.warning(
+            "job %s was recovered by another worker; cancelled the handler", job.id
+        )
+        return WorkerOutcome(
+            job=job,
+            succeeded=False,
+            error_code="lost_claim",
+            error_message="another worker recovered the claim",
+            claimed=False,
+        )
 
     def _record_success(self, job: Job) -> WorkerOutcome:
         try:

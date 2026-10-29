@@ -207,7 +207,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Hash the contents of declared external input files so editing a source forces a rerun (tests/core/test_resume.py)
 - [x] Let a format recipe override a stage timeout and retry policy instead of only its class (tests/core/config/test_formats.py)
 - [x] Remove declared artifacts left by a failed attempt before retrying so a retry cannot inherit stale output (tests/core/test_stage_retry.py)
-- [ ] Cancel an in-flight handler when its heartbeat detects a recovered claim (tests/core/jobs/test_worker.py)
+- [x] Cancel an in-flight handler when its heartbeat detects a recovered claim (tests/core/jobs/test_worker.py)
 - [ ] Wire SIGTERM and SIGINT to worker stop so shutdown drains the current job (tests/cli/test_worker_shutdown.py)
 - [ ] Add a storage provider factory that builds local or s3 from storage config and resolves credentials (tests/providers/test_storage_factory.py)
 - [ ] Make asset cache store atomic so concurrent identical requests create one entry (tests/core/test_asset_cache.py)
