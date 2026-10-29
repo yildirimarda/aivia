@@ -263,7 +263,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Make the search service budget aware by passing the remaining budget to the router and refusing over-budget calls (tests/providers/search/test_budget.py)
 - [x] Map the web search tool to each LLM adapter's native search and return citations (tests/providers/llm/test_web_search.py)
 - [x] Add an embeddings config section for chain, dimensions, batch size, cache size and model prices (tests/core/config/test_embeddings.py)
-- [ ] Persist the embedding cache in SQLite so vectors survive a restart (tests/providers/test_embeddings.py)
+- [x] Persist the embedding cache in SQLite so vectors survive a restart (tests/providers/test_embeddings.py)
 - [ ] Include separately reported cached input tokens in LLM total token counts and cost event units (tests/providers/llm/test_llm_cost.py)
 - [ ] Make the embeddings service budget aware by passing the remaining budget to the router and refusing over-budget calls (tests/providers/test_embeddings.py)
 - [ ] Wire the embeddings config chain, dimensions, batch size, cache size and prices into the service and estimator (tests/providers/test_embeddings.py)
