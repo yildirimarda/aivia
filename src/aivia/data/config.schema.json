@@ -1920,6 +1920,31 @@
       "title": "ProfilesConfig",
       "type": "object"
     },
+    "PromptVersionSource": {
+      "description": "Which copy of a prompt is selected.",
+      "enum": [
+        "auto",
+        "user",
+        "default"
+      ],
+      "title": "PromptVersionSource",
+      "type": "string"
+    },
+    "PromptsConfig": {
+      "additionalProperties": false,
+      "description": "The selected version of each prompt, with ``auto`` as the fallback.\n\nThe canonical form is ``prompts: {versions: {image: default}}``. A direct\nmapping (``prompts: {image: default}``) and aliases such as ``select`` are\naccepted as well, because the section is small enough that a nesting level\nshould not be a source of configuration errors.",
+      "properties": {
+        "versions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/PromptVersionSource"
+          },
+          "title": "Versions",
+          "type": "object"
+        }
+      },
+      "title": "PromptsConfig",
+      "type": "object"
+    },
     "ProviderConfig": {
       "additionalProperties": false,
       "description": "One named provider instance used by router chains.\n\n``type`` names a registered provider type or a dotted import path.\n``options`` are passed to the adapter unchanged. ``secret_refs`` maps an\noption name to the secret reference that supplies its value; the reference\nis resolved through the secrets loader, never stored here.",
@@ -3309,6 +3334,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/ProfilesConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "prompts": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PromptsConfig"
         },
         {
           "type": "null"

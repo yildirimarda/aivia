@@ -133,6 +133,9 @@ llm:
   pricing: {}
   max_repairs: 2
 
+prompts:
+  versions: {}
+
 models_file:
   path: models.yaml
 
