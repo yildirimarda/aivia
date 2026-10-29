@@ -227,11 +227,23 @@ class JobQueue:
             )
         return depth
 
+    @contextmanager
+    def write_transaction(self) -> Iterator[Connection]:
+        """Open the queue's write transaction for a multi-step submission.
+
+        The transaction takes SQLite's write lock before yielding, so a caller
+        can check capacity and insert several related rows without another
+        submission interleaving. Exceptions roll the whole transaction back.
+        """
+        with _write_transaction(self.engine) as connection:
+            yield connection
+
     def enqueue(
         self,
         job: Job | Mapping[str, Any] | None = None,
         *,
         max_queue_depth: int | None = None,
+        connection: Connection | None = None,
         **values: Any,
     ) -> Job:
         """Insert a new job and return it.
@@ -245,19 +257,24 @@ class JobQueue:
         :class:`~aivia.core.errors.QuotaError` with the current ``depth`` and
         ``max_queue_depth`` in its details. The depth check and the insert run
         under the same write lock, so concurrent submissions cannot overshoot
-        the limit.
+        the limit. Pass ``connection`` to join an outer write transaction and
+        roll back with it.
         """
         limit = (
             self.max_queue_depth
             if max_queue_depth is None
             else _coerce_queue_depth(max_queue_depth)
         )
+        if connection is not None:
+            if limit:
+                self._ensure_capacity_in(connection, limit)
+            return self.repository.create_in(connection, job, **values)
         if not limit:
             return self.repository.create(job, **values)
 
-        with _write_transaction(self.engine) as connection:
-            self._ensure_capacity_in(connection, limit)
-            return self.repository.create_in(connection, job, **values)
+        with _write_transaction(self.engine) as active:
+            self._ensure_capacity_in(active, limit)
+            return self.repository.create_in(active, job, **values)
 
     def _depth_in(self, connection: Connection) -> int:
         return int(

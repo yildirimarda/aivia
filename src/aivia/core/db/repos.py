@@ -206,16 +206,18 @@ class Repository[RecordT](ABC):
             connection.execute(self.table.update().where(condition).values(**data))
         return self.get(*key)
 
-    def list(
+    def list_in(
         self,
+        connection: Connection,
         *,
         limit: int | None = None,
         offset: int | None = None,
         **filters: Any,
     ) -> list[RecordT]:
-        """List records matching the column equality *filters*.
+        """List records inside an existing transaction.
 
-        Results are ordered by the primary key so repeated calls are stable.
+        The filters, ordering and pagination match :meth:`list`; the caller
+        supplies the connection so a read can join a write transaction.
         """
         if limit is not None and limit < _MIN_COUNT:
             raise ValueError("limit must not be negative")
@@ -233,9 +235,27 @@ class Repository[RecordT](ABC):
             statement = statement.limit(limit)
         if offset is not None:
             statement = statement.offset(offset)
-        with self.engine.connect() as connection:
-            rows = connection.execute(statement).mappings().all()
+        rows = connection.execute(statement).mappings().all()
         return [self._to_record(row) for row in rows]
+
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        **filters: Any,
+    ) -> list[RecordT]:
+        """List records matching the column equality *filters*.
+
+        Results are ordered by the primary key so repeated calls are stable.
+        """
+        with self.engine.connect() as connection:
+            return self.list_in(
+                connection,
+                limit=limit,
+                offset=offset,
+                **filters,
+            )
 
     def _key_condition(self, key: tuple[Any, ...]) -> Any:
         if len(key) != len(self.key_columns):
@@ -358,11 +378,29 @@ class RunRepository(ModelRepository[Run]):
 
     def find_by_idempotency_key(self, key: str) -> Run | None:
         """Return the run stored for *key*, or ``None`` when it is unused."""
+        with self.engine.connect() as connection:
+            return self.find_by_idempotency_key_in(connection, key)
+
+    def find_by_idempotency_key_in(
+        self,
+        connection: Connection,
+        key: str,
+    ) -> Run | None:
+        """Return the run stored for *key* inside an existing transaction."""
         text = key.strip()
         if not text:
             return None
-        matches = self.list(idempotency_key=text)
-        return matches[0] if matches else None
+        row = (
+            connection.execute(
+                select(self.table)
+                .where(self.table.c.idempotency_key == text)
+                .order_by(*(self.table.c[column] for column in self.key_columns))
+                .limit(1)
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else self._to_record(row)
 
 
 class StageRunRepository(ModelRepository[StageResult]):

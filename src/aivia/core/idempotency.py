@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import Connection
 from sqlalchemy.exc import IntegrityError
 
 from aivia.core.db.repos import RunRepository
@@ -71,17 +72,19 @@ def create_run_once(
     run: Run,
     *,
     prepare: Callable[[Run], None] | None = None,
+    connection: Connection | None = None,
 ) -> IdempotentRun:
     """Create *run* unless its idempotency key already names an equal request.
 
     ``prepare`` runs after the existing-key check and before the insert, so a
     caller can create the run directory without leaving one behind for a
-    repeated key.
+    repeated key. Pass ``connection`` to join an outer transaction; the key
+    lookup and insert then commit or roll back with the caller's work.
     """
     digest = run_payload_digest(run)
     key = run.idempotency_key
     if key:
-        existing = repository.find_by_idempotency_key(key)
+        existing = _find_by_key(repository, key, connection)
         if existing is not None:
             return _match(existing, run, digest, key)
 
@@ -90,15 +93,29 @@ def create_run_once(
 
     candidate = run.model_copy(update={"idempotency_payload_hash": digest})
     try:
-        stored = repository.create(candidate)
+        stored = (
+            repository.create(candidate)
+            if connection is None
+            else repository.create_in(connection, candidate)
+        )
     except IntegrityError:
         if not key:
             raise
-        existing = repository.find_by_idempotency_key(key)
+        existing = _find_by_key(repository, key, connection)
         if existing is None:
             raise
         return _match(existing, run, digest, key)
     return IdempotentRun(stored, True)
+
+
+def _find_by_key(
+    repository: RunRepository,
+    key: str,
+    connection: Connection | None,
+) -> Run | None:
+    if connection is None:
+        return repository.find_by_idempotency_key(key)
+    return repository.find_by_idempotency_key_in(connection, key)
 
 
 def _match(existing: Run, requested: Run, digest: str, key: str) -> IdempotentRun:
