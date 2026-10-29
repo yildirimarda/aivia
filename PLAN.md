@@ -272,7 +272,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: any image, video, voice, music or sfx produced by a config chosen provider, cost tracked and cached -->
 
-- [ ] Implement the async media job helper with submit, poll, download, timeout, cancel, idempotency key and restart safe persisted job ids (tests/providers/media/test_async_job.py)
+- [x] Implement the async media job helper with submit, poll, download, timeout, cancel, idempotency key and restart safe persisted job ids (tests/providers/media/test_async_job.py)
 - [ ] Define media request and result models for image, video, music and speech with range validation (tests/providers/media/test_dto.py)
 - [ ] Add a prompt and option adaptation layer that snaps sizes, clamps durations and rejects unsupported options instead of silently dropping them (tests/providers/media/test_adapt.py)
 - [ ] Add a download and validation helper with format sniffing, dimension checks, size caps, decompression bomb guard and ffprobe checks (tests/core/test_media_probe.py)
@@ -333,6 +333,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add an end to end media slice test where a second identical run costs nothing and totals match (tests/e2e/test_media_slice.py)
 - [ ] Add voice cloning create, list and delete requiring explicit consent and storing provider voice id, consent metadata and owner (tests/media/test_voice_clone.py)
 - [ ] Emit alt text and SRT and VTT sidecars for every audio and video output when accessibility output is enabled (tests/media/test_accessibility.py)
+- [ ] Make async media job idempotency keys unique across processes so a repeated key cannot submit twice (tests/providers/media/test_async_job.py)
 
 ## Milestone 9: Composition and rendering
 
