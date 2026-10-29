@@ -273,7 +273,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 <!-- goal: any image, video, voice, music or sfx produced by a config chosen provider, cost tracked and cached -->
 
 - [x] Implement the async media job helper with submit, poll, download, timeout, cancel, idempotency key and restart safe persisted job ids (tests/providers/media/test_async_job.py)
-- [ ] Define media request and result models for image, video, music and speech with range validation (tests/providers/media/test_dto.py)
+- [x] Define media request and result models for image, video, music and speech with range validation (tests/providers/media/test_dto.py)
 - [ ] Add a prompt and option adaptation layer that snaps sizes, clamps durations and rejects unsupported options instead of silently dropping them (tests/providers/media/test_adapt.py)
 - [ ] Add a download and validation helper with format sniffing, dimension checks, size caps, decompression bomb guard and ffprobe checks (tests/core/test_media_probe.py)
 - [ ] Add image utilities for resize, aspect crop, blurred fill padding, conversion and metadata stripping that never modify the original (tests/media/test_image_utils.py)

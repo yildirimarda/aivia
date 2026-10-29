@@ -1,4 +1,4 @@
-"""Helpers for provider-side asynchronous media generation."""
+"""Media provider helpers and canonical request/result DTOs."""
 
 from aivia.providers.media.async_job import (
     AsyncJob,
@@ -15,6 +15,19 @@ from aivia.providers.media.async_job import (
     MediaJob,
     MediaJobHelper,
 )
+from aivia.providers.media.dto import (
+    ImageRequest,
+    ImageResult,
+    MediaKind,
+    MediaRequest,
+    MediaResult,
+    MusicRequest,
+    MusicResult,
+    SpeechRequest,
+    SpeechResult,
+    VideoRequest,
+    VideoResult,
+)
 
 __all__ = [
     "AsyncJob",
@@ -27,7 +40,18 @@ __all__ = [
     "AsyncMediaJob",
     "AsyncMediaJobHelper",
     "DatabaseAsyncJobStore",
+    "ImageRequest",
+    "ImageResult",
     "InMemoryAsyncJobStore",
     "MediaJob",
     "MediaJobHelper",
+    "MediaKind",
+    "MediaRequest",
+    "MediaResult",
+    "MusicRequest",
+    "MusicResult",
+    "SpeechRequest",
+    "SpeechResult",
+    "VideoRequest",
+    "VideoResult",
 ]
