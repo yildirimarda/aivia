@@ -258,6 +258,52 @@ def test_worker_keeps_the_heartbeat_alive_while_a_handler_runs(
     assert outcome.job.heartbeat_at > outcome.job.claimed_at
 
 
+def test_heartbeat_cancels_the_handler_when_another_worker_recovers_the_claim(
+    queue: JobQueue,
+) -> None:
+    job = queue.enqueue(max_attempts=3)
+    clock = Clock()
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def handler(_job: Job) -> None:
+        started.set()
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    worker = Worker(
+        queue,
+        handler,
+        worker_id="worker-1",
+        heartbeat_seconds=0.01,
+        stale_after_seconds=1,
+        clock=clock,
+    )
+
+    async def scenario() -> WorkerOutcome | None:
+        running = asyncio.create_task(worker.run_once(now=clock.now))
+        await started.wait()
+        recovered = queue.recover_stale(
+            stale_after_seconds=0.01,
+            now=clock.now + timedelta(seconds=1),
+        )
+        assert [item.id for item in recovered] == [job.id]
+        return await asyncio.wait_for(running, timeout=2)
+
+    outcome = asyncio.run(scenario())
+
+    assert cancelled.is_set()
+    assert outcome is not None
+    assert outcome.succeeded is False
+    assert outcome.lost_claim is True
+    assert outcome.error_code == "lost_claim"
+    current = queue.get(job.id)
+    assert current is not None and current.state is JobState.PENDING
+
+
 def test_request_stop_finishes_the_current_job_and_claims_no_more(
     queue: JobQueue,
 ) -> None:
