@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,7 @@ from aivia.core.cost import CostTracker
 from aivia.core.estimate import EstimateSource, StageEstimate
 from aivia.core.models.run import Run, StageResult
 from aivia.core.router import Router
+from aivia.core.stage_retry import StageRetryPolicy
 from aivia.providers.protocols.storage import StorageProvider
 
 __all__ = [
@@ -115,6 +116,14 @@ class Stage:
 
     name: str = ""
     artifacts: tuple[str, ...] = ()
+    timeout_seconds: float | None = None
+    max_attempts: int = 1
+    retry_delay_seconds: float = 0.0
+    backoff_multiplier: float = 1.0
+    max_retry_delay_seconds: float | None = None
+    retry_on_timeout: bool = True
+    retry_codes: tuple[str, ...] = ()
+    retry_policy: StageRetryPolicy
 
     def __init__(
         self,
@@ -122,6 +131,14 @@ class Stage:
         *,
         options: Mapping[str, Any] | None = None,
         artifacts: Iterable[str] | None = None,
+        retry_policy: StageRetryPolicy | Mapping[str, Any] | None = None,
+        timeout_seconds: float | None = None,
+        max_attempts: int | None = None,
+        retry_delay_seconds: float | None = None,
+        backoff_multiplier: float | None = None,
+        max_retry_delay_seconds: float | None = None,
+        retry_on_timeout: bool | None = None,
+        retry_codes: Iterable[str] | None = None,
     ) -> None:
         if name is not None:
             self.name = _normalise_name(name)
@@ -130,6 +147,75 @@ class Stage:
         self.options: dict[str, Any] = dict(options or {})
         declared = self.artifacts if artifacts is None else artifacts
         self.artifacts = _normalise_artifacts(declared)
+        self.retry_policy = self._build_retry_policy(
+            retry_policy,
+            timeout_seconds=timeout_seconds,
+            max_attempts=max_attempts,
+            retry_delay_seconds=retry_delay_seconds,
+            backoff_multiplier=backoff_multiplier,
+            max_retry_delay_seconds=max_retry_delay_seconds,
+            retry_on_timeout=retry_on_timeout,
+            retry_codes=retry_codes,
+        )
+
+    def _build_retry_policy(
+        self,
+        declared: StageRetryPolicy | Mapping[str, Any] | None,
+        *,
+        timeout_seconds: float | None,
+        max_attempts: int | None,
+        retry_delay_seconds: float | None,
+        backoff_multiplier: float | None,
+        max_retry_delay_seconds: float | None,
+        retry_on_timeout: bool | None,
+        retry_codes: Iterable[str] | None,
+    ) -> StageRetryPolicy:
+        if declared is None:
+            inherited = getattr(type(self), "retry_policy", None)
+            if isinstance(inherited, (StageRetryPolicy, Mapping)):
+                declared = inherited
+        if declared is None:
+            policy = StageRetryPolicy(
+                timeout_seconds=self.timeout_seconds,
+                max_attempts=self.max_attempts,
+                retry_delay_seconds=self.retry_delay_seconds,
+                backoff_multiplier=self.backoff_multiplier,
+                max_retry_delay_seconds=self.max_retry_delay_seconds,
+                retry_on_timeout=self.retry_on_timeout,
+                retry_codes=self.retry_codes,
+            )
+        elif isinstance(declared, StageRetryPolicy):
+            policy = declared
+        elif isinstance(declared, Mapping):
+            policy = StageRetryPolicy(**dict(declared))
+        else:
+            raise TypeError("retry_policy must be a StageRetryPolicy or mapping")
+        if timeout_seconds is not None:
+            self.timeout_seconds = timeout_seconds
+            policy = replace(policy, timeout_seconds=timeout_seconds)
+        if max_attempts is not None:
+            self.max_attempts = max_attempts
+            policy = replace(policy, max_attempts=max_attempts)
+        if retry_delay_seconds is not None:
+            self.retry_delay_seconds = retry_delay_seconds
+            policy = replace(policy, retry_delay_seconds=retry_delay_seconds)
+        if backoff_multiplier is not None:
+            self.backoff_multiplier = backoff_multiplier
+            policy = replace(policy, backoff_multiplier=backoff_multiplier)
+        if max_retry_delay_seconds is not None:
+            self.max_retry_delay_seconds = max_retry_delay_seconds
+            policy = replace(
+                policy,
+                max_retry_delay_seconds=max_retry_delay_seconds,
+            )
+        if retry_on_timeout is not None:
+            self.retry_on_timeout = retry_on_timeout
+            policy = replace(policy, retry_on_timeout=retry_on_timeout)
+        if retry_codes is not None:
+            codes = tuple(retry_codes)
+            self.retry_codes = codes
+            policy = replace(policy, retry_codes=codes)
+        return policy
 
     @property
     def stage_name(self) -> str:

@@ -183,7 +183,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the run state machine with legal transitions only and persistence on each change (tests/core/test_run_state.py)
 - [x] Implement the orchestrator that executes recipe stages in order, persists results and stops on failure with stage and error code (tests/core/test_orchestrator.py)
 - [x] Support resume from failure by skipping succeeded stages whose input hash is unchanged (tests/core/test_resume.py)
-- [ ] Apply per stage timeout and retry policy with recorded attempts and exhaustion (tests/core/test_stage_retry.py)
+- [x] Apply per stage timeout and retry policy with recorded attempts and exhaustion (tests/core/test_stage_retry.py)
 - [ ] Save a masked config snapshot with seeds, provider and model ids and the toolchain fingerprint for replay (tests/core/test_snapshot.py)
 - [ ] Add per profile locks and a global parallel run limit so scheduled runs never overlap unsafely (tests/core/test_locks.py)
 - [ ] Implement the job queue with atomic claim, heartbeat, complete and fail so two workers never claim the same job (tests/core/jobs/test_queue.py)
@@ -205,6 +205,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Route the resume command through the run state machine so every lifecycle change is validated (tests/cli/test_resume.py)
 - [ ] Include a stage implementation version in the input hash so code changes force re-execution (tests/core/test_resume.py)
 - [ ] Hash the contents of declared external input files so editing a source forces a rerun (tests/core/test_resume.py)
+- [ ] Let a format recipe override a stage timeout and retry policy instead of only its class (tests/core/config/test_formats.py)
+- [ ] Remove declared artifacts left by a failed attempt before retrying so a retry cannot inherit stale output (tests/core/test_stage_retry.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 

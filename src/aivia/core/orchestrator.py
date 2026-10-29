@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import re
 import tempfile
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -45,6 +45,12 @@ from aivia.core.run_state import (
     RunNotFoundError,
     RunStateMachine,
     transition_run,
+)
+from aivia.core.stage_retry import (
+    StageAttempt,
+    StageRetryExhausted,
+    StageRetryPolicy,
+    execute_stage_with_retry,
 )
 from aivia.core.stages import Stage, StageContext
 from aivia.providers.protocols.storage import StorageProvider
@@ -323,6 +329,7 @@ class Orchestrator:
         storage: StorageProvider | None = None,
         logger: logging.Logger | None = None,
         clock: Callable[[], datetime] = utcnow,
+        sleep: Callable[[float], Awaitable[None]] | None = None,
         raise_on_failure: bool = True,
     ) -> None:
         if isinstance(stages, (Run, str)) and run is not None:
@@ -338,6 +345,7 @@ class Orchestrator:
         self.storage = storage
         self.logger = logger or logging.getLogger("aivia.orchestrator")
         self.clock = clock
+        self.sleep = sleep
         self.raise_on_failure = raise_on_failure
         self.result: OrchestrationResult | None = None
 
@@ -439,13 +447,25 @@ class Orchestrator:
             )
 
             try:
-                outcome = await stage.run(context)
+                executed = await execute_stage_with_retry(
+                    stage,
+                    context,
+                    policy=stage.retry_policy,
+                    sleep=self.sleep,
+                    clock=self.clock,
+                )
                 final = self._completed_result(
-                    stage, outcome, run_record, index, started
+                    stage, executed.outcome, run_record, index, started
+                )
+                final = self._with_attempts(
+                    final,
+                    executed.attempts,
+                    stage.retry_policy,
+                    exhausted=executed.exhausted,
                 )
                 if final.status in _FAILURE_STATES:
                     final = final.model_copy(update={"input_hash": expected_input})
-                    total_cost += final.cost_usd
+                    total_cost += executed.prior_cost_usd + final.cost_usd
                     run_record = self._apply_cost(run_record, total_cost)
                     return self._failed(
                         run_record,
@@ -458,44 +478,63 @@ class Orchestrator:
                     )
                 final = self._register(stage, final, directory)
                 final = self._with_hashes(final, expected_input, directory)
-                total_cost += final.cost_usd
+                total_cost += executed.prior_cost_usd + final.cost_usd
+            except StageRetryExhausted as exc:
+                code = exc.error_code
+                message = exc.error_message
+                attempts = exc.attempts
+                cause: BaseException | None = exc.last_error
+                exhausted = True
+                retry_cost = exc.prior_cost_usd
             except Exception as exc:
                 code = _error_code(exc)
                 message = _message(exc)
-                total_cost += 0.0
-                run_record = self._apply_cost(run_record, total_cost)
-                failed = StageResult(
-                    run_id=run_record.id,
-                    stage=stage.name,
-                    status=StageState.FAILED,
-                    index=index,
-                    input_hash=expected_input,
-                    error_code=code,
-                    error_message=message,
-                    started_at=started,
-                    finished_at=self.clock(),
+                attempts = tuple(getattr(exc, "attempts", ()))
+                cause = exc
+                exhausted = False
+                retry_cost = float(getattr(exc, "prior_cost_usd", 0.0) or 0.0)
+            else:
+                stored = self._persist_result(final)
+                results.append(stored)
+                upstream.append(stored)
+                self.logger.info(
+                    "stage finished",
+                    extra={
+                        "run_id": run_record.id,
+                        "stage": stage.name,
+                        "index": index,
+                    },
                 )
-                return self._failed(
-                    run_record,
-                    stage,
-                    code,
-                    message,
-                    results,
-                    failed,
-                    directory,
-                    cause=exc,
-                )
+                continue
 
-            stored = self._persist_result(final)
-            results.append(stored)
-            upstream.append(stored)
-            self.logger.info(
-                "stage finished",
-                extra={
-                    "run_id": run_record.id,
-                    "stage": stage.name,
-                    "index": index,
-                },
+            total_cost += retry_cost
+            run_record = self._apply_cost(run_record, total_cost)
+            failed = StageResult(
+                run_id=run_record.id,
+                stage=stage.name,
+                status=StageState.FAILED,
+                index=index,
+                input_hash=expected_input,
+                error_code=code,
+                error_message=message,
+                started_at=started,
+                finished_at=self.clock(),
+            )
+            failed = self._with_attempts(
+                failed,
+                attempts,
+                stage.retry_policy,
+                exhausted=exhausted,
+            )
+            return self._failed(
+                run_record,
+                stage,
+                code,
+                message,
+                results,
+                failed,
+                directory,
+                cause=cause,
             )
 
         run_record = self._apply_cost(run_record, total_cost)
@@ -750,6 +789,25 @@ class Orchestrator:
                 result=result,
             ) from cause
         return result
+
+    def _with_attempts(
+        self,
+        result: StageResult,
+        attempts: tuple[StageAttempt, ...],
+        policy: StageRetryPolicy,
+        *,
+        exhausted: bool = False,
+    ) -> StageResult:
+        metadata = dict(result.metadata)
+        metadata["attempts"] = len(attempts)
+        metadata["attempt_count"] = len(attempts)
+        metadata["max_attempts"] = policy.max_attempts
+        metadata["exhausted"] = exhausted
+        metadata["retry_policy"] = policy.to_dict()
+        metadata["attempt_history"] = [attempt.to_dict() for attempt in attempts]
+        if len(attempts) > 1:
+            metadata["retries"] = len(attempts) - 1
+        return result.model_copy(update={"metadata": metadata})
 
     def _completed_result(
         self,
