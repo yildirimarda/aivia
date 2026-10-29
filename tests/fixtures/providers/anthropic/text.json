@@ -58,7 +58,8 @@
     "usage": {
       "input_tokens": 12,
       "output_tokens": 5,
-      "cached_input_tokens": 3
+      "cached_input_tokens": 3,
+      "cached_input_included_in_input": false
     },
     "finish_reason": "stop",
     "tool_calls": [],

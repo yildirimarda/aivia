@@ -533,6 +533,7 @@ class OpenAILLMProvider(Provider):
                     input_tokens=usage.prompt_tokens,
                     output_tokens=usage.completion_tokens,
                     cached_input_tokens=cached_tokens,
+                    cached_input_included_in_input=True,
                 ),
                 finish_reason=finish_reason,
                 tool_calls=tool_calls,

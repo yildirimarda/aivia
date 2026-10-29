@@ -179,6 +179,8 @@ def test_maps_usage_content_and_finish_reason_from_the_response() -> None:
     assert response.usage.input_tokens == 12
     assert response.usage.output_tokens == 5
     assert response.usage.cached_input_tokens == 3
+    assert response.usage.cached_input_included_in_input is False
+    assert response.usage.total_input_tokens == 15
     assert response.usage.total_tokens == 17
     assert response.metadata == {"stop_reason": "end_turn"}
     assert response.has_tool_calls is False

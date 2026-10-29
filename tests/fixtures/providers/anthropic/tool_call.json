@@ -74,7 +74,8 @@
     "usage": {
       "input_tokens": 20,
       "output_tokens": 8,
-      "cached_input_tokens": 0
+      "cached_input_tokens": 0,
+      "cached_input_included_in_input": false
     },
     "finish_reason": "tool_calls",
     "tool_calls": [

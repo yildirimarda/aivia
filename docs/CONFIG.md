@@ -919,10 +919,11 @@ How often and how long one stage may run. ``timeout_seconds`` bounds a single at
 
 ### TokenPricing
 
-USD prices for one million input and output tokens of a model.
+USD prices for one million tokens of a model. ``input_per_million`` and ``output_per_million`` are required in spirit but default to zero for backward compatibility. ``cached_input_per_million`` prices prompt tokens a provider served from a cache. Leaving it unset means cached input is charged at the ordinary input price. Whether the provider's reported input count already contains the cached tokens is recorded on :class:`~aivia.providers.protocols.llm.LLMUsage`; the calculator uses that flag so cached tokens are never counted twice.
 
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
+| `cached_input_per_million` | number or null | `null` | >= 0 |  |
 | `input_per_million` | number | `0.0` | >= 0 |  |
 | `output_per_million` | number | `0.0` | >= 0 |  |
 

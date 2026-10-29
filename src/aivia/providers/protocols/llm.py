@@ -241,16 +241,33 @@ class ChatMessage(ProtocolModel):
 
 
 class LLMUsage(ProtocolModel):
-    """Token usage reported by a provider."""
+    """Token usage reported by a provider.
+
+    ``input_tokens`` is the provider's reported prompt token count and
+    ``cached_input_tokens`` is how many of those prompt tokens were served from
+    a cache. Providers disagree on whether the cached count is already part of
+    ``input_tokens``: OpenAI and Gemini include it, while Anthropic reports
+    cache reads separately. ``cached_input_included_in_input`` records which
+    convention the adapter used, so the cost calculator can price cached tokens
+    at their own rate without counting them twice.
+    """
 
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
     cached_input_tokens: int = Field(default=0, ge=0)
+    cached_input_included_in_input: bool = True
 
     @property
     def total_tokens(self) -> int:
         """Input plus output tokens."""
         return self.input_tokens + self.output_tokens
+
+    @property
+    def total_input_tokens(self) -> int:
+        """Prompt tokens including separately reported cached input tokens."""
+        if self.cached_input_included_in_input:
+            return self.input_tokens
+        return self.input_tokens + self.cached_input_tokens
 
     @property
     def prompt_tokens(self) -> int:
