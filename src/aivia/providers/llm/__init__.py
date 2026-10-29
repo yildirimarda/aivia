@@ -13,6 +13,11 @@ from aivia.providers.llm.anthropic import (
     AnthropicLLMProvider,
     AnthropicProvider,
 )
+from aivia.providers.llm.gemini import (
+    Gemini,
+    GeminiLLMProvider,
+    GeminiProvider,
+)
 from aivia.providers.llm.openai import (
     OpenAI,
     OpenAILLMProvider,
@@ -26,6 +31,9 @@ __all__ = [
     "Anthropic",
     "AnthropicLLMProvider",
     "AnthropicProvider",
+    "Gemini",
+    "GeminiLLMProvider",
+    "GeminiProvider",
     "OpenAI",
     "OpenAILLMProvider",
     "OpenAIProvider",
