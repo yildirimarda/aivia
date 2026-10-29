@@ -311,8 +311,7 @@ class RunDirectory:
         if stage is not None:
             name = _normalise_stage(stage)
             return tuple(
-                ArtifactRecord.from_dict(entry)
-                for entry in stages.get(name, ())
+                ArtifactRecord.from_dict(entry) for entry in stages.get(name, ())
             )
         records: list[ArtifactRecord] = []
         for entries in stages.values():
