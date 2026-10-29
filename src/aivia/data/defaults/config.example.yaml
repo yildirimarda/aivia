@@ -207,6 +207,7 @@ api:
 
 jobs:
   concurrency: 1
+  max_parallel_runs: 1
   max_attempts: 3
   heartbeat_seconds: 30
   poll_seconds: 2

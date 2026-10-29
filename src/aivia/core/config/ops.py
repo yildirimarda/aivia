@@ -167,9 +167,15 @@ class RetentionConfig(ConfigModel):
 
 
 class JobsConfig(ConfigModel):
-    """Worker concurrency, retry and heartbeat settings for the job queue."""
+    """Worker concurrency, retry, heartbeat and run-lock settings.
+
+    ``concurrency`` is the number of workers. ``max_parallel_runs`` is the
+    global limit on runs holding a lock at once across every profile and
+    process, so scheduled runs cannot overlap unsafely.
+    """
 
     concurrency: int = Field(default=1, ge=1)
+    max_parallel_runs: int = Field(default=1, ge=1)
     max_attempts: int = Field(default=3, ge=1)
     heartbeat_seconds: int = Field(default=30, gt=0)
     poll_seconds: int = Field(default=2, gt=0)

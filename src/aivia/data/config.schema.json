@@ -908,7 +908,7 @@
     },
     "JobsConfig": {
       "additionalProperties": false,
-      "description": "Worker concurrency, retry and heartbeat settings for the job queue.",
+      "description": "Worker concurrency, retry, heartbeat and run-lock settings.\n\n``concurrency`` is the number of workers. ``max_parallel_runs`` is the\nglobal limit on runs holding a lock at once across every profile and\nprocess, so scheduled runs cannot overlap unsafely.",
       "properties": {
         "concurrency": {
           "default": 1,
@@ -926,6 +926,12 @@
           "default": 3,
           "minimum": 1,
           "title": "Max Attempts",
+          "type": "integer"
+        },
+        "max_parallel_runs": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Max Parallel Runs",
           "type": "integer"
         },
         "max_queue_depth": {
