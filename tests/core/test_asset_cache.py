@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -180,6 +182,55 @@ def test_storing_an_equivalent_asset_twice_returns_the_first_record(
     assert second.path == first.path
     assert len(cache.assets.list()) == 1
     assert len(cache.repository.list()) == 1
+
+
+def test_concurrent_identical_stores_create_one_entry(tmp_path: Path) -> None:
+    engine = create_database_engine(tmp_path / "aivia.db")
+    upgrade_database(engine=engine)
+    try:
+        cache = AssetCache(engine)
+        key = cache.key("acme", "image-1", "A bridge", parameters={"seed": 7})
+        workers = 8
+        barrier = threading.Barrier(workers)
+        stored: list[Asset] = []
+        errors: list[BaseException] = []
+        lock = threading.Lock()
+
+        def store_one(index: int) -> None:
+            barrier.wait()
+            try:
+                asset = cache.store(
+                    _asset(path=f"/runs/run_{index}/bridge.png"),
+                    key=key,
+                )
+            except BaseException as exc:
+                with lock:
+                    errors.append(exc)
+            else:
+                with lock:
+                    stored.append(asset)
+
+        threads = [
+            threading.Thread(target=store_one, args=(index,))
+            for index in range(workers)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+
+        assert not any(thread.is_alive() for thread in threads)
+        assert errors == []
+        assert len(stored) == workers
+        assert len({asset.id for asset in stored}) == 1
+        assert len(cache.assets.list()) == 1
+        assert len(cache.repository.list()) == 1
+        entry = cache.entry(key)
+        assert entry is not None
+        assert entry.asset_id == stored[0].id
+        assert cache.get(key) == stored[0]
+    finally:
+        engine.dispose()
 
 
 def test_a_different_reference_hash_is_a_different_cache_entry(
