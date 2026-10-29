@@ -249,7 +249,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add language utilities for code normalization, detection and per language accessors such as words per second and fonts (tests/llm/test_languages.py)
 - [x] Normalize search results into one model, dedupe by url and route search calls through the router with cost tracking (tests/providers/search/test_normalize.py)
 - [x] Add the Tavily search provider with quota errors mapped to rate limited (tests/providers/search/test_tavily.py)
-- [ ] Add the Exa search provider (tests/providers/search/test_exa.py)
+- [x] Add the Exa search provider (tests/providers/search/test_exa.py)
 - [ ] Add the Brave search provider (tests/providers/search/test_brave.py)
 - [ ] Add SerpAPI and an LLM native search provider using the web search capability (tests/providers/search/test_serpapi_llm.py)
 - [ ] Add a page fetch provider with readability extraction, size and time limits, SSRF guarding and a host allowlist (tests/providers/test_pagefetch.py)
