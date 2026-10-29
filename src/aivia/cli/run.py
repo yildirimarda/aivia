@@ -13,6 +13,7 @@ from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_app_config
+from aivia.core.dry_run import apply_dry_run
 from aivia.core.errors import ConfigError
 from aivia.core.estimate import Estimator, RecipeEstimate, render_estimate
 from aivia.core.models.provider import ProviderMeta
@@ -164,6 +165,8 @@ def _estimate_run(args: argparse.Namespace) -> tuple[object, RecipeEstimate]:
         profile=args.profile,
         set_values=args.set_values,
     )
+    if getattr(args, "dry_run", False):
+        config = apply_dry_run(config)
     name, recipe = _resolve_recipe(config, args.format_name)
     estimate = Estimator(
         provider_metadata(config),
