@@ -25,6 +25,7 @@ from aivia.core.config import (
     register_core_sections,
 )
 from aivia.core.errors import ConfigError
+from aivia.core.stage_retry import StageRetryPolicy
 
 
 def example_section(name: str) -> dict[str, Any]:
@@ -106,6 +107,108 @@ def test_stage_accepts_name_id_step_and_option_aliases(
     assert stage.id == "write"
     assert stage.options == {"mode": "facts"}
     assert stage.params == {"mode": "facts"}
+
+
+def test_stage_accepts_timeout_and_retry_policy_overrides() -> None:
+    stage = StageConfig.from_mapping(
+        {
+            "stage": "render",
+            "timeout_seconds": 12.5,
+            "retry_policy": {
+                "max_attempts": 3,
+                "retry_delay_seconds": 0.5,
+                "retry_codes": ["rate_limit"],
+            },
+        }
+    )
+
+    assert stage.timeout_seconds == 12.5
+    assert stage.retry_policy == StageRetryPolicy(
+        max_attempts=3,
+        retry_delay_seconds=0.5,
+        retry_codes=("rate_limit",),
+    )
+    assert stage.retry_overrides == {
+        "timeout_seconds": 12.5,
+        "retry_policy": stage.retry_policy,
+    }
+
+
+def test_stage_accepts_flat_retry_knobs_and_aliases() -> None:
+    stage = StageConfig.from_mapping(
+        {
+            "stage": "render",
+            "timeout": 5,
+            "max_attempts": 4,
+            "retry_delay_seconds": 0.25,
+            "backoff_multiplier": 2,
+            "max_retry_delay_seconds": 10,
+            "retry_on_timeout": False,
+            "retry_codes": ["rate_limit"],
+        }
+    )
+
+    assert stage.timeout_seconds == 5
+    assert stage.retry_overrides == {
+        "timeout_seconds": 5,
+        "max_attempts": 4,
+        "retry_delay_seconds": 0.25,
+        "backoff_multiplier": 2,
+        "max_retry_delay_seconds": 10,
+        "retry_on_timeout": False,
+        "retry_codes": ("rate_limit",),
+    }
+
+
+def test_stage_without_retry_overrides_keeps_its_class_policy() -> None:
+    stage = StageConfig.from_mapping({"stage": "render", "options": {"fast": True}})
+
+    assert stage.retry_overrides == {}
+    assert stage.to_stage_kwargs() == {"options": {"fast": True}}
+
+
+def test_recipe_stage_retry_overrides_reach_the_stage_instance() -> None:
+    from aivia.core.orchestrator import _coerce_stage
+
+    recipe = FormatRecipeConfig.from_mapping(
+        {
+            "stages": [
+                {
+                    "stage": "render",
+                    "timeout_seconds": 9,
+                    "retry_policy": {"max_attempts": 2},
+                }
+            ]
+        }
+    )
+
+    stage = _coerce_stage(recipe.stages[0])
+
+    assert stage.retry_policy == StageRetryPolicy(
+        timeout_seconds=9,
+        max_attempts=2,
+    )
+
+
+@pytest.mark.parametrize(
+    ("values", "field"),
+    [
+        ({"timeout_seconds": 0}, "timeout_seconds"),
+        ({"timeout_seconds": float("inf")}, "timeout_seconds"),
+        ({"max_attempts": 0}, "max_attempts"),
+        ({"retry_delay_seconds": -1}, "retry_delay_seconds"),
+        ({"backoff_multiplier": 0.5}, "backoff_multiplier"),
+        ({"max_retry_delay_seconds": -1}, "max_retry_delay_seconds"),
+        ({"retry_policy": {"max_attempts": 0}}, "retry_policy"),
+    ],
+)
+def test_invalid_stage_retry_overrides_report_the_field(
+    values: dict[str, Any], field: str
+) -> None:
+    with pytest.raises(ConfigError) as caught:
+        StageConfig.from_mapping({"stage": "render", **values})
+
+    assert field in str(caught.value)
 
 
 def test_recipe_accepts_output_and_handler_aliases() -> None:

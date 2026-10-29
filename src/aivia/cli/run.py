@@ -322,7 +322,7 @@ def build_stages(recipe: FormatRecipeConfig) -> list[Stage]:
     keeps the execution path wired and testable, and a caller may replace this
     function to supply implementations.
     """
-    return [Stage(item.stage, options=item.options) for item in recipe.stages]
+    return [Stage(item.stage, **item.to_stage_kwargs()) for item in recipe.stages]
 
 
 def _execute_run(

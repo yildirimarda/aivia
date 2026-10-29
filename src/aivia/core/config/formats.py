@@ -13,6 +13,7 @@ with a known output type and handler.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from enum import StrEnum
 from typing import Any
@@ -20,6 +21,7 @@ from typing import Any
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from aivia.core.config.base import ConfigModel
+from aivia.core.stage_retry import StageRetryPolicy
 
 __all__ = [
     "FormatConfig",
@@ -83,6 +85,16 @@ _STAGE_KEYS = frozenset(
         "params",
         "config",
         "settings",
+        "timeout_seconds",
+        "timeout",
+        "max_attempts",
+        "retry_delay_seconds",
+        "backoff_multiplier",
+        "max_retry_delay_seconds",
+        "retry_on_timeout",
+        "retry_codes",
+        "retry_policy",
+        "retry",
     }
 )
 
@@ -92,7 +104,9 @@ class StageConfig(ConfigModel):
 
     A stage may be written as a bare string (``write``) or as a mapping with a
     ``stage``/``name``/``id`` field and an optional ``options`` mapping. The
-    shorthand ``{write: {mode: facts}}`` is accepted too.
+    shorthand ``{write: {mode: facts}}`` is accepted too. A mapping may also
+    override the stage class timeout and retry policy through
+    ``timeout_seconds`` or a ``retry_policy`` mapping.
     """
 
     stage: str = Field(
@@ -103,6 +117,33 @@ class StageConfig(ConfigModel):
         default_factory=dict,
         validation_alias=AliasChoices("options", "params", "config", "settings"),
     )
+    timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        validation_alias=AliasChoices("timeout_seconds", "timeout"),
+    )
+    max_attempts: int | None = Field(default=None, ge=1)
+    retry_delay_seconds: float | None = Field(default=None, ge=0)
+    backoff_multiplier: float | None = Field(default=None, ge=1)
+    max_retry_delay_seconds: float | None = Field(default=None, ge=0)
+    retry_on_timeout: bool | None = None
+    retry_codes: tuple[str, ...] | None = None
+    retry_policy: StageRetryPolicy | None = Field(
+        default=None,
+        validation_alias=AliasChoices("retry_policy", "retry"),
+    )
+
+    @field_validator(
+        "timeout_seconds",
+        "retry_delay_seconds",
+        "backoff_multiplier",
+        "max_retry_delay_seconds",
+    )
+    @classmethod
+    def _finite_numbers(cls, value: float | None) -> float | None:
+        if value is not None and not math.isfinite(value):
+            raise ValueError("stage retry values must be finite")
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -151,6 +192,31 @@ class StageConfig(ConfigModel):
     def config(self) -> dict[str, Any]:
         """Alias for :attr:`options`."""
         return self.options
+
+    @property
+    def retry_overrides(self) -> dict[str, Any]:
+        """The timeout and retry settings this stage overrides, if any."""
+        names = (
+            "timeout_seconds",
+            "max_attempts",
+            "retry_delay_seconds",
+            "backoff_multiplier",
+            "max_retry_delay_seconds",
+            "retry_on_timeout",
+            "retry_codes",
+        )
+        overrides = {
+            name: getattr(self, name)
+            for name in names
+            if getattr(self, name) is not None
+        }
+        if self.retry_policy is not None:
+            overrides["retry_policy"] = self.retry_policy
+        return overrides
+
+    def to_stage_kwargs(self) -> dict[str, Any]:
+        """Return the keyword arguments used to build the stage instance."""
+        return {"options": dict(self.options), **self.retry_overrides}
 
 
 Stage = StageConfig

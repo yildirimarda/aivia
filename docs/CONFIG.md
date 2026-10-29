@@ -873,12 +873,34 @@ Allowed values: `low`, `medium`, `high`.
 
 ### StageConfig
 
-One ordered pipeline stage with its recipe-specific options. A stage may be written as a bare string (``write``) or as a mapping with a ``stage``/``name``/``id`` field and an optional ``options`` mapping. The shorthand ``{write: {mode: facts}}`` is accepted too.
+One ordered pipeline stage with its recipe-specific options. A stage may be written as a bare string (``write``) or as a mapping with a ``stage``/``name``/``id`` field and an optional ``options`` mapping. The shorthand ``{write: {mode: facts}}`` is accepted too. A mapping may also override the stage class timeout and retry policy through ``timeout_seconds`` or a ``retry_policy`` mapping.
 
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
+| `backoff_multiplier` | number or null | `null` | >= 1 |  |
+| `max_attempts` | integer or null | `null` | >= 1 |  |
+| `max_retry_delay_seconds` | number or null | `null` | >= 0 |  |
 | `options` | object |  |  |  |
+| `retry_codes` | array of string or null | `null` |  |  |
+| `retry_delay_seconds` | number or null | `null` | >= 0 |  |
+| `retry_on_timeout` | boolean or null | `null` |  |  |
+| `retry_policy` | [StageRetryPolicy](#stageretrypolicy) or null | `null` |  | How often and how long one stage may run. ``timeout_seconds`` bounds a single attempt; ``None`` disables the deadline. ``max_attempts`` counts the first try, so the default of one means no retries. ``retry_delay_seconds`` is the wait after a failed attempt, multiplied by ``backoff_multiplier`` on each later attempt and capped by ``max_retry_delay_seconds``. ``retry_codes`` adds stable error codes beyond the retryable taxonomy, and ``retry_on_timeout`` controls the per-attempt deadline. |
 | `stage` | string |  | length >= 1 |  |
+| `timeout_seconds` | number or null | `null` | > 0 |  |
+
+### StageRetryPolicy
+
+How often and how long one stage may run. ``timeout_seconds`` bounds a single attempt; ``None`` disables the deadline. ``max_attempts`` counts the first try, so the default of one means no retries. ``retry_delay_seconds`` is the wait after a failed attempt, multiplied by ``backoff_multiplier`` on each later attempt and capped by ``max_retry_delay_seconds``. ``retry_codes`` adds stable error codes beyond the retryable taxonomy, and ``retry_on_timeout`` controls the per-attempt deadline.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `backoff_multiplier` | number | `1.0` |  |  |
+| `max_attempts` | integer | `1` |  |  |
+| `max_retry_delay_seconds` | number or null | `null` |  |  |
+| `retry_codes` | array of string | `[]` |  |  |
+| `retry_delay_seconds` | number | `0.0` |  |  |
+| `retry_on_timeout` | boolean | `true` |  |  |
+| `timeout_seconds` | number or null | `null` |  |  |
 
 ### TokenPricing
 

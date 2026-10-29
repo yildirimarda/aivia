@@ -251,7 +251,7 @@ def _coerce_stage(item: StageLike | type[Stage]) -> Stage:
     if isinstance(item, type) and issubclass(item, Stage):
         return item()
     if isinstance(item, StageConfig):
-        return Stage(item.stage, options=item.options)
+        return Stage(item.stage, **item.to_stage_kwargs())
     if isinstance(item, str):
         return Stage(item)
     if isinstance(item, Mapping):
