@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Engine, event
 from sqlalchemy import create_engine as _create_engine
+from sqlalchemy.pool import StaticPool
 
 from aivia.core import paths
 
@@ -141,6 +142,15 @@ def create_database_engine(
         db_path.parent.mkdir(parents=True, exist_ok=True)
         url = database_url(db_path)
 
-    engine = _create_engine(url, echo=echo, future=True)
+    if url == database_url(":memory:"):
+        engine = _create_engine(
+            url,
+            echo=echo,
+            future=True,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
+    else:
+        engine = _create_engine(url, echo=echo, future=True)
     install_sqlite_pragmas(engine, busy_timeout_ms=busy_timeout_ms)
     return engine
