@@ -132,9 +132,57 @@ def test_cached_input_is_priced_separately_when_reported_outside_the_input_count
     assert cost.cached_input_included_in_input is False
     assert cost.uncached_input_tokens == 600_000
     assert cost.cached_input_tokens == 400_000
+    assert cost.total_tokens == 1_000_000
     assert cost.cached_input_cost_usd == pytest.approx(0.12)
     assert cost.input_cost_usd == pytest.approx(1.92)
     assert cost.amount_usd == pytest.approx(1.92)
+
+
+def test_usage_total_tokens_include_separately_reported_cached_input() -> None:
+    usage = _response(
+        input_tokens=600_000,
+        output_tokens=100,
+        cached_input_tokens=400_000,
+        cached_input_included_in_input=False,
+    ).usage
+
+    assert usage.total_input_tokens == 1_000_000
+    assert usage.total_tokens == 1_000_100
+
+
+def test_cost_event_units_include_separately_reported_cached_input() -> None:
+    calculator = LLMCostCalculator(
+        _config(input_per_million=3.0, cached_input_per_million=0.3)
+    )
+
+    event = calculator.cost_event(
+        _response(
+            input_tokens=600_000,
+            output_tokens=100,
+            cached_input_tokens=400_000,
+            cached_input_included_in_input=False,
+        )
+    )
+
+    assert event.units == 1_000_100.0
+    assert event.metadata["input_tokens"] == 600_000
+    assert event.metadata["cached_input_tokens"] == 400_000
+    assert event.metadata["cached_input_included_in_input"] is False
+
+
+def test_cost_event_units_do_not_double_count_included_cached_input() -> None:
+    calculator = LLMCostCalculator(_config())
+
+    event = calculator.cost_event(
+        _response(
+            input_tokens=600_000,
+            output_tokens=100,
+            cached_input_tokens=400_000,
+            cached_input_included_in_input=True,
+        )
+    )
+
+    assert event.units == 600_100.0
 
 
 def test_an_unset_cached_price_falls_back_to_the_input_price() -> None:

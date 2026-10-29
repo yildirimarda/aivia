@@ -71,8 +71,10 @@ class LLMTokenCost:
 
     @property
     def total_tokens(self) -> int:
-        """Input plus output tokens, matching :class:`LLMUsage`."""
-        return self.input_tokens + self.output_tokens
+        """Prompt tokens including separately reported cached input, plus output."""
+        return (
+            self.uncached_input_tokens + self.cached_input_tokens + self.output_tokens
+        )
 
     @property
     def amount_usd(self) -> float:

@@ -259,8 +259,8 @@ class LLMUsage(ProtocolModel):
 
     @property
     def total_tokens(self) -> int:
-        """Input plus output tokens."""
-        return self.input_tokens + self.output_tokens
+        """Prompt tokens including separately reported cached input, plus output."""
+        return self.total_input_tokens + self.output_tokens
 
     @property
     def total_input_tokens(self) -> int:
