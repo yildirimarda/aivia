@@ -13,6 +13,11 @@ from aivia.providers.llm.anthropic import (
     AnthropicLLMProvider,
     AnthropicProvider,
 )
+from aivia.providers.llm.openai import (
+    OpenAI,
+    OpenAILLMProvider,
+    OpenAIProvider,
+)
 
 __all__ = [
     "DEFAULT_API_VERSION",
@@ -21,4 +26,7 @@ __all__ = [
     "Anthropic",
     "AnthropicLLMProvider",
     "AnthropicProvider",
+    "OpenAI",
+    "OpenAILLMProvider",
+    "OpenAIProvider",
 ]
