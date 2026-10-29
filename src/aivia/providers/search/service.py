@@ -168,6 +168,7 @@ class SearchService:
         metadata: Mapping[str, Any] | None = None,
         record_cost: bool = True,
         dedupe: bool = True,
+        remaining_budget: float | None = None,
     ) -> SearchResponse:
         """Run *request* through the router and return a normalized response.
 
@@ -175,6 +176,13 @@ class SearchService:
         :meth:`Router.execute`. The cost event names the provider that finally
         succeeded, never a provider that failed before it. ``dedupe=False``
         keeps the provider's result order while still validating each result.
+
+        ``remaining_budget`` is the amount still available for this call and is
+        passed to the router, so a provider whose estimated search price
+        exceeds it is never called. When no affordable provider remains the
+        router refuses the call with
+        :class:`~aivia.core.errors.ProviderExhaustedError` and the skipped
+        entries carry ``budget_exceeded``. ``None`` disables the check.
         """
         if not isinstance(request, SearchRequest):
             raise TypeError("request must be a SearchRequest")
@@ -188,7 +196,11 @@ class SearchService:
         async def run(provider: Provider) -> SearchResponse:
             return await cast(SearchProvider, provider).search(request)
 
-        response = await self._router.execute(CAPABILITY_SEARCH, run)
+        response = await self._router.execute(
+            CAPABILITY_SEARCH,
+            run,
+            remaining_budget=remaining_budget,
+        )
         selection = self._router.last_selection
         if selection is None:
             raise RuntimeError("router completed a search without a selection")
@@ -232,6 +244,7 @@ class SearchService:
         metadata: Mapping[str, Any] | None = None,
         record_cost: bool = True,
         dedupe: bool = True,
+        remaining_budget: float | None = None,
     ) -> SearchOutcome:
         """Run :meth:`search` and return the response with its price and event."""
         response = await self.search(
@@ -243,6 +256,7 @@ class SearchService:
             metadata=metadata,
             record_cost=record_cost,
             dedupe=dedupe,
+            remaining_budget=remaining_budget,
         )
         return SearchOutcome(
             response=response,
@@ -275,6 +289,7 @@ async def search(
     metadata: Mapping[str, Any] | None = None,
     record_cost: bool = True,
     dedupe: bool = True,
+    remaining_budget: float | None = None,
 ) -> SearchResponse:
     """Execute one search without constructing a long-lived service."""
     service = SearchService(
@@ -291,4 +306,5 @@ async def search(
         metadata=metadata,
         record_cost=record_cost,
         dedupe=dedupe,
+        remaining_budget=remaining_budget,
     )
