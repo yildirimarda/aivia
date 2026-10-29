@@ -484,10 +484,11 @@ def run_costs_run(args: argparse.Namespace) -> int:
             print(f"error: run not found: {run_id}", file=sys.stderr)
             return 1
 
-        events = CostTracker(engine).for_run(run_id)
+        tracker = CostTracker(engine)
+        events = tracker.for_run(run_id)
         aggregator = CostAggregator(engine)
         assets = AssetRepository(engine).list(run_id=run_id)
-        total = math.fsum(event.amount_usd for event in events)
+        total = tracker.total(run_id=run_id)
 
         lines = [f"Run: {run.id}", f"Total: {_money(total)}", ""]
         lines.extend(

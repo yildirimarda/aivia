@@ -171,7 +171,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Exclude replaced estimates from per asset cost report totals (tests/cli/test_costs_run.py)
 - [x] Serialize budget alert state writes so parallel workers cannot lose emitted keys (tests/core/test_budget_alerts.py)
 - [x] Treat an incompatible price unit as a missing estimate instead of aborting pre-run estimation (tests/core/test_estimate.py)
-- [ ] Exclude replaced estimates from the costs run overall total so it matches the stage breakdown (tests/cli/test_costs_run.py)
+- [x] Exclude replaced estimates from the costs run overall total so it matches the stage breakdown (tests/cli/test_costs_run.py)
 - [ ] Prune emitted budget alert keys from past periods so the state file stays bounded (tests/core/test_budget_alerts.py)
 
 ## Milestone 6: Execution core, storage and API
