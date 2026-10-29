@@ -16,7 +16,8 @@ from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.resolve import resolve_app_config
 from aivia.core.db import RunRepository, create_database_engine
 from aivia.core.errors import ConfigError
-from aivia.core.models import RunState, utcnow
+from aivia.core.models import RunState
+from aivia.core.run_state import RunStateError, RunStateMachine
 
 __all__ = ["configure", "run_resume"]
 
@@ -130,8 +131,8 @@ def _resume(
     resume_reason: str,
     assume_yes: bool,
 ) -> int:
-    repository = RunRepository(engine)
-    run = repository.get(run_id)
+    state_machine = RunStateMachine(RunRepository(engine))
+    run = state_machine.get(run_id)
     if run is None:
         print(f"error: run not found: {run_id}", file=sys.stderr)
         return 1
@@ -148,17 +149,14 @@ def _resume(
     ):
         return 1
 
-    moment = utcnow()
-    resumed = repository.update(
-        run.id,
-        state=RunState.RUNNING,
-        resumed_by=resumed_by,
-        resume_reason=resume_reason,
-        resumed_at=moment,
-        updated_at=moment,
-    )
-    if resumed is None:
-        print(f"error: cannot resume run: {run.id}", file=sys.stderr)
+    try:
+        resumed = state_machine.resume(
+            run,
+            resumed_by=resumed_by,
+            reason=resume_reason,
+        )
+    except RunStateError as exc:
+        print(f"error: cannot resume run {run.id}: {exc}", file=sys.stderr)
         return 1
 
     print(f"Resumed run {resumed.id} as {resumed.resumed_by}: {resumed.resume_reason}")

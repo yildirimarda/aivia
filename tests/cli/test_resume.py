@@ -323,3 +323,45 @@ def test_resume_accepts_the_run_option(
     assert code == 0
     assert err == ""
     assert "Resumed run run_paused" in out
+
+
+def test_resume_revalidates_the_lifecycle_before_transitioning(
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = seed(database)
+
+    def fail_run_before_confirming(*_args: object, **_kwargs: object) -> bool:
+        engine = create_database_engine(database)
+        try:
+            RunRepository(engine).update(run_id, state=RunState.FAILED)
+        finally:
+            engine.dispose()
+        return True
+
+    monkeypatch.setattr(
+        "aivia.cli.resume.confirm_action",
+        fail_run_before_confirming,
+    )
+
+    code, out, err = run_command(
+        capsys,
+        run_id,
+        "--by",
+        "alice",
+        "--reason",
+        "cap raised",
+        "--yes",
+        "--database",
+        str(database),
+    )
+
+    assert code == 1
+    assert out == ""
+    assert "cannot transition a run from failed to running" in err
+    run = stored_run(database, run_id)
+    assert run.state is RunState.FAILED
+    assert run.resumed_by == ""
+    assert run.resume_reason == ""
+    assert run.resumed_at is None
