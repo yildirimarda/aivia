@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import Engine
 
+from aivia.core.config import JobsConfig
 from aivia.core.cost import CostAggregator, CostTracker
 from aivia.core.db import (
     JobRepository,
@@ -25,6 +26,7 @@ from aivia.core.db import (
     create_database_engine,
     upgrade_database,
 )
+from aivia.core.errors import QuotaError
 from aivia.core.idempotency import IdempotencyConflict, create_run_once
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, Run, RunKind, StageResult
@@ -96,12 +98,14 @@ def register_job_routes(
     environ: Mapping[str, str] | None,
     database_path: str | Path | None,
     data_dir: str | Path | None,
+    jobs: JobsConfig | Mapping[str, Any] | None = None,
 ) -> None:
     """Attach the generic job and run routes to *app*.
 
     A caller may inject an engine, or let the API open the configured local
     database on the first request. Keeping the lazy path means health and
-    OpenAPI stay usable before the database exists.
+    OpenAPI stay usable before the database exists. *jobs* supplies the queue
+    depth limit every submission is checked against.
     """
 
     def database() -> Engine:
@@ -118,6 +122,9 @@ def register_job_routes(
         app.state.api_engine_owned = True
         return created
 
+    def queue_for(target: Engine) -> JobQueue:
+        return JobQueue(target, config=jobs)
+
     @app.post(
         "/api/v1/jobs",
         status_code=202,
@@ -127,18 +134,24 @@ def register_job_routes(
     def submit_job(submission: JobSubmission) -> dict[str, Any]:
         """Queue a job and return its identifier and initial status."""
         target = database()
-        run, _created, reused = _create_or_attach_run(
-            target,
-            submission,
-            requested_run_id=submission.run_id or None,
-        )
-        job = _enqueue_job(
-            target,
-            submission,
-            run,
-            job_id=submission.id,
-            reuse=reused,
-        )
+        queue = queue_for(target)
+        try:
+            if not _reuses_existing_job(target, submission):
+                queue.ensure_capacity()
+            run, _created, reused = _create_or_attach_run(
+                target,
+                submission,
+                requested_run_id=submission.run_id or None,
+            )
+            job = _enqueue_job(
+                queue,
+                submission,
+                run,
+                job_id=submission.id,
+                reuse=reused,
+            )
+        except QuotaError as exc:
+            raise _queue_full(exc) from exc
         payload = _job_payload(job)
         payload["job"] = dict(payload)
         if run is not None:
@@ -154,15 +167,24 @@ def register_job_routes(
     def submit_run(submission: JobSubmission) -> dict[str, Any]:
         """Create a run and queue the job that will execute it."""
         target = database()
+        queue = queue_for(target)
         requested = submission.run_id or submission.id or None
-        run, _created, reused = _create_or_attach_run(
-            target,
-            submission,
-            requested_run_id=requested,
-        )
-        if run is None:
-            raise HTTPException(status_code=422, detail="a run submission needs a kind")
-        job = _enqueue_job(target, submission, run, job_id=None, reuse=reused)
+        try:
+            if not _reuses_existing_job(target, submission):
+                queue.ensure_capacity()
+            run, _created, reused = _create_or_attach_run(
+                target,
+                submission,
+                requested_run_id=requested,
+            )
+            if run is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="a run submission needs a kind",
+                )
+            job = _enqueue_job(queue, submission, run, job_id=None, reuse=reused)
+        except QuotaError as exc:
+            raise _queue_full(exc) from exc
         payload = _run_payload(run)
         payload["run"] = dict(payload)
         payload["job_id"] = job.id
@@ -309,8 +331,24 @@ def _run_values(submission: JobSubmission) -> dict[str, Any]:
     return values
 
 
+def _reuses_existing_job(engine: Engine, submission: JobSubmission) -> bool:
+    if not submission.idempotency_key:
+        return False
+    existing = RunRepository(engine).find_by_idempotency_key(submission.idempotency_key)
+    return existing is not None
+
+
+def _queue_full(error: QuotaError) -> HTTPException:
+    detail = {"message": error.message, "code": error.code, **error.details}
+    return HTTPException(
+        status_code=429,
+        detail=detail,
+        headers={"Retry-After": "1"},
+    )
+
+
 def _enqueue_job(
-    engine: Engine,
+    queue: JobQueue,
     submission: JobSubmission,
     run: Run | None,
     *,
@@ -318,7 +356,7 @@ def _enqueue_job(
     reuse: bool = False,
 ) -> Job:
     if reuse and run is not None:
-        existing = JobRepository(engine).list(run_id=run.id)
+        existing = JobRepository(queue.engine).list(run_id=run.id)
         if existing:
             return existing[0]
     values: dict[str, Any] = {
@@ -331,7 +369,7 @@ def _enqueue_job(
     }
     if job_id:
         values["id"] = job_id
-    return JobQueue(engine).enqueue(Job(**values))
+    return queue.enqueue(Job(**values))
 
 
 def _job_payload(job: Job) -> dict[str, Any]:

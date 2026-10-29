@@ -25,7 +25,7 @@ from aivia.api.limits import (
 )
 from aivia.api.security import validate_bind_host
 from aivia.api.uploads import sanitize_filename
-from aivia.core.config import ApiConfig, resolve_config
+from aivia.core.config import ApiConfig, JobsConfig, resolve_config
 from aivia.core.secrets import SecretsLoader
 
 __all__ = ["create_app", "serve"]
@@ -45,6 +45,7 @@ def create_app(
     secrets: SecretsLoader | None = None,
     database_path: str | Path | None = None,
     data_dir: str | Path | None = None,
+    jobs: JobsConfig | Mapping[str, Any] | None = None,
 ) -> FastAPI:
     """Build the local API application from *config*.
 
@@ -52,9 +53,11 @@ def create_app(
     returned app validates the bind host before it can be served, so a
     non-loopback address fails here rather than exposing the API by accident.
     Pass an *engine* to share an existing database, or let the job routes open
-    the configured local database lazily on their first request.
+    the configured local database lazily on their first request. *jobs* may
+    override the resolved ``jobs`` section so submissions honour its queue
+    depth limit.
     """
-    api = _resolve_api_config(config, environ)
+    api, jobs_config = _resolve_configs(config, jobs, environ)
     _validate_api_config(api)
 
     expected_key = ""
@@ -71,6 +74,7 @@ def create_app(
         openapi_url="/openapi.json",
     )
     app.state.api_config = api
+    app.state.jobs_config = jobs_config
     app.state.engine = engine
     app.state.api_engine_owned = False
 
@@ -122,6 +126,7 @@ def create_app(
         environ=environ,
         database_path=database_path,
         data_dir=data_dir,
+        jobs=jobs_config,
     )
 
     if api.require_auth:
@@ -156,26 +161,44 @@ def serve(
     *,
     environ: Mapping[str, str] | None = None,
     secrets: SecretsLoader | None = None,
+    jobs: JobsConfig | Mapping[str, Any] | None = None,
 ) -> None:
     """Run the API with uvicorn on the configured loopback address."""
-    api = _resolve_api_config(config, environ)
+    api, jobs_config = _resolve_configs(config, jobs, environ)
     _validate_api_config(api)
-    app = create_app(api, environ=environ, secrets=secrets)
+    app = create_app(api, environ=environ, secrets=secrets, jobs=jobs_config)
 
     import uvicorn
 
     uvicorn.run(app, host=api.host, port=api.port)
 
 
-def _resolve_api_config(
+def _resolve_configs(
     config: ApiConfig | None,
+    jobs: JobsConfig | Mapping[str, Any] | None,
     environ: Mapping[str, str] | None,
-) -> ApiConfig:
-    if config is not None:
-        return config
-    resolved = resolve_config(environ=environ)
-    section = getattr(resolved.app_config, "api", None)
-    return section if isinstance(section, ApiConfig) else ApiConfig()
+) -> tuple[ApiConfig, JobsConfig]:
+    if config is None:
+        root = resolve_config(environ=environ).app_config
+        api_section = getattr(root, "api", None)
+        api = api_section if isinstance(api_section, ApiConfig) else ApiConfig()
+        jobs_section = getattr(root, "jobs", None)
+    else:
+        api = config
+        jobs_section = None
+
+    if jobs is None:
+        jobs_config = (
+            jobs_section if isinstance(jobs_section, JobsConfig) else JobsConfig()
+        )
+    elif isinstance(jobs, JobsConfig):
+        jobs_config = jobs
+    elif isinstance(jobs, Mapping):
+        jobs_config = JobsConfig.from_mapping(jobs)
+    else:
+        raise TypeError("jobs must be a JobsConfig, a mapping or None")
+
+    return api, jobs_config
 
 
 def _validate_api_config(api: ApiConfig) -> None:
