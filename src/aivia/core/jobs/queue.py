@@ -26,7 +26,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Connection, Engine, or_, select, update
+from sqlalchemy import Connection, Engine, func, or_, select, update
 
 from aivia.core.db.repos import JobRepository
 from aivia.core.db.tables import jobs
@@ -35,11 +35,15 @@ from aivia.core.models.base import utcnow
 from aivia.core.models.job import Job, JobState
 
 __all__ = [
+    "STALE_HEARTBEAT_CODE",
     "JobNotClaimedError",
     "JobNotFoundError",
     "JobQueue",
     "JobQueueError",
 ]
+
+STALE_HEARTBEAT_CODE = "stale_heartbeat"
+"""The error code recorded when a dead worker's claim is recovered."""
 
 
 class JobQueueError(AiviaError):
@@ -120,6 +124,15 @@ def _coerce_delay(value: object) -> float:
     if not math.isfinite(delay) or delay < 0.0:
         raise ValueError("retry_after must be a non-negative number of seconds")
     return delay
+
+
+def _coerce_stale_after(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("stale_after_seconds must be a positive number of seconds")
+    stale_after = float(value)
+    if not math.isfinite(stale_after) or stale_after <= 0.0:
+        raise ValueError("stale_after_seconds must be a positive number of seconds")
+    return stale_after
 
 
 def _coerce_text(value: object, *, label: str) -> str:
@@ -259,6 +272,79 @@ class JobQueue:
             if row is None:
                 self._raise_not_owned(connection, wanted, worker)
         return self._require(wanted)
+
+    def recover_stale(
+        self,
+        *,
+        stale_after_seconds: float,
+        now: datetime | None = None,
+    ) -> list[Job]:
+        """Recover running jobs whose worker stopped heartbeating.
+
+        A stale job with attempts left returns to ``pending`` immediately so a
+        live worker can take over. A stale job that already used its last
+        attempt becomes ``dead_letter``. Recovered jobs carry
+        :data:`STALE_HEARTBEAT_CODE` and no longer name the dead worker.
+        """
+        seconds = _coerce_stale_after(stale_after_seconds)
+        current = _as_utc(now)
+        cutoff = current - timedelta(seconds=seconds)
+        reference = func.coalesce(
+            jobs.c.heartbeat_at,
+            jobs.c.claimed_at,
+            jobs.c.started_at,
+            jobs.c.updated_at,
+        )
+
+        recovered: list[str] = []
+        with _write_transaction(self.engine) as connection:
+            rows = (
+                connection.execute(
+                    select(
+                        jobs.c.id,
+                        jobs.c.attempts,
+                        jobs.c.max_attempts,
+                        jobs.c.claimed_by,
+                    )
+                    .where(
+                        jobs.c.state == JobState.RUNNING.value,
+                        reference < cutoff,
+                    )
+                    .order_by(jobs.c.created_at, jobs.c.id)
+                )
+                .mappings()
+                .all()
+            )
+            for row in rows:
+                job_id = str(row["id"])
+                previous_worker = str(row["claimed_by"])
+                values: dict[str, Any] = {
+                    "claimed_by": "",
+                    "claimed_at": None,
+                    "started_at": None,
+                    "heartbeat_at": None,
+                    "finished_at": None,
+                    "not_before": current,
+                    "error_code": STALE_HEARTBEAT_CODE,
+                    "error_message": (
+                        f"worker {previous_worker!r} stopped heartbeating"
+                        if previous_worker
+                        else "worker stopped heartbeating"
+                    ),
+                    "updated_at": current,
+                }
+                if int(row["attempts"]) >= int(row["max_attempts"]):
+                    values.update(
+                        state=JobState.DEAD_LETTER.value,
+                        finished_at=current,
+                    )
+                else:
+                    values.update(state=JobState.PENDING.value)
+                connection.execute(
+                    update(jobs).where(jobs.c.id == job_id).values(**values)
+                )
+                recovered.append(job_id)
+        return [self._require(job_id) for job_id in recovered]
 
     def complete(
         self,

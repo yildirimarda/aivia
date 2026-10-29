@@ -20,7 +20,7 @@ This reference is generated from the registered configuration models, their JSON
 | `delivery` | [DeliveryConfig](#delivery) or null | Delivery providers, the fallback chain and shared retry settings. Providers may be nested under ``providers`` or written directly as ``folder``, ``link``, ``email`` and ``webhook`` keys. The ``chain`` lists provider names in fallback order and every entry must name a provider. |
 | `formats` | [FormatsConfig](#formats) or null | Named format recipes. Recipes may be written directly under the section (``formats: {narrated_still: {...}}``) or nested under ``formats`` (or ``recipes``); every form validates to the same mapping. |
 | `http` | [HttpClientConfig](#http) or null | Retry, backoff and timeout policy for :class:`~aivia.core.http.HttpClient`. |
-| `jobs` | [JobsConfig](#jobs) or null | Worker concurrency, retry, heartbeat and run-lock settings. ``concurrency`` is the number of workers. ``max_parallel_runs`` is the global limit on runs holding a lock at once across every profile and process, so scheduled runs cannot overlap unsafely. |
+| `jobs` | [JobsConfig](#jobs) or null | Worker concurrency, retry, heartbeat and run-lock settings. ``concurrency`` is the number of workers. ``max_parallel_runs`` is the global limit on runs holding a lock at once across every profile and process, so scheduled runs cannot overlap unsafely. ``retry_delay_seconds`` is the wait after the first failed attempt, multiplied by ``backoff_multiplier`` on each later attempt and capped by ``max_retry_delay_seconds``. |
 | `languages` | [LanguagesConfig](#languages) or null | The available languages plus the one used when none is requested. A config file may write the language entries directly under the section (``languages: {en: {...}, de: {...}}``) or nest them under ``languages``; both forms validate to the same model. |
 | `llm` | [LLMConfig](#llm) or null | Provider chain, per-role models, token prices and the repair limit. |
 | `models_file` | [ModelsFileConfig](#models_file) or null | The model catalog path, with a documented default of ``models.yaml``. A bare string is accepted as shorthand for ``{path: <string>}`` so the canonical ``models_file: models.yaml`` form in the design stays valid. |
@@ -183,16 +183,19 @@ Retry, backoff and timeout policy for :class:`~aivia.core.http.HttpClient`.
 
 ## `jobs`
 
-Worker concurrency, retry, heartbeat and run-lock settings. ``concurrency`` is the number of workers. ``max_parallel_runs`` is the global limit on runs holding a lock at once across every profile and process, so scheduled runs cannot overlap unsafely.
+Worker concurrency, retry, heartbeat and run-lock settings. ``concurrency`` is the number of workers. ``max_parallel_runs`` is the global limit on runs holding a lock at once across every profile and process, so scheduled runs cannot overlap unsafely. ``retry_delay_seconds`` is the wait after the first failed attempt, multiplied by ``backoff_multiplier`` on each later attempt and capped by ``max_retry_delay_seconds``.
 
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
+| `backoff_multiplier` | number | `2.0` | >= 1 |  |
 | `concurrency` | integer | `1` | >= 1 |  |
 | `heartbeat_seconds` | integer | `30` | > 0 |  |
 | `max_attempts` | integer | `3` | >= 1 |  |
 | `max_parallel_runs` | integer | `1` | >= 1 |  |
 | `max_queue_depth` | integer | `0` | >= 0 |  |
+| `max_retry_delay_seconds` | number | `300.0` | >= 0 |  |
 | `poll_seconds` | integer | `2` | > 0 |  |
+| `retry_delay_seconds` | number | `1.0` | >= 0 |  |
 | `stale_after_seconds` | integer | `120` | > 0 |  |
 
 ## `languages`
