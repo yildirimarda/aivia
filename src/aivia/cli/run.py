@@ -30,6 +30,7 @@ from aivia.core.db import (
 from aivia.core.dry_run import apply_dry_run
 from aivia.core.errors import ConfigError
 from aivia.core.estimate import Estimator, RecipeEstimate, render_estimate
+from aivia.core.idempotency import IdempotencyConflict, IdempotentRun, create_run_once
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, Run, RunKind, RunState, StageResult
 from aivia.core.models.provider import ProviderMeta
@@ -118,6 +119,13 @@ def _configure_run_options(parser: argparse.ArgumentParser) -> None:
         "--yes",
         action="store_true",
         help="confirm spending above the configured threshold without prompting",
+    )
+    parser.add_argument(
+        "--idempotency-key",
+        "--idempotency",
+        dest="idempotency_key",
+        metavar="KEY",
+        help="return the existing run when KEY was already used for this request",
     )
     _configure_database(parser)
     _configure_resolution(parser)
@@ -291,16 +299,20 @@ def _create_run(
     args: argparse.Namespace,
     name: str,
     estimate: RecipeEstimate,
-) -> Run:
+) -> IdempotentRun:
     run = Run(
         kind=RunKind.PIPELINE,
         state=RunState.QUEUED,
+        idempotency_key=(getattr(args, "idempotency_key", None) or "").strip(),
         profile=(getattr(args, "profile", None) or "").strip(),
         format=name,
         estimated_cost_usd=estimate.total_usd,
     )
-    RunDirectories(_data_dir(args)).create(run)
-    return RunRepository(engine).create(run)
+
+    def prepare(candidate: Run) -> None:
+        RunDirectories(_data_dir(args)).create(candidate)
+
+    return create_run_once(RunRepository(engine), run, prepare=prepare)
 
 
 def build_stages(recipe: FormatRecipeConfig) -> list[Stage]:
@@ -356,6 +368,13 @@ def _print_created(
         print(f"Job: {job.id}")
 
 
+def _print_existing(run: Run) -> None:
+    print(f"Run: {run.id}")
+    if run.estimated_cost_usd is not None:
+        print(f"Estimate: ${run.estimated_cost_usd:.6f}")
+    print(f"State: {run.state.value}")
+
+
 def run_run(args: argparse.Namespace) -> int:
     """Create a run, execute or enqueue it, and print its id and estimate."""
     if not args.format_name:
@@ -397,7 +416,12 @@ def run_run(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        run = _create_run(engine, args, name, estimate)
+        created = _create_run(engine, args, name, estimate)
+        run = created.run
+        if not created.created:
+            _print_existing(run)
+            return 0
+
         stages = build_stages(recipe)
         enqueue = getattr(args, "enqueue", False) or (
             not getattr(args, "execute", False) and not _stages_are_implemented(stages)
@@ -423,6 +447,9 @@ def run_run(args: argparse.Namespace) -> int:
             )
             return 1
         return 0
+    except IdempotencyConflict as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     except (OSError, SQLAlchemyError) as exc:
         print(f"error: cannot run the recipe: {exc}", file=sys.stderr)
         return 1
