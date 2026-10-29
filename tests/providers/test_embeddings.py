@@ -25,6 +25,7 @@ from aivia.core.errors import (
     AuthError,
     ConfigError,
     InvalidRequestError,
+    ProviderExhaustedError,
     RateLimitError,
     RetryableError,
     ValidationError,
@@ -49,6 +50,7 @@ from aivia.providers.embeddings import (
     batch_inputs,
     normalize_vector,
 )
+from aivia.providers.embeddings import embed as routed_embed
 from aivia.providers.protocols import (
     CAPABILITY_EMBEDDINGS,
     Embedding,
@@ -384,6 +386,7 @@ class FakeEmbeddingProvider(Provider):
         dimensions: int = 3,
         error: Exception | None = None,
         price: float = 0.5,
+        unit: str = "million_tokens",
     ) -> None:
         super().__init__(
             ProviderMeta(
@@ -392,7 +395,7 @@ class FakeEmbeddingProvider(Provider):
                 pricing={
                     CAPABILITY_EMBEDDINGS: ProviderPrice(
                         amount_usd=price,
-                        unit="million_tokens",
+                        unit=unit,
                     )
                 },
             )
@@ -766,3 +769,119 @@ def test_invalid_provider_configuration_is_rejected() -> None:
         VoyageEmbeddingProvider(api_key="")
     with pytest.raises(ValueError):
         LocalEmbeddingProvider(default_model="")
+
+
+def _budget_service(*providers: FakeEmbeddingProvider) -> EmbeddingService:
+    router = Router(
+        {provider.name: provider for provider in providers},
+        config=CapabilityChainConfig(chain=[provider.name for provider in providers]),
+    )
+    return EmbeddingService(router)
+
+
+def test_embeddings_allow_a_call_that_fits_the_remaining_budget() -> None:
+    provider = FakeEmbeddingProvider("acme", price=0.10, unit="call")
+    service = _budget_service(provider)
+
+    response = _run(
+        service.embed(
+            EmbeddingRequest(inputs=["a"]),
+            remaining_budget=0.10,
+        )
+    )
+
+    assert response.provider == "acme"
+    assert len(provider.requests) == 1
+
+
+def test_embeddings_refuse_an_over_budget_call_without_calling_the_provider() -> None:
+    provider = FakeEmbeddingProvider("pricey", price=0.10, unit="call")
+    service = _budget_service(provider)
+
+    with pytest.raises(ProviderExhaustedError) as caught:
+        _run(
+            service.embed(
+                EmbeddingRequest(inputs=["a"]),
+                remaining_budget=0.05,
+            )
+        )
+
+    assert provider.requests == []
+    assert caught.value.details["skipped"] == [
+        {"provider": "pricey", "reason": "budget_exceeded"}
+    ]
+    assert service.last_selection is None
+    assert service.last_event is None
+
+
+def test_budget_aware_embeddings_fall_back_to_an_affordable_provider() -> None:
+    pricey = FakeEmbeddingProvider("pricey", price=0.10, unit="call")
+    affordable = FakeEmbeddingProvider("affordable", price=0.02, unit="call")
+    service = _budget_service(pricey, affordable)
+
+    response = _run(
+        service.embed(
+            EmbeddingRequest(inputs=["a"]),
+            remaining_budget=0.05,
+        )
+    )
+
+    assert response.provider == "affordable"
+    assert pricey.requests == []
+    assert len(affordable.requests) == 1
+
+
+def test_embed_with_cost_forwards_the_remaining_budget() -> None:
+    provider = FakeEmbeddingProvider("pricey", price=0.10, unit="call")
+    service = _budget_service(provider)
+
+    with pytest.raises(ProviderExhaustedError):
+        _run(
+            service.embed_with_cost(
+                EmbeddingRequest(inputs=["a"]),
+                remaining_budget=0.05,
+            )
+        )
+    assert provider.requests == []
+
+
+def test_module_level_embed_forwards_the_remaining_budget() -> None:
+    provider = FakeEmbeddingProvider("pricey", price=0.10, unit="call")
+    router = Router(
+        {"pricey": provider},
+        config=CapabilityChainConfig(chain=["pricey"]),
+    )
+
+    with pytest.raises(ProviderExhaustedError):
+        _run(
+            routed_embed(
+                EmbeddingRequest(inputs=["a"]),
+                router,
+                remaining_budget=0.05,
+            )
+        )
+    assert provider.requests == []
+
+
+def test_embeddings_without_a_budget_do_not_refuse_an_expensive_provider() -> None:
+    provider = FakeEmbeddingProvider("pricey", price=10.0, unit="call")
+    service = _budget_service(provider)
+
+    response = _run(service.embed(EmbeddingRequest(inputs=["a"])))
+
+    assert response.provider == "pricey"
+    assert len(provider.requests) == 1
+
+
+def test_embeddings_reject_an_invalid_remaining_budget_before_the_provider() -> None:
+    provider = FakeEmbeddingProvider("acme")
+    service = _budget_service(provider)
+
+    with pytest.raises(ConfigError, match="remaining budget"):
+        _run(
+            service.embed(
+                EmbeddingRequest(inputs=["a"]),
+                remaining_budget=float("nan"),
+            )
+        )
+    assert provider.requests == []
