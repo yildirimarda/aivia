@@ -1,0 +1,106 @@
+{
+  "provider": "openai",
+  "case": "tool_call",
+  "captured_at": "2026-10-29T00:00:00+00:00",
+  "input": {
+    "messages": [{"role": "user", "content": "What is the tide in Lisbon?"}],
+    "model": "gpt-test",
+    "max_tokens": 128,
+    "tools": [
+      {
+        "name": "lookup_tide",
+        "description": "Look up the tide for a place",
+        "parameters": {
+          "type": "object",
+          "properties": {"place": {"type": "string"}},
+          "required": ["place"]
+        }
+      }
+    ],
+    "tool_choice": "required"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "headers": {
+      "accept": "application/json",
+      "authorization": "Bearer test-key",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "gpt-test",
+      "max_tokens": 128,
+      "messages": [{"role": "user", "content": "What is the tide in Lisbon?"}],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup_tide",
+            "description": "Look up the tide for a place",
+            "parameters": {
+              "type": "object",
+              "properties": {"place": {"type": "string"}},
+              "required": ["place"]
+            }
+          }
+        }
+      ],
+      "tool_choice": "required"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {"content-type": "application/json"},
+    "body": {
+      "id": "chatcmpl_tool",
+      "object": "chat.completion",
+      "created": 1700000000,
+      "model": "gpt-test",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "call_01",
+                "type": "function",
+                "function": {
+                  "name": "lookup_tide",
+                  "arguments": "{\"place\": \"Lisbon\"}"
+                }
+              }
+            ]
+          },
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 20,
+        "completion_tokens": 8,
+        "total_tokens": 28
+      }
+    }
+  },
+  "expected": {
+    "content": "",
+    "model": "gpt-test",
+    "provider": "openai",
+    "usage": {
+      "input_tokens": 20,
+      "output_tokens": 8,
+      "cached_input_tokens": 0
+    },
+    "finish_reason": "tool_calls",
+    "tool_calls": [
+      {
+        "id": "call_01",
+        "name": "lookup_tide",
+        "arguments": {"place": "Lisbon"}
+      }
+    ],
+    "request_id": "chatcmpl_tool",
+    "metadata": {"finish_reason": "tool_calls"}
+  }
+}

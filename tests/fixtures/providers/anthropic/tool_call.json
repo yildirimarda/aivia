@@ -1,0 +1,90 @@
+{
+  "provider": "anthropic",
+  "case": "tool_call",
+  "captured_at": "2026-10-29T00:00:00+00:00",
+  "input": {
+    "messages": [{"role": "user", "content": "What is the tide in Lisbon?"}],
+    "model": "claude-test",
+    "max_tokens": 128,
+    "tools": [
+      {
+        "name": "lookup_tide",
+        "description": "Look up the tide for a place",
+        "parameters": {
+          "type": "object",
+          "properties": {"place": {"type": "string"}},
+          "required": ["place"]
+        }
+      }
+    ],
+    "tool_choice": "required"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.anthropic.com/v1/messages",
+    "headers": {
+      "accept": "application/json",
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+      "x-api-key": "test-key"
+    },
+    "body": {
+      "model": "claude-test",
+      "max_tokens": 128,
+      "messages": [{"role": "user", "content": "What is the tide in Lisbon?"}],
+      "tools": [
+        {
+          "name": "lookup_tide",
+          "description": "Look up the tide for a place",
+          "input_schema": {
+            "type": "object",
+            "properties": {"place": {"type": "string"}},
+            "required": ["place"]
+          }
+        }
+      ],
+      "tool_choice": {"type": "any"}
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {"content-type": "application/json"},
+    "body": {
+      "id": "msg_tool",
+      "type": "message",
+      "role": "assistant",
+      "model": "claude-test",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_01",
+          "name": "lookup_tide",
+          "input": {"place": "Lisbon"}
+        }
+      ],
+      "stop_reason": "tool_use",
+      "stop_sequence": null,
+      "usage": {"input_tokens": 20, "output_tokens": 8}
+    }
+  },
+  "expected": {
+    "content": "",
+    "model": "claude-test",
+    "provider": "anthropic",
+    "usage": {
+      "input_tokens": 20,
+      "output_tokens": 8,
+      "cached_input_tokens": 0
+    },
+    "finish_reason": "tool_calls",
+    "tool_calls": [
+      {
+        "id": "toolu_01",
+        "name": "lookup_tide",
+        "arguments": {"place": "Lisbon"}
+      }
+    ],
+    "request_id": "msg_tool",
+    "metadata": {"stop_reason": "tool_use"}
+  }
+}

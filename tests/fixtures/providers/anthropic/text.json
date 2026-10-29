@@ -1,0 +1,68 @@
+{
+  "provider": "anthropic",
+  "case": "text",
+  "captured_at": "2026-10-29T00:00:00+00:00",
+  "input": {
+    "messages": [
+      {"role": "system", "content": "Be precise"},
+      {"role": "user", "content": "Explain tides"}
+    ],
+    "model": "claude-test",
+    "max_tokens": 64,
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "stop": ["END"],
+    "seed": 7
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.anthropic.com/v1/messages",
+    "headers": {
+      "accept": "application/json",
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+      "x-api-key": "test-key"
+    },
+    "body": {
+      "model": "claude-test",
+      "max_tokens": 64,
+      "messages": [{"role": "user", "content": "Explain tides"}],
+      "system": "Be precise",
+      "temperature": 0.2,
+      "top_p": 0.9,
+      "stop_sequences": ["END"]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {"content-type": "application/json"},
+    "body": {
+      "id": "msg_text",
+      "type": "message",
+      "role": "assistant",
+      "model": "claude-test",
+      "content": [{"type": "text", "text": "Tides follow the moon."}],
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "usage": {
+        "input_tokens": 12,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 3
+      }
+    }
+  },
+  "expected": {
+    "content": "Tides follow the moon.",
+    "model": "claude-test",
+    "provider": "anthropic",
+    "usage": {
+      "input_tokens": 12,
+      "output_tokens": 5,
+      "cached_input_tokens": 3
+    },
+    "finish_reason": "stop",
+    "tool_calls": [],
+    "request_id": "msg_text",
+    "metadata": {"stop_reason": "end_turn"}
+  }
+}
