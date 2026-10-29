@@ -41,6 +41,11 @@ from aivia.core.http import error_for_response
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.secrets import SecretsLoader
 from aivia.providers.base import Provider
+from aivia.providers.llm.web_search import (
+    WEB_SEARCH_TOOL_NAME,
+    anthropic_citations,
+    split_web_search_tools,
+)
 from aivia.providers.protocols.llm import (
     CAPABILITY_LLM,
     ChatMessage,
@@ -111,6 +116,9 @@ class _ContentBlock(BaseModel):
     id: str = ""
     name: str = ""
     input: dict[str, Any] = Field(default_factory=dict)
+    tool_use_id: str = ""
+    content: Any = None
+    citations: list[Any] | None = None
 
 
 class _Message(BaseModel):
@@ -390,19 +398,28 @@ class AnthropicLLMProvider(Provider):
             body["top_p"] = request.top_p
         if request.stop:
             body["stop_sequences"] = list(request.stop)
+        function_tools, native_search = split_web_search_tools(request.tools)
         if request.tools and request.tool_choice is not ToolChoice.NONE:
-            body["tools"] = [
+            tools_payload = [
                 {
                     "name": tool.name,
                     "description": tool.description,
                     "input_schema": tool.parameters
                     or {"type": "object", "properties": {}},
                 }
-                for tool in request.tools
+                for tool in function_tools
             ]
-            body["tool_choice"] = {
-                "type": "any" if request.tool_choice is ToolChoice.REQUIRED else "auto"
-            }
+            if native_search:
+                tools_payload.append(
+                    {"type": "web_search_20250305", "name": WEB_SEARCH_TOOL_NAME}
+                )
+            body["tools"] = tools_payload
+            if function_tools:
+                body["tool_choice"] = {
+                    "type": (
+                        "any" if request.tool_choice is ToolChoice.REQUIRED else "auto"
+                    )
+                }
         return body
 
     def _raise_for_response(self, response: httpx.Response) -> None:
@@ -464,6 +481,14 @@ class AnthropicLLMProvider(Provider):
                 parsed.stop_reason or "",
                 FinishReason.STOP,
             )
+            metadata: dict[str, Any] = {}
+            if parsed.stop_reason is not None:
+                metadata["stop_reason"] = parsed.stop_reason
+            citations = anthropic_citations(
+                [block.model_dump() for block in parsed.content]
+            )
+            if citations:
+                metadata["citations"] = citations
             return LLMResponse(
                 content=content,
                 model=parsed.model or request.model or self._default_model or "",
@@ -477,11 +502,7 @@ class AnthropicLLMProvider(Provider):
                 finish_reason=finish_reason,
                 tool_calls=tool_calls,
                 request_id=parsed.id,
-                metadata=(
-                    {"stop_reason": parsed.stop_reason}
-                    if parsed.stop_reason is not None
-                    else {}
-                ),
+                metadata=metadata,
             )
         except PydanticValidationError as exc:
             raise ValidationError(
