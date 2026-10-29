@@ -10,6 +10,7 @@ from aivia.core.db.schema import metadata
 from aivia.core.db.tables import assets as _asset_tables  # noqa: F401
 from aivia.core.db.tables import aux as _aux_tables  # noqa: F401
 from aivia.core.db.tables import core as _core_tables  # noqa: F401
+from aivia.core.db.tables import llm as _llm_tables  # noqa: F401
 from aivia.core.db.tables import orders as _order_tables  # noqa: F401
 
 config = context.config

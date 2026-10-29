@@ -26,6 +26,7 @@ from aivia.core.config.llm import LLMConfig, TokenPricing
 from aivia.core.cost import CostTracker
 from aivia.core.errors import ConfigError, ValidationError
 from aivia.core.models.cost import CostEvent
+from aivia.llm.cache import LLMCache, LLMCacheKey
 from aivia.providers.llm.cost import LLM_OPERATION, LLMCostCalculator, LLMTokenCost
 from aivia.providers.protocols.llm import LLMRequest, LLMResponse, LLMUsage
 
@@ -99,6 +100,8 @@ class StructuredOutputResult:
     schema: type[BaseModel] | None = None
     attempts: int = 1
     repairs: int = 0
+    cache_hit: bool = False
+    cache_key: str | None = None
 
     @property
     def output(self) -> BaseModel:
@@ -179,6 +182,16 @@ class StructuredOutputResult:
         """Alias for :attr:`amount_usd`."""
         return self.amount_usd
 
+    @property
+    def is_cache_hit(self) -> bool:
+        """Whether the response was served from the LLM cache."""
+        return self.cache_hit
+
+    @property
+    def cached(self) -> bool:
+        """Alias for :attr:`cache_hit`."""
+        return self.cache_hit
+
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation for logs and metadata."""
         return {
@@ -186,6 +199,8 @@ class StructuredOutputResult:
             "response": self.response.model_dump(mode="json"),
             "cost": None if self.cost is None else self.cost.to_dict(),
             "event": None if self.event is None else self.event.model_dump(mode="json"),
+            "cache_hit": self.cache_hit,
+            "cache_key": self.cache_key,
         }
 
 
@@ -309,9 +324,19 @@ class StructuredOutputHelper:
         pricing_version: str = "",
         metadata: Mapping[str, Any] | None = None,
         record_cost: bool = True,
+        cache: LLMCache | None = None,
+        prompt_version: str = "",
+        cache_parameters: Mapping[str, Any] | None = None,
+        no_cache: bool = False,
     ) -> None:
         if not callable(getattr(provider, "complete", None)):
             raise TypeError("provider must expose an async complete method")
+        if cache is not None and not isinstance(cache, LLMCache):
+            raise TypeError("cache must be an LLMCache")
+        if not isinstance(prompt_version, str):
+            raise TypeError("prompt_version must be a string")
+        if not isinstance(no_cache, bool):
+            raise TypeError("no_cache must be a boolean")
 
         if isinstance(schema, LLMCostCalculator):
             if calculator is None:
@@ -351,6 +376,10 @@ class StructuredOutputHelper:
         self._operation = operation.strip()
         self._metadata = dict(metadata or {})
         self._record_cost = record_cost
+        self._cache = cache
+        self._prompt_version = prompt_version.strip()
+        self._cache_parameters = dict(cache_parameters or {})
+        self._no_cache = no_cache
 
     @property
     def provider(self) -> _LLMCompleter:
@@ -371,6 +400,26 @@ class StructuredOutputHelper:
     def tracker(self) -> CostTracker | None:
         """The tracker cost events are written through."""
         return self._tracker
+
+    @property
+    def cache(self) -> LLMCache | None:
+        """The response cache used for lookups and stores, when configured."""
+        return self._cache
+
+    @property
+    def prompt_version(self) -> str:
+        """The prompt version included in every cache key."""
+        return self._prompt_version
+
+    def _cache_key_for(self, request: LLMRequest) -> LLMCacheKey | None:
+        if self._cache is None or self._no_cache:
+            return None
+        return self._cache.key_for_request(
+            self._provider,
+            request,
+            prompt_version=self._prompt_version or None,
+            parameters=self._cache_parameters,
+        )
 
     def _cost_for(
         self,
@@ -423,6 +472,23 @@ class StructuredOutputHelper:
                 update={"response_schema": _schema_json(model)}
             )
 
+        cache = self._cache
+        cache_key = self._cache_key_for(prepared)
+        if cache is not None and cache_key is not None:
+            cached = cache.lookup(
+                cache_key,
+                run_id=self._run_id if run_id is None else run_id,
+                operation=self._operation if operation is None else operation,
+            )
+            if cached is not None:
+                return StructuredOutputResult(
+                    value=parse_structured(cached, model),
+                    response=cached,
+                    schema=model,
+                    cache_hit=True,
+                    cache_key=cache_key.digest,
+                )
+
         response = await self._provider.complete(prepared)
         if not isinstance(response, LLMResponse):
             raise TypeError("provider complete must return an LLMResponse")
@@ -439,12 +505,15 @@ class StructuredOutputHelper:
             tracker=self._tracker if tracker is None else tracker,
         )
         value = parse_structured(response, model)
+        if cache is not None and cache_key is not None:
+            cache.store(response, cache_key)
         return StructuredOutputResult(
             value=value,
             response=response,
             cost=cost,
             event=event,
             schema=model,
+            cache_key=None if cache_key is None else cache_key.digest,
         )
 
     async def run(
@@ -501,6 +570,10 @@ async def complete_structured(
     pricing_version: str = "",
     metadata: Mapping[str, Any] | None = None,
     record_cost: bool = True,
+    cache: LLMCache | None = None,
+    prompt_version: str = "",
+    cache_parameters: Mapping[str, Any] | None = None,
+    no_cache: bool = False,
 ) -> StructuredOutputResult:
     """One-shot form of :class:`StructuredOutputHelper`."""
     helper = StructuredOutputHelper(
@@ -514,6 +587,10 @@ async def complete_structured(
         pricing_version=pricing_version,
         metadata=metadata,
         record_cost=record_cost,
+        cache=cache,
+        prompt_version=prompt_version,
+        cache_parameters=cache_parameters,
+        no_cache=no_cache,
     )
     return await helper.complete(request)
 
