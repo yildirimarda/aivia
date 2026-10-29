@@ -342,9 +342,7 @@ def test_timeout_exhaustion_reports_timeout_and_every_attempt(
     assert failed.status is StageState.FAILED
     assert failed.metadata["attempts"] == 2
     assert failed.metadata["exhausted"] is True
-    assert all(
-        item["timed_out"] for item in failed.metadata["attempt_history"]
-    )
+    assert all(item["timed_out"] for item in failed.metadata["attempt_history"])
 
 
 def test_each_stage_uses_its_own_policy(
@@ -435,9 +433,7 @@ def test_a_retryable_failed_result_is_retried_and_each_attempt_is_costed(
                 )
             return StageResult(stage=self.name, cost_usd=0.5)
 
-    result = asyncio.run(
-        _orchestrator(engine, run, [_Rejecting()], tmp_path).execute()
-    )
+    result = asyncio.run(_orchestrator(engine, run, [_Rejecting()], tmp_path).execute())
 
     assert events == ["render", "render", "render"]
     assert result.ok is True

@@ -804,9 +804,7 @@ class Orchestrator:
         metadata["max_attempts"] = policy.max_attempts
         metadata["exhausted"] = exhausted
         metadata["retry_policy"] = policy.to_dict()
-        metadata["attempt_history"] = [
-            attempt.to_dict() for attempt in attempts
-        ]
+        metadata["attempt_history"] = [attempt.to_dict() for attempt in attempts]
         if len(attempts) > 1:
             metadata["retries"] = len(attempts) - 1
         return result.model_copy(update={"metadata": metadata})

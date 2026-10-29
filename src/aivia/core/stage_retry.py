@@ -387,13 +387,10 @@ async def execute_stage_with_retry(
             raise
         except BaseException as error:
             finished = clock()
-            timed_out = isinstance(
-                error, (asyncio.TimeoutError, AiviaTimeoutError)
-            )
+            timed_out = isinstance(error, (asyncio.TimeoutError, AiviaTimeoutError))
             if timed_out and not isinstance(error, AiviaError):
                 error = AiviaTimeoutError(
-                    f"stage {stage.name!r} exceeded "
-                    f"{selected.timeout_seconds:g}s",
+                    f"stage {stage.name!r} exceeded {selected.timeout_seconds:g}s",
                     details={
                         "stage": stage.name,
                         "timeout_seconds": selected.timeout_seconds,
