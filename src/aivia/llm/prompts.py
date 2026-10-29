@@ -10,7 +10,9 @@ Names may include an extension or omit it; a missing extension is tried against
 :data:`PROMPT_EXTENSIONS` in order. Names are relative to the prompts directory
 and may not escape it. Missing prompts are configuration errors, while template
 syntax, sandbox and undefined-variable failures are validation errors naming the
-template that failed.
+template that failed. Templates may not use include, extends, import or from
+tags, so a prompt cannot read another file inside or outside the prompts
+directory.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePath, PurePosixPath
 from typing import Any
 
-from jinja2 import StrictUndefined, TemplateError
+from jinja2 import StrictUndefined, TemplateError, nodes
 from jinja2.sandbox import SandboxedEnvironment
 
 from aivia.core import paths
@@ -46,6 +48,13 @@ __all__ = [
 PROMPTS_DIR_NAME = "prompts"
 DEFAULT_PROMPTS_DIR = PROMPTS_DIR_NAME
 PROMPT_EXTENSIONS: tuple[str, ...] = (".md", ".j2", ".jinja", ".jinja2", ".txt")
+
+_COMPOSITION_TAGS: dict[type[nodes.Node], str] = {
+    nodes.Include: "include",
+    nodes.Extends: "extends",
+    nodes.Import: "import",
+    nodes.FromImport: "from",
+}
 
 
 class PromptNotFoundError(ConfigError):
@@ -119,6 +128,29 @@ def _render(
 ) -> str:
     context: dict[str, Any] = dict(variables or {})
     context.update(values)
+    try:
+        parsed = environment.parse(template.text, name=template.name)
+    except TemplateError as exc:
+        raise PromptRenderError(
+            f"cannot render prompt {template.name!r} ({template.path}): {exc}",
+            details={
+                "prompt": template.name,
+                "path": str(template.path),
+                "source": template.source,
+            },
+        ) from exc
+    for node in parsed.find_all(tuple(_COMPOSITION_TAGS)):
+        tag = _COMPOSITION_TAGS[type(node)]
+        raise PromptRenderError(
+            f"prompt {template.name!r} may not use {tag} "
+            f"({template.path}): templates cannot read other files",
+            details={
+                "prompt": template.name,
+                "path": str(template.path),
+                "source": template.source,
+                "tag": tag,
+            },
+        )
     try:
         compiled = environment.from_string(template.text)
         return compiled.render(**context)
