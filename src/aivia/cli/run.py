@@ -267,7 +267,7 @@ def _resolve_plan(
     name, recipe = _resolve_recipe(config, args.format_name)
     estimate = Estimator(
         provider_metadata(config),
-        configs=capability_configs(config),
+        configs=capability_configs(config) or None,
     ).estimate(name, recipe)
     return config, name, recipe, estimate, resolved.environment or ""
 
