@@ -214,6 +214,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Make providers check honour dry run by checking mock providers without live mode or network (tests/cli/test_providers.py)
 - [ ] Add an api serve command that validates the loopback bind and starts the local server (tests/cli/test_api_serve.py)
 - [ ] Add a worker command that claims and runs queued jobs until stopped (tests/cli/test_worker.py)
+- [ ] Pass jobs.max_queue_depth into CLI and API submissions without creating an orphan run when the queue is full (tests/api/test_jobs.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 

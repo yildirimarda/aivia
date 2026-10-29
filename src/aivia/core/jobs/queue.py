@@ -28,9 +28,10 @@ from typing import Any
 
 from sqlalchemy import Connection, Engine, func, or_, select, update
 
+from aivia.core.config.ops import JobsConfig
 from aivia.core.db.repos import JobRepository
 from aivia.core.db.tables import jobs
-from aivia.core.errors import AiviaError
+from aivia.core.errors import AiviaError, QuotaError
 from aivia.core.models.base import utcnow
 from aivia.core.models.job import Job, JobState
 
@@ -126,6 +127,14 @@ def _coerce_delay(value: object) -> float:
     return delay
 
 
+def _coerce_queue_depth(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("max_queue_depth must be a non-negative integer")
+    if value < 0:
+        raise ValueError("max_queue_depth must be a non-negative integer")
+    return value
+
+
 def _coerce_stale_after(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("stale_after_seconds must be a positive number of seconds")
@@ -150,15 +159,46 @@ class JobQueue:
     and moves it to ``running`` while incrementing its attempt count. Every
     later operation is scoped to the claiming worker, so a worker that lost its
     claim cannot overwrite another worker's result.
+
+    ``max_queue_depth`` caps how many jobs may wait in ``pending``. Zero, the
+    default, means no limit. A submission at or above the limit is rejected
+    with :class:`~aivia.core.errors.QuotaError` before anything is inserted; the
+    error details carry the depth that was observed. The limit may come from
+    the jobs ``config`` section or an explicit keyword argument.
     """
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        config: JobsConfig | Mapping[str, Any] | None = None,
+        *,
+        max_queue_depth: int | None = None,
+    ) -> None:
+        if config is None:
+            configured_depth = 0
+        elif isinstance(config, JobsConfig):
+            configured_depth = config.max_queue_depth
+        elif isinstance(config, Mapping):
+            configured_depth = JobsConfig.from_mapping(config).max_queue_depth
+        else:
+            raise TypeError("config must be a JobsConfig, a mapping or None")
+
         self.engine = engine
         self.repository = JobRepository(engine)
+        self.max_queue_depth = _coerce_queue_depth(
+            configured_depth if max_queue_depth is None else max_queue_depth
+        )
+
+    def depth(self) -> int:
+        """Return the number of jobs currently waiting in ``pending``."""
+        with self.engine.connect() as connection:
+            return self._depth_in(connection)
 
     def enqueue(
         self,
         job: Job | Mapping[str, Any] | None = None,
+        *,
+        max_queue_depth: int | None = None,
         **values: Any,
     ) -> Job:
         """Insert a new job and return it.
@@ -166,8 +206,45 @@ class JobQueue:
         Pass a :class:`~aivia.core.models.Job`, a mapping or keyword values. A
         job without a state starts as ``pending`` and a job without
         ``max_attempts`` uses the model default.
+
+        When ``max_queue_depth`` (or the queue default) is positive and the
+        pending depth already reached it, raises
+        :class:`~aivia.core.errors.QuotaError` with the current ``depth`` and
+        ``max_queue_depth`` in its details. The depth check and the insert run
+        under the same write lock, so concurrent submissions cannot overshoot
+        the limit.
         """
-        return self.repository.create(job, **values)
+        limit = (
+            self.max_queue_depth
+            if max_queue_depth is None
+            else _coerce_queue_depth(max_queue_depth)
+        )
+        if not limit:
+            return self.repository.create(job, **values)
+
+        with _write_transaction(self.engine) as connection:
+            depth = self._depth_in(connection)
+            if depth >= limit:
+                raise QuotaError(
+                    f"queue is full: depth {depth} reached limit {limit}",
+                    details={
+                        "depth": depth,
+                        "current_depth": depth,
+                        "queue_depth": depth,
+                        "max_queue_depth": limit,
+                        "limit": limit,
+                    },
+                )
+            return self.repository.create_in(connection, job, **values)
+
+    def _depth_in(self, connection: Connection) -> int:
+        return int(
+            connection.execute(
+                select(func.count())
+                .select_from(jobs)
+                .where(jobs.c.state == JobState.PENDING.value)
+            ).scalar_one()
+        )
 
     def get(self, job_id: str) -> Job | None:
         """Return the job with *job_id*, or ``None`` when it does not exist."""
