@@ -17,6 +17,7 @@ from typing import Any
 from pydantic import Field, field_validator, model_validator
 
 from aivia.core.config.base import ConfigModel
+from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.errors import ConfigError
 
 __all__ = [
@@ -144,6 +145,22 @@ class EmbeddingsConfig(ConfigModel):
                 f"(available: {available})",
                 details={"model": model, "available": list(self.pricing)},
             ) from None
+
+    def to_capability_config(self) -> CapabilityChainConfig:
+        """Return the router/estimator view of this section.
+
+        The embedding section owns an ordered provider chain and per-model
+        prices. The shared capability config accepts those prices as provider
+        overrides, which is how the estimator consumes them.
+        """
+        return CapabilityChainConfig(
+            chain=list(self.chain),
+            pricing_overrides=dict(self.pricing),
+        )
+
+    def as_capability_config(self) -> CapabilityChainConfig:
+        """Alias for :meth:`to_capability_config`."""
+        return self.to_capability_config()
 
 
 EmbeddingConfig = EmbeddingsConfig

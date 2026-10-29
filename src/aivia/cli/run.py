@@ -17,6 +17,7 @@ from aivia.core import paths
 from aivia.core.config.budget import BudgetConfig
 from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.config.database import DatabaseConfig
+from aivia.core.config.embeddings import EmbeddingsConfig
 from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.ops import JobsConfig
@@ -206,14 +207,22 @@ def provider_metadata(config: object) -> dict[str, ProviderMeta]:
 def capability_configs(config: object) -> dict[str, CapabilityChainConfig]:
     """Return configured capability chains for the estimator.
 
-    The LLM section owns a provider chain but not the shared strategy fields,
-    so it maps to a chain config with the default selection strategy. An empty
-    chain is omitted to keep the estimator's historical cheapest default.
+    The LLM and embeddings sections own a provider chain but not the shared
+    strategy fields, so each maps to a chain config with the default selection
+    strategy. Embedding model prices become pricing overrides so the estimate
+    uses the same table as the service. An empty chain and price table is
+    omitted to keep the estimator's historical cheapest default.
     """
-    section = getattr(config, "llm", None)
-    if isinstance(section, LLMConfig) and section.chain:
-        return {"llm": CapabilityChainConfig(chain=section.chain)}
-    return {}
+    configs: dict[str, CapabilityChainConfig] = {}
+    llm = getattr(config, "llm", None)
+    if isinstance(llm, LLMConfig) and llm.chain:
+        configs["llm"] = CapabilityChainConfig(chain=llm.chain)
+    embeddings = getattr(config, "embeddings", None)
+    if isinstance(embeddings, EmbeddingsConfig) and (
+        embeddings.chain or embeddings.pricing
+    ):
+        configs["embeddings"] = embeddings.to_capability_config()
+    return configs
 
 
 def _resolve_recipe(config: object, name: str) -> tuple[str, FormatRecipeConfig]:

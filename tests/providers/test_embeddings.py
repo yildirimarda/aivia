@@ -14,7 +14,10 @@ import httpx
 import pytest
 from sqlalchemy import Engine, inspect
 
+from aivia.cli.run import capability_configs
+from aivia.core.config import AppConfig, EmbeddingsConfig
 from aivia.core.config.capability import CapabilityChainConfig
+from aivia.core.config.formats import FormatRecipeConfig
 from aivia.core.cost import CostTracker
 from aivia.core.db import (
     EMBEDDING_CACHE_PROVIDER_INDEX_NAME,
@@ -31,6 +34,7 @@ from aivia.core.errors import (
     ValidationError,
 )
 from aivia.core.errors import TimeoutError as AiviaTimeoutError
+from aivia.core.estimate import Estimator
 from aivia.core.models import ProviderMeta, ProviderPrice
 from aivia.core.router import Router
 from aivia.providers import (
@@ -885,3 +889,122 @@ def test_embeddings_reject_an_invalid_remaining_budget_before_the_provider() -> 
             )
         )
     assert provider.requests == []
+
+
+def test_the_service_wires_config_dimensions_batching_cache_and_prices(
+    engine: Engine,
+) -> None:
+    tracker = CostTracker(engine)
+    provider = FakeEmbeddingProvider(price=0.5)
+    router = Router(
+        {"fake": provider},
+        config=CapabilityChainConfig(chain=["fake"]),
+    )
+    config = EmbeddingsConfig.from_mapping(
+        {
+            "dimensions": 2,
+            "batch_size": 2,
+            "cache_size": 1,
+            "pricing": {MODEL: 2.0},
+        }
+    )
+    service = EmbeddingService(router, config=config, tracker=tracker)
+
+    response = _run(service.embed(EmbeddingRequest(inputs=["a", "b", "c"])))
+
+    assert service.config is config
+    assert service.dimensions == 2
+    assert service.batch_size == 2
+    assert service.cache_size == 1
+    assert service.prices == {MODEL: 2.0}
+    assert [len(request.inputs) for request in provider.requests] == [2, 1]
+    assert all(request.dimensions == 2 for request in provider.requests)
+    assert response.usage.input_tokens == 300
+    assert service.last_event is not None
+    assert service.last_event.amount_usd == pytest.approx(300 * 2.0 / 1_000_000)
+    assert service.cache is not None
+    assert len(service.cache) == 1
+
+
+def test_the_service_builds_its_router_from_the_configured_chain(
+    engine: Engine,
+) -> None:
+    tracker = CostTracker(engine)
+    first = FakeEmbeddingProvider("first")
+    second = FakeEmbeddingProvider("second")
+    config = EmbeddingsConfig.from_mapping(
+        {"chain": ["second", "first"], "pricing": {MODEL: 2.0}}
+    )
+
+    service = EmbeddingService.from_config(
+        config,
+        providers={"first": first, "second": second},
+        tracker=tracker,
+    )
+
+    response = _run(service.embed(EmbeddingRequest(inputs=["a"])))
+
+    assert response.provider == "second"
+    assert first.requests == []
+    assert len(second.requests) == 1
+    assert service.last_event is not None
+    assert service.last_event.amount_usd == pytest.approx(100 * 2.0 / 1_000_000)
+
+
+def test_the_service_config_chain_overrides_an_existing_router_chain() -> None:
+    first = FakeEmbeddingProvider("first")
+    second = FakeEmbeddingProvider("second")
+    router = Router(
+        {"first": first, "second": second},
+        config=CapabilityChainConfig(chain=["first", "second"]),
+    )
+    config = EmbeddingsConfig.from_mapping({"chain": ["second", "first"]})
+
+    service = EmbeddingService(router, config=config)
+
+    response = _run(service.embed(EmbeddingRequest(inputs=["a"])))
+
+    assert response.provider == "second"
+    assert first.requests == []
+    assert service.router.chain_for(CAPABILITY_EMBEDDINGS) == ("second", "first")
+
+
+def test_the_estimator_uses_the_embeddings_chain_and_prices() -> None:
+    config = AppConfig.from_mapping(
+        {
+            "embeddings": {
+                "chain": ["dear", "cheap"],
+                "pricing": {"dear": 0.10, "cheap": 0.01},
+            }
+        }
+    )
+    providers = {
+        "dear": ProviderMeta(
+            name="dear",
+            capabilities=[CAPABILITY_EMBEDDINGS],
+            pricing={
+                CAPABILITY_EMBEDDINGS: ProviderPrice(amount_usd=0.50)
+            },
+        ),
+        "cheap": ProviderMeta(
+            name="cheap",
+            capabilities=[CAPABILITY_EMBEDDINGS],
+            pricing={
+                CAPABILITY_EMBEDDINGS: ProviderPrice(amount_usd=0.01)
+            },
+        ),
+    }
+    recipe = FormatRecipeConfig.model_validate({"stages": [{"stage": "embed"}]})
+
+    result = Estimator(
+        providers,
+        configs=capability_configs(config),
+    ).estimate("sample", recipe)
+
+    stage = result.stages[0]
+    assert stage.provider == "dear"
+    assert stage.amount_usd == pytest.approx(0.10)
+    assert capability_configs(config)["embeddings"].pricing_overrides == {
+        "dear": 0.10,
+        "cheap": 0.01,
+    }

@@ -19,6 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from aivia.core.config.embeddings import EmbeddingsConfig
 from aivia.core.cost import CostTracker
 from aivia.core.models.cost import CostEvent
 from aivia.core.pricing import PriceSource, PricingResolver, ResolvedPrice
@@ -60,7 +61,11 @@ class EmbeddingTokenCost:
         return self.amount_usd
 
 
-def _prices(value: Mapping[str, float] | None) -> dict[str, float]:
+def _prices(
+    value: Mapping[str, float] | EmbeddingsConfig | None,
+) -> dict[str, float]:
+    if isinstance(value, EmbeddingsConfig):
+        value = value.pricing
     if value is None:
         return {}
     if not isinstance(value, Mapping):
@@ -88,16 +93,38 @@ class EmbeddingCostCalculator:
 
     def __init__(
         self,
-        prices: Mapping[str, float] | None = None,
+        prices: Mapping[str, float] | EmbeddingsConfig | None = None,
         *,
+        config: EmbeddingsConfig | Mapping[str, Any] | None = None,
         overrides: Mapping[str, float] | None = None,
         pricing_version: str = "",
     ) -> None:
+        if config is not None:
+            if isinstance(config, EmbeddingsConfig):
+                section = config
+            elif isinstance(config, Mapping):
+                section = EmbeddingsConfig.from_mapping({"pricing": dict(config)})
+            else:
+                raise TypeError(
+                    "config must be an EmbeddingsConfig or a pricing mapping"
+                )
+            if prices is None:
+                prices = section
+            self._config: EmbeddingsConfig | None = section
+        elif isinstance(prices, EmbeddingsConfig):
+            self._config = prices
+        else:
+            self._config = None
         self._prices = _prices(prices)
         self._resolver = PricingResolver(
             overrides,
             pricing_version=pricing_version,
         )
+
+    @property
+    def config(self) -> EmbeddingsConfig | None:
+        """The embeddings section used to resolve prices, when one was given."""
+        return self._config
 
     @property
     def prices(self) -> dict[str, float]:
@@ -271,7 +298,8 @@ def embedding_cost_event(
     provider: Provider,
     response: EmbeddingResponse,
     *,
-    prices: Mapping[str, float] | None = None,
+    prices: Mapping[str, float] | EmbeddingsConfig | None = None,
+    config: EmbeddingsConfig | Mapping[str, Any] | None = None,
     overrides: Mapping[str, float] | None = None,
     pricing_version: str = "",
     **values: Any,
@@ -279,6 +307,7 @@ def embedding_cost_event(
     """Build one embeddings cost event without constructing a calculator."""
     return EmbeddingCostCalculator(
         prices,
+        config=config,
         overrides=overrides,
         pricing_version=pricing_version,
     ).cost_event(provider, response, **values)

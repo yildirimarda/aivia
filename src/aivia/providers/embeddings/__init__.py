@@ -44,6 +44,8 @@ from aivia.providers.embeddings.service import (
     EmbeddingOutcome,
     EmbeddingService,
     embed,
+    embedding_service_from_config,
+    service_from_config,
 )
 from aivia.providers.embeddings.voyage import (
     Voyage,
@@ -81,5 +83,7 @@ __all__ = [
     "batch_inputs",
     "embed",
     "embedding_cost_event",
+    "embedding_service_from_config",
     "normalize_vector",
+    "service_from_config",
 ]
