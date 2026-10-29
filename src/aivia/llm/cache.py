@@ -351,9 +351,7 @@ class LLMCache:
         The cost event is an actual event with a zero amount, so reports show
         the hit without treating it as spend.
         """
-        entry = self._cache.get(key.digest)
-        if entry is not None:
-            self._cache.update(key.digest, hit_count=entry.hit_count + 1)
+        self._cache.increment_hit_count(key.digest)
         return self._cost.record(
             provider=key.provider or response.provider,
             model=key.model or response.model,

@@ -257,7 +257,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add similarity utilities for cosine, normalized title matching and n gram overlap with documented thresholds (tests/core/test_similarity.py)
 - [x] Run the shared contract suite plus golden fixtures across all LLM providers offline (tests/contracts/test_llm_providers.py)
 - [x] Price cached input tokens separately and document whether reported input tokens already include them (tests/providers/llm/test_llm_cost.py)
-- [ ] Make LLM cache hit counting atomic so concurrent lookups do not lose increments (tests/llm/test_cache.py)
+- [x] Make LLM cache hit counting atomic so concurrent lookups do not lose increments (tests/llm/test_cache.py)
 - [ ] Fail config validate when a selected prompt version names a missing prompt or source (tests/cli/test_config_validate.py)
 - [ ] Reject prompt template includes and extends so a prompt cannot read files outside the prompts directory (tests/llm/test_prompts.py)
 - [ ] Make the search service budget aware by passing the remaining budget to the router and refusing over-budget calls (tests/providers/search/test_budget.py)
