@@ -11,6 +11,8 @@ import argparse
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
+from aivia.cli.globals import add_global_options
+
 __all__ = [
     "Command",
     "CommandHandler",
@@ -45,6 +47,7 @@ class Command:
         )
         if self.configure is not None:
             self.configure(parser)
+        add_global_options(parser, suppress_defaults=True, only_missing=True)
         parser.set_defaults(_command=self)
         return parser
 
