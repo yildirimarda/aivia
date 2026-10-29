@@ -198,7 +198,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Expose generic job and run endpoints for submission, status, run details and run costs (tests/api/test_jobs.py)
 - [x] Add a run command that creates a run, executes or enqueues it and prints the id and estimate, plus a run show view of stages, cost and artifacts (tests/cli/test_run.py)
 - [x] Add an end to end smoke test producing a run directory, stage records, cost events, snapshot and sidecars for every run kind (tests/e2e/test_smoke_all_kinds.py)
-- [ ] Reject or defer submissions above the queue depth limit with a quota error carrying the current depth (tests/core/jobs/test_backpressure.py)
+- [x] Reject or defer submissions above the queue depth limit with a quota error carrying the current depth (tests/core/jobs/test_backpressure.py)
 - [ ] Support an idempotency key on runs, returning the existing run for a repeated key and conflicting on a different payload (tests/cli/test_run_idempotency.py)
 - [ ] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
 - [ ] Verify registered artifact hashes on resume and refuse to skip a stage whose files changed or vanished (tests/core/test_artifact_integrity.py)
@@ -214,6 +214,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Make providers check honour dry run by checking mock providers without live mode or network (tests/cli/test_providers.py)
 - [ ] Add an api serve command that validates the loopback bind and starts the local server (tests/cli/test_api_serve.py)
 - [ ] Add a worker command that claims and runs queued jobs until stopped (tests/cli/test_worker.py)
+- [ ] Pass jobs.max_queue_depth into CLI and API submissions without creating an orphan run when the queue is full (tests/api/test_jobs.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 
