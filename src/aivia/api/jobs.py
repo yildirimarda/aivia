@@ -30,6 +30,7 @@ from aivia.core.errors import QuotaError
 from aivia.core.idempotency import IdempotencyConflict, create_run_once
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, Run, RunKind, StageResult
+from aivia.core.toolchain import detect_toolchain
 
 __all__ = ["JobSubmission", "register_job_routes"]
 
@@ -348,6 +349,9 @@ def _run_values(submission: JobSubmission) -> dict[str, Any]:
     for name in _RUN_FIELDS:
         if name in extra:
             values.setdefault(name, extra[name])
+
+    if not values.get("toolchain_fingerprint"):
+        values["toolchain_fingerprint"] = detect_toolchain()
 
     kind = values.get("kind")
     if not kind:
