@@ -256,6 +256,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add OpenAI, Voyage and local embedding providers with batching, cost tracking, dimension config and caching (tests/providers/test_embeddings.py)
 - [ ] Add similarity utilities for cosine, normalized title matching and n gram overlap with documented thresholds (tests/core/test_similarity.py)
 - [ ] Run the shared contract suite plus golden fixtures across all LLM providers offline (tests/contracts/test_llm_providers.py)
+- [ ] Price cached input tokens separately and document whether reported input tokens already include them (tests/providers/llm/test_llm_cost.py)
 
 ## Milestone 8: Media generation core and toolkit
 
