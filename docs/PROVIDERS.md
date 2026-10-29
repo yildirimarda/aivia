@@ -40,7 +40,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-video` | `video_gen` | 60/min | - | - | unknown |
 | `openai` | `llm` | 60/min | - | - | unknown |
 | `openai-embeddings` | `embeddings` | 60/min | - | - | unknown |
+| `openai-image` | `image_gen` | 60/min | - | - | unknown |
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
+| `openai_image` | `image_gen` | 60/min | - | - | unknown |
 | `replicate` | `image_gen` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
@@ -99,7 +101,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-video` | `video_gen` | $0.05 per call |
 | `openai` | - | - |
 | `openai-embeddings` | - | - |
+| `openai-image` | - | - |
 | `openai_compatible` | - | - |
+| `openai_image` | - | - |
 | `replicate` | - | - |
 | `s3` | `storage` | $0 per call |
 | `serpapi` | - | - |
@@ -141,7 +145,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-video` | - | - |
 | `openai` | - | - |
 | `openai-embeddings` | - | - |
+| `openai-image` | - | - |
 | `openai_compatible` | - | - |
+| `openai_image` | - | - |
 | `replicate` | - | - |
 | `s3` | - | - |
 | `serpapi` | - | - |
@@ -183,7 +189,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-video` | - | unknown | no | - |
 | `openai` | - | unknown | no | - |
 | `openai-embeddings` | - | unknown | no | - |
+| `openai-image` | - | unknown | no | - |
 | `openai_compatible` | - | unknown | no | - |
+| `openai_image` | - | unknown | no | - |
 | `replicate` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
 | `serpapi` | - | unknown | no | - |
