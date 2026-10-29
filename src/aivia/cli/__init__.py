@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from aivia.cli import config, confirm, costs, init, providers, replay, resume, run
+from aivia.cli import (
+    api,
+    config,
+    confirm,
+    costs,
+    init,
+    providers,
+    replay,
+    resume,
+    run,
+)
 from aivia.cli.globals import GlobalOptions
 from aivia.cli.registry import (
     Command,
@@ -20,6 +30,7 @@ __all__ = [
     "CommandRegistry",
     "GlobalOptions",
     "ParserConfigurator",
+    "api",
     "build_parser",
     "config",
     "confirm",
