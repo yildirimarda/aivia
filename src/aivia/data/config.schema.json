@@ -68,16 +68,20 @@
         },
         "max_body_bytes": {
           "default": 10000000,
+          "exclusiveMinimum": 0,
           "title": "Max Body Bytes",
           "type": "integer"
         },
         "port": {
           "default": 8765,
+          "maximum": 65535,
+          "minimum": 1,
           "title": "Port",
           "type": "integer"
         },
         "rate_limit_per_minute": {
           "default": 60,
+          "minimum": 0,
           "title": "Rate Limit Per Minute",
           "type": "integer"
         },
