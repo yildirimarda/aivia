@@ -17,6 +17,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `llm_native` | `search` | 60/min | - | - | unknown |
 | `llm_search` | `search` | 60/min | - | - | unknown |
 | `local` | `storage` | 60/min | - | - | unknown |
+| `local-embeddings` | `embeddings` | 60/min | - | - | unknown |
 | `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
 | `mock-character-trainer` | `character_trainer` | 60/min | - | - | unknown |
 | `mock-delivery` | `delivery` | 60/min | - | - | unknown |
@@ -37,10 +38,12 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-tts` | `tts` | 60/min | - | - | unknown |
 | `mock-video` | `video_gen` | 60/min | - | - | unknown |
 | `openai` | `llm` | 60/min | - | - | unknown |
+| `openai-embeddings` | `embeddings` | 60/min | - | - | unknown |
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
 | `tavily` | `search` | 60/min | - | - | unknown |
+| `voyage` | `embeddings` | 60/min | - | - | unknown |
 
 ## Pricing
 
@@ -54,6 +57,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `llm_native` | - | - |
 | `llm_search` | - | - |
 | `local` | `storage` | $0 per call |
+| `local-embeddings` | - | - |
 | `mock` | `character_trainer` | $0.5 per call |
 | `mock` | `delivery` | $0 per call |
 | `mock` | `embeddings` | $0.00002 per call |
@@ -91,10 +95,12 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-tts` | `tts` | $0.00001 per call |
 | `mock-video` | `video_gen` | $0.05 per call |
 | `openai` | - | - |
+| `openai-embeddings` | - | - |
 | `openai_compatible` | - | - |
 | `s3` | `storage` | $0 per call |
 | `serpapi` | - | - |
 | `tavily` | - | - |
+| `voyage` | - | - |
 
 ## Supported options
 
@@ -108,6 +114,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `llm_native` | - | - |
 | `llm_search` | - | - |
 | `local` | - | - |
+| `local-embeddings` | - | - |
 | `mock` | - | - |
 | `mock-character-trainer` | - | - |
 | `mock-delivery` | - | - |
@@ -128,10 +135,12 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-tts` | - | - |
 | `mock-video` | - | - |
 | `openai` | - | - |
+| `openai-embeddings` | - | - |
 | `openai_compatible` | - | - |
 | `s3` | - | - |
 | `serpapi` | - | - |
 | `tavily` | - | - |
+| `voyage` | - | - |
 
 ## Licensing
 
@@ -145,6 +154,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `llm_native` | - | unknown | no | - |
 | `llm_search` | - | unknown | no | - |
 | `local` | - | unknown | no | - |
+| `local-embeddings` | - | unknown | no | - |
 | `mock` | - | unknown | no | - |
 | `mock-character-trainer` | - | unknown | no | - |
 | `mock-delivery` | - | unknown | no | - |
@@ -165,7 +175,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-tts` | - | unknown | no | - |
 | `mock-video` | - | unknown | no | - |
 | `openai` | - | unknown | no | - |
+| `openai-embeddings` | - | unknown | no | - |
 | `openai_compatible` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
 | `serpapi` | - | unknown | no | - |
 | `tavily` | - | unknown | no | - |
+| `voyage` | - | unknown | no | - |
