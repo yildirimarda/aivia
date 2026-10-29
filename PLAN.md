@@ -200,7 +200,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add an end to end smoke test producing a run directory, stage records, cost events, snapshot and sidecars for every run kind (tests/e2e/test_smoke_all_kinds.py)
 - [x] Reject or defer submissions above the queue depth limit with a quota error carrying the current depth (tests/core/jobs/test_backpressure.py)
 - [x] Support an idempotency key on runs, returning the existing run for a repeated key and conflicting on a different payload (tests/cli/test_run_idempotency.py)
-- [ ] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
+- [x] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
 - [ ] Verify registered artifact hashes on resume and refuse to skip a stage whose files changed or vanished (tests/core/test_artifact_integrity.py)
 - [ ] Route the resume command through the run state machine so every lifecycle change is validated (tests/cli/test_resume.py)
 - [ ] Include a stage implementation version in the input hash so code changes force re-execution (tests/core/test_resume.py)
@@ -215,6 +215,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add an api serve command that validates the loopback bind and starts the local server (tests/cli/test_api_serve.py)
 - [ ] Add a worker command that claims and runs queued jobs until stopped (tests/cli/test_worker.py)
 - [ ] Pass jobs.max_queue_depth into CLI and API submissions without creating an orphan run when the queue is full (tests/api/test_jobs.py)
+- [ ] Report toolchain fingerprint drift when a replay runs under a different renderer or font set (tests/cli/test_replay.py)
+- [ ] Pass a validated app config to replay stages while falling back to snapshot values when masking prevents validation (tests/cli/test_replay.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 
