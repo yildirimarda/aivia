@@ -194,6 +194,39 @@ class JobQueue:
         with self.engine.connect() as connection:
             return self._depth_in(connection)
 
+    def ensure_capacity(self, *, max_queue_depth: int | None = None) -> int:
+        """Check that one more job may wait in ``pending``.
+
+        Returns the observed depth when a submission may proceed. Raises
+        :class:`~aivia.core.errors.QuotaError` with the same details as
+        :meth:`enqueue` when the queue is already at the limit. A zero limit
+        disables backpressure.
+        """
+        limit = (
+            self.max_queue_depth
+            if max_queue_depth is None
+            else _coerce_queue_depth(max_queue_depth)
+        )
+        if not limit:
+            return self.depth()
+        with _write_transaction(self.engine) as connection:
+            return self._ensure_capacity_in(connection, limit)
+
+    def _ensure_capacity_in(self, connection: Connection, limit: int) -> int:
+        depth = self._depth_in(connection)
+        if depth >= limit:
+            raise QuotaError(
+                f"queue is full: depth {depth} reached limit {limit}",
+                details={
+                    "depth": depth,
+                    "current_depth": depth,
+                    "queue_depth": depth,
+                    "max_queue_depth": limit,
+                    "limit": limit,
+                },
+            )
+        return depth
+
     def enqueue(
         self,
         job: Job | Mapping[str, Any] | None = None,
@@ -223,18 +256,7 @@ class JobQueue:
             return self.repository.create(job, **values)
 
         with _write_transaction(self.engine) as connection:
-            depth = self._depth_in(connection)
-            if depth >= limit:
-                raise QuotaError(
-                    f"queue is full: depth {depth} reached limit {limit}",
-                    details={
-                        "depth": depth,
-                        "current_depth": depth,
-                        "queue_depth": depth,
-                        "max_queue_depth": limit,
-                        "limit": limit,
-                    },
-                )
+            self._ensure_capacity_in(connection, limit)
             return self.repository.create_in(connection, job, **values)
 
     def _depth_in(self, connection: Connection) -> int:

@@ -18,6 +18,7 @@ from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
 from aivia.core.config.llm import LLMConfig
+from aivia.core.config.ops import JobsConfig
 from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_app_config
 from aivia.core.cost import CostTracker
@@ -28,7 +29,7 @@ from aivia.core.db import (
     upgrade_database,
 )
 from aivia.core.dry_run import apply_dry_run
-from aivia.core.errors import ConfigError
+from aivia.core.errors import ConfigError, QuotaError
 from aivia.core.estimate import Estimator, RecipeEstimate, render_estimate
 from aivia.core.idempotency import IdempotencyConflict, IdempotentRun, create_run_once
 from aivia.core.jobs import JobQueue
@@ -244,6 +245,16 @@ def _confirmation_threshold(config: object) -> float:
     return 0.0
 
 
+def _jobs_config(config: object) -> JobsConfig:
+    section = getattr(config, "jobs", None)
+    return section if isinstance(section, JobsConfig) else JobsConfig()
+
+
+def _has_idempotent_run(engine: Engine, args: argparse.Namespace) -> bool:
+    key = (getattr(args, "idempotency_key", None) or "").strip()
+    return bool(key) and RunRepository(engine).find_by_idempotency_key(key) is not None
+
+
 def _resolve_plan(
     args: argparse.Namespace,
 ) -> tuple[object, str, FormatRecipeConfig, RecipeEstimate]:
@@ -409,6 +420,10 @@ def run_run(args: argparse.Namespace) -> int:
         return 1
 
     database_path = _database_path(args, config)
+    stages = build_stages(recipe)
+    enqueue = getattr(args, "enqueue", False) or (
+        not getattr(args, "execute", False) and not _stages_are_implemented(stages)
+    )
     try:
         engine = _open_database(database_path)
     except (OSError, SQLAlchemyError) as exc:
@@ -416,18 +431,17 @@ def run_run(args: argparse.Namespace) -> int:
         return 1
 
     try:
+        queue = JobQueue(engine, config=_jobs_config(config))
+        if enqueue and not _has_idempotent_run(engine, args):
+            queue.ensure_capacity()
         created = _create_run(engine, args, name, estimate)
         run = created.run
         if not created.created:
             _print_existing(run)
             return 0
 
-        stages = build_stages(recipe)
-        enqueue = getattr(args, "enqueue", False) or (
-            not getattr(args, "execute", False) and not _stages_are_implemented(stages)
-        )
         if enqueue:
-            job = JobQueue(engine).enqueue(
+            job = queue.enqueue(
                 Job(
                     kind="run",
                     run_id=run.id,
@@ -447,6 +461,9 @@ def run_run(args: argparse.Namespace) -> int:
             )
             return 1
         return 0
+    except QuotaError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     except IdempotencyConflict as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

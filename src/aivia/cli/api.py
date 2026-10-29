@@ -8,7 +8,7 @@ import sys
 from aivia.api.app import serve
 from aivia.api.security import validate_bind_host
 from aivia.cli.registry import register_command
-from aivia.core.config import ApiConfig
+from aivia.core.config import ApiConfig, JobsConfig
 from aivia.core.config.resolve import resolve_app_config
 from aivia.core.errors import ConfigError
 
@@ -83,7 +83,7 @@ def run_api(args: argparse.Namespace) -> int:
     return int(handler(args))
 
 
-def _resolve_api(args: argparse.Namespace) -> ApiConfig:
+def _resolve_config(args: argparse.Namespace) -> tuple[ApiConfig, JobsConfig]:
     config = resolve_app_config(
         config_file=getattr(args, "config", None),
         environment=getattr(args, "environment", None),
@@ -92,6 +92,8 @@ def _resolve_api(args: argparse.Namespace) -> ApiConfig:
     )
     section = getattr(config, "api", None)
     api = section if isinstance(section, ApiConfig) else ApiConfig()
+    jobs_section = getattr(config, "jobs", None)
+    jobs = jobs_section if isinstance(jobs_section, JobsConfig) else JobsConfig()
 
     overrides: dict[str, object] = {}
     host = getattr(args, "host", None)
@@ -102,20 +104,24 @@ def _resolve_api(args: argparse.Namespace) -> ApiConfig:
         overrides["port"] = port
     if overrides:
         api = ApiConfig.from_mapping({**api.model_dump(), **overrides})
-    return api
+    return api, jobs
+
+
+def _resolve_api(args: argparse.Namespace) -> ApiConfig:
+    return _resolve_config(args)[0]
 
 
 def run_serve(args: argparse.Namespace) -> int:
     """Validate the bind address and run the local API until it stops."""
     try:
-        api = _resolve_api(args)
+        api, jobs = _resolve_config(args)
         validate_bind_host(api.host)
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     print(f"Serving AIVIA API on http://{api.host}:{api.port}", flush=True)
-    serve(api)
+    serve(api, jobs=jobs)
     return 0
 
 

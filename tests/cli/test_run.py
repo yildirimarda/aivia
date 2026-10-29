@@ -15,6 +15,7 @@ from aivia.core.db import (
     create_database_engine,
     upgrade_database,
 )
+from aivia.core.jobs import JobQueue
 from aivia.core.models import Run, RunState, StageResult, StageState
 from aivia.core.run_dirs import RunDirectory
 from aivia.core.stages import Stage, StageContext
@@ -332,3 +333,55 @@ def test_run_show_reports_a_missing_database(
     assert code == 1
     assert out == ""
     assert f"database not found: {missing}" in err
+
+
+def test_run_enqueue_rejects_a_full_queue_without_creating_a_run(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = write_config(
+        tmp_path,
+        """
+jobs:
+  max_queue_depth: 1
+providers:
+  text:
+    type: mock-llm
+formats:
+  sample:
+    description: A small priced recipe.
+    stages:
+      - stage: write
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+    )
+    setup = create_database_engine(database)
+    try:
+        JobQueue(setup).enqueue(kind="seed")
+    finally:
+        setup.dispose()
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--enqueue",
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 1
+    assert out == ""
+    assert "queue is full" in err
+
+    engine = create_database_engine(database)
+    try:
+        assert RunRepository(engine).list() == []
+        assert len(JobRepository(engine).list()) == 1
+    finally:
+        engine.dispose()

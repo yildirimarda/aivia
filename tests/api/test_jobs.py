@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
 from aivia.api import create_app
-from aivia.core.config import ApiConfig
+from aivia.core.config import ApiConfig, JobsConfig
 from aivia.core.cost import CostTracker
 from aivia.core.db import (
     JobRepository,
@@ -324,3 +324,54 @@ def test_job_routes_require_authentication(engine: Engine) -> None:
     assert client.post("/api/v1/jobs", json={"kind": "run"}).status_code == 401
     authorized = client.post("/api/v1/jobs", json={"kind": "run"}, headers=AUTH)
     assert authorized.status_code == 202
+
+
+@pytest.mark.parametrize("path", ["/api/v1/jobs", "/api/v1/runs"])
+def test_a_full_queue_rejects_a_submission_without_creating_a_run(
+    path: str,
+    engine: Engine,
+) -> None:
+    JobQueue(engine, max_queue_depth=1).enqueue(kind="seed")
+    client = TestClient(
+        create_app(
+            ApiConfig(require_auth=False),
+            engine,
+            environ={},
+            jobs=JobsConfig(max_queue_depth=1),
+        )
+    )
+
+    response = client.post(path, json={"kind": "run", "payload": {"prompt": "x"}})
+
+    assert response.status_code == 429
+    detail = response.json()["detail"]
+    assert "queue is full" in detail["message"]
+    assert detail["depth"] == 1
+    assert detail["max_queue_depth"] == 1
+    assert int(response.headers["Retry-After"]) >= 1
+    assert RunRepository(engine).list() == []
+    assert len(JobRepository(engine).list()) == 1
+
+
+def test_a_repeated_idempotent_submission_succeeds_when_the_queue_is_full(
+    engine: Engine,
+) -> None:
+    client = TestClient(
+        create_app(
+            ApiConfig(require_auth=False),
+            engine,
+            environ={},
+            jobs=JobsConfig(max_queue_depth=1),
+        )
+    )
+    submission = {"kind": "run", "idempotency_key": "request-full"}
+
+    first = client.post("/api/v1/runs", json=submission)
+    second = client.post("/api/v1/runs", json=submission)
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert second.json()["id"] == first.json()["id"]
+    assert second.json()["job_id"] == first.json()["job_id"]
+    assert len(RunRepository(engine).list()) == 1
+    assert len(JobRepository(engine).list()) == 1
