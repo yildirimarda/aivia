@@ -247,7 +247,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Record the prompt name and version on every call, omitting content when redaction is enabled (tests/llm/test_prompt_log.py)
 - [x] Add an untrusted input wrapper that places user text, filenames and extracted text inside delimited data blocks with a data only instruction (tests/llm/test_untrusted.py)
 - [x] Add language utilities for code normalization, detection and per language accessors such as words per second and fonts (tests/llm/test_languages.py)
-- [ ] Normalize search results into one model, dedupe by url and route search calls through the router with cost tracking (tests/providers/search/test_normalize.py)
+- [x] Normalize search results into one model, dedupe by url and route search calls through the router with cost tracking (tests/providers/search/test_normalize.py)
 - [ ] Add the Tavily search provider with quota errors mapped to rate limited (tests/providers/search/test_tavily.py)
 - [ ] Add the Exa search provider (tests/providers/search/test_exa.py)
 - [ ] Add the Brave search provider (tests/providers/search/test_brave.py)
