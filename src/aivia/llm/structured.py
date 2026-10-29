@@ -93,6 +93,8 @@ class StructuredOutputResult:
     cost: LLMTokenCost | None = None
     event: CostEvent | None = None
     schema: type[BaseModel] | None = None
+    attempts: int = 1
+    repairs: int = 0
 
     @property
     def output(self) -> BaseModel:
