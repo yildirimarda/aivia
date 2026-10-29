@@ -203,32 +203,53 @@ from aivia.providers.storage_local import LocalStorage, LocalStorageProvider
 from aivia.providers.storage_s3 import S3Storage, S3StorageProvider
 
 if TYPE_CHECKING:
+    from aivia.providers.search.exa import (
+        Exa,
+        ExaProvider,
+        ExaSearchProvider,
+    )
     from aivia.providers.search.tavily import (
         Tavily,
         TavilyProvider,
         TavilySearchProvider,
     )
 
-_LAZY_SEARCH_PROVIDERS = frozenset({"Tavily", "TavilyProvider", "TavilySearchProvider"})
+_LAZY_EXA_PROVIDERS = frozenset({"Exa", "ExaProvider", "ExaSearchProvider"})
+_LAZY_TAVILY_PROVIDERS = frozenset({"Tavily", "TavilyProvider", "TavilySearchProvider"})
 
 
 def __getattr__(name: str) -> Any:
     """Load a search adapter only when it is explicitly requested."""
-    if name in _LAZY_SEARCH_PROVIDERS:
+    if name in _LAZY_EXA_PROVIDERS:
+        from aivia.providers.search.exa import (
+            Exa,
+            ExaProvider,
+            ExaSearchProvider,
+        )
+
+        exa_values = {
+            "Exa": Exa,
+            "ExaProvider": ExaProvider,
+            "ExaSearchProvider": ExaSearchProvider,
+        }
+        exa_value = exa_values[name]
+        globals()[name] = exa_value
+        return exa_value
+    if name in _LAZY_TAVILY_PROVIDERS:
         from aivia.providers.search.tavily import (
             Tavily,
             TavilyProvider,
             TavilySearchProvider,
         )
 
-        values = {
+        tavily_values = {
             "Tavily": Tavily,
             "TavilyProvider": TavilyProvider,
             "TavilySearchProvider": TavilySearchProvider,
         }
-        value = values[name]
-        globals()[name] = value
-        return value
+        tavily_value = tavily_values[name]
+        globals()[name] = tavily_value
+        return tavily_value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -267,6 +288,9 @@ __all__ = [
     "EmbeddingRequest",
     "EmbeddingResponse",
     "EmbeddingUsage",
+    "Exa",
+    "ExaProvider",
+    "ExaSearchProvider",
     "FinishReason",
     "Gemini",
     "GeminiLLMProvider",
