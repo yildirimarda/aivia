@@ -277,7 +277,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a prompt and option adaptation layer that snaps sizes, clamps durations and rejects unsupported options instead of silently dropping them (tests/providers/media/test_adapt.py)
 - [x] Add a download and validation helper with format sniffing, dimension checks, size caps, decompression bomb guard and ffprobe checks (tests/core/test_media_probe.py)
 - [x] Add image utilities for resize, aspect crop, blurred fill padding, conversion and metadata stripping that never modify the original (tests/media/test_image_utils.py)
-- [ ] Add offline and vision based image analysis producing dimensions, dominant colors, a description, detected text, faces and alt text (tests/media/test_image_analysis.py)
+- [x] Add offline and vision based image analysis producing dimensions, dominant colors, a description, detected text, faces and alt text (tests/media/test_image_analysis.py)
 - [ ] Add the fal image provider using the queue pattern with fixtures for success and filtered content (tests/providers/image/test_fal.py)
 - [ ] Add the Replicate image provider with a versioned model id from config (tests/providers/image/test_replicate.py)
 - [ ] Add the OpenAI image provider handling sizes, counts and both base64 and url responses (tests/providers/image/test_openai_image.py)
