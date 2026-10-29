@@ -246,6 +246,12 @@ if TYPE_CHECKING:
         FalImageProvider,
         FalProvider,
     )
+    from aivia.providers.image.openai import (
+        OpenAIImage,
+        OpenAIImageProvider,
+        OpenAIImages,
+        OpenAIImagesProvider,
+    )
     from aivia.providers.image.replicate import (
         Replicate,
         ReplicateImageProvider,
@@ -327,6 +333,14 @@ _LAZY_EMBEDDING_PROVIDERS = frozenset(
 _LAZY_BRAVE_PROVIDERS = frozenset({"Brave", "BraveProvider", "BraveSearchProvider"})
 _LAZY_EXA_PROVIDERS = frozenset({"Exa", "ExaProvider", "ExaSearchProvider"})
 _LAZY_FAL_PROVIDERS = frozenset({"Fal", "FalImageProvider", "FalProvider"})
+_LAZY_OPENAI_IMAGE_PROVIDERS = frozenset(
+    {
+        "OpenAIImage",
+        "OpenAIImageProvider",
+        "OpenAIImages",
+        "OpenAIImagesProvider",
+    }
+)
 _LAZY_REPLICATE_PROVIDERS = frozenset(
     {"Replicate", "ReplicateImageProvider", "ReplicateProvider"}
 )
@@ -447,6 +461,23 @@ def __getattr__(name: str) -> Any:
         fal_value = fal_values[name]
         globals()[name] = fal_value
         return fal_value
+    if name in _LAZY_OPENAI_IMAGE_PROVIDERS:
+        from aivia.providers.image.openai import (
+            OpenAIImage,
+            OpenAIImageProvider,
+            OpenAIImages,
+            OpenAIImagesProvider,
+        )
+
+        openai_image_values = {
+            "OpenAIImage": OpenAIImage,
+            "OpenAIImageProvider": OpenAIImageProvider,
+            "OpenAIImages": OpenAIImages,
+            "OpenAIImagesProvider": OpenAIImagesProvider,
+        }
+        openai_image_value = openai_image_values[name]
+        globals()[name] = openai_image_value
+        return openai_image_value
     if name in _LAZY_REPLICATE_PROVIDERS:
         from aivia.providers.image.replicate import (
             Replicate,
@@ -686,6 +717,10 @@ __all__ = [
     "OpenAIEmbeddingProvider",
     "OpenAIEmbeddings",
     "OpenAIEmbeddingsProvider",
+    "OpenAIImage",
+    "OpenAIImageProvider",
+    "OpenAIImages",
+    "OpenAIImagesProvider",
     "OpenAILLMProvider",
     "OpenAIProvider",
     "PageFetch",
