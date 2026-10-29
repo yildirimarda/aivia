@@ -1,5 +1,7 @@
 """Provider adapters, the shared base class and capability protocols."""
 
+from typing import TYPE_CHECKING, Any
+
 from aivia.providers.base import (
     HealthStatus,
     Provider,
@@ -200,6 +202,37 @@ from aivia.providers.storage_factory import (
 from aivia.providers.storage_local import LocalStorage, LocalStorageProvider
 from aivia.providers.storage_s3 import S3Storage, S3StorageProvider
 
+if TYPE_CHECKING:
+    from aivia.providers.search.tavily import (
+        Tavily,
+        TavilyProvider,
+        TavilySearchProvider,
+    )
+
+_LAZY_SEARCH_PROVIDERS = frozenset(
+    {"Tavily", "TavilyProvider", "TavilySearchProvider"}
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Load a search adapter only when it is explicitly requested."""
+    if name in _LAZY_SEARCH_PROVIDERS:
+        from aivia.providers.search.tavily import (
+            Tavily,
+            TavilyProvider,
+            TavilySearchProvider,
+        )
+
+        values = {
+            "Tavily": Tavily,
+            "TavilyProvider": TavilyProvider,
+            "TavilySearchProvider": TavilySearchProvider,
+        }
+        value = values[name]
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 __all__ = [
     "CAPABILITY_EMBEDDINGS",
     "CAPABILITY_IMAGE_EDIT",
@@ -351,6 +384,9 @@ __all__ = [
     "TTSProvider",
     "TTSRequest",
     "TTSResponse",
+    "Tavily",
+    "TavilyProvider",
+    "TavilySearchProvider",
     "TextPart",
     "TokenCostCalculator",
     "ToolCall",
