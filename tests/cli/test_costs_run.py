@@ -319,6 +319,11 @@ def test_costs_run_excludes_a_replaced_estimate_from_asset_totals(
 
     assert code == 0
     assert err == ""
+    assert "Total: $0.100000" in out
+    assert section(out, "BY STAGE") == [
+        ["STAGE", "TOTAL", "ESTIMATED", "ACTUAL", "UNITS", "COUNT"],
+        ["image_gen", "$0.100000", "$0.000000", "$0.100000", "1", "1"],
+    ]
     assert section(out, "BY ASSET") == [
         [
             "ASSET",
