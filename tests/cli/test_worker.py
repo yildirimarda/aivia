@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -320,3 +321,122 @@ def test_worker_prefers_the_run_profile_over_its_own_profile(
     assert run is not None and run.run_dir
     script = Path(run.run_dir, "script.md")
     assert script.read_text(encoding="utf-8") == "Europe/Istanbul"
+
+
+class Overlap(Stage):
+    name = "write"
+    artifacts = ("script.md",)
+
+    def __init__(self, state: dict[str, int]) -> None:
+        super().__init__()
+        self.state = state
+
+    async def run(self, context: StageContext) -> StageResult:
+        state = self.state
+        state["active"] += 1
+        state["max_active"] = max(state["max_active"], state["active"])
+        try:
+            for _ in range(200):
+                if state["max_active"] >= 2:
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                raise AssertionError("jobs did not run concurrently")
+            await asyncio.sleep(0.02)
+        finally:
+            state["active"] -= 1
+        (context.run_dir / "script.md").write_text("script", encoding="utf-8")
+        return StageResult(stage=self.name, artifacts=["script.md"])
+
+
+def concurrency_config(tmp_path: Path) -> Path:
+    return write_config(
+        tmp_path,
+        """
+jobs:
+  concurrency: 2
+formats:
+  sample:
+    description: A small recipe the worker can execute.
+    stages:
+      - stage: write
+    output_type: video
+    handler: save
+""",
+    )
+
+
+def test_worker_runs_jobs_on_the_configured_number_of_claim_loops(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = concurrency_config(tmp_path)
+    state = {"active": 0, "max_active": 0}
+    monkeypatch.setattr(
+        "aivia.cli.run.build_stages",
+        lambda recipe: [Overlap(state) for _stage in recipe.stages],
+    )
+    run_ids = [enqueue_run(capsys, config, database) for _ in range(4)]
+
+    code, out, err = worker_command(
+        capsys,
+        config,
+        database,
+        "--max-jobs",
+        "4",
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "processed 4 job(s)" in out
+    assert "4 succeeded" in out
+    assert state["max_active"] == 2
+
+    engine = create_database_engine(database)
+    try:
+        claimed_by: set[str] = set()
+        for run_id in run_ids:
+            run = RunRepository(engine).get(run_id)
+            assert run is not None
+            assert run.state is RunState.SUCCEEDED
+            jobs = JobRepository(engine).list(run_id=run_id)
+            assert [job.state for job in jobs] == [JobState.SUCCEEDED]
+            claimed_by.add(jobs[0].claimed_by)
+        assert len(claimed_by) == 2
+    finally:
+        engine.dispose()
+
+
+def test_once_claims_one_job_even_when_concurrency_is_higher(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = concurrency_config(tmp_path)
+    monkeypatch.setattr(
+        "aivia.cli.run.build_stages",
+        lambda recipe: [Write() for _stage in recipe.stages],
+    )
+    first = enqueue_run(capsys, config, database)
+    second = enqueue_run(capsys, config, database)
+
+    code, out, err = worker_command(capsys, config, database, "--once")
+
+    assert code == 0
+    assert err == ""
+    assert "processed 1 job(s)" in out
+    assert "1 succeeded" in out
+
+    engine = create_database_engine(database)
+    try:
+        first_run = RunRepository(engine).get(first)
+        second_run = RunRepository(engine).get(second)
+        assert first_run is not None and first_run.state is RunState.SUCCEEDED
+        assert second_run is not None and second_run.state is RunState.QUEUED
+        jobs = JobRepository(engine).list(run_id=second)
+        assert [job.state for job in jobs] == [JobState.PENDING]
+    finally:
+        engine.dispose()
