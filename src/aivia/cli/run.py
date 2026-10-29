@@ -7,7 +7,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-from sqlalchemy import Engine
+from sqlalchemy import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from aivia.cli.confirm import confirm_spend, confirmation_required
@@ -251,11 +251,6 @@ def _jobs_config(config: object) -> JobsConfig:
     return section if isinstance(section, JobsConfig) else JobsConfig()
 
 
-def _has_idempotent_run(engine: Engine, args: argparse.Namespace) -> bool:
-    key = (getattr(args, "idempotency_key", None) or "").strip()
-    return bool(key) and RunRepository(engine).find_by_idempotency_key(key) is not None
-
-
 def _resolve_plan(
     args: argparse.Namespace,
 ) -> tuple[object, str, FormatRecipeConfig, RecipeEstimate, str]:
@@ -313,6 +308,8 @@ def _create_run(
     name: str,
     estimate: RecipeEstimate,
     environment: str = "",
+    *,
+    connection: Connection | None = None,
 ) -> IdempotentRun:
     run = Run(
         kind=RunKind.PIPELINE,
@@ -328,7 +325,12 @@ def _create_run(
     def prepare(candidate: Run) -> None:
         RunDirectories(_data_dir(args)).create(candidate)
 
-    return create_run_once(RunRepository(engine), run, prepare=prepare)
+    return create_run_once(
+        RunRepository(engine),
+        run,
+        prepare=prepare,
+        connection=connection,
+    )
 
 
 def build_stages(recipe: FormatRecipeConfig) -> list[Stage]:
@@ -437,23 +439,35 @@ def run_run(args: argparse.Namespace) -> int:
 
     try:
         queue = JobQueue(engine, config=_jobs_config(config))
-        if enqueue and not _has_idempotent_run(engine, args):
-            queue.ensure_capacity()
+        if enqueue:
+            with queue.write_transaction() as connection:
+                created = _create_run(
+                    engine,
+                    args,
+                    name,
+                    estimate,
+                    environment,
+                    connection=connection,
+                )
+                run = created.run
+                if not created.created:
+                    _print_existing(run)
+                    return 0
+                job = queue.enqueue(
+                    Job(
+                        kind="run",
+                        run_id=run.id,
+                        payload={"format": name, "profile": run.profile},
+                    ),
+                    connection=connection,
+                )
+            _print_created(run, estimate, job=job)
+            return 0
+
         created = _create_run(engine, args, name, estimate, environment)
         run = created.run
         if not created.created:
             _print_existing(run)
-            return 0
-
-        if enqueue:
-            job = queue.enqueue(
-                Job(
-                    kind="run",
-                    run_id=run.id,
-                    payload={"format": name, "profile": run.profile},
-                )
-            )
-            _print_created(run, estimate, job=job)
             return 0
 
         result = _execute_run(engine, run, config, stages)

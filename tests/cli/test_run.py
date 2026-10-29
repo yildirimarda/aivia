@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from sqlalchemy import Connection
 
 from aivia.cli import main
 from aivia.core.cost import CostTracker
@@ -15,8 +16,9 @@ from aivia.core.db import (
     create_database_engine,
     upgrade_database,
 )
+from aivia.core.errors import QuotaError
 from aivia.core.jobs import JobQueue
-from aivia.core.models import Run, RunState, StageResult, StageState
+from aivia.core.models import Job, Run, RunState, StageResult, StageState
 from aivia.core.run_dirs import RunDirectory
 from aivia.core.stages import Stage, StageContext
 
@@ -383,5 +385,111 @@ formats:
     try:
         assert RunRepository(engine).list() == []
         assert len(JobRepository(engine).list()) == 1
+    finally:
+        engine.dispose()
+
+
+def test_a_rejected_enqueue_rolls_back_the_run_created_for_the_submission(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject(self: JobQueue, *args: object, **kwargs: object) -> None:
+        raise QuotaError(
+            "queue is full: depth 1 reached limit 1",
+            details={"depth": 1, "max_queue_depth": 1},
+        )
+
+    monkeypatch.setattr(JobQueue, "enqueue", reject)
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--enqueue",
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 1
+    assert out == ""
+    assert "queue is full" in err
+
+    engine = create_database_engine(database)
+    try:
+        assert RunRepository(engine).list() == []
+        assert JobRepository(engine).list() == []
+    finally:
+        engine.dispose()
+
+
+def test_a_queue_filled_during_submission_leaves_no_orphan_run(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = write_config(
+        tmp_path,
+        """
+jobs:
+  max_queue_depth: 1
+providers:
+  text:
+    type: mock-llm
+formats:
+  sample:
+    description: A small priced recipe.
+    stages:
+      - stage: write
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+    )
+    original = JobQueue.enqueue
+
+    def fill_then_enqueue(
+        self: JobQueue,
+        job: Job | None = None,
+        *,
+        max_queue_depth: int | None = None,
+        connection: Connection | None = None,
+    ) -> Job:
+        if connection is not None:
+            self.repository.create_in(connection, Job(kind="seed"))
+        else:
+            self.repository.create(Job(kind="seed"))
+        return original(
+            self,
+            job,
+            max_queue_depth=max_queue_depth,
+            connection=connection,
+        )
+
+    monkeypatch.setattr(JobQueue, "enqueue", fill_then_enqueue)
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--enqueue",
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 1
+    assert out == ""
+    assert "queue is full" in err
+
+    engine = create_database_engine(database)
+    try:
+        assert RunRepository(engine).list() == []
+        assert JobRepository(engine).list() == []
     finally:
         engine.dispose()
