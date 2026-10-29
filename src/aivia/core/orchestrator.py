@@ -46,6 +46,7 @@ from aivia.core.run_state import (
     RunStateMachine,
     transition_run,
 )
+from aivia.core.snapshot import build_config_snapshot, write_config_snapshot
 from aivia.core.stage_retry import (
     StageAttempt,
     StageRetryExhausted,
@@ -395,6 +396,7 @@ class Orchestrator:
         run_record = self._resolve_run()
         directory = self._resolve_run_dir(run_record)
         run_record = self._start_run(run_record)
+        run_record = self._save_snapshot(run_record, directory)
         self._run = run_record
 
         results: list[StageResult] = []
@@ -633,6 +635,23 @@ class Orchestrator:
             run_id=run.id,
         )
         return directory.create()
+
+    def _save_snapshot(self, run: Run, directory: RunDirectory) -> Run:
+        if run.config_snapshot and directory.snapshot_path.is_file():
+            return run
+        snapshot = build_config_snapshot(self.config, run=run)
+        write_config_snapshot(directory.path, snapshot)
+        if dict(snapshot) == run.config_snapshot:
+            return run
+        run = run.model_copy(update={"config_snapshot": dict(snapshot)})
+        if self.run_repository is not None:
+            stored = self.run_repository.update(
+                run.id,
+                config_snapshot=dict(snapshot),
+            )
+            if stored is not None:
+                run = stored
+        return run
 
     def _existing_results(self, run_id: str) -> dict[str, StageResult]:
         repository = self.stage_repository

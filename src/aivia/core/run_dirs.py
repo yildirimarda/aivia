@@ -191,6 +191,27 @@ class RunDirectory:
         return self.path / ARTIFACT_MANIFEST_NAME
 
     @property
+    def snapshot_path(self) -> Path:
+        """The replay snapshot inside this run directory."""
+        from aivia.core.snapshot import snapshot_path
+
+        return snapshot_path(self.path)
+
+    def write_snapshot(
+        self, snapshot: Mapping[str, Any] | None = None, **options: Any
+    ) -> Path:
+        """Write the replay snapshot into this run directory."""
+        from aivia.core.snapshot import write_config_snapshot
+
+        return write_config_snapshot(self.path, snapshot, **options)
+
+    def read_snapshot(self, **options: Any) -> Any:
+        """Read the replay snapshot from this run directory."""
+        from aivia.core.snapshot import read_config_snapshot
+
+        return read_config_snapshot(self.path, **options)
+
+    @property
     def exists(self) -> bool:
         """Whether the run directory exists."""
         return self.path.is_dir()
