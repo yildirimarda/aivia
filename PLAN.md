@@ -335,6 +335,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Emit alt text and SRT and VTT sidecars for every audio and video output when accessibility output is enabled (tests/media/test_accessibility.py)
 - [ ] Make async media job idempotency keys unique across processes so a repeated key cannot submit twice (tests/providers/media/test_async_job.py)
 - [ ] Apply the media adaptation layer to every image, video, music and speech provider request before submission (tests/media/test_adapt_integration.py)
+- [ ] Reject oversized or decompression-bomb images in image utilities before decoding (tests/media/test_image_utils.py)
 
 ## Milestone 9: Composition and rendering
 
