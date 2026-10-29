@@ -103,6 +103,7 @@ def register_job_routes(
     data_dir: str | Path | None,
     jobs: JobsConfig | Mapping[str, Any] | None = None,
     environment: str = "",
+    profile: str = "",
 ) -> None:
     """Attach the generic job and run routes to *app*.
 
@@ -110,7 +111,8 @@ def register_job_routes(
     database on the first request. Keeping the lazy path means health and
     OpenAPI stay usable before the database exists. *jobs* supplies the queue
     depth limit every submission is checked against. *environment* is the
-    config environment recorded on runs unless the submission names one.
+    config environment recorded on runs unless the submission names one, and
+    *profile* is the profile recorded on runs the same way.
     """
 
     def database() -> Engine:
@@ -147,6 +149,7 @@ def register_job_routes(
                 requested_run_id=submission.run_id or None,
                 job_id=submission.id,
                 environment=environment,
+                profile=profile,
             )
         except QuotaError as exc:
             raise _queue_full(exc) from exc
@@ -175,6 +178,7 @@ def register_job_routes(
                 job_id=None,
                 require_run=True,
                 environment=environment,
+                profile=profile,
             )
         except QuotaError as exc:
             raise _queue_full(exc) from exc
@@ -278,6 +282,7 @@ def _submit_atomically(
     job_id: str | None,
     require_run: bool = False,
     environment: str = "",
+    profile: str = "",
 ) -> tuple[Run | None, Job]:
     """Create or reuse the run and enqueue its job under one write lock."""
     with queue.write_transaction() as connection:
@@ -287,6 +292,7 @@ def _submit_atomically(
             requested_run_id=requested_run_id,
             connection=connection,
             environment=environment,
+            profile=profile,
         )
         if run is None and require_run:
             raise HTTPException(
@@ -314,6 +320,7 @@ def _create_or_attach_run(
     requested_run_id: str | None,
     connection: Connection | None = None,
     environment: str = "",
+    profile: str = "",
 ) -> tuple[Run | None, bool, bool]:
     """Return the target run, whether this call created it and whether reused."""
     repository = RunRepository(engine)
@@ -326,7 +333,7 @@ def _create_or_attach_run(
         if existing is not None:
             return existing, False, False
 
-    values = _run_values(submission, environment)
+    values = _run_values(submission, environment, profile)
     if requested_run_id:
         values["id"] = requested_run_id
     if not values.get("kind"):
@@ -340,7 +347,11 @@ def _create_or_attach_run(
     return result.run, result.created, reused
 
 
-def _run_values(submission: JobSubmission, environment: str = "") -> dict[str, Any]:
+def _run_values(
+    submission: JobSubmission,
+    environment: str = "",
+    profile: str = "",
+) -> dict[str, Any]:
     values: dict[str, Any] = {}
     if submission.run:
         values.update(submission.run)
@@ -361,6 +372,9 @@ def _run_values(submission: JobSubmission, environment: str = "") -> dict[str, A
 
     if not values.get("environment"):
         values["environment"] = environment.strip()
+
+    if not values.get("profile"):
+        values["profile"] = profile.strip()
 
     if not values.get("toolchain_fingerprint"):
         values["toolchain_fingerprint"] = detect_toolchain()
