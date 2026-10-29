@@ -12,6 +12,14 @@ from aivia.providers.console import (
     console_notifier,
     default_notifier,
 )
+from aivia.providers.llm import (
+    DEFAULT_API_VERSION,
+    DEFAULT_BASE_URL,
+    DEFAULT_MAX_TOKENS,
+    Anthropic,
+    AnthropicLLMProvider,
+    AnthropicProvider,
+)
 from aivia.providers.mock import (
     MOCK_EPOCH,
     MockAll,
@@ -173,7 +181,13 @@ __all__ = [
     "CAPABILITY_STT",
     "CAPABILITY_TTS",
     "CAPABILITY_VIDEO_GEN",
+    "DEFAULT_API_VERSION",
+    "DEFAULT_BASE_URL",
+    "DEFAULT_MAX_TOKENS",
     "MOCK_EPOCH",
+    "Anthropic",
+    "AnthropicLLMProvider",
+    "AnthropicProvider",
     "AudioFormat",
     "CapabilityProvider",
     "ChatMessage",
