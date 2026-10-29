@@ -225,7 +225,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Make CLI run enqueue atomic so a queue-limit race cannot leave an orphan run (tests/cli/test_run.py)
 - [x] Remove the run directory created for a CLI enqueue that rolls back so no orphan artifacts remain (tests/cli/test_run.py)
 - [x] Record the API server config environment on submitted runs so workers apply it (tests/api/test_jobs.py)
-- [ ] Record the API server profile on submitted runs so workers apply the same profile overrides (tests/api/test_jobs.py)
+- [x] Record the API server profile on submitted runs so workers apply the same profile overrides (tests/api/test_jobs.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 
