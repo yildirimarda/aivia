@@ -21,7 +21,17 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any, ClassVar
 
-from sqlalchemy import Connection, DateTime, Engine, RowMapping, Table, and_, select
+from sqlalchemy import (
+    Connection,
+    DateTime,
+    Engine,
+    RowMapping,
+    Table,
+    and_,
+    delete,
+    func,
+    select,
+)
 
 from aivia.core.db.tables import (
     asset_cache,
@@ -29,6 +39,7 @@ from aivia.core.db.tables import (
     compositions,
     cost_events,
     deliveries,
+    embedding_cache,
     feedback,
     jobs,
     llm_cache,
@@ -62,6 +73,7 @@ from aivia.core.models import (
     CompositionReference,
     CostEvent,
     Delivery,
+    EmbeddingCacheEntry,
     Job,
     LLMCacheEntry,
     ModelBase,
@@ -80,6 +92,7 @@ __all__ = [
     "CompositionRepository",
     "CostEventRepository",
     "DeliveryRepository",
+    "EmbeddingCacheRepository",
     "FeedbackRepository",
     "JobRepository",
     "LLMCacheRepository",
@@ -466,6 +479,53 @@ class LLMCacheRepository(ModelRepository[LLMCacheEntry]):
         return self.get(cache_key)
 
 
+class EmbeddingCacheRepository(ModelRepository[EmbeddingCacheEntry]):
+    """Persist request digests that point at cached embedding vectors."""
+
+    table = embedding_cache
+    model = EmbeddingCacheEntry
+    key_columns = ("cache_key",)
+
+    def count(self) -> int:
+        """Return the number of stored vectors."""
+        with self.engine.connect() as connection:
+            value = connection.execute(
+                select(func.count()).select_from(self.table)
+            ).scalar_one()
+        return int(value)
+
+    def clear(self) -> int:
+        """Delete every stored vector and return how many rows were removed."""
+        with self.engine.begin() as connection:
+            result = connection.execute(delete(self.table))
+        return int(result.rowcount or 0)
+
+    def prune(self, max_entries: int) -> int:
+        """Keep only the *max_entries* most recently written vectors."""
+        if isinstance(max_entries, bool) or not isinstance(max_entries, int):
+            raise TypeError("max_entries must be an integer")
+        if max_entries <= 0:
+            raise ValueError("max_entries must be positive")
+        with self.engine.begin() as connection:
+            total = connection.execute(
+                select(func.count()).select_from(self.table)
+            ).scalar_one()
+            if int(total) <= max_entries:
+                return 0
+            keep = (
+                select(self.table.c.cache_key)
+                .order_by(
+                    self.table.c.updated_at.desc(),
+                    self.table.c.cache_key.desc(),
+                )
+                .limit(max_entries)
+            )
+            result = connection.execute(
+                delete(self.table).where(self.table.c.cache_key.not_in(keep))
+            )
+        return int(result.rowcount or 0)
+
+
 class CompositionRepository(ModelRepository[CompositionReference]):
     """Persist references to rendered compositions."""
 
@@ -571,6 +631,7 @@ REPOSITORIES: Mapping[str, type[Repository[Any]]] = {
         AssetRepository,
         AssetCacheRepository,
         LLMCacheRepository,
+        EmbeddingCacheRepository,
         CompositionRepository,
         CostEventRepository,
         PlanRepository,
