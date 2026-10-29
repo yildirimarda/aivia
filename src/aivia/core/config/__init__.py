@@ -215,6 +215,7 @@ from aivia.core.config.resolve import (
     profile_overrides,
     resolve_app_config,
     resolve_config,
+    selected_environment,
 )
 from aivia.core.config.schedule import (
     CronScheduleConfig,
@@ -533,6 +534,7 @@ __all__ = [
     "role_registry",
     "roles",
     "schema_version_of",
+    "selected_environment",
     "validate_cron",
     "validate_cross_references",
     "validate_role",

@@ -25,7 +25,12 @@ from aivia.api.limits import (
 )
 from aivia.api.security import validate_bind_host
 from aivia.api.uploads import sanitize_filename
-from aivia.core.config import ApiConfig, JobsConfig, resolve_config
+from aivia.core.config import (
+    ApiConfig,
+    JobsConfig,
+    resolve_config,
+    selected_environment,
+)
 from aivia.core.secrets import SecretsLoader
 
 __all__ = ["create_app", "serve"]
@@ -46,6 +51,7 @@ def create_app(
     database_path: str | Path | None = None,
     data_dir: str | Path | None = None,
     jobs: JobsConfig | Mapping[str, Any] | None = None,
+    environment: str | None = None,
 ) -> FastAPI:
     """Build the local API application from *config*.
 
@@ -55,9 +61,12 @@ def create_app(
     Pass an *engine* to share an existing database, or let the job routes open
     the configured local database lazily on their first request. *jobs* may
     override the resolved ``jobs`` section so submissions honour its queue
-    depth limit.
+    depth limit. *environment* selects the config environment recorded on
+    submitted runs; it defaults to the one selected by *environ*.
     """
-    api, jobs_config = _resolve_configs(config, jobs, environ)
+    api, jobs_config, config_environment = _resolve_configs(
+        config, jobs, environ, environment
+    )
     _validate_api_config(api)
 
     expected_key = ""
@@ -75,6 +84,7 @@ def create_app(
     )
     app.state.api_config = api
     app.state.jobs_config = jobs_config
+    app.state.config_environment = config_environment
     app.state.engine = engine
     app.state.api_engine_owned = False
 
@@ -127,6 +137,7 @@ def create_app(
         database_path=database_path,
         data_dir=data_dir,
         jobs=jobs_config,
+        environment=config_environment,
     )
 
     if api.require_auth:
@@ -162,11 +173,20 @@ def serve(
     environ: Mapping[str, str] | None = None,
     secrets: SecretsLoader | None = None,
     jobs: JobsConfig | Mapping[str, Any] | None = None,
+    environment: str | None = None,
 ) -> None:
     """Run the API with uvicorn on the configured loopback address."""
-    api, jobs_config = _resolve_configs(config, jobs, environ)
+    api, jobs_config, config_environment = _resolve_configs(
+        config, jobs, environ, environment
+    )
     _validate_api_config(api)
-    app = create_app(api, environ=environ, secrets=secrets, jobs=jobs_config)
+    app = create_app(
+        api,
+        environ=environ,
+        secrets=secrets,
+        jobs=jobs_config,
+        environment=config_environment,
+    )
 
     import uvicorn
 
@@ -177,15 +197,19 @@ def _resolve_configs(
     config: ApiConfig | None,
     jobs: JobsConfig | Mapping[str, Any] | None,
     environ: Mapping[str, str] | None,
-) -> tuple[ApiConfig, JobsConfig]:
+    environment: str | None = None,
+) -> tuple[ApiConfig, JobsConfig, str]:
     if config is None:
-        root = resolve_config(environ=environ).app_config
+        resolved = resolve_config(environ=environ, environment=environment or None)
+        root = resolved.app_config
         api_section = getattr(root, "api", None)
         api = api_section if isinstance(api_section, ApiConfig) else ApiConfig()
         jobs_section = getattr(root, "jobs", None)
+        config_environment = resolved.environment or ""
     else:
         api = config
         jobs_section = None
+        config_environment = selected_environment(environment, environ=environ) or ""
 
     if jobs is None:
         jobs_config = (
@@ -198,7 +222,7 @@ def _resolve_configs(
     else:
         raise TypeError("jobs must be a JobsConfig, a mapping or None")
 
-    return api, jobs_config
+    return api, jobs_config, config_environment
 
 
 def _validate_api_config(api: ApiConfig) -> None:

@@ -40,6 +40,7 @@ _RUN_FIELDS = (
     "idempotency_key",
     "toolchain_fingerprint",
     "profile",
+    "environment",
     "format",
     "run_dir",
     "config_snapshot",
@@ -72,6 +73,7 @@ class JobSubmission(BaseModel):
     not_before: datetime | None = None
     run: dict[str, Any] | None = None
     profile: str = ""
+    environment: str = ""
     format: str = ""
     idempotency_key: str = ""
     config_snapshot: dict[str, Any] = Field(default_factory=dict)
@@ -86,7 +88,7 @@ class JobSubmission(BaseModel):
             raise ValueError("kind must be a non-empty name")
         return text
 
-    @field_validator("run_id", "profile", "format", "idempotency_key")
+    @field_validator("run_id", "profile", "environment", "format", "idempotency_key")
     @classmethod
     def _strip_text(cls, value: str) -> str:
         return value.strip()
@@ -100,13 +102,15 @@ def register_job_routes(
     database_path: str | Path | None,
     data_dir: str | Path | None,
     jobs: JobsConfig | Mapping[str, Any] | None = None,
+    environment: str = "",
 ) -> None:
     """Attach the generic job and run routes to *app*.
 
     A caller may inject an engine, or let the API open the configured local
     database on the first request. Keeping the lazy path means health and
     OpenAPI stay usable before the database exists. *jobs* supplies the queue
-    depth limit every submission is checked against.
+    depth limit every submission is checked against. *environment* is the
+    config environment recorded on runs unless the submission names one.
     """
 
     def database() -> Engine:
@@ -142,6 +146,7 @@ def register_job_routes(
                 submission,
                 requested_run_id=submission.run_id or None,
                 job_id=submission.id,
+                environment=environment,
             )
         except QuotaError as exc:
             raise _queue_full(exc) from exc
@@ -169,6 +174,7 @@ def register_job_routes(
                 requested_run_id=requested,
                 job_id=None,
                 require_run=True,
+                environment=environment,
             )
         except QuotaError as exc:
             raise _queue_full(exc) from exc
@@ -271,6 +277,7 @@ def _submit_atomically(
     requested_run_id: str | None,
     job_id: str | None,
     require_run: bool = False,
+    environment: str = "",
 ) -> tuple[Run | None, Job]:
     """Create or reuse the run and enqueue its job under one write lock."""
     with queue.write_transaction() as connection:
@@ -279,6 +286,7 @@ def _submit_atomically(
             submission,
             requested_run_id=requested_run_id,
             connection=connection,
+            environment=environment,
         )
         if run is None and require_run:
             raise HTTPException(
@@ -305,6 +313,7 @@ def _create_or_attach_run(
     *,
     requested_run_id: str | None,
     connection: Connection | None = None,
+    environment: str = "",
 ) -> tuple[Run | None, bool, bool]:
     """Return the target run, whether this call created it and whether reused."""
     repository = RunRepository(engine)
@@ -317,7 +326,7 @@ def _create_or_attach_run(
         if existing is not None:
             return existing, False, False
 
-    values = _run_values(submission)
+    values = _run_values(submission, environment)
     if requested_run_id:
         values["id"] = requested_run_id
     if not values.get("kind"):
@@ -331,7 +340,7 @@ def _create_or_attach_run(
     return result.run, result.created, reused
 
 
-def _run_values(submission: JobSubmission) -> dict[str, Any]:
+def _run_values(submission: JobSubmission, environment: str = "") -> dict[str, Any]:
     values: dict[str, Any] = {}
     if submission.run:
         values.update(submission.run)
@@ -349,6 +358,9 @@ def _run_values(submission: JobSubmission) -> dict[str, Any]:
     for name in _RUN_FIELDS:
         if name in extra:
             values.setdefault(name, extra[name])
+
+    if not values.get("environment"):
+        values["environment"] = environment.strip()
 
     if not values.get("toolchain_fingerprint"):
         values["toolchain_fingerprint"] = detect_toolchain()
