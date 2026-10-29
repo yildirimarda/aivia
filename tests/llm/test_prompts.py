@@ -163,6 +163,50 @@ def test_the_sandbox_blocks_access_to_python_internals(
     assert "unsafe" in caught.value.message.lower()
 
 
+@pytest.mark.parametrize(
+    ("name", "text", "tag"),
+    [
+        ("include.md", '{% include "../secret.txt" %}\n', "include"),
+        ("extends.md", '{% extends "../base.md" %}\n', "extends"),
+        ("import.md", '{% import "../macros.j2" as m %}\n', "import"),
+        ("from.md", '{% from "../macros.j2" import shared %}\n', "from"),
+    ],
+)
+def test_a_prompt_cannot_read_files_outside_the_prompts_directory(
+    library: PromptLibrary,
+    config_dir: Path,
+    name: str,
+    text: str,
+    tag: str,
+) -> None:
+    write_prompt(config_dir, name, text)
+    (config_dir / "secret.txt").write_text("TOP-SECRET", encoding="utf-8")
+    (config_dir / "base.md").write_text("TOP-SECRET", encoding="utf-8")
+    (config_dir / "macros.j2").write_text("TOP-SECRET", encoding="utf-8")
+
+    with pytest.raises(PromptRenderError) as caught:
+        library.render(name)
+
+    assert caught.value.details["prompt"] == name
+    assert caught.value.details["tag"] == tag
+    assert tag in caught.value.message
+    assert "TOP-SECRET" not in caught.value.message
+
+
+def test_a_prompt_cannot_include_even_a_file_inside_the_prompts_directory(
+    library: PromptLibrary,
+    config_dir: Path,
+) -> None:
+    write_prompt(config_dir, "partial.md", "Shared text.\n")
+    write_prompt(config_dir, "main.md", '{% include "partial.md" %}\n')
+
+    with pytest.raises(PromptRenderError) as caught:
+        library.render("main")
+
+    assert caught.value.details["tag"] == "include"
+    assert "main.md" in caught.value.message
+
+
 def test_a_missing_prompt_lists_the_searched_directories(
     library: PromptLibrary,
 ) -> None:
