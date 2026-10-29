@@ -11,6 +11,7 @@ on a fresh process.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import math
 from collections.abc import Iterable, Mapping
 from dataclasses import fields, is_dataclass
@@ -81,6 +82,27 @@ def _digest(payload: Any) -> str:
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+def _stage_implementation_version(stage: Stage) -> Any:
+    value = getattr(stage, "implementation_version", None)
+    if value is None or value == "":
+        value = getattr(stage, "version", "")
+    return stable_value(value)
+
+
+def _stage_code_fingerprint(stage: Stage) -> str:
+    target = type(stage)
+    try:
+        source = inspect.getsource(target)
+    except (OSError, TypeError):
+        method = target.__dict__.get("run")
+        try:
+            source = inspect.getsource(method) if method is not None else ""
+        except (OSError, TypeError):
+            source = ""
+        source = f"{target.__module__}.{target.__qualname__}:{source}"
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
 def compute_input_hash(
     stage: Stage,
     *,
@@ -92,10 +114,13 @@ def compute_input_hash(
     *upstream* is the ordered list of earlier stage results in this pass. Only
     their name, status, output hash and registered artifact paths contribute;
     their timestamps and costs do not, so a resumed run hashes the same inputs
-    as the original.
+    as the original. The stage's implementation version and source also
+    contribute, so bumping a version or changing its code re-runs the stage.
     """
     payload = {
         "stage": stage.name,
+        "version": _stage_implementation_version(stage),
+        "implementation": _stage_code_fingerprint(stage),
         "options": stable_value(stage.options),
         "config": stable_value(config),
         "declared_artifacts": sorted(stage.artifacts),

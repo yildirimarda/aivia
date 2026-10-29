@@ -203,7 +203,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
 - [x] Verify registered artifact hashes on resume and refuse to skip a stage whose files changed or vanished (tests/core/test_artifact_integrity.py)
 - [x] Route the resume command through the run state machine so every lifecycle change is validated (tests/cli/test_resume.py)
-- [ ] Include a stage implementation version in the input hash so code changes force re-execution (tests/core/test_resume.py)
+- [x] Include a stage implementation version in the input hash so code changes force re-execution (tests/core/test_resume.py)
 - [ ] Hash the contents of declared external input files so editing a source forces a rerun (tests/core/test_resume.py)
 - [ ] Let a format recipe override a stage timeout and retry policy instead of only its class (tests/core/config/test_formats.py)
 - [ ] Remove declared artifacts left by a failed attempt before retrying so a retry cannot inherit stale output (tests/core/test_stage_retry.py)
