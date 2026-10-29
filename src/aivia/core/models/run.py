@@ -320,6 +320,14 @@ class Run(ModelBase):
             "request_key",
         ),
     )
+    idempotency_payload_hash: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "idempotency_payload_hash",
+            "idempotency_hash",
+            "payload_hash",
+        ),
+    )
     toolchain_fingerprint: ToolchainFingerprint = Field(
         default_factory=ToolchainFingerprint,
         validation_alias=AliasChoices(
@@ -427,6 +435,7 @@ class Run(ModelBase):
 
     @field_validator(
         "idempotency_key",
+        "idempotency_payload_hash",
         "profile",
         "format",
         "run_dir",

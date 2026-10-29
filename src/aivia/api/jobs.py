@@ -19,11 +19,13 @@ from sqlalchemy import Engine
 
 from aivia.core.cost import CostAggregator, CostTracker
 from aivia.core.db import (
+    JobRepository,
     RunRepository,
     StageRunRepository,
     create_database_engine,
     upgrade_database,
 )
+from aivia.core.idempotency import IdempotencyConflict, create_run_once
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, Run, RunKind, StageResult
 
@@ -125,12 +127,18 @@ def register_job_routes(
     def submit_job(submission: JobSubmission) -> dict[str, Any]:
         """Queue a job and return its identifier and initial status."""
         target = database()
-        run = _create_or_attach_run(
+        run, _created, reused = _create_or_attach_run(
             target,
             submission,
             requested_run_id=submission.run_id or None,
         )
-        job = _enqueue_job(target, submission, run, job_id=submission.id)
+        job = _enqueue_job(
+            target,
+            submission,
+            run,
+            job_id=submission.id,
+            reuse=reused,
+        )
         payload = _job_payload(job)
         payload["job"] = dict(payload)
         if run is not None:
@@ -147,14 +155,14 @@ def register_job_routes(
         """Create a run and queue the job that will execute it."""
         target = database()
         requested = submission.run_id or submission.id or None
-        run = _create_or_attach_run(
+        run, _created, reused = _create_or_attach_run(
             target,
             submission,
             requested_run_id=requested,
         )
         if run is None:
             raise HTTPException(status_code=422, detail="a run submission needs a kind")
-        job = _enqueue_job(target, submission, run, job_id=None)
+        job = _enqueue_job(target, submission, run, job_id=None, reuse=reused)
         payload = _run_payload(run)
         payload["run"] = dict(payload)
         payload["job_id"] = job.id
@@ -251,19 +259,26 @@ def _create_or_attach_run(
     submission: JobSubmission,
     *,
     requested_run_id: str | None,
-) -> Run | None:
+) -> tuple[Run | None, bool, bool]:
+    """Return the target run, whether this call created it and whether reused."""
     repository = RunRepository(engine)
     if requested_run_id:
         existing = repository.get(requested_run_id)
         if existing is not None:
-            return existing
+            return existing, False, False
 
     values = _run_values(submission)
     if requested_run_id:
         values["id"] = requested_run_id
     if not values.get("kind"):
-        return None
-    return repository.create(Run.model_validate(values))
+        return None, False, False
+    run = Run.model_validate(values)
+    try:
+        result = create_run_once(repository, run)
+    except IdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    reused = not result.created and run.has_idempotency_key
+    return result.run, result.created, reused
 
 
 def _run_values(submission: JobSubmission) -> dict[str, Any]:
@@ -300,7 +315,12 @@ def _enqueue_job(
     run: Run | None,
     *,
     job_id: str | None,
+    reuse: bool = False,
 ) -> Job:
+    if reuse and run is not None:
+        existing = JobRepository(engine).list(run_id=run.id)
+        if existing:
+            return existing[0]
     values: dict[str, Any] = {
         "kind": submission.kind,
         "run_id": run.id if run is not None else submission.run_id,

@@ -353,6 +353,14 @@ class RunRepository(ModelRepository[Run]):
     model = Run
     id_factory = new_run_id
 
+    def find_by_idempotency_key(self, key: str) -> Run | None:
+        """Return the run stored for *key*, or ``None`` when it is unused."""
+        text = key.strip()
+        if not text:
+            return None
+        matches = self.list(idempotency_key=text)
+        return matches[0] if matches else None
+
 
 class StageRunRepository(ModelRepository[StageResult]):
     """Persist the per-stage results belonging to a run."""

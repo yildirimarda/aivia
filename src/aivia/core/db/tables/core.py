@@ -54,6 +54,12 @@ runs = Table(
     Column("kind", String(32), nullable=False, server_default=text("'pipeline'")),
     Column("state", String(32), nullable=False, server_default=text("'queued'")),
     Column("idempotency_key", String(255), nullable=True),
+    Column(
+        "idempotency_payload_hash",
+        String(64),
+        nullable=False,
+        server_default=text("''"),
+    ),
     Column("toolchain_fingerprint", JSON, nullable=False, server_default=text("'{}'")),
     Column("profile", Text, nullable=False, server_default=text("''")),
     Column("format", Text, nullable=False, server_default=text("''")),

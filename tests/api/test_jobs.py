@@ -13,6 +13,7 @@ from aivia.api import create_app
 from aivia.core.config import ApiConfig
 from aivia.core.cost import CostTracker
 from aivia.core.db import (
+    JobRepository,
     RunRepository,
     StageRunRepository,
     create_database_engine,
@@ -252,6 +253,48 @@ def test_run_costs_are_not_found_for_an_unknown_run(client: TestClient) -> None:
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"]
+
+
+def test_a_repeated_idempotency_key_returns_the_existing_run_and_job(
+    client: TestClient,
+    engine: Engine,
+) -> None:
+    submission = {
+        "kind": "run",
+        "format": "short",
+        "idempotency_key": "request-42",
+    }
+
+    first = client.post("/api/v1/runs", json=submission)
+    second = client.post("/api/v1/runs", json=submission)
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    body = second.json()
+    assert body["id"] == first.json()["id"]
+    assert body["job_id"] == first.json()["job_id"]
+    assert len(RunRepository(engine).list()) == 1
+    assert len(JobRepository(engine).list(run_id=body["id"])) == 1
+
+
+def test_a_different_payload_with_the_same_key_conflicts(
+    client: TestClient,
+    engine: Engine,
+) -> None:
+    first = client.post(
+        "/api/v1/runs",
+        json={"kind": "run", "format": "short", "idempotency_key": "request-42"},
+    )
+    assert first.status_code == 202
+
+    response = client.post(
+        "/api/v1/runs",
+        json={"kind": "run", "format": "long", "idempotency_key": "request-42"},
+    )
+
+    assert response.status_code == 409
+    assert "different payload" in response.json()["detail"]
+    assert len(RunRepository(engine).list()) == 1
 
 
 def test_job_routes_work_with_an_in_memory_engine() -> None:
