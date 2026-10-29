@@ -16,12 +16,17 @@ maps an option name to the reference that supplies it.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import Field, field_validator, model_validator
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.errors import ConfigError
+
+if TYPE_CHECKING:
+    from aivia.core.secrets import SecretsLoader
+    from aivia.providers.base import Provider
+    from aivia.providers.registry import ProviderRegistry
 
 __all__ = [
     "ProviderConfig",
@@ -182,6 +187,27 @@ class ProviderConfig(ConfigModel):
         """Whether this provider declares any secret reference."""
         return bool(self.secret_refs)
 
+    def build(
+        self,
+        name: str | None = None,
+        *,
+        registry: ProviderRegistry | None = None,
+        secrets: SecretsLoader | None = None,
+        options: Mapping[str, Any] | None = None,
+        **overrides: Any,
+    ) -> Provider:
+        """Build this entry into a provider instance."""
+        from aivia.providers.provider_factory import build_provider
+
+        return build_provider(
+            self,
+            name,
+            registry=registry,
+            secrets=secrets,
+            options=options,
+            **overrides,
+        )
+
 
 class ProvidersConfig(ConfigModel):
     """Named provider instances keyed by the names router chains use.
@@ -279,3 +305,38 @@ class ProvidersConfig(ConfigModel):
 
     def __len__(self) -> int:
         return len(self.providers)
+
+    def build(
+        self,
+        *,
+        registry: ProviderRegistry | None = None,
+        secrets: SecretsLoader | None = None,
+        options: Mapping[str, Any] | None = None,
+        **overrides: Any,
+    ) -> dict[str, Provider]:
+        """Build every enabled entry into a provider keyed by its name."""
+        from aivia.providers.provider_factory import build_providers
+
+        return build_providers(
+            self,
+            registry=registry,
+            secrets=secrets,
+            options=options,
+            **overrides,
+        )
+
+    def build_providers(
+        self,
+        *,
+        registry: ProviderRegistry | None = None,
+        secrets: SecretsLoader | None = None,
+        options: Mapping[str, Any] | None = None,
+        **overrides: Any,
+    ) -> dict[str, Provider]:
+        """Alias for :meth:`build`."""
+        return self.build(
+            registry=registry,
+            secrets=secrets,
+            options=options,
+            **overrides,
+        )
