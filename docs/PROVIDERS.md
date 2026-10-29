@@ -9,6 +9,7 @@ This matrix is generated from the metadata every registered provider declares. C
 
 | Provider | Capabilities | Rate limit | Quality rank | License | Commercial use |
 | --- | --- | --- | --- | --- | --- |
+| `local` | `storage` | 60/min | - | - | unknown |
 | `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
 | `mock-character-trainer` | `character_trainer` | 60/min | - | - | unknown |
 | `mock-delivery` | `delivery` | 60/min | - | - | unknown |
@@ -33,6 +34,7 @@ This matrix is generated from the metadata every registered provider declares. C
 
 | Provider | Capability | Price |
 | --- | --- | --- |
+| `local` | `storage` | $0 per call |
 | `mock` | `character_trainer` | $0.5 per call |
 | `mock` | `delivery` | $0 per call |
 | `mock` | `embeddings` | $0.00002 per call |
@@ -74,6 +76,7 @@ This matrix is generated from the metadata every registered provider declares. C
 
 | Provider | Capability | Options |
 | --- | --- | --- |
+| `local` | - | - |
 | `mock` | - | - |
 | `mock-character-trainer` | - | - |
 | `mock-delivery` | - | - |
@@ -98,6 +101,7 @@ This matrix is generated from the metadata every registered provider declares. C
 
 | Provider | License | Commercial use | Attribution required | Notes |
 | --- | --- | --- | --- | --- |
+| `local` | - | unknown | no | - |
 | `mock` | - | unknown | no | - |
 | `mock-character-trainer` | - | unknown | no | - |
 | `mock-delivery` | - | unknown | no | - |
