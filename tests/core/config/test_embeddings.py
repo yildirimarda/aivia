@@ -133,9 +133,7 @@ def test_embedding_prices_must_be_finite_and_non_negative(value: float) -> None:
 
 
 def test_embedding_pricing_model_names_are_stripped_and_must_not_be_empty() -> None:
-    config = EmbeddingsConfig.from_mapping(
-        {"pricing": {" model-a ": 1.5}}
-    )
+    config = EmbeddingsConfig.from_mapping({"pricing": {" model-a ": 1.5}})
     assert list(config.pricing) == ["model-a"]
 
     with pytest.raises(ConfigError) as caught:
@@ -150,9 +148,7 @@ def test_embedding_pricing_lookup_lists_the_configured_models() -> None:
     with pytest.raises(ConfigError) as caught:
         config.pricing_for("model-b")
 
-    assert "no pricing configured for embeddings model: model-b" in str(
-        caught.value
-    )
+    assert "no pricing configured for embeddings model: model-b" in str(caught.value)
     assert "model-a" in str(caught.value)
 
 
