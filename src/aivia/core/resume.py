@@ -103,11 +103,61 @@ def _stage_code_fingerprint(stage: Stage) -> str:
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
+def _input_path(declared: str, base_dir: Path | None) -> Path:
+    candidate = Path(declared).expanduser()
+    if candidate.is_absolute():
+        return candidate
+    if base_dir is not None:
+        rooted = Path(base_dir).expanduser() / candidate
+        if rooted.is_file():
+            return rooted
+    return candidate
+
+
+def _input_file_digest(declared: str, base_dir: Path | None) -> dict[str, Any]:
+    path = _input_path(declared, base_dir)
+    row: dict[str, Any] = {
+        "path": declared,
+        "sha256": "",
+        "size_bytes": 0,
+        "missing": True,
+    }
+    try:
+        if not path.is_file():
+            return row
+        digest = hashlib.sha256()
+        size = 0
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+                size += len(chunk)
+    except OSError:
+        return row
+    return {
+        "path": declared,
+        "sha256": digest.hexdigest(),
+        "size_bytes": size,
+        "missing": False,
+    }
+
+
+def _external_inputs(stage: Stage, base_dir: Path | None) -> list[dict[str, Any]]:
+    declared = getattr(stage, "inputs", ())
+    if declared is None:
+        return []
+    if isinstance(declared, (str, Path)):
+        declared = (declared,)
+    rows = [_input_file_digest(str(path), base_dir) for path in declared]
+    rows.sort(key=lambda row: row["path"])
+    return rows
+
+
 def compute_input_hash(
     stage: Stage,
     *,
     config: Any = None,
     upstream: Iterable[StageResult] = (),
+    base_dir: str | Path | None = None,
 ) -> str:
     """Return the stable input digest for *stage*.
 
@@ -116,7 +166,11 @@ def compute_input_hash(
     their timestamps and costs do not, so a resumed run hashes the same inputs
     as the original. The stage's implementation version and source also
     contribute, so bumping a version or changing its code re-runs the stage.
+    The content digest of every declared external input file contributes too,
+    so editing a source file re-runs the stage. Relative input paths are
+    resolved against *base_dir* first and then the current directory.
     """
+    root = Path(base_dir).expanduser() if base_dir is not None else None
     payload = {
         "stage": stage.name,
         "version": _stage_implementation_version(stage),
@@ -124,6 +178,7 @@ def compute_input_hash(
         "options": stable_value(stage.options),
         "config": stable_value(config),
         "declared_artifacts": sorted(stage.artifacts),
+        "declared_inputs": _external_inputs(stage, root),
         "upstream": [
             {
                 "stage": result.stage,

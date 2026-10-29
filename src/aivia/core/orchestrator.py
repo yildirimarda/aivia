@@ -419,6 +419,7 @@ class Orchestrator:
                 stage,
                 config=self.config,
                 upstream=upstream,
+                base_dir=directory.path,
             )
             previous = self._previous_result(
                 run_record.id,

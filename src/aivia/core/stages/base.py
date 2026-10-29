@@ -30,6 +30,9 @@ from aivia.providers.protocols.storage import StorageProvider
 __all__ = [
     "Artifact",
     "ArtifactDeclaration",
+    "ExternalInput",
+    "ExternalInputDeclaration",
+    "InputDeclaration",
     "Stage",
     "StageContext",
 ]
@@ -39,6 +42,22 @@ ArtifactDeclaration = str
 
 Artifact = ArtifactDeclaration
 """Alias for :data:`ArtifactDeclaration`."""
+
+InputDeclaration = str
+"""The path of an external file a stage reads as input."""
+
+ExternalInputDeclaration = InputDeclaration
+"""Alias for :data:`InputDeclaration`."""
+
+ExternalInput = InputDeclaration
+"""Alias for :data:`InputDeclaration`."""
+
+_INPUT_ALIASES = (
+    "input_files",
+    "external_inputs",
+    "external_input_files",
+    "source_files",
+)
 
 
 def _normalise_name(value: str) -> str:
@@ -61,6 +80,37 @@ def _normalise_artifacts(values: Iterable[str]) -> tuple[str, ...]:
         if artifact and artifact not in artifacts:
             artifacts.append(artifact)
     return tuple(artifacts)
+
+
+def _normalise_inputs(
+    values: Iterable[str | Path] | str | Path,
+) -> tuple[str, ...]:
+    if isinstance(values, (str, Path)):
+        values = (values,)
+    inputs: list[str] = []
+    for value in values:
+        if isinstance(value, Path):
+            declared = str(value)
+        elif isinstance(value, str):
+            declared = value.strip()
+        else:
+            raise TypeError("input declarations must be paths or strings")
+        if declared and declared not in inputs:
+            inputs.append(declared)
+    return tuple(inputs)
+
+
+def _class_inputs(stage: Stage) -> tuple[str, ...]:
+    declared = getattr(type(stage), "inputs", ())
+    if declared:
+        return _normalise_inputs(declared)
+    for alias in _INPUT_ALIASES:
+        candidate = getattr(type(stage), alias, None)
+        if isinstance(candidate, (str, Path, list, tuple)):
+            normalised = _normalise_inputs(candidate)
+            if normalised:
+                return normalised
+    return ()
 
 
 @dataclass(slots=True)
@@ -104,10 +154,12 @@ class StageContext:
 class Stage:
     """Base class for one recipe stage.
 
-    A subclass normally sets :attr:`name` and :attr:`artifacts` as class
-    attributes and implements :meth:`run` (and, when it can be priced before a
-    run, :meth:`estimate`). Both may also be supplied to the constructor, which
-    is useful for parameterised stages and for tests.
+    A subclass normally sets :attr:`name`, :attr:`artifacts` and any
+    :attr:`inputs` as class attributes and implements :meth:`run` (and, when it
+    can be priced before a run, :meth:`estimate`). All may also be supplied to
+    the constructor, which is useful for parameterised stages and for tests.
+    ``inputs`` names external files the stage reads; their contents are hashed
+    so editing a source forces a resume to run the stage again.
 
     The base :meth:`run` raises :class:`NotImplementedError`; the base
     :meth:`estimate` reports a free stage so a deterministic step does not have
@@ -117,6 +169,7 @@ class Stage:
     name: str = ""
     version: int | str = 1
     artifacts: tuple[str, ...] = ()
+    inputs: tuple[str, ...] = ()
     timeout_seconds: float | None = None
     max_attempts: int = 1
     retry_delay_seconds: float = 0.0
@@ -132,6 +185,12 @@ class Stage:
         *,
         options: Mapping[str, Any] | None = None,
         artifacts: Iterable[str] | None = None,
+        inputs: Iterable[str | Path] | str | Path | None = None,
+        input_files: Iterable[str | Path] | str | Path | None = None,
+        input_paths: Iterable[str | Path] | str | Path | None = None,
+        external_inputs: Iterable[str | Path] | str | Path | None = None,
+        external_input_files: Iterable[str | Path] | str | Path | None = None,
+        source_files: Iterable[str | Path] | str | Path | None = None,
         version: int | str | None = None,
         implementation_version: int | str | None = None,
         retry_policy: StageRetryPolicy | Mapping[str, Any] | None = None,
@@ -154,6 +213,24 @@ class Stage:
             self.version = version
         declared = self.artifacts if artifacts is None else artifacts
         self.artifacts = _normalise_artifacts(declared)
+        declared_inputs: Iterable[str | Path] | str | Path | None = next(
+            (
+                value
+                for value in (
+                    inputs,
+                    input_files,
+                    input_paths,
+                    external_inputs,
+                    external_input_files,
+                    source_files,
+                )
+                if value is not None
+            ),
+            None,
+        )
+        if declared_inputs is None:
+            declared_inputs = _class_inputs(self)
+        self.inputs = _normalise_inputs(declared_inputs)
         self.retry_policy = self._build_retry_policy(
             retry_policy,
             timeout_seconds=timeout_seconds,
@@ -247,6 +324,60 @@ class Stage:
     def artifact_paths(self) -> tuple[str, ...]:
         """Alias for :attr:`artifacts`."""
         return self.artifacts
+
+    @property
+    def input_declarations(self) -> tuple[str, ...]:
+        """Alias for :attr:`inputs`."""
+        return self.inputs
+
+    @input_declarations.setter
+    def input_declarations(self, value: Iterable[str | Path] | str | Path) -> None:
+        self.inputs = _normalise_inputs(value)
+
+    @property
+    def input_paths(self) -> tuple[str, ...]:
+        """Alias for :attr:`inputs`."""
+        return self.inputs
+
+    @input_paths.setter
+    def input_paths(self, value: Iterable[str | Path] | str | Path) -> None:
+        self.inputs = _normalise_inputs(value)
+
+    @property
+    def input_files(self) -> tuple[str, ...]:
+        """Alias for :attr:`inputs`."""
+        return self.inputs
+
+    @input_files.setter
+    def input_files(self, value: Iterable[str | Path] | str | Path) -> None:
+        self.inputs = _normalise_inputs(value)
+
+    @property
+    def external_inputs(self) -> tuple[str, ...]:
+        """Alias for :attr:`inputs`."""
+        return self.inputs
+
+    @external_inputs.setter
+    def external_inputs(self, value: Iterable[str | Path] | str | Path) -> None:
+        self.inputs = _normalise_inputs(value)
+
+    @property
+    def external_input_files(self) -> tuple[str, ...]:
+        """Alias for :attr:`inputs`."""
+        return self.inputs
+
+    @external_input_files.setter
+    def external_input_files(self, value: Iterable[str | Path] | str | Path) -> None:
+        self.inputs = _normalise_inputs(value)
+
+    @property
+    def source_files(self) -> tuple[str, ...]:
+        """Alias for :attr:`inputs`."""
+        return self.inputs
+
+    @source_files.setter
+    def source_files(self, value: Iterable[str | Path] | str | Path) -> None:
+        self.inputs = _normalise_inputs(value)
 
     def estimate(self, context: StageContext | None = None) -> StageEstimate:
         """Return the pre-run estimate for this stage.
