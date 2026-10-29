@@ -217,6 +217,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Pass jobs.max_queue_depth into CLI and API submissions without creating an orphan run when the queue is full (tests/api/test_jobs.py)
 - [ ] Report toolchain fingerprint drift when a replay runs under a different renderer or font set (tests/cli/test_replay.py)
 - [ ] Pass a validated app config to replay stages while falling back to snapshot values when masking prevents validation (tests/cli/test_replay.py)
+- [ ] Run jobs with the profile recorded on the run so profile overrides apply in the worker (tests/cli/test_worker.py)
+- [ ] Honour jobs.concurrency in the worker command by running that many claim loops under one graceful stop (tests/cli/test_worker.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 
