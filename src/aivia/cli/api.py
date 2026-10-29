@@ -121,7 +121,7 @@ def run_serve(args: argparse.Namespace) -> int:
         return 1
 
     print(f"Serving AIVIA API on http://{api.host}:{api.port}", flush=True)
-    serve(api, jobs=jobs)
+    serve(api, jobs=jobs, environment=getattr(args, "environment", None))
     return 0
 
 

@@ -170,6 +170,67 @@ def test_a_submission_keeps_an_explicit_toolchain_fingerprint(
     assert stored.toolchain_fingerprint == fingerprint
 
 
+def test_a_submission_records_the_api_server_environment(engine: Engine) -> None:
+    client = TestClient(
+        create_app(
+            ApiConfig(require_auth=False),
+            engine,
+            environ={"AIVA_ENV": "staging"},
+        )
+    )
+
+    response = client.post("/api/v1/runs", json={"kind": "run"})
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["environment"] == "staging"
+    stored = RunRepository(engine).get(body["run_id"])
+    assert stored is not None
+    assert stored.environment == "staging"
+
+
+def test_an_explicit_serve_environment_wins_over_the_process_env(
+    engine: Engine,
+) -> None:
+    client = TestClient(
+        create_app(
+            ApiConfig(require_auth=False),
+            engine,
+            environ={"AIVA_ENV": "staging"},
+            environment="prod",
+        )
+    )
+
+    response = client.post("/api/v1/runs", json={"kind": "run"})
+
+    assert response.status_code == 202
+    stored = RunRepository(engine).get(response.json()["run_id"])
+    assert stored is not None
+    assert stored.environment == "prod"
+
+
+def test_a_submission_environment_wins_over_the_server_environment(
+    engine: Engine,
+) -> None:
+    client = TestClient(
+        create_app(
+            ApiConfig(require_auth=False),
+            engine,
+            environ={"AIVA_ENV": "staging"},
+        )
+    )
+
+    response = client.post(
+        "/api/v1/runs",
+        json={"kind": "run", "environment": "  other  "},
+    )
+
+    assert response.status_code == 202
+    stored = RunRepository(engine).get(response.json()["run_id"])
+    assert stored is not None
+    assert stored.environment == "other"
+
+
 def test_a_submission_can_attach_to_an_existing_run(
     client: TestClient,
     engine: Engine,
