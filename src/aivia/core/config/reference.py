@@ -26,12 +26,28 @@ from pydantic import Field, field_validator, model_validator
 from aivia.core.config.base import ConfigModel
 
 __all__ = [
+    "DEFAULT_NGRAM_SIMILARITY_THRESHOLD",
+    "DEFAULT_TEXT_SIMILARITY_THRESHOLD",
+    "DEFAULT_TITLE_SIMILARITY_THRESHOLD",
+    "DEFAULT_VISUAL_SIMILARITY_THRESHOLD",
     "DownloadPolicy",
     "ReferenceConfig",
     "ReferenceDownloadConfig",
     "ReferenceDownloadPolicy",
     "SimilarityLevel",
 ]
+
+DEFAULT_TEXT_SIMILARITY_THRESHOLD = 0.85
+"""Default maximum text similarity to a reference before regeneration."""
+
+DEFAULT_VISUAL_SIMILARITY_THRESHOLD = 0.9
+"""Default maximum visual similarity to a reference before regeneration."""
+
+DEFAULT_TITLE_SIMILARITY_THRESHOLD = 0.85
+"""Default title similarity at or above which two titles are the same story."""
+
+DEFAULT_NGRAM_SIMILARITY_THRESHOLD = 0.6
+"""Default word-trigram overlap at or above which wording is considered reused."""
 
 
 class SimilarityLevel(StrEnum):
@@ -196,8 +212,10 @@ class ReferenceConfig(ConfigModel):
 
     enabled: bool = True
     similarity_level: SimilarityLevel = SimilarityLevel.MEDIUM
-    visual_threshold: float = Field(default=0.9, ge=0, le=1)
-    text_threshold: float = Field(default=0.85, ge=0, le=1)
+    visual_threshold: float = Field(
+        default=DEFAULT_VISUAL_SIMILARITY_THRESHOLD, ge=0, le=1
+    )
+    text_threshold: float = Field(default=DEFAULT_TEXT_SIMILARITY_THRESHOLD, ge=0, le=1)
     max_regenerations: int = Field(default=2, ge=0)
     download_policy: ReferenceDownloadConfig = Field(
         default_factory=ReferenceDownloadConfig
