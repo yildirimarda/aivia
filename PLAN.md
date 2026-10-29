@@ -139,7 +139,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Apply the ratelimit section default rate and burst when a provider does not override them (tests/core/config/test_ratelimit.py)
 - [x] Reject non boolean retry flags so a truthy value cannot silently enable POST retries (tests/core/test_http.py)
 - [x] Resolve the default models_file beside an explicit config file and align the validate warning test (tests/cli/test_config_validate.py)
-- [ ] Build provider instances from provider config options and secret refs so router chains need no hand wiring (tests/core/test_provider_factory.py)
+- [x] Build provider instances from provider config options and secret refs so router chains need no hand wiring (tests/core/test_provider_factory.py)
 
 ## Milestone 5: Cost tracking, budgets and dashboard
 
@@ -695,3 +695,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add a fast test target that excludes slow tests and prove the marker is filtered (tests/test_makefile.py)
 - [ ] Register capability chain sections for media capabilities so estimates and runs share configured chains (tests/core/config/test_capability.py)
 - [ ] Make asset cache hit counting atomic so concurrent lookups do not lose increments (tests/core/test_asset_cache.py)
+- [ ] Build run and estimate routers through the provider factory so configured options and secrets apply (tests/core/test_provider_wiring.py)
