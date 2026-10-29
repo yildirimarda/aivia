@@ -37,6 +37,15 @@ formats:
       - stage: write
     output_type: video
     handler: save
+profiles:
+  late:
+    overrides:
+      pipeline:
+        timezone: Europe/Istanbul
+  early:
+    overrides:
+      pipeline:
+        timezone: UTC
 """,
     )
 
@@ -52,6 +61,7 @@ def enqueue_run(
     capsys: pytest.CaptureFixture[str],
     config: Path,
     database: Path,
+    *args: str,
 ) -> str:
     code = main(
         [
@@ -59,6 +69,7 @@ def enqueue_run(
             "--format",
             "sample",
             "--enqueue",
+            *args,
             "--config",
             str(config),
             "--database",
@@ -97,6 +108,16 @@ class Write(Stage):
 
     async def run(self, context: StageContext) -> StageResult:
         (context.run_dir / "script.md").write_text("script", encoding="utf-8")
+        return StageResult(stage=self.name, artifacts=["script.md"])
+
+
+class WriteTimezone(Stage):
+    name = "write"
+    artifacts = ("script.md",)
+
+    async def run(self, context: StageContext) -> StageResult:
+        timezone = context.config.pipeline.timezone
+        (context.run_dir / "script.md").write_text(timezone, encoding="utf-8")
         return StageResult(stage=self.name, artifacts=["script.md"])
 
 
@@ -229,3 +250,73 @@ def test_worker_fails_an_unsupported_job_kind_without_stopping(
         assert "unsupported job kind" in result.error_message
     finally:
         engine.dispose()
+
+
+def test_worker_applies_the_profile_recorded_on_the_run(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "aivia.cli.run.build_stages",
+        lambda recipe: [WriteTimezone() for _stage in recipe.stages],
+    )
+    run_id = enqueue_run(capsys, config, database, "--profile", "late")
+
+    code, out, err = worker_command(capsys, config, database, "--once")
+
+    assert code == 0
+    assert err == ""
+    assert "1 succeeded" in out
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+        assert run.profile == "late"
+    finally:
+        engine.dispose()
+
+    assert run is not None and run.run_dir
+    script = Path(run.run_dir, "script.md")
+    assert script.read_text(encoding="utf-8") == "Europe/Istanbul"
+
+
+def test_worker_prefers_the_run_profile_over_its_own_profile(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "aivia.cli.run.build_stages",
+        lambda recipe: [WriteTimezone() for _stage in recipe.stages],
+    )
+    run_id = enqueue_run(capsys, config, database, "--profile", "late")
+
+    code, out, err = worker_command(
+        capsys,
+        config,
+        database,
+        "--profile",
+        "early",
+        "--once",
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "1 succeeded" in out
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+    finally:
+        engine.dispose()
+
+    assert run is not None and run.run_dir
+    script = Path(run.run_dir, "script.md")
+    assert script.read_text(encoding="utf-8") == "Europe/Istanbul"
