@@ -168,7 +168,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Treat a provider whose price unit cannot convert to the requested unit as unpriced instead of aborting the chain (tests/core/test_router.py)
 - [x] Release or expire abandoned budget reservations so a failed or cancelled call stops consuming the cap (tests/core/test_budget.py)
 - [x] Exclude replaced estimates from sidecar totals and item counts (tests/core/test_sidecar.py)
-- [ ] Exclude replaced estimates from per asset cost report totals (tests/cli/test_costs_run.py)
+- [x] Exclude replaced estimates from per asset cost report totals (tests/cli/test_costs_run.py)
 - [ ] Serialize budget alert state writes so parallel workers cannot lose emitted keys (tests/core/test_budget_alerts.py)
 - [ ] Treat an incompatible price unit as a missing estimate instead of aborting pre-run estimation (tests/core/test_estimate.py)
 
