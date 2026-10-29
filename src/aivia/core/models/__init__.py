@@ -31,6 +31,10 @@ from aivia.core.models.cost import (
     CostEventRecord,
     CostKind,
 )
+from aivia.core.models.embedding import (
+    EmbeddingCacheEntry,
+    EmbeddingCacheRecord,
+)
 from aivia.core.models.io import (
     ApprovalMode,
     Attestation,
@@ -197,6 +201,8 @@ __all__ = [
     "DialogueLine",
     "DialogueLineModel",
     "DisclosureAttestation",
+    "EmbeddingCacheEntry",
+    "EmbeddingCacheRecord",
     "Face",
     "FaceRegion",
     "Fact",

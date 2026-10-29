@@ -16,6 +16,7 @@ from aivia.providers.embeddings.cache import (
     DEFAULT_CACHE_SIZE,
     CachedEmbeddingProvider,
     EmbeddingCache,
+    EmbeddingCacheEntry,
     EmbeddingCacheKey,
     EmbeddingCacheStats,
 )
@@ -61,6 +62,7 @@ __all__ = [
     "BatchedEmbeddingProvider",
     "CachedEmbeddingProvider",
     "EmbeddingCache",
+    "EmbeddingCacheEntry",
     "EmbeddingCacheKey",
     "EmbeddingCacheStats",
     "EmbeddingCostCalculator",

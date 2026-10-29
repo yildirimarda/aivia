@@ -6,8 +6,11 @@ and :class:`CachedEmbeddingProvider` only sends the inputs that are still
 missing to the wrapped provider. A partially cached batch keeps the caller's
 input order and reports how many vectors came from the cache.
 
-The cache is deliberately in-memory and bounded: it is safe for a worker or a
-test, never touches the database and never decides whether a call is affordable.
+The cache is bounded and can be backed by SQLite. Without an engine it is
+in-memory only, which is safe for a worker or a test and never touches the
+database. With an engine, vectors are written through to the ``embedding_cache``
+table and a fresh cache instance can serve them after a restart. It never
+decides whether a call is affordable.
 """
 
 from __future__ import annotations
@@ -18,7 +21,12 @@ from dataclasses import dataclass
 from threading import RLock
 from typing import cast
 
+from sqlalchemy import Engine
+from sqlalchemy.exc import IntegrityError
+
+from aivia.core.db.repos import EmbeddingCacheRepository
 from aivia.core.models.base import canonical_json
+from aivia.core.models.embedding import EmbeddingCacheEntry
 from aivia.providers.base import Provider, ProviderHealth
 from aivia.providers.protocols.embeddings import (
     Embedding,
@@ -32,6 +40,7 @@ __all__ = [
     "DEFAULT_CACHE_SIZE",
     "CachedEmbeddingProvider",
     "EmbeddingCache",
+    "EmbeddingCacheEntry",
     "EmbeddingCacheKey",
     "EmbeddingCacheStats",
 ]
@@ -102,29 +111,65 @@ class EmbeddingCacheStats:
 
 
 class EmbeddingCache:
-    """A bounded least-recently-used store of embedding vectors."""
+    """A bounded least-recently-used store of embedding vectors.
+
+    Pass an SQLAlchemy :class:`~sqlalchemy.Engine` (positionally or as
+    ``engine=``) or a ready :class:`~aivia.core.db.repos.EmbeddingCacheRepository`
+    to persist vectors in the ``embedding_cache`` table. A cache built on the
+    same database later serves those vectors without calling a provider.
+    """
 
     def __init__(
         self,
-        max_entries: int = DEFAULT_CACHE_SIZE,
+        max_entries: int | Engine = DEFAULT_CACHE_SIZE,
         *,
         no_cache: bool = False,
+        engine: Engine | None = None,
+        repository: EmbeddingCacheRepository | None = None,
     ) -> None:
+        if isinstance(max_entries, Engine):
+            if engine is not None:
+                raise TypeError("engine was given twice")
+            engine = max_entries
+            max_entries = DEFAULT_CACHE_SIZE
         if isinstance(max_entries, bool) or not isinstance(max_entries, int):
             raise TypeError("max_entries must be an integer")
         if max_entries <= 0:
             raise ValueError("max_entries must be positive")
+        if engine is not None and repository is not None:
+            raise TypeError("pass either an engine or a repository, not both")
+        if repository is not None and not isinstance(
+            repository, EmbeddingCacheRepository
+        ):
+            raise TypeError("repository must be an EmbeddingCacheRepository")
         self._max_entries = max_entries
         self.no_cache = bool(no_cache)
         self._entries: OrderedDict[str, list[float]] = OrderedDict()
         self._lock = RLock()
         self._hits = 0
         self._misses = 0
+        self._repository: EmbeddingCacheRepository | None
+        if repository is not None:
+            self._repository = repository
+        elif engine is not None:
+            self._repository = EmbeddingCacheRepository(engine)
+        else:
+            self._repository = None
 
     @property
     def max_entries(self) -> int:
         """The largest number of vectors the cache keeps."""
         return self._max_entries
+
+    @property
+    def repository(self) -> EmbeddingCacheRepository | None:
+        """The persistent store, or ``None`` for an in-memory cache."""
+        return self._repository
+
+    @property
+    def persistent(self) -> bool:
+        """Whether vectors are written through to SQLite."""
+        return self._repository is not None
 
     @property
     def hits(self) -> int:
@@ -138,7 +183,7 @@ class EmbeddingCache:
 
     def __len__(self) -> int:
         with self._lock:
-            return len(self._entries)
+            return self._entry_count()
 
     def stats(self) -> EmbeddingCacheStats:
         """Return a snapshot of the cache counters."""
@@ -146,7 +191,7 @@ class EmbeddingCache:
             return EmbeddingCacheStats(
                 hits=self._hits,
                 misses=self._misses,
-                entries=len(self._entries),
+                entries=self._entry_count(),
             )
 
     def get(self, key: EmbeddingCacheKey) -> list[float] | None:
@@ -157,13 +202,21 @@ class EmbeddingCache:
             if self.no_cache:
                 self._misses += 1
                 return None
-            vector = self._entries.get(key.digest)
-            if vector is None:
-                self._misses += 1
-                return None
-            self._entries.move_to_end(key.digest)
-            self._hits += 1
-            return list(vector)
+            digest = key.digest
+            vector = self._entries.get(digest)
+            if vector is not None:
+                self._entries.move_to_end(digest)
+                self._hits += 1
+                return list(vector)
+            if self._repository is not None:
+                entry = self._repository.get(digest)
+                if entry is not None and entry.vector:
+                    stored = list(entry.vector)
+                    self._remember(digest, stored)
+                    self._hits += 1
+                    return list(stored)
+            self._misses += 1
+            return None
 
     def put(self, key: EmbeddingCacheKey, vector: list[float]) -> None:
         """Store a copy of *vector* under *key*, evicting the oldest entry."""
@@ -174,15 +227,48 @@ class EmbeddingCache:
         with self._lock:
             if self.no_cache:
                 return
-            self._entries[key.digest] = list(vector)
-            self._entries.move_to_end(key.digest)
-            while len(self._entries) > self._max_entries:
-                self._entries.popitem(last=False)
+            self._remember(key.digest, vector)
+            if self._repository is not None:
+                self._persist(key, vector)
 
     def clear(self) -> None:
         """Remove every vector without resetting the counters."""
         with self._lock:
             self._entries.clear()
+            if self._repository is not None:
+                self._repository.clear()
+
+    def _entry_count(self) -> int:
+        if self.no_cache:
+            return 0
+        if self._repository is not None:
+            return self._repository.count()
+        return len(self._entries)
+
+    def _remember(self, digest: str, vector: list[float]) -> None:
+        self._entries[digest] = list(vector)
+        self._entries.move_to_end(digest)
+        while len(self._entries) > self._max_entries:
+            self._entries.popitem(last=False)
+
+    def _persist(self, key: EmbeddingCacheKey, vector: list[float]) -> None:
+        assert self._repository is not None
+        entry = EmbeddingCacheEntry(
+            cache_key=key.digest,
+            provider=key.provider,
+            model=key.model,
+            text=key.text,
+            dimensions=key.dimensions,
+            input_type=key.input_type,
+            normalize=key.normalize,
+            truncate=key.truncate,
+            vector=list(vector),
+        )
+        try:
+            self._repository.create(entry)
+        except IntegrityError:
+            self._repository.update(key.digest, vector=list(vector))
+        self._repository.prune(self._max_entries)
 
 
 def _default_model(provider: Provider) -> str:

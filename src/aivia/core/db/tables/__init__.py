@@ -48,6 +48,10 @@ from aivia.core.db.tables.core import (
     runs,
     stage_runs,
 )
+from aivia.core.db.tables.embeddings import (
+    EMBEDDING_CACHE_PROVIDER_INDEX_NAME,
+    embedding_cache,
+)
 from aivia.core.db.tables.llm import (
     LLM_CACHE_PROVIDER_INDEX_NAME,
     llm_cache,
@@ -98,6 +102,7 @@ __all__ = [
     "DELIVERY_ORDER_INDEX_NAME",
     "DELIVERY_SCHEDULED_FOR_INDEX_NAME",
     "DELIVERY_STATE_INDEX_NAME",
+    "EMBEDDING_CACHE_PROVIDER_INDEX_NAME",
     "FEEDBACK_CREATED_AT_INDEX_NAME",
     "FEEDBACK_SUBJECT_INDEX_NAME",
     "IDEMPOTENCY_INDEX_NAME",
@@ -136,6 +141,7 @@ __all__ = [
     "compositions",
     "cost_events",
     "deliveries",
+    "embedding_cache",
     "feedback",
     "jobs",
     "llm_cache",

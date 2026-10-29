@@ -5,16 +5,22 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import time
 from collections.abc import Callable, Coroutine, Iterator
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy import Engine, inspect
 
 from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.cost import CostTracker
-from aivia.core.db import create_database_engine, upgrade_database
+from aivia.core.db import (
+    EMBEDDING_CACHE_PROVIDER_INDEX_NAME,
+    create_database_engine,
+    upgrade_database,
+)
 from aivia.core.errors import (
     AuthError,
     ConfigError,
@@ -546,6 +552,108 @@ def test_the_cache_can_be_disabled_and_is_bounded() -> None:
 
     assert len(provider.requests) == 2
     assert len(cached.cache) == 0
+
+
+def test_the_cache_survives_a_new_cache_instance(engine: Engine) -> None:
+    provider = FakeEmbeddingProvider()
+    first = CachedEmbeddingProvider(provider, EmbeddingCache(engine=engine))
+    request = EmbeddingRequest(inputs=["a", "b"])
+
+    stored = _run(first.embed(request))
+    restarted = CachedEmbeddingProvider(provider, EmbeddingCache(engine=engine))
+    served = _run(restarted.embed(request))
+
+    assert len(provider.requests) == 1
+    assert served.metadata["cache"] == "hit"
+    assert served.metadata["cache_hits"] == 2
+    assert served.usage.input_tokens == 0
+    assert served.vectors == stored.vectors
+
+
+def test_a_persistent_cache_serves_a_vector_after_a_restart(engine: Engine) -> None:
+    key = EmbeddingCacheKey("fake", MODEL, "hello", 3, "", False, True)
+    first = EmbeddingCache(engine=engine)
+
+    first.put(key, [1.0, 2.0, 3.0])
+
+    restarted = EmbeddingCache(engine=engine)
+    assert restarted.persistent is True
+    assert restarted.repository is not None
+    assert restarted.get(key) == [1.0, 2.0, 3.0]
+    assert len(restarted) == 1
+    assert restarted.stats().entries == 1
+
+
+def test_a_file_database_keeps_vectors_across_an_engine_reopen(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "aivia.db"
+    key = EmbeddingCacheKey("fake", MODEL, "hello", 3)
+    first_engine = create_database_engine(database)
+    upgrade_database(engine=first_engine)
+    try:
+        EmbeddingCache(engine=first_engine).put(key, [4.0, 5.0])
+    finally:
+        first_engine.dispose()
+
+    second_engine = create_database_engine(database)
+    try:
+        assert EmbeddingCache(engine=second_engine).get(key) == [4.0, 5.0]
+    finally:
+        second_engine.dispose()
+
+
+def test_a_persistent_cache_keeps_only_the_most_recent_vectors(engine: Engine) -> None:
+    first = EmbeddingCache(max_entries=2, engine=engine)
+    keys = [EmbeddingCacheKey("fake", MODEL, text, 3) for text in ("a", "b", "c")]
+
+    for index, key in enumerate(keys):
+        first.put(key, [float(index)])
+        time.sleep(0.01)
+
+    restarted = EmbeddingCache(max_entries=2, engine=engine)
+    assert len(restarted) == 2
+    assert restarted.get(keys[0]) is None
+    assert restarted.get(keys[1]) == [1.0]
+    assert restarted.get(keys[2]) == [2.0]
+
+
+def test_a_disabled_persistent_cache_writes_nothing(engine: Engine) -> None:
+    key = EmbeddingCacheKey("fake", MODEL, "hello", 3)
+    disabled = EmbeddingCache(engine=engine, no_cache=True)
+
+    disabled.put(key, [1.0, 2.0, 3.0])
+
+    assert len(disabled) == 0
+    assert EmbeddingCache(engine=engine).get(key) is None
+
+
+def test_the_embedding_cache_table_carries_a_provider_index(
+    engine: Engine,
+) -> None:
+    cache = EmbeddingCache(engine=engine)
+    key = EmbeddingCacheKey("fake", MODEL, "hello", 3)
+    cache.put(key, [1.0, 2.0, 3.0])
+
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("embedding_cache")
+    }
+    indexes = {
+        index["name"] for index in inspect(engine).get_indexes("embedding_cache")
+    }
+    assert {
+        "cache_key",
+        "provider",
+        "model",
+        "text",
+        "dimensions",
+        "input_type",
+        "normalize",
+        "truncate",
+        "vector",
+        "hit_count",
+    } <= columns
+    assert EMBEDDING_CACHE_PROVIDER_INDEX_NAME in indexes
 
 
 def test_the_service_routes_caches_and_records_the_actual_cost(
