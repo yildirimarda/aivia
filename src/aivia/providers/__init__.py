@@ -152,6 +152,11 @@ from aivia.providers.registry import (
     registry,
     resolve_provider,
 )
+from aivia.providers.storage_factory import (
+    build_storage_provider,
+    create_storage_provider,
+    storage_provider_from_config,
+)
 from aivia.providers.storage_local import LocalStorage, LocalStorageProvider
 from aivia.providers.storage_s3 import S3Storage, S3StorageProvider
 
@@ -294,7 +299,9 @@ __all__ = [
     "VideoResult",
     "WordTimestamp",
     "build_mock_providers",
+    "build_storage_provider",
     "console_notifier",
+    "create_storage_provider",
     "default_notifier",
     "mock_provider_for",
     "provider_registry",
@@ -302,4 +309,5 @@ __all__ = [
     "register_provider",
     "registry",
     "resolve_provider",
+    "storage_provider_from_config",
 ]
