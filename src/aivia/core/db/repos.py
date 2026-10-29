@@ -179,13 +179,16 @@ class Repository[RecordT](ABC):
 
     def get(self, *key: Any) -> RecordT | None:
         """Return the record with *key*, or ``None`` when it does not exist."""
-        condition = self._key_condition(key)
         with self.engine.connect() as connection:
-            row = (
-                connection.execute(select(self.table).where(condition))
-                .mappings()
-                .first()
-            )
+            return self.get_in(connection, *key)
+
+    def get_in(self, connection: Connection, *key: Any) -> RecordT | None:
+        """Return the record with *key* inside an existing transaction."""
+        row = (
+            connection.execute(select(self.table).where(self._key_condition(key)))
+            .mappings()
+            .first()
+        )
         return None if row is None else self._to_record(row)
 
     def update(self, *key: Any, **changes: Any) -> RecordT | None:

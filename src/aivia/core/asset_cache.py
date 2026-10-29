@@ -16,11 +16,13 @@ screening, budgets, routing and storage.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import Engine
+from sqlalchemy import Connection, Engine
+from sqlalchemy.exc import IntegrityError
 
 from aivia.core.cost import CostTracker
 from aivia.core.db.repos import AssetCacheRepository, AssetRepository
@@ -36,6 +38,21 @@ __all__ = [
 
 CACHE_HIT_OPERATION = "asset_gen"
 """The default operation recorded for a cache hit."""
+
+
+@contextmanager
+def _write_transaction(engine: Engine) -> Iterator[Connection]:
+    """Open a transaction that takes SQLite's write lock before reading.
+
+    SQLite starts a deferred transaction by default, so two stores could both
+    see a miss and only then try to insert the same cache key. ``BEGIN
+    IMMEDIATE`` serialises stores before the lookup, so the loser re-reads the
+    winner's entry instead of colliding on the primary key.
+    """
+    with engine.begin() as connection:
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        yield connection
 
 
 def _text(value: Any) -> str:
@@ -278,25 +295,40 @@ class AssetCache:
         When *key* is omitted the key is derived from the asset's own provider,
         model and prompt, with no parameters or references. An existing asset
         with the same digest wins, so storing an equivalent result twice does
-        not create a duplicate.
+        not create a duplicate. The asset and its cache entry are written in
+        one transaction, so concurrent identical stores create one entry and
+        the loser returns the winner's asset without leaving an orphan behind.
         """
         cache_key = key or self.key(asset.provider, asset.model, asset.prompt)
-        existing = self.get(cache_key)
-        if existing is not None:
+        try:
+            with _write_transaction(self._cache.engine) as connection:
+                if not self.no_cache:
+                    entry = self._cache.get_in(connection, cache_key.digest)
+                    if entry is not None:
+                        existing = self._assets.get_in(connection, entry.asset_id)
+                        if existing is not None:
+                            return existing
+                stored = self._assets.create_in(connection, asset)
+                self._cache.create_in(
+                    connection,
+                    AssetCacheEntry(
+                        cache_key=cache_key.digest,
+                        asset_id=stored.id,
+                        provider=cache_key.provider,
+                        model=cache_key.model,
+                        prompt_hash=stored.prompt_hash,
+                        parameters=dict(cache_key.parameters),
+                        reference_hashes=list(cache_key.reference_hashes),
+                    ),
+                )
+                return stored
+        except IntegrityError:
+            if self.no_cache:
+                raise
+            existing = self.get(cache_key)
+            if existing is None:
+                raise
             return existing
-        stored = self._assets.create(asset)
-        self._cache.create(
-            AssetCacheEntry(
-                cache_key=cache_key.digest,
-                asset_id=stored.id,
-                provider=cache_key.provider,
-                model=cache_key.model,
-                prompt_hash=stored.prompt_hash,
-                parameters=dict(cache_key.parameters),
-                reference_hashes=list(cache_key.reference_hashes),
-            )
-        )
-        return stored
 
     def put(
         self,
