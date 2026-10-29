@@ -212,7 +212,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a storage provider factory that builds local or s3 from storage config and resolves credentials (tests/providers/test_storage_factory.py)
 - [x] Make asset cache store atomic so concurrent identical requests create one entry (tests/core/test_asset_cache.py)
 - [x] Make providers check honour dry run by checking mock providers without live mode or network (tests/cli/test_providers.py)
-- [ ] Add an api serve command that validates the loopback bind and starts the local server (tests/cli/test_api_serve.py)
+- [x] Add an api serve command that validates the loopback bind and starts the local server (tests/cli/test_api_serve.py)
 - [ ] Add a worker command that claims and runs queued jobs until stopped (tests/cli/test_worker.py)
 - [ ] Pass jobs.max_queue_depth into CLI and API submissions without creating an orphan run when the queue is full (tests/api/test_jobs.py)
 - [ ] Report toolchain fingerprint drift when a replay runs under a different renderer or font set (tests/cli/test_replay.py)
