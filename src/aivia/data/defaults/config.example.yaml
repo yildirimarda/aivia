@@ -133,6 +133,13 @@ llm:
   pricing: {}
   max_repairs: 2
 
+embeddings:
+  chain: []
+  dimensions: null
+  batch_size: 64
+  cache_size: 10000
+  pricing: {}
+
 prompts:
   versions: {}
 

@@ -51,6 +51,12 @@ from aivia.core.config.docs import (
     dump_config_docs,
     render_config_docs,
 )
+from aivia.core.config.embeddings import (
+    DEFAULT_EMBEDDING_BATCH_SIZE,
+    DEFAULT_EMBEDDING_CACHE_SIZE,
+    EmbeddingConfig,
+    EmbeddingsConfig,
+)
 from aivia.core.config.formats import (
     FormatConfig,
     FormatHandler,
@@ -300,6 +306,8 @@ __all__ = [
     "CURRENT_SCHEMA_VERSION",
     "DEFAULT_ABSOLUTE_THRESHOLD_USD",
     "DEFAULT_DRIFT_THRESHOLD",
+    "DEFAULT_EMBEDDING_BATCH_SIZE",
+    "DEFAULT_EMBEDDING_CACHE_SIZE",
     "DEFAULT_ORIGIN",
     "DOCS_FILENAME",
     "DOCS_TITLE",
@@ -358,6 +366,8 @@ __all__ = [
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
     "EmailDeliveryConfig",
+    "EmbeddingConfig",
+    "EmbeddingsConfig",
     "ExamplesConfig",
     "FolderDeliveryConfig",
     "FormatConfig",

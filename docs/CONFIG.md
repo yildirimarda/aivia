@@ -18,6 +18,7 @@ This reference is generated from the registered configuration models, their JSON
 | `circuit` | [CircuitBreakerConfig](#circuit) or null | Failure threshold and cooldown for one provider circuit. |
 | `database` | [DatabaseConfig](#database) or null | The SQLite file inside the user data directory and its busy timeout. ``filename`` is a bare file name; the directory is always the user data directory so a config file cannot point the database at another location. ``busy_timeout_ms`` is how long SQLite waits for a lock before raising ``database is locked``. |
 | `delivery` | [DeliveryConfig](#delivery) or null | Delivery providers, the fallback chain and shared retry settings. Providers may be nested under ``providers`` or written directly as ``folder``, ``link``, ``email`` and ``webhook`` keys. The ``chain`` lists provider names in fallback order and every entry must name a provider. |
+| `embeddings` | [EmbeddingsConfig](#embeddings) or null | Provider chain, vector dimensions, batching, cache size and model prices. ``chain`` is ordered from most to least preferred and rejects duplicates so a typo never silently changes routing. ``pricing`` values are USD per million input tokens; a model without an entry falls back to the provider metadata and the router's pricing overrides. |
 | `formats` | [FormatsConfig](#formats) or null | Named format recipes. Recipes may be written directly under the section (``formats: {narrated_still: {...}}``) or nested under ``formats`` (or ``recipes``); every form validates to the same mapping. |
 | `http` | [HttpClientConfig](#http) or null | Retry, backoff and timeout policy for :class:`~aivia.core.http.HttpClient`. |
 | `jobs` | [JobsConfig](#jobs) or null | Worker concurrency, retry, heartbeat and run-lock settings. ``concurrency`` is the number of workers. ``max_parallel_runs`` is the global limit on runs holding a lock at once across every profile and process, so scheduled runs cannot overlap unsafely. ``retry_delay_seconds`` is the wait after the first failed attempt, multiplied by ``backoff_multiplier`` on each later attempt and capped by ``max_retry_delay_seconds``. |
@@ -154,6 +155,18 @@ Delivery providers, the fallback chain and shared retry settings. Providers may 
 | `notify_on_failure` | boolean | `true` |  |  |
 | `providers` | map of [DeliveryProviderConfig](#deliveryproviderconfig) |  |  |  |
 | `retry_seconds` | integer | `60` | >= 0 |  |
+
+## `embeddings`
+
+Provider chain, vector dimensions, batching, cache size and model prices. ``chain`` is ordered from most to least preferred and rejects duplicates so a typo never silently changes routing. ``pricing`` values are USD per million input tokens; a model without an entry falls back to the provider metadata and the router's pricing overrides.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `batch_size` | integer | `64` | >= 1 |  |
+| `cache_size` | integer | `10000` | >= 1 |  |
+| `chain` | array of string |  |  |  |
+| `dimensions` | integer or null | `null` | >= 1 |  |
+| `pricing` | map of number |  |  |  |
 
 ## `formats`
 
