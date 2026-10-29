@@ -203,6 +203,19 @@ from aivia.providers.storage_local import LocalStorage, LocalStorageProvider
 from aivia.providers.storage_s3 import S3Storage, S3StorageProvider
 
 if TYPE_CHECKING:
+    from aivia.providers.pagefetch import (
+        HttpPageFetchProvider,
+        PageFetch,
+        PageFetcher,
+        ReadableContent,
+        ReadablePageFetchProvider,
+        WebPageFetchProvider,
+        extract_main_text,
+        extract_readable,
+        host_is_allowed,
+        is_blocked_ip,
+        readability_extract,
+    )
     from aivia.providers.search.brave import (
         Brave,
         BraveProvider,
@@ -252,10 +265,56 @@ _LAZY_SERPAPI_PROVIDERS = frozenset(
     {"SerpAPI", "SerpAPIProvider", "SerpAPISearchProvider"}
 )
 _LAZY_TAVILY_PROVIDERS = frozenset({"Tavily", "TavilyProvider", "TavilySearchProvider"})
+_LAZY_PAGE_FETCH_PROVIDERS = frozenset(
+    {
+        "HttpPageFetchProvider",
+        "PageFetch",
+        "PageFetcher",
+        "ReadableContent",
+        "ReadablePageFetchProvider",
+        "WebPageFetchProvider",
+        "extract_main_text",
+        "extract_readable",
+        "host_is_allowed",
+        "is_blocked_ip",
+        "readability_extract",
+    }
+)
 
 
 def __getattr__(name: str) -> Any:
-    """Load a search adapter only when it is explicitly requested."""
+    """Load an adapter only when it is explicitly requested."""
+    if name in _LAZY_PAGE_FETCH_PROVIDERS:
+        from aivia.providers.pagefetch import (
+            HttpPageFetchProvider,
+            PageFetch,
+            PageFetcher,
+            ReadableContent,
+            ReadablePageFetchProvider,
+            WebPageFetchProvider,
+            extract_main_text,
+            extract_readable,
+            host_is_allowed,
+            is_blocked_ip,
+            readability_extract,
+        )
+
+        page_fetch_values = {
+            "HttpPageFetchProvider": HttpPageFetchProvider,
+            "PageFetch": PageFetch,
+            "PageFetcher": PageFetcher,
+            "ReadableContent": ReadableContent,
+            "ReadablePageFetchProvider": ReadablePageFetchProvider,
+            "WebPageFetchProvider": WebPageFetchProvider,
+            "extract_main_text": extract_main_text,
+            "extract_readable": extract_readable,
+            "host_is_allowed": host_is_allowed,
+            "is_blocked_ip": is_blocked_ip,
+            "readability_extract": readability_extract,
+        }
+        page_fetch_value = page_fetch_values[name]
+        globals()[name] = page_fetch_value
+        return page_fetch_value
     if name in _LAZY_BRAVE_PROVIDERS:
         from aivia.providers.search.brave import (
             Brave,
@@ -390,6 +449,7 @@ __all__ = [
     "GeminiLLMProvider",
     "GeminiProvider",
     "HealthStatus",
+    "HttpPageFetchProvider",
     "ImageDetail",
     "ImageEditOperation",
     "ImageEditProvider",
@@ -472,9 +532,11 @@ __all__ = [
     "OpenAICompatibleProvider",
     "OpenAILLMProvider",
     "OpenAIProvider",
+    "PageFetch",
     "PageFetchProvider",
     "PageFetchRequest",
     "PageFetchResponse",
+    "PageFetcher",
     "PageKind",
     "ProtocolModel",
     "Provider",
@@ -483,6 +545,8 @@ __all__ = [
     "ProviderRegistration",
     "ProviderRegistry",
     "ProviderState",
+    "ReadableContent",
+    "ReadablePageFetchProvider",
     "S3Storage",
     "S3StorageProvider",
     "SFXClip",
@@ -526,6 +590,7 @@ __all__ = [
     "VideoRequest",
     "VideoResponse",
     "VideoResult",
+    "WebPageFetchProvider",
     "WordTimestamp",
     "build_mock_providers",
     "build_provider",
@@ -539,11 +604,16 @@ __all__ = [
     "create_providers",
     "create_storage_provider",
     "default_notifier",
+    "extract_main_text",
+    "extract_readable",
+    "host_is_allowed",
+    "is_blocked_ip",
     "mock_provider_for",
     "provider_from_config",
     "provider_instances_from_config",
     "provider_registry",
     "providers_from_config",
+    "readability_extract",
     "register_mock_providers",
     "register_provider",
     "registry",

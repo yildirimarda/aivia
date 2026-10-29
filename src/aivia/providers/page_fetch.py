@@ -1,0 +1,41 @@
+"""Compatibility import for :mod:`aivia.providers.pagefetch`."""
+
+from aivia.providers.pagefetch import (
+    DEFAULT_MAX_BYTES,
+    DEFAULT_MAX_CHARACTERS,
+    DEFAULT_MAX_REDIRECTS,
+    DEFAULT_TIMEOUT_SECONDS,
+    DEFAULT_USER_AGENT,
+    HttpPageFetchProvider,
+    PageFetch,
+    PageFetcher,
+    PageFetchProvider,
+    ReadableContent,
+    ReadablePageFetchProvider,
+    WebPageFetchProvider,
+    extract_main_text,
+    extract_readable,
+    host_is_allowed,
+    is_blocked_ip,
+    readability_extract,
+)
+
+__all__ = [
+    "DEFAULT_MAX_BYTES",
+    "DEFAULT_MAX_CHARACTERS",
+    "DEFAULT_MAX_REDIRECTS",
+    "DEFAULT_TIMEOUT_SECONDS",
+    "DEFAULT_USER_AGENT",
+    "HttpPageFetchProvider",
+    "PageFetch",
+    "PageFetchProvider",
+    "PageFetcher",
+    "ReadableContent",
+    "ReadablePageFetchProvider",
+    "WebPageFetchProvider",
+    "extract_main_text",
+    "extract_readable",
+    "host_is_allowed",
+    "is_blocked_ip",
+    "readability_extract",
+]

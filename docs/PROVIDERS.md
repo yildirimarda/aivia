@@ -13,6 +13,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | `search` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
+| `http` | `page_fetch` | 60/min | - | - | unknown |
 | `llm_native` | `search` | 60/min | - | - | unknown |
 | `llm_search` | `search` | 60/min | - | - | unknown |
 | `local` | `storage` | 60/min | - | - | unknown |
@@ -49,6 +50,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | - | - |
 | `exa` | - | - |
 | `gemini` | - | - |
+| `http` | `page_fetch` | $0 per call |
 | `llm_native` | - | - |
 | `llm_search` | - | - |
 | `local` | `storage` | $0 per call |
@@ -102,6 +104,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | - | - |
 | `exa` | - | - |
 | `gemini` | - | - |
+| `http` | - | - |
 | `llm_native` | - | - |
 | `llm_search` | - | - |
 | `local` | - | - |
@@ -138,6 +141,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | - | unknown | no | - |
 | `exa` | - | unknown | no | - |
 | `gemini` | - | unknown | no | - |
+| `http` | - | unknown | no | - |
 | `llm_native` | - | unknown | no | - |
 | `llm_search` | - | unknown | no | - |
 | `local` | - | unknown | no | - |
