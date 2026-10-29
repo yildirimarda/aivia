@@ -179,7 +179,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 <!-- goal: durable, resumable runs behind a queue, a storage abstraction and a local API -->
 
 - [x] Add the stage base class with name, run, estimate and artifact declarations plus a context exposing run directory, config, cost, router, storage and logger (tests/core/stages/test_base.py)
-- [ ] Manage run directories and register artifacts per stage (tests/core/test_run_dirs.py)
+- [x] Manage run directories and register artifacts per stage (tests/core/test_run_dirs.py)
 - [ ] Implement the run state machine with legal transitions only and persistence on each change (tests/core/test_run_state.py)
 - [ ] Implement the orchestrator that executes recipe stages in order, persists results and stops on failure with stage and error code (tests/core/test_orchestrator.py)
 - [ ] Support resume from failure by skipping succeeded stages whose input hash is unchanged (tests/core/test_resume.py)
@@ -201,6 +201,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Reject or defer submissions above the queue depth limit with a quota error carrying the current depth (tests/core/jobs/test_backpressure.py)
 - [ ] Support an idempotency key on runs, returning the existing run for a repeated key and conflicting on a different payload (tests/cli/test_run_idempotency.py)
 - [ ] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
+- [ ] Verify registered artifact hashes on resume and refuse to skip a stage whose files changed or vanished (tests/core/test_artifact_integrity.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 
