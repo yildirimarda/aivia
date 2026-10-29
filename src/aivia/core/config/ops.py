@@ -13,6 +13,7 @@ to be configured explicitly; the local backend requires none of them.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any, Literal
 
@@ -171,7 +172,10 @@ class JobsConfig(ConfigModel):
 
     ``concurrency`` is the number of workers. ``max_parallel_runs`` is the
     global limit on runs holding a lock at once across every profile and
-    process, so scheduled runs cannot overlap unsafely.
+    process, so scheduled runs cannot overlap unsafely. ``retry_delay_seconds``
+    is the wait after the first failed attempt, multiplied by
+    ``backoff_multiplier`` on each later attempt and capped by
+    ``max_retry_delay_seconds``.
     """
 
     concurrency: int = Field(default=1, ge=1)
@@ -180,6 +184,9 @@ class JobsConfig(ConfigModel):
     heartbeat_seconds: int = Field(default=30, gt=0)
     poll_seconds: int = Field(default=2, gt=0)
     stale_after_seconds: int = Field(default=120, gt=0)
+    retry_delay_seconds: float = Field(default=1.0, ge=0)
+    backoff_multiplier: float = Field(default=2.0, ge=1)
+    max_retry_delay_seconds: float = Field(default=300.0, ge=0)
     max_queue_depth: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
@@ -187,6 +194,21 @@ class JobsConfig(ConfigModel):
         if self.stale_after_seconds <= self.heartbeat_seconds:
             raise ValueError(
                 "jobs.stale_after_seconds must be greater than jobs.heartbeat_seconds"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _finite_retry_delays(self) -> JobsConfig:
+        values = (
+            self.retry_delay_seconds,
+            self.backoff_multiplier,
+            self.max_retry_delay_seconds,
+        )
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError("jobs retry delays must be finite")
+        if self.retry_delay_seconds > self.max_retry_delay_seconds:
+            raise ValueError(
+                "jobs.retry_delay_seconds must not exceed jobs.max_retry_delay_seconds"
             )
         return self
 

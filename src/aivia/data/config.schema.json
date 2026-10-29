@@ -908,8 +908,14 @@
     },
     "JobsConfig": {
       "additionalProperties": false,
-      "description": "Worker concurrency, retry, heartbeat and run-lock settings.\n\n``concurrency`` is the number of workers. ``max_parallel_runs`` is the\nglobal limit on runs holding a lock at once across every profile and\nprocess, so scheduled runs cannot overlap unsafely.",
+      "description": "Worker concurrency, retry, heartbeat and run-lock settings.\n\n``concurrency`` is the number of workers. ``max_parallel_runs`` is the\nglobal limit on runs holding a lock at once across every profile and\nprocess, so scheduled runs cannot overlap unsafely. ``retry_delay_seconds``\nis the wait after the first failed attempt, multiplied by\n``backoff_multiplier`` on each later attempt and capped by\n``max_retry_delay_seconds``.",
       "properties": {
+        "backoff_multiplier": {
+          "default": 2.0,
+          "minimum": 1,
+          "title": "Backoff Multiplier",
+          "type": "number"
+        },
         "concurrency": {
           "default": 1,
           "minimum": 1,
@@ -940,11 +946,23 @@
           "title": "Max Queue Depth",
           "type": "integer"
         },
+        "max_retry_delay_seconds": {
+          "default": 300.0,
+          "minimum": 0,
+          "title": "Max Retry Delay Seconds",
+          "type": "number"
+        },
         "poll_seconds": {
           "default": 2,
           "exclusiveMinimum": 0,
           "title": "Poll Seconds",
           "type": "integer"
+        },
+        "retry_delay_seconds": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Retry Delay Seconds",
+          "type": "number"
         },
         "stale_after_seconds": {
           "default": 120,

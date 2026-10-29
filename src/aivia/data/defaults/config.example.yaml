@@ -212,6 +212,9 @@ jobs:
   heartbeat_seconds: 30
   poll_seconds: 2
   stale_after_seconds: 120
+  retry_delay_seconds: 1
+  backoff_multiplier: 2
+  max_retry_delay_seconds: 300
   max_queue_depth: 0
 
 safety:
