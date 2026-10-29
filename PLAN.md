@@ -281,7 +281,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the fal image provider using the queue pattern with fixtures for success and filtered content (tests/providers/image/test_fal.py)
 - [x] Add the Replicate image provider with a versioned model id from config (tests/providers/image/test_replicate.py)
 - [x] Add the OpenAI image provider handling sizes, counts and both base64 and url responses (tests/providers/image/test_openai_image.py)
-- [ ] Add the Google image provider (tests/providers/image/test_google_image.py)
+- [x] Add the Google image provider (tests/providers/image/test_google_image.py)
 - [ ] Build a declarative HTTP provider engine supporting sync and async APIs with sandboxed body templates, pricing and mock server tests (tests/providers/media/test_http_spec.py)
 - [ ] Add a providers add spec command that prints target hosts and secret names and requires confirmation, rejecting non TLS urls unless loopback and hosts outside the allowlist (tests/cli/test_providers_add_spec.py)
 - [ ] Pass reference images only to providers declaring image input support (tests/providers/image/test_reference_input.py)
