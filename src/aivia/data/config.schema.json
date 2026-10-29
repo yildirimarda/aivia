@@ -2590,23 +2590,186 @@
     },
     "StageConfig": {
       "additionalProperties": false,
-      "description": "One ordered pipeline stage with its recipe-specific options.\n\nA stage may be written as a bare string (``write``) or as a mapping with a\n``stage``/``name``/``id`` field and an optional ``options`` mapping. The\nshorthand ``{write: {mode: facts}}`` is accepted too.",
+      "description": "One ordered pipeline stage with its recipe-specific options.\n\nA stage may be written as a bare string (``write``) or as a mapping with a\n``stage``/``name``/``id`` field and an optional ``options`` mapping. The\nshorthand ``{write: {mode: facts}}`` is accepted too. A mapping may also\noverride the stage class timeout and retry policy through\n``timeout_seconds`` or a ``retry_policy`` mapping.",
       "properties": {
+        "backoff_multiplier": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Backoff Multiplier"
+        },
+        "max_attempts": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Attempts"
+        },
+        "max_retry_delay_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Retry Delay Seconds"
+        },
         "options": {
           "additionalProperties": true,
           "title": "Options",
           "type": "object"
         },
+        "retry_codes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry Codes"
+        },
+        "retry_delay_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry Delay Seconds"
+        },
+        "retry_on_timeout": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry On Timeout"
+        },
+        "retry_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageRetryPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "stage": {
           "minLength": 1,
           "title": "Stage",
           "type": "string"
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Seconds"
         }
       },
       "required": [
         "stage"
       ],
       "title": "StageConfig",
+      "type": "object"
+    },
+    "StageRetryPolicy": {
+      "additionalProperties": false,
+      "description": "How often and how long one stage may run.\n\n``timeout_seconds`` bounds a single attempt; ``None`` disables the\ndeadline. ``max_attempts`` counts the first try, so the default of one\nmeans no retries. ``retry_delay_seconds`` is the wait after a failed\nattempt, multiplied by ``backoff_multiplier`` on each later attempt and\ncapped by ``max_retry_delay_seconds``. ``retry_codes`` adds stable error\ncodes beyond the retryable taxonomy, and ``retry_on_timeout`` controls the\nper-attempt deadline.",
+      "properties": {
+        "backoff_multiplier": {
+          "default": 1.0,
+          "title": "Backoff Multiplier",
+          "type": "number"
+        },
+        "max_attempts": {
+          "default": 1,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "max_retry_delay_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Retry Delay Seconds"
+        },
+        "retry_codes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Retry Codes",
+          "type": "array"
+        },
+        "retry_delay_seconds": {
+          "default": 0.0,
+          "title": "Retry Delay Seconds",
+          "type": "number"
+        },
+        "retry_on_timeout": {
+          "default": true,
+          "title": "Retry On Timeout",
+          "type": "boolean"
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Seconds"
+        }
+      },
+      "title": "StageRetryPolicy",
       "type": "object"
     },
     "StorageConfig": {
