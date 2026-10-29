@@ -1,5 +1,24 @@
 """Media provider helpers and canonical request/result DTOs."""
 
+from aivia.providers.media.adapt import (
+    AdaptationAction,
+    AdaptationError,
+    AdaptationResult,
+    AdaptationWarning,
+    AdaptedRequest,
+    MediaConstraints,
+    ProviderConstraints,
+    UnadaptableRequestError,
+    UnsupportedOptionError,
+    adapt_image_request,
+    adapt_media_request,
+    adapt_music_request,
+    adapt_request,
+    adapt_speech_request,
+    adapt_video_request,
+    clamp_duration,
+    snap_size,
+)
 from aivia.providers.media.async_job import (
     AsyncJob,
     AsyncJobBackend,
@@ -30,6 +49,11 @@ from aivia.providers.media.dto import (
 )
 
 __all__ = [
+    "AdaptationAction",
+    "AdaptationError",
+    "AdaptationResult",
+    "AdaptationWarning",
+    "AdaptedRequest",
     "AsyncJob",
     "AsyncJobBackend",
     "AsyncJobHelper",
@@ -43,6 +67,7 @@ __all__ = [
     "ImageRequest",
     "ImageResult",
     "InMemoryAsyncJobStore",
+    "MediaConstraints",
     "MediaJob",
     "MediaJobHelper",
     "MediaKind",
@@ -50,8 +75,19 @@ __all__ = [
     "MediaResult",
     "MusicRequest",
     "MusicResult",
+    "ProviderConstraints",
     "SpeechRequest",
     "SpeechResult",
+    "UnadaptableRequestError",
+    "UnsupportedOptionError",
     "VideoRequest",
     "VideoResult",
+    "adapt_image_request",
+    "adapt_media_request",
+    "adapt_music_request",
+    "adapt_request",
+    "adapt_speech_request",
+    "adapt_video_request",
+    "clamp_duration",
+    "snap_size",
 ]
