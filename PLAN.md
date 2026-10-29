@@ -182,7 +182,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Manage run directories and register artifacts per stage (tests/core/test_run_dirs.py)
 - [x] Implement the run state machine with legal transitions only and persistence on each change (tests/core/test_run_state.py)
 - [x] Implement the orchestrator that executes recipe stages in order, persists results and stops on failure with stage and error code (tests/core/test_orchestrator.py)
-- [ ] Support resume from failure by skipping succeeded stages whose input hash is unchanged (tests/core/test_resume.py)
+- [x] Support resume from failure by skipping succeeded stages whose input hash is unchanged (tests/core/test_resume.py)
 - [ ] Apply per stage timeout and retry policy with recorded attempts and exhaustion (tests/core/test_stage_retry.py)
 - [ ] Save a masked config snapshot with seeds, provider and model ids and the toolchain fingerprint for replay (tests/core/test_snapshot.py)
 - [ ] Add per profile locks and a global parallel run limit so scheduled runs never overlap unsafely (tests/core/test_locks.py)
@@ -203,6 +203,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
 - [ ] Verify registered artifact hashes on resume and refuse to skip a stage whose files changed or vanished (tests/core/test_artifact_integrity.py)
 - [ ] Route the resume command through the run state machine so every lifecycle change is validated (tests/cli/test_resume.py)
+- [ ] Include a stage implementation version in the input hash so code changes force re-execution (tests/core/test_resume.py)
+- [ ] Hash the contents of declared external input files so editing a source forces a rerun (tests/core/test_resume.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 
