@@ -339,6 +339,43 @@ class RunDirectory:
             records.extend(ArtifactRecord.from_dict(entry) for entry in entries)
         return tuple(records)
 
+    def verify(
+        self,
+        stage: str,
+        records: Iterable[ArtifactRecord] | None = None,
+    ) -> tuple[ArtifactRecord, ...]:
+        """Return registered artifacts that no longer match their manifest entry.
+
+        A record is stale when its file vanished, stopped being a regular file,
+        changed size or hashes to a different digest. *records* overrides the
+        stage's current manifest entries, which lets a resume verify the set a
+        previous stage result actually registered.
+        """
+        name = _normalise_stage(stage)
+        expected = tuple(self.artifacts(name) if records is None else records)
+        stale: list[ArtifactRecord] = []
+        for record in expected:
+            if record.stage != name:
+                stale.append(record)
+                continue
+            try:
+                path = self.resolve(record.path)
+            except ValueError:
+                stale.append(record)
+                continue
+            if not path.is_file():
+                stale.append(record)
+                continue
+            try:
+                if path.stat().st_size != record.size_bytes:
+                    stale.append(record)
+                    continue
+                if _sha256_file(path) != record.sha256:
+                    stale.append(record)
+            except OSError:
+                stale.append(record)
+        return tuple(stale)
+
     def stages(self) -> tuple[str, ...]:
         """Return the stages that have registered artifacts, sorted by name."""
         manifest = self._read_manifest()

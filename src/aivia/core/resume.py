@@ -23,15 +23,18 @@ from pydantic import BaseModel
 
 from aivia.core.models.base import canonical_json
 from aivia.core.models.run import StageResult, StageState
+from aivia.core.run_dirs import RunDirectory
 from aivia.core.stages import Stage
 
 __all__ = [
+    "artifacts_intact",
     "compute_input_hash",
     "compute_output_hash",
     "input_hash",
     "output_hash",
     "should_skip_stage",
     "stable_value",
+    "verify_artifacts",
 ]
 
 
@@ -142,15 +145,68 @@ output_hash = compute_output_hash
 """Alias for :func:`compute_output_hash`."""
 
 
-def should_skip_stage(previous: StageResult | None, input_hash: str) -> bool:
+def artifacts_intact(
+    previous: StageResult | None,
+    directory: RunDirectory,
+    *,
+    superseded: Iterable[str] = (),
+) -> bool:
+    """Whether the artifacts registered for *previous* still match on disk.
+
+    The set of paths recorded on the previous result must match the stage's
+    manifest entries, and every file must still exist with the registered size
+    and digest. A result without artifacts is intact only when nothing was
+    registered for its stage, so a stage whose files vanished or whose manifest
+    was lost is never skipped.
+
+    *superseded* lists paths a later stage registered again. Those files belong
+    to the later stage now, so their current contents are not evidence that
+    this stage's output changed.
+    """
+    if previous is None:
+        return False
+    ignored = {str(path) for path in superseded}
+    registered = directory.artifacts(previous.stage)
+    expected_paths = {
+        str(path) for path in previous.artifacts if str(path) not in ignored
+    }
+    registered_paths = {
+        record.path for record in registered if record.path not in ignored
+    }
+    if expected_paths != registered_paths:
+        return False
+    if not expected_paths:
+        return True
+    owned = tuple(record for record in registered if record.path not in ignored)
+    return not directory.verify(previous.stage, owned)
+
+
+verify_artifacts = artifacts_intact
+"""Alias for :func:`artifacts_intact`."""
+
+
+def should_skip_stage(
+    previous: StageResult | None,
+    input_hash: str,
+    *,
+    directory: RunDirectory | None = None,
+    superseded: Iterable[str] = (),
+) -> bool:
     """Whether *previous* can stand in for a stage with *input_hash*.
 
     Only a succeeded result with a recorded hash is reusable. A failed,
-    skipped, paused or legacy result without a hash is executed again.
+    skipped, paused or legacy result without a hash is executed again. When
+    *directory* is given its registered artifact hashes are also verified, so a
+    changed or vanished output forces the stage to run again.
     """
-    return (
+    if not (
         previous is not None
         and previous.status is StageState.SUCCEEDED
         and bool(previous.input_hash)
         and previous.input_hash == input_hash
+    ):
+        return False
+    return not (
+        directory is not None
+        and not artifacts_intact(previous, directory, superseded=superseded)
     )

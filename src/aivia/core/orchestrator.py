@@ -425,7 +425,18 @@ class Orchestrator:
                 stage.name,
                 previous_results,
             )
-            if should_skip_stage(previous, expected_input):
+            superseded = self._superseded_artifacts(
+                run_record.id,
+                recipe,
+                index,
+                previous_results,
+            )
+            if should_skip_stage(
+                previous,
+                expected_input,
+                directory=directory,
+                superseded=superseded,
+            ):
                 skipped = self._skipped_result(cast(StageResult, previous), index)
                 results.append(skipped)
                 upstream.append(cast(StageResult, previous))
@@ -683,6 +694,21 @@ class Orchestrator:
         if found is not None:
             cache[stage] = found
         return found
+
+    def _superseded_artifacts(
+        self,
+        run_id: str,
+        recipe: list[Stage],
+        index: int,
+        cache: dict[str, StageResult],
+    ) -> set[str]:
+        """Paths a later stage in this recipe successfully registered again."""
+        paths: set[str] = set()
+        for later in recipe[index + 1 :]:
+            result = self._previous_result(run_id, later.name, cache)
+            if result is not None and result.status is StageState.SUCCEEDED:
+                paths.update(str(path) for path in result.artifacts)
+        return paths
 
     def _skipped_result(self, previous: StageResult, index: int) -> StageResult:
         metadata = dict(previous.metadata)
