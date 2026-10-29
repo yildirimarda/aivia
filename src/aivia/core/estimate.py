@@ -36,6 +36,7 @@ from enum import StrEnum
 from typing import Any
 
 from aivia.core.config.capability import CapabilityChainConfig, CapabilityStrategy
+from aivia.core.config.embeddings import EmbeddingsConfig
 from aivia.core.config.formats import FormatRecipeConfig, StageConfig
 from aivia.core.errors import ConfigError, ProviderExhaustedError
 from aivia.core.models.provider import ProviderMeta
@@ -363,14 +364,30 @@ class Estimator:
         overrides: Mapping[str, float] | None = None,
         pricing_version: str = "",
         config: CapabilityChainConfig
-        | Mapping[str, CapabilityChainConfig]
+        | Mapping[str, CapabilityChainConfig | EmbeddingsConfig]
+        | EmbeddingsConfig
         | None = None,
         configs: Mapping[str, CapabilityChainConfig] | None = None,
+        embeddings: EmbeddingsConfig | Mapping[str, Any] | None = None,
         strategy: CapabilityStrategy | str | None = None,
         chain: Iterable[str] | None = None,
         weights: Mapping[str, float] | None = None,
         seed: int | None = None,
     ) -> None:
+        if isinstance(config, EmbeddingsConfig):
+            if embeddings is not None:
+                raise TypeError("pass either config or embeddings, not both")
+            embeddings = config
+            config = None
+        if embeddings is not None:
+            section = (
+                embeddings
+                if isinstance(embeddings, EmbeddingsConfig)
+                else EmbeddingsConfig.from_mapping(embeddings)
+            )
+            merged = dict(configs or {})
+            merged.setdefault("embeddings", section.to_capability_config())
+            configs = merged
         entries: dict[str, ProviderMeta] = {}
         for name, metadata in (providers or {}).items():
             if not isinstance(name, str) or not name.strip():
@@ -406,7 +423,10 @@ class Estimator:
 
     def _resolve_configs(
         self,
-        config: CapabilityChainConfig | Mapping[str, CapabilityChainConfig] | None,
+        config: CapabilityChainConfig
+        | Mapping[str, CapabilityChainConfig | EmbeddingsConfig]
+        | EmbeddingsConfig
+        | None,
         configs: Mapping[str, CapabilityChainConfig] | None,
         *,
         strategy: CapabilityStrategy | str | None,
@@ -463,9 +483,11 @@ class Estimator:
     @staticmethod
     def _add_configs(
         target: dict[str, CapabilityChainConfig],
-        entries: Mapping[str, CapabilityChainConfig],
+        entries: Mapping[str, CapabilityChainConfig | EmbeddingsConfig],
     ) -> None:
         for capability, entry in entries.items():
+            if isinstance(entry, EmbeddingsConfig):
+                entry = entry.to_capability_config()
             if not isinstance(capability, str) or not capability.strip():
                 raise ConfigError("capability names must be non-empty strings")
             if not isinstance(entry, CapabilityChainConfig):
@@ -632,8 +654,12 @@ def estimate_recipe(
     *,
     overrides: Mapping[str, float] | None = None,
     pricing_version: str = "",
-    config: CapabilityChainConfig | Mapping[str, CapabilityChainConfig] | None = None,
+    config: CapabilityChainConfig
+    | Mapping[str, CapabilityChainConfig | EmbeddingsConfig]
+    | EmbeddingsConfig
+    | None = None,
     configs: Mapping[str, CapabilityChainConfig] | None = None,
+    embeddings: EmbeddingsConfig | Mapping[str, Any] | None = None,
     strategy: CapabilityStrategy | str | None = None,
     chain: Iterable[str] | None = None,
     weights: Mapping[str, float] | None = None,
@@ -646,6 +672,7 @@ def estimate_recipe(
         pricing_version=pricing_version,
         config=config,
         configs=configs,
+        embeddings=embeddings,
         strategy=strategy,
         chain=chain,
         weights=weights,

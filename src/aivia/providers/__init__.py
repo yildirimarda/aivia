@@ -223,6 +223,8 @@ if TYPE_CHECKING:
         Voyage,
         VoyageEmbeddingProvider,
         VoyageEmbeddings,
+        embedding_service_from_config,
+        service_from_config,
     )
     from aivia.providers.pagefetch import (
         HttpPageFetchProvider,
@@ -280,6 +282,8 @@ _LAZY_EMBEDDING_PROVIDERS = frozenset(
         "EmbeddingOutcome",
         "EmbeddingService",
         "EmbeddingTokenCost",
+        "embedding_service_from_config",
+        "service_from_config",
         "LocalEmbeddingProvider",
         "LocalEmbeddings",
         "LocalEmbeddingsProvider",
@@ -687,6 +691,7 @@ __all__ = [
     "default_notifier",
     "embed",
     "embedding_cost_event",
+    "embedding_service_from_config",
     "extract_main_text",
     "extract_readable",
     "host_is_allowed",
@@ -702,6 +707,7 @@ __all__ = [
     "register_provider",
     "registry",
     "resolve_provider",
+    "service_from_config",
     "storage_provider_from_config",
     "token_cost_for_usage",
 ]
