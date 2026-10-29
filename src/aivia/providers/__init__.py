@@ -152,6 +152,7 @@ from aivia.providers.registry import (
     registry,
     resolve_provider,
 )
+from aivia.providers.storage_local import LocalStorage, LocalStorageProvider
 
 __all__ = [
     "CAPABILITY_EMBEDDINGS",
@@ -196,6 +197,8 @@ __all__ = [
     "LLMRequest",
     "LLMResponse",
     "LLMUsage",
+    "LocalStorage",
+    "LocalStorageProvider",
     "MediaDimensions",
     "MediaInput",
     "MessageRole",
