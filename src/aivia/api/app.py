@@ -8,12 +8,15 @@ rate limits before routing, and exposes its OpenAPI document for local clients.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.openapi.utils import get_openapi
+from sqlalchemy import Engine
 
 from aivia import __version__
+from aivia.api.jobs import register_job_routes
 from aivia.api.limits import (
     ApiKeyAuthMiddleware,
     BodySizeLimitMiddleware,
@@ -36,15 +39,20 @@ API_DESCRIPTION = (
 
 def create_app(
     config: ApiConfig | None = None,
+    engine: Engine | None = None,
     *,
     environ: Mapping[str, str] | None = None,
     secrets: SecretsLoader | None = None,
+    database_path: str | Path | None = None,
+    data_dir: str | Path | None = None,
 ) -> FastAPI:
     """Build the local API application from *config*.
 
     When *config* is omitted the layered configuration is resolved. The
     returned app validates the bind host before it can be served, so a
     non-loopback address fails here rather than exposing the API by accident.
+    Pass an *engine* to share an existing database, or let the job routes open
+    the configured local database lazily on their first request.
     """
     api = _resolve_api_config(config, environ)
     _validate_api_config(api)
@@ -63,6 +71,8 @@ def create_app(
         openapi_url="/openapi.json",
     )
     app.state.api_config = api
+    app.state.engine = engine
+    app.state.api_engine_owned = False
 
     app.add_middleware(
         BodySizeLimitMiddleware,
@@ -105,6 +115,14 @@ def create_app(
             "size": len(data),
             "content_type": file.content_type,
         }
+
+    register_job_routes(
+        app,
+        engine=engine,
+        environ=environ,
+        database_path=database_path,
+        data_dir=data_dir,
+    )
 
     if api.require_auth:
 
