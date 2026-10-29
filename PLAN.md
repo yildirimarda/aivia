@@ -205,7 +205,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Route the resume command through the run state machine so every lifecycle change is validated (tests/cli/test_resume.py)
 - [x] Include a stage implementation version in the input hash so code changes force re-execution (tests/core/test_resume.py)
 - [x] Hash the contents of declared external input files so editing a source forces a rerun (tests/core/test_resume.py)
-- [ ] Let a format recipe override a stage timeout and retry policy instead of only its class (tests/core/config/test_formats.py)
+- [x] Let a format recipe override a stage timeout and retry policy instead of only its class (tests/core/config/test_formats.py)
 - [ ] Remove declared artifacts left by a failed attempt before retrying so a retry cannot inherit stale output (tests/core/test_stage_retry.py)
 - [ ] Cancel an in-flight handler when its heartbeat detects a recovered claim (tests/core/jobs/test_worker.py)
 - [ ] Wire SIGTERM and SIGINT to worker stop so shutdown drains the current job (tests/cli/test_worker_shutdown.py)
