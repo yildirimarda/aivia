@@ -180,7 +180,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 - [x] Add the stage base class with name, run, estimate and artifact declarations plus a context exposing run directory, config, cost, router, storage and logger (tests/core/stages/test_base.py)
 - [x] Manage run directories and register artifacts per stage (tests/core/test_run_dirs.py)
-- [ ] Implement the run state machine with legal transitions only and persistence on each change (tests/core/test_run_state.py)
+- [x] Implement the run state machine with legal transitions only and persistence on each change (tests/core/test_run_state.py)
 - [ ] Implement the orchestrator that executes recipe stages in order, persists results and stops on failure with stage and error code (tests/core/test_orchestrator.py)
 - [ ] Support resume from failure by skipping succeeded stages whose input hash is unchanged (tests/core/test_resume.py)
 - [ ] Apply per stage timeout and retry policy with recorded attempts and exhaustion (tests/core/test_stage_retry.py)
@@ -202,6 +202,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Support an idempotency key on runs, returning the existing run for a repeated key and conflicting on a different payload (tests/cli/test_run_idempotency.py)
 - [ ] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
 - [ ] Verify registered artifact hashes on resume and refuse to skip a stage whose files changed or vanished (tests/core/test_artifact_integrity.py)
+- [ ] Route the resume command through the run state machine so every lifecycle change is validated (tests/cli/test_resume.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 
