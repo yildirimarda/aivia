@@ -208,12 +208,12 @@ def _coerce_state_file(
     return Path(value).expanduser()
 
 
-def _load_emitted(path: Path) -> set[tuple[str, float]]:
-    """Read the emitted tokens from *path*, or return none when it is absent."""
+def _load_state(path: Path) -> tuple[set[tuple[str, float]], str | None]:
+    """Read the emitted tokens and latest period from *path*."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return set()
+        return set(), None
     except OSError as exc:
         raise ConfigError(
             f"cannot read budget alert state: {exc}",
@@ -261,13 +261,25 @@ def _load_emitted(path: Path) -> set[tuple[str, float]]:
             label="state threshold",
         )
         emitted.add((period_key, threshold))
-    return emitted
+    latest = payload.get("latest_period_key")
+    if latest is not None and (not isinstance(latest, str) or not latest):
+        raise ConfigError(
+            "budget alert state latest_period_key must be a non-empty string",
+            details={"state_file": str(path), "latest_period_key": latest},
+        )
+    return emitted, latest
 
 
-def _write_emitted(path: Path, emitted: Iterable[tuple[str, float]]) -> None:
+def _write_emitted(
+    path: Path,
+    emitted: Iterable[tuple[str, float]],
+    *,
+    latest_period_key: str | None = None,
+) -> None:
     """Atomically replace *path* with the emitted tokens as canonical JSON."""
     payload = {
         "version": _STATE_VERSION,
+        "latest_period_key": latest_period_key,
         "emitted": [
             {"period_key": period_key, "threshold_usd": threshold}
             for period_key, threshold in sorted(emitted)
@@ -404,6 +416,8 @@ class BudgetAlertTracker:
     state file the tracker is purely in-memory. Writes are serialised across
     processes with a sibling lock file, and every check merges what other workers
     have written, so parallel workers cannot lose each other's emitted keys.
+    A check also drops tokens from earlier periods, so the state file only ever
+    holds the current period's keys and stays bounded.
     """
 
     def __init__(
@@ -426,9 +440,12 @@ class BudgetAlertTracker:
             state_file if state_file is not None else path
         )
         self._lock = RLock()
-        self._emitted: set[tuple[str, float]] = (
-            _load_emitted(self._state_file) if self._state_file is not None else set()
-        )
+        self._latest_period_key: str | None = None
+        self._emitted: set[tuple[str, float]] = set()
+        if self._state_file is not None:
+            emitted, latest = _load_state(self._state_file)
+            self._emitted.update(emitted)
+            self._latest_period_key = latest
 
     @classmethod
     def persistent(
@@ -484,15 +501,21 @@ class BudgetAlertTracker:
         with self._lock:
             if self._state_file is None:
                 self._emitted.clear()
+                self._latest_period_key = None
                 return
             with _state_lock(self._state_file):
                 self._emitted.clear()
+                self._latest_period_key = None
                 self._persist()
 
     def _persist(self) -> None:
         """Write the emitted tokens when a state file is configured."""
         if self._state_file is not None:
-            _write_emitted(self._state_file, self._emitted)
+            _write_emitted(
+                self._state_file,
+                self._emitted,
+                latest_period_key=self._latest_period_key,
+            )
 
     def period_window(
         self,
@@ -511,8 +534,18 @@ class BudgetAlertTracker:
         mark: bool,
     ) -> tuple[BudgetAlert, ...]:
         """Compute due alerts while the caller holds every required lock."""
+        if self._latest_period_key is not None and key < self._latest_period_key:
+            return ()
         due: list[BudgetAlert] = []
         changed = False
+        if mark:
+            stale = {token for token in self._emitted if token[0] != key}
+            if stale:
+                self._emitted.difference_update(stale)
+                changed = True
+            if self._latest_period_key != key:
+                self._latest_period_key = key
+                changed = True
         for threshold in self._thresholds:
             token = (key, threshold)
             if token in self._emitted or not _reaches(spent, threshold):
@@ -547,7 +580,12 @@ class BudgetAlertTracker:
             if self._state_file is None:
                 return self._due_locked(spent, start, end, key, mark=mark)
             with _state_lock(self._state_file):
-                self._emitted.update(_load_emitted(self._state_file))
+                emitted, latest = _load_state(self._state_file)
+                self._emitted.update(emitted)
+                if latest is not None and (
+                    self._latest_period_key is None or latest > self._latest_period_key
+                ):
+                    self._latest_period_key = latest
                 return self._due_locked(spent, start, end, key, mark=mark)
 
     def peek(
