@@ -1,0 +1,106 @@
+{
+  "provider": "gemini",
+  "case": "tool_call",
+  "captured_at": "2026-10-29T00:00:00+00:00",
+  "input": {
+    "messages": [{"role": "user", "content": "What is the tide in Lisbon?"}],
+    "model": "gemini-test",
+    "max_tokens": 128,
+    "tools": [
+      {
+        "name": "lookup_tide",
+        "description": "Look up the tide for a place",
+        "parameters": {
+          "type": "object",
+          "properties": {"place": {"type": "string"}},
+          "required": ["place"]
+        }
+      }
+    ],
+    "tool_choice": "required"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent",
+    "headers": {
+      "accept": "application/json",
+      "content-type": "application/json",
+      "x-goog-api-key": "test-key"
+    },
+    "body": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [{"text": "What is the tide in Lisbon?"}]
+        }
+      ],
+      "generationConfig": {"maxOutputTokens": 128},
+      "tools": [
+        {
+          "functionDeclarations": [
+            {
+              "name": "lookup_tide",
+              "description": "Look up the tide for a place",
+              "parameters": {
+                "type": "object",
+                "properties": {"place": {"type": "string"}},
+                "required": ["place"]
+              }
+            }
+          ]
+        }
+      ],
+      "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {"content-type": "application/json"},
+    "body": {
+      "candidates": [
+        {
+          "content": {
+            "role": "model",
+            "parts": [
+              {
+                "functionCall": {
+                  "id": "call_01",
+                  "name": "lookup_tide",
+                  "args": {"place": "Lisbon"}
+                }
+              }
+            ]
+          },
+          "finishReason": "STOP"
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 20,
+        "candidatesTokenCount": 8,
+        "totalTokenCount": 28
+      },
+      "modelVersion": "gemini-test",
+      "responseId": "resp_tool"
+    }
+  },
+  "expected": {
+    "content": "",
+    "model": "gemini-test",
+    "provider": "gemini",
+    "usage": {
+      "input_tokens": 20,
+      "output_tokens": 8,
+      "cached_input_tokens": 0
+    },
+    "finish_reason": "stop",
+    "tool_calls": [
+      {
+        "id": "call_01",
+        "name": "lookup_tide",
+        "arguments": {"place": "Lisbon"}
+      }
+    ],
+    "request_id": "resp_tool",
+    "metadata": {"finish_reason": "STOP"}
+  }
+}
