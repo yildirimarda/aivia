@@ -237,7 +237,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the Gemini LLM provider mapping safety blocks to a content policy error (tests/providers/llm/test_gemini.py)
 - [x] Add a generic OpenAI compatible provider configured by base url, key reference and model, verified against a local mock server (tests/providers/llm/test_openai_compat.py)
 - [x] Convert reported token usage into cost events using configured per million input and output prices (tests/providers/llm/test_llm_cost.py)
-- [ ] Add a structured output helper that validates responses against a pydantic schema and records tokens and cost (tests/llm/test_structured.py)
+- [x] Add a structured output helper that validates responses against a pydantic schema and records tokens and cost (tests/llm/test_structured.py)
 - [ ] Add a repair loop that re prompts with the validation error up to the configured limit then raises a structured output error (tests/llm/test_repair.py)
 - [ ] Support image input for vision capable providers and filter out models without vision when a task needs it (tests/llm/test_vision.py)
 - [ ] Resolve models by role using the config enum as the single source of truth, with unknown roles listing the allowed values (tests/llm/test_roles.py)
