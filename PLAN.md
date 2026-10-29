@@ -197,7 +197,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the local API skeleton with health, OpenAPI, localhost binding, API key auth, rate limiting, body limits and upload sanitization (tests/api/test_skeleton.py)
 - [x] Expose generic job and run endpoints for submission, status, run details and run costs (tests/api/test_jobs.py)
 - [x] Add a run command that creates a run, executes or enqueues it and prints the id and estimate, plus a run show view of stages, cost and artifacts (tests/cli/test_run.py)
-- [ ] Add an end to end smoke test producing a run directory, stage records, cost events, snapshot and sidecars for every run kind (tests/e2e/test_smoke_all_kinds.py)
+- [x] Add an end to end smoke test producing a run directory, stage records, cost events, snapshot and sidecars for every run kind (tests/e2e/test_smoke_all_kinds.py)
 - [ ] Reject or defer submissions above the queue depth limit with a quota error carrying the current depth (tests/core/jobs/test_backpressure.py)
 - [ ] Support an idempotency key on runs, returning the existing run for a repeated key and conflicting on a different payload (tests/cli/test_run_idempotency.py)
 - [ ] Add a replay command that re executes a stored run from its snapshot and seeds, diffing artifacts and reporting drift without overwriting the original (tests/cli/test_replay.py)
