@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from collections.abc import Sequence
 
 from aivia import __version__
+from aivia.cli.globals import (
+    add_global_options,
+    apply_global_options,
+    split_global_options,
+)
 from aivia.cli.registry import Command, CommandRegistry
 from aivia.cli.registry import registry as default_registry
 from aivia.core.bootstrap import bootstrap
+from aivia.core.logging import configure_logging
 
 __all__ = ["build_parser", "main", "version_string"]
 
@@ -33,6 +40,7 @@ def build_parser(registry: CommandRegistry | None = None) -> argparse.ArgumentPa
         version=version_string(),
         help="show the installed version and exit",
     )
+    add_global_options(parser)
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
     active.add_to(subparsers)
     return parser
@@ -64,10 +72,16 @@ def main(
     """Run the root CLI and return its exit code."""
     active = registry if registry is not None else default_registry
     parser = build_parser(active)
+    arguments = list(sys.argv[1:] if argv is None else argv)
     try:
-        args = parser.parse_args(argv)
+        provided, remaining = split_global_options(arguments)
+        args = parser.parse_args(remaining)
     except SystemExit as exc:
         return int(exc.code or 0)
+
+    apply_global_options(args, provided)
+    if args.verbose:
+        configure_logging(logging.DEBUG)
 
     if args.command is None:
         print(version_string())
