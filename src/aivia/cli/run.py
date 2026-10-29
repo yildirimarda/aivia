@@ -1,30 +1,51 @@
-"""``aivia run``: preview the cost of a format recipe before running it."""
+"""``aivia run``: create, execute or enqueue a format recipe and inspect it."""
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
+from pathlib import Path
+
+from sqlalchemy import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 from aivia.cli.confirm import confirm_spend, confirmation_required
 from aivia.cli.registry import register_command
+from aivia.core import paths
 from aivia.core.config.budget import BudgetConfig
 from aivia.core.config.capability import CapabilityChainConfig
+from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_app_config
+from aivia.core.cost import CostTracker
+from aivia.core.db import (
+    RunRepository,
+    StageRunRepository,
+    create_database_engine,
+    upgrade_database,
+)
 from aivia.core.dry_run import apply_dry_run
 from aivia.core.errors import ConfigError
 from aivia.core.estimate import Estimator, RecipeEstimate, render_estimate
+from aivia.core.jobs import JobQueue
+from aivia.core.models import Job, Run, RunKind, RunState, StageResult
 from aivia.core.models.provider import ProviderMeta
+from aivia.core.orchestrator import OrchestrationResult, Orchestrator
+from aivia.core.run_dirs import RunDirectories, RunDirectory
+from aivia.core.stages import Stage
 from aivia.providers import docs as provider_docs
 from aivia.providers.registry import registry as provider_registry
 
 __all__ = [
+    "build_stages",
     "capability_configs",
     "configure",
     "provider_metadata",
     "run_run",
+    "run_show",
 ]
 
 
@@ -55,8 +76,17 @@ def _configure_resolution(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def configure(parser: argparse.ArgumentParser) -> None:
-    """Add the run command's options."""
+def _configure_database(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--database",
+        "--db",
+        dest="database",
+        metavar="PATH",
+        help="database file to use instead of the one in the user data directory",
+    )
+
+
+def _configure_run_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--format",
         dest="format_name",
@@ -68,13 +98,61 @@ def configure(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="print the stage cost estimate and exit without running anything",
     )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--enqueue",
+        action="store_true",
+        help="queue the run for a worker instead of executing it now",
+    )
+    mode.add_argument(
+        "--execute",
+        "--sync",
+        "--wait",
+        "--now",
+        dest="execute",
+        action="store_true",
+        help="execute the run immediately (the default)",
+    )
     parser.add_argument(
         "-y",
         "--yes",
         action="store_true",
         help="confirm spending above the configured threshold without prompting",
     )
+    _configure_database(parser)
     _configure_resolution(parser)
+    parser.set_defaults(_run_handler=run_run)
+
+
+def _configure_show(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "run_id",
+        nargs="?",
+        metavar="RUN_ID",
+        help="run whose stages, cost and artifacts to show",
+    )
+    parser.add_argument(
+        "--run",
+        "--run-id",
+        dest="run_option",
+        metavar="RUN_ID",
+        help="run whose stages, cost and artifacts to show",
+    )
+    _configure_database(parser)
+    _configure_resolution(parser)
+    parser.set_defaults(_run_handler=run_show)
+
+
+def configure(parser: argparse.ArgumentParser) -> None:
+    """Add the run command, its options and the ``show`` subcommand."""
+    _configure_run_options(parser)
+    subparsers = parser.add_subparsers(dest="run_command", metavar="COMMAND")
+    show_parser = subparsers.add_parser(
+        "show",
+        help="Show a run's stages, cost and artifacts",
+        description="Show a run's stages, cost and artifacts",
+    )
+    _configure_show(show_parser)
 
 
 def _configured_provider_metadata(
@@ -158,7 +236,9 @@ def _confirmation_threshold(config: object) -> float:
     return 0.0
 
 
-def _estimate_run(args: argparse.Namespace) -> tuple[object, RecipeEstimate]:
+def _resolve_plan(
+    args: argparse.Namespace,
+) -> tuple[object, str, FormatRecipeConfig, RecipeEstimate]:
     config = resolve_app_config(
         config_file=args.config,
         environment=args.environment,
@@ -172,18 +252,119 @@ def _estimate_run(args: argparse.Namespace) -> tuple[object, RecipeEstimate]:
         provider_metadata(config),
         configs=capability_configs(config),
     ).estimate(name, recipe)
+    return config, name, recipe, estimate
+
+
+def _estimate_run(args: argparse.Namespace) -> tuple[object, RecipeEstimate]:
+    config, _name, _recipe, estimate = _resolve_plan(args)
     return config, estimate
 
 
+def _database_path(args: argparse.Namespace, config: object) -> Path:
+    explicit = getattr(args, "database", None)
+    if explicit:
+        return Path(explicit).expanduser()
+    database = getattr(config, "database", None)
+    if not isinstance(database, DatabaseConfig):
+        database = None
+    filename = database.filename if database is not None else DatabaseConfig().filename
+    return paths.resolve_paths(args.config).data_dir / filename
+
+
+def _data_dir(args: argparse.Namespace) -> Path:
+    return paths.resolve_paths(args.config).data_dir
+
+
+def _open_database(path: Path) -> Engine:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    engine = create_database_engine(path=path)
+    try:
+        upgrade_database(engine=engine)
+    except BaseException:
+        engine.dispose()
+        raise
+    return engine
+
+
+def _create_run(
+    engine: Engine,
+    args: argparse.Namespace,
+    name: str,
+    estimate: RecipeEstimate,
+) -> Run:
+    run = Run(
+        kind=RunKind.PIPELINE,
+        state=RunState.QUEUED,
+        profile=(getattr(args, "profile", None) or "").strip(),
+        format=name,
+        estimated_cost_usd=estimate.total_usd,
+    )
+    RunDirectories(_data_dir(args)).create(run)
+    return RunRepository(engine).create(run)
+
+
+def build_stages(recipe: FormatRecipeConfig) -> list[Stage]:
+    """Build the stage objects a recipe executes.
+
+    Concrete stages arrive with the stage registry. Until then the base stage
+    keeps the execution path wired and testable, and a caller may replace this
+    function to supply implementations.
+    """
+    return [Stage(item.stage, options=item.options) for item in recipe.stages]
+
+
+def _execute_run(
+    engine: Engine,
+    run: Run,
+    config: object,
+    stages: list[Stage],
+) -> OrchestrationResult:
+    orchestrator = Orchestrator(
+        stages=stages,
+        run=run.id,
+        repository=engine,
+        run_dir=run.run_dir or None,
+        data_dir=_data_dir_from_run(run),
+        config=config,
+        cost=CostTracker(engine),
+        raise_on_failure=False,
+    )
+    return asyncio.run(orchestrator.execute())
+
+
+def _data_dir_from_run(run: Run) -> Path | None:
+    if not run.run_dir:
+        return None
+    return Path(run.run_dir).expanduser().parent.parent
+
+
+def _stages_are_implemented(stages: list[Stage]) -> bool:
+    """Whether every stage in the recipe overrides the base implementation."""
+    return all(type(stage).run is not Stage.run for stage in stages)
+
+
+def _print_created(
+    run: Run,
+    estimate: RecipeEstimate,
+    *,
+    job: Job | None = None,
+) -> None:
+    print(f"Run: {run.id}")
+    print(f"Estimate: ${estimate.total_usd:.6f}")
+    print(f"State: {run.state.value}")
+    if job is not None:
+        print(f"Job: {job.id}")
+
+
 def run_run(args: argparse.Namespace) -> int:
-    """Print a pre-run estimate, confirm a costly run, or explain it is pending."""
+    """Create a run, execute or enqueue it, and print its id and estimate."""
     if not args.format_name:
         suffix = " with --estimate" if args.estimate else ""
         print(f"error: --format is required{suffix}", file=sys.stderr)
         return 2
 
     try:
-        config, estimate = _estimate_run(args)
+        config, name, recipe, estimate = _resolve_plan(args)
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -208,16 +389,169 @@ def run_run(args: argparse.Namespace) -> int:
     ):
         return 1
 
-    print(
-        "error: run execution is not available yet; pass --estimate to preview costs",
-        file=sys.stderr,
+    database_path = _database_path(args, config)
+    try:
+        engine = _open_database(database_path)
+    except (OSError, SQLAlchemyError) as exc:
+        print(f"error: cannot open the database: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        run = _create_run(engine, args, name, estimate)
+        stages = build_stages(recipe)
+        enqueue = getattr(args, "enqueue", False) or (
+            not getattr(args, "execute", False) and not _stages_are_implemented(stages)
+        )
+        if enqueue:
+            job = JobQueue(engine).enqueue(
+                Job(
+                    kind="run",
+                    run_id=run.id,
+                    payload={"format": name, "profile": run.profile},
+                )
+            )
+            _print_created(run, estimate, job=job)
+            return 0
+
+        result = _execute_run(engine, run, config, stages)
+        _print_created(result.run, estimate)
+        if result.failed:
+            print(
+                f"error: run {result.run.id} failed at stage "
+                f"{result.failed_stage!r}: {result.error_message}",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+    except (OSError, SQLAlchemyError) as exc:
+        print(f"error: cannot run the recipe: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        engine.dispose()
+
+
+def _run_id(args: argparse.Namespace) -> str:
+    positional = (getattr(args, "run_id", None) or "").strip()
+    option = (getattr(args, "run_option", None) or "").strip()
+    return positional or option
+
+
+def _stage_rows(stages: list[StageResult]) -> list[StageResult]:
+    return sorted(
+        stages,
+        key=lambda stage: (stage.index is None, stage.index or 0, stage.stage),
     )
-    return 2
+
+
+def _artifact_rows(
+    run: Run,
+    stages: list[StageResult],
+) -> list[tuple[str, str, str]]:
+    rows: dict[tuple[str, str], str] = {}
+    for stage in stages:
+        for artifact in stage.artifacts:
+            rows.setdefault((stage.stage, artifact), "-")
+    if run.run_dir:
+        directory = RunDirectory(run.run_dir, run_id=run.id)
+        try:
+            records = directory.artifacts()
+        except (OSError, ValueError):
+            records = ()
+        for record in records:
+            rows[(record.stage, record.path)] = str(record.size_bytes)
+    return [
+        (stage, path, size)
+        for (stage, path), size in sorted(rows.items(), key=lambda item: item[0])
+    ]
+
+
+def _money(value: float | None) -> str:
+    return "-" if value is None else f"${value:.6f}"
+
+
+def run_show(args: argparse.Namespace) -> int:
+    """Print a run's metadata, stage results, cost and artifacts."""
+    run_id = _run_id(args)
+    if not run_id:
+        print("error: a run id is required", file=sys.stderr)
+        return 2
+
+    try:
+        config = resolve_app_config(
+            config_file=args.config,
+            environment=args.environment,
+            profile=args.profile,
+            set_values=args.set_values,
+        )
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    database_path = _database_path(args, config)
+    if not database_path.exists():
+        print(f"error: database not found: {database_path}", file=sys.stderr)
+        return 1
+
+    engine = create_database_engine(path=database_path)
+    try:
+        run = RunRepository(engine).get(run_id)
+        if run is None:
+            print(f"error: run not found: {run_id}", file=sys.stderr)
+            return 1
+
+        stages = _stage_rows(StageRunRepository(engine).list(run_id=run_id))
+        ledger_total = CostTracker(engine).total(run_id=run_id)
+        cost = ledger_total if ledger_total else run.cost_usd
+
+        lines = [
+            f"Run: {run.id}",
+            f"Format: {run.format or '-'}",
+            f"State: {run.state.value}",
+            f"Cost: {_money(cost)}",
+            f"Estimate: {_money(run.estimated_cost_usd)}",
+        ]
+        if run.profile:
+            lines.insert(2, f"Profile: {run.profile}")
+        if run.run_dir:
+            lines.append(f"Run dir: {run.run_dir}")
+        if run.error_code:
+            lines.append(f"Error: {run.error_code}: {run.error_message}")
+
+        lines.extend(["", "STAGES", "STAGE\tSTATUS\tCOST\tESTIMATE\tERROR"])
+        for stage in stages:
+            lines.append(
+                "\t".join(
+                    (
+                        stage.stage,
+                        stage.status.value,
+                        _money(stage.cost_usd),
+                        _money(stage.estimated_cost_usd),
+                        stage.error_code,
+                    )
+                )
+            )
+
+        lines.extend(["", "ARTIFACTS", "STAGE\tPATH\tSIZE"])
+        for artifact_stage, path, size in _artifact_rows(run, stages):
+            lines.append("\t".join((artifact_stage, path, size)))
+
+        print("\n".join(lines))
+    except SQLAlchemyError as exc:
+        print(f"error: cannot read the run: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        engine.dispose()
+    return 0
+
+
+def _dispatch(args: argparse.Namespace) -> int:
+    handler = getattr(args, "_run_handler", None)
+    return int(handler(args)) if handler is not None else int(run_run(args))
 
 
 register_command(
     "run",
-    run_run,
+    _dispatch,
     help="Run a format recipe; use --estimate to preview the cost",
     configure=configure,
 )
