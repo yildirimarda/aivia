@@ -225,3 +225,70 @@ def test_check_closes_each_provider_after_the_probe(
     assert len(created) == 1
     assert created[0].closed
     assert "tracking: healthy" in capsys.readouterr().out
+
+
+def test_check_dry_run_needs_neither_live_mode_nor_a_budget(
+    registry: ProviderRegistry,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(LIVE_BUDGET_ENV, raising=False)
+
+    assert main(["--dry-run", "providers", "check"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "mock: healthy" in captured.out
+    assert "mock-image: healthy" in captured.out
+    assert "mock-llm: healthy" in captured.out
+    assert "checked 3 provider(s)" in captured.out
+    assert "$0.00 budget cap" in captured.out
+    assert "dry run" in captured.out
+
+
+def test_check_dry_run_substitutes_mock_providers_for_registered_types(
+    registry: ProviderRegistry,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    constructed: list[bool] = []
+
+    class _Network(Provider):
+        default_metadata: ClassVar[Mapping[str, Any]] = {
+            "name": "network",
+            "capabilities": ["llm"],
+        }
+
+        def __init__(self) -> None:
+            constructed.append(True)
+            super().__init__()
+
+        async def check_health(self) -> ProviderHealth:
+            raise AssertionError("a dry run must not probe a real provider")
+
+    registry.register("network", _Network)
+
+    assert main(["--dry-run", "providers", "check"]) == 0
+
+    output = capsys.readouterr().out
+    assert "network: healthy" in output
+    assert constructed == []
+
+
+def test_check_dry_run_checks_an_explicit_name_with_the_mock(
+    registry: ProviderRegistry,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["--dry-run", "providers", "check", "mock-llm"]) == 0
+
+    output = capsys.readouterr().out
+    assert "mock-llm: healthy" in output
+    assert "mock-image" not in output
+
+
+def test_check_dry_run_still_rejects_an_unknown_provider(
+    registry: ProviderRegistry,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["--dry-run", "providers", "check", "missing"]) == 1
+
+    assert "unknown provider" in capsys.readouterr().err
