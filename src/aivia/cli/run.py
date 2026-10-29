@@ -38,6 +38,7 @@ from aivia.core.models.provider import ProviderMeta
 from aivia.core.orchestrator import OrchestrationResult, Orchestrator
 from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import Stage
+from aivia.core.toolchain import detect_toolchain
 from aivia.providers import docs as provider_docs
 from aivia.providers.registry import registry as provider_registry
 
@@ -317,6 +318,7 @@ def _create_run(
         idempotency_key=(getattr(args, "idempotency_key", None) or "").strip(),
         profile=(getattr(args, "profile", None) or "").strip(),
         format=name,
+        toolchain_fingerprint=detect_toolchain(),
         estimated_cost_usd=estimate.total_usd,
     )
 

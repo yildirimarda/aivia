@@ -220,6 +220,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Run jobs with the profile recorded on the run so profile overrides apply in the worker (tests/cli/test_worker.py)
 - [ ] Honour jobs.concurrency in the worker command by running that many claim loops under one graceful stop (tests/cli/test_worker.py)
 - [ ] Make run submission and job enqueue atomic so a queue-limit race cannot leave an orphan run (tests/api/test_jobs.py)
+- [ ] Record the current toolchain fingerprint on API submitted runs when the caller omits one (tests/api/test_jobs.py)
 
 ## Milestone 7: LLM, prompts, search and embeddings
 

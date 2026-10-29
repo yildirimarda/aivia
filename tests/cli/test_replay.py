@@ -12,7 +12,12 @@ from aivia.core.db import (
     create_database_engine,
     upgrade_database,
 )
-from aivia.core.models import Run, RunState, StageResult
+from aivia.core.models import Run, RunState, StageResult, ToolchainFingerprint
+from aivia.core.snapshot import (
+    build_config_snapshot,
+    read_config_snapshot,
+    write_config_snapshot,
+)
 from aivia.core.stages import Stage, StageContext
 
 
@@ -165,6 +170,101 @@ def _stored_run(database: Path, run_id: str) -> Run | None:
         engine.dispose()
 
 
+def _record_toolchain(
+    database: Path,
+    run_id: str,
+    fingerprint: ToolchainFingerprint,
+) -> None:
+    engine = create_database_engine(database)
+    try:
+        updated = RunRepository(engine).update(
+            run_id,
+            toolchain_fingerprint=fingerprint,
+        )
+        assert updated is not None
+    finally:
+        engine.dispose()
+
+
+def _forget_toolchain(database: Path, run_id: str) -> None:
+    engine = create_database_engine(database)
+    try:
+        updated = RunRepository(engine).update(
+            run_id,
+            toolchain_fingerprint=ToolchainFingerprint(),
+        )
+    finally:
+        engine.dispose()
+    assert updated is not None
+    directory = Path(updated.run_dir)
+    snapshot = read_config_snapshot(directory)
+    payload = build_config_snapshot(
+        snapshot.get("config"),
+        run=updated,
+        seeds=snapshot.get("seeds"),
+        providers=snapshot.get("providers"),
+        models=snapshot.get("models"),
+        model_roles=snapshot.get("model_roles"),
+        toolchain_fingerprint=ToolchainFingerprint(),
+        profile=updated.profile,
+        environment=snapshot.get("environment"),
+    )
+    write_config_snapshot(directory, payload)
+
+
+def _replay_with_toolchain(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    recorded: ToolchainFingerprint,
+    current: ToolchainFingerprint,
+    fail_on_drift: bool = False,
+) -> tuple[int, str, str]:
+    original_id = _run_original(capsys, config, database, monkeypatch, _SeedStage)
+    _record_toolchain(database, original_id, recorded)
+    monkeypatch.setattr(
+        "aivia.cli.replay.detect_toolchain",
+        lambda: current,
+    )
+    monkeypatch.setattr(
+        "aivia.cli.replay.build_stages",
+        lambda recipe: [_SeedStage() for _stage in recipe.stages],
+    )
+    args = ["replay", original_id, "--database", str(database)]
+    if fail_on_drift:
+        args.append("--fail-on-drift")
+    return command(capsys, *args)
+
+
+def test_run_records_the_toolchain_used_for_a_later_replay(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fingerprint = ToolchainFingerprint(
+        renderer_version="renderer-1",
+        ffmpeg_version="ffmpeg-7",
+        font_set="fonts-abc",
+    )
+    monkeypatch.setattr(
+        "aivia.cli.run.detect_toolchain",
+        lambda: fingerprint,
+    )
+
+    original_id = _run_original(capsys, config, database, monkeypatch, _SeedStage)
+    original = _stored_run(database, original_id)
+
+    assert original is not None
+    assert original.toolchain_fingerprint == fingerprint
+    snapshot = read_config_snapshot(Path(original.run_dir))
+    assert snapshot.toolchain.renderer_version == "renderer-1"
+    assert snapshot.toolchain.ffmpeg_version == "ffmpeg-7"
+    assert snapshot.toolchain.font_set == "fonts-abc"
+
+
 def test_replay_reproduces_artifacts_without_touching_the_original(
     config: Path,
     database: Path,
@@ -212,6 +312,7 @@ formats:
     assert code == 0
     assert err == ""
     assert "Drift: none" in out
+    assert "Toolchain: unchanged" in out
     assert "Artifacts: 1 unchanged, 0 changed, 0 added, 0 removed" in out
     replayed_id, replay_id = replay_ids_from(out)
     assert replayed_id == original_id
@@ -302,6 +403,138 @@ def test_fail_on_drift_makes_a_changed_replay_exit_non_zero(
     assert code == 1
     assert err == ""
     assert "Drift: 1" in out
+
+
+def test_replay_reports_renderer_and_font_set_toolchain_drift(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded = ToolchainFingerprint(
+        renderer_version="renderer-old",
+        ffmpeg_version="ffmpeg-7",
+        font_set="fonts-old",
+    )
+    current = ToolchainFingerprint(
+        renderer_version="renderer-new",
+        ffmpeg_version="ffmpeg-7",
+        font_set="fonts-new",
+    )
+
+    code, out, err = _replay_with_toolchain(
+        config,
+        database,
+        capsys,
+        monkeypatch,
+        recorded=recorded,
+        current=current,
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "Toolchain drift: renderer_version, font_set" in out
+    assert "renderer_version\trenderer-old\trenderer-new" in out
+    assert "font_set\tfonts-old\tfonts-new" in out
+    assert "ffmpeg_version\t" not in out
+    _, replay_id = replay_ids_from(out)
+    replay = _stored_run(database, replay_id)
+    assert replay is not None
+    assert replay.toolchain_fingerprint == current
+    snapshot = read_config_snapshot(Path(replay.run_dir))
+    assert snapshot.toolchain.renderer_version == "renderer-new"
+    assert snapshot.toolchain.font_set == "fonts-new"
+
+
+def test_replay_reports_an_unchanged_toolchain(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fingerprint = ToolchainFingerprint(
+        renderer_version="renderer-1",
+        ffmpeg_version="ffmpeg-7",
+        font_set="fonts-abc",
+    )
+
+    code, out, err = _replay_with_toolchain(
+        config,
+        database,
+        capsys,
+        monkeypatch,
+        recorded=fingerprint,
+        current=fingerprint,
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "Toolchain: unchanged" in out
+    assert "Drift: none" in out
+
+
+def test_replay_reports_an_unknown_toolchain_without_drift(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_id = _run_original(capsys, config, database, monkeypatch, _SeedStage)
+    _forget_toolchain(database, original_id)
+    monkeypatch.setattr(
+        "aivia.cli.replay.detect_toolchain",
+        lambda: ToolchainFingerprint(renderer_version="renderer-new"),
+    )
+    monkeypatch.setattr(
+        "aivia.cli.replay.build_stages",
+        lambda recipe: [_SeedStage() for _stage in recipe.stages],
+    )
+
+    code, out, err = command(
+        capsys,
+        "replay",
+        original_id,
+        "--fail-on-drift",
+        "--database",
+        str(database),
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "Toolchain: unknown" in out
+    assert "Drift: none" in out
+
+
+def test_fail_on_drift_makes_toolchain_drift_exit_non_zero(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded = ToolchainFingerprint(
+        renderer_version="renderer-old",
+        ffmpeg_version="ffmpeg-7",
+        font_set="fonts-abc",
+    )
+    current = ToolchainFingerprint(
+        renderer_version="renderer-new",
+        ffmpeg_version="ffmpeg-7",
+        font_set="fonts-abc",
+    )
+
+    code, out, err = _replay_with_toolchain(
+        config,
+        database,
+        capsys,
+        monkeypatch,
+        recorded=recorded,
+        current=current,
+        fail_on_drift=True,
+    )
+
+    assert code == 1
+    assert err == ""
+    assert "Toolchain drift: renderer_version" in out
 
 
 def test_replay_reports_added_and_removed_artifacts(
