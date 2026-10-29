@@ -12,6 +12,7 @@ from aivia.cli import (
     replay,
     resume,
     run,
+    worker,
 )
 from aivia.cli.globals import GlobalOptions
 from aivia.cli.registry import (
@@ -44,4 +45,5 @@ __all__ = [
     "resume",
     "run",
     "version_string",
+    "worker",
 ]
