@@ -343,6 +343,70 @@ def test_emitted_keys_survive_a_restart_with_the_same_period(
     assert ("2026-03-16", 10.0) in after.emitted
 
 
+def test_emitted_keys_from_past_days_are_pruned_from_the_state_file(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "alerts.json"
+    tracker = BudgetAlertTracker([10, 20], state_file=state)
+
+    for offset in range(5):
+        assert len(tracker.check(25, now=NOW + timedelta(days=offset))) == 2
+
+    current_key = (NOW + timedelta(days=4)).date().isoformat()
+    reloaded = BudgetAlertTracker([10, 20], state_file=state)
+
+    assert reloaded.emitted == {(current_key, 10.0), (current_key, 20.0)}
+    payload = json.loads(state.read_text(encoding="utf-8"))
+    assert {entry["period_key"] for entry in payload["emitted"]} == {current_key}
+
+
+def test_emitted_keys_from_past_months_are_pruned_from_the_state_file(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "alerts.json"
+    tracker = BudgetAlertTracker(
+        [10, 20],
+        period=BudgetAlertPeriod.MONTH,
+        state_file=state,
+    )
+
+    for month in range(1, 5):
+        now = datetime(2026, month, 15, tzinfo=UTC)
+        assert len(tracker.check(25, now=now)) == 2
+
+    reloaded = BudgetAlertTracker(
+        [10, 20],
+        period=BudgetAlertPeriod.MONTH,
+        state_file=state,
+    )
+
+    assert reloaded.emitted == {("2026-04", 10.0), ("2026-04", 20.0)}
+
+
+def test_a_check_prunes_stale_keys_already_present_in_the_state_file(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "alerts.json"
+    state.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "emitted": [
+                    {"period_key": "2026-03-14", "threshold_usd": 10.0},
+                    {"period_key": "2026-03-15", "threshold_usd": 10.0},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    tracker = BudgetAlertTracker([10], state_file=state)
+
+    assert tracker.check(10, now=NOW) == ()
+
+    payload = json.loads(state.read_text(encoding="utf-8"))
+    assert payload["emitted"] == [{"period_key": "2026-03-15", "threshold_usd": 10.0}]
+
+
 def test_peek_does_not_write_state_and_reset_clears_it(tmp_path: Path) -> None:
     state = tmp_path / "alerts.json"
     tracker = BudgetAlertTracker([10], state_file=state)
