@@ -243,5 +243,5 @@ def test_recorded_golden_fixture_replays_offline(case: GoldenCase) -> None:
     expected = LLMResponse.model_validate(data["expected"])
     assert response == expected
     assert response.total_tokens == (
-        expected.usage.input_tokens + expected.usage.output_tokens
+        expected.usage.total_input_tokens + expected.usage.output_tokens
     )
