@@ -333,6 +333,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add an end to end media slice test where a second identical run costs nothing and totals match (tests/e2e/test_media_slice.py)
 - [ ] Add voice cloning create, list and delete requiring explicit consent and storing provider voice id, consent metadata and owner (tests/media/test_voice_clone.py)
 - [ ] Emit alt text and SRT and VTT sidecars for every audio and video output when accessibility output is enabled (tests/media/test_accessibility.py)
+- [ ] Make async media job idempotency keys unique across processes so a repeated key cannot submit twice (tests/providers/media/test_async_job.py)
 
 ## Milestone 9: Composition and rendering
 
