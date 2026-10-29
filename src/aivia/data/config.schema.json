@@ -231,6 +231,12 @@
           "minimum": 0,
           "title": "Per Video",
           "type": "number"
+        },
+        "reservation_ttl_seconds": {
+          "default": 3600.0,
+          "minimum": 0,
+          "title": "Reservation Ttl Seconds",
+          "type": "number"
         }
       },
       "title": "BudgetConfig",

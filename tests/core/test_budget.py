@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -27,6 +27,8 @@ from aivia.core.budget import (
     decide_budget,
     enforce_budget,
     ensure_budget,
+    expire_reservations,
+    release_reservation,
     resolve_budget,
     would_exceed_budget,
 )
@@ -747,3 +749,187 @@ def test_concurrent_reservations_cannot_both_pass_the_same_per_run_cap(
         assert len(tracker.events(run_id="run_1")) == 5
     finally:
         engine.dispose()
+
+
+def test_releasing_a_reservation_stops_it_consuming_the_cap(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(BudgetConfig(per_run=0.50), tracker)
+    reservation = guard.reserve(
+        0.30,
+        run_id="run_1",
+        provider="acme",
+        operation="image_gen",
+    )
+
+    assert reservation.reservation_id
+    assert reservation.event_id == reservation.reservation_id
+    assert reservation.id == reservation.reservation_id
+    assert reservation.is_reservation is True
+    assert guard.spent("run_1") == pytest.approx(0.30)
+
+    released = guard.release(reservation, reason="cancelled")
+
+    assert released == 1
+    assert released.count == 1
+    assert len(released) == 1
+    assert released.reservation_ids == (reservation.reservation_id,)
+    assert released.released_usd == pytest.approx(0.30)
+    assert guard.spent("run_1") == pytest.approx(0.0)
+    assert guard.check(0.50, run_id="run_1").allowed is True
+
+    events = tracker.events(run_id="run_1")
+    estimate = next(event for event in events if event.id == reservation.reservation_id)
+    assert estimate.estimated is True
+    assert estimate.metadata["released"] is True
+    assert estimate.metadata["release_reason"] == "cancelled"
+    release = next(event for event in events if not event.estimated)
+    assert release.amount_usd == pytest.approx(0.0)
+    assert release.replaces == reservation.reservation_id
+    assert release.metadata["released"] is True
+
+    assert guard.release(reservation) == 0
+
+
+def test_release_accepts_an_event_id_or_run_filter(tracker: CostTracker) -> None:
+    guard = BudgetGuard(BudgetConfig(per_run=0.50), tracker)
+    first = guard.reserve(0.10, run_id="run_1", operation="image_gen")
+    second = guard.reserve(0.20, run_id="run_1", operation="video_gen")
+    guard.reserve(0.15, run_id="run_2", operation="image_gen")
+
+    assert guard.release(first.event_id) == 1
+    assert guard.release(run_id="run_1", operation="video_gen") == 1
+    assert second.reservation_id in [
+        event.replaces
+        for event in tracker.events(run_id="run_1")
+        if not event.estimated
+    ]
+    assert guard.spent("run_1") == pytest.approx(0.0)
+    assert guard.spent("run_2") == pytest.approx(0.15)
+
+
+def test_release_frees_the_day_and_provider_caps(tracker: CostTracker) -> None:
+    now = datetime(2026, 3, 15, 12, tzinfo=UTC)
+    guard = BudgetGuard(
+        BudgetConfig(per_day=0.50, per_provider={"acme": 0.50}),
+        tracker,
+    )
+    reservation = guard.reserve(0.30, run_id="run_1", provider="acme", now=now)
+
+    guard.release(reservation)
+
+    result = guard.evaluate(0.30, run_id="run_1", provider="acme", now=now)
+    assert result.day_spent_usd == pytest.approx(0.0)
+    assert result.provider_spent_usd == pytest.approx(0.0)
+    assert result.allowed is True
+
+
+def test_expiring_abandoned_reservations_frees_only_the_old_ones(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(
+        BudgetConfig(per_run=0.50, reservation_ttl_seconds=3600),
+        tracker,
+    )
+    old = guard.reserve(
+        0.30,
+        run_id="run_1",
+        now=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+    )
+    fresh = guard.reserve(
+        0.10,
+        run_id="run_1",
+        now=datetime(2026, 1, 1, 1, 30, tzinfo=UTC),
+    )
+
+    released = guard.expire(now=datetime(2026, 1, 1, 2, 0, tzinfo=UTC))
+
+    assert released == 1
+    assert released.reservation_ids == (old.reservation_id,)
+    assert guard.spent("run_1") == pytest.approx(0.10)
+    events = {event.id: event for event in tracker.events(run_id="run_1")}
+    assert events[old.reservation_id].metadata["released"] is True
+    assert "released" not in events[fresh.reservation_id].metadata
+    assert guard.check(0.40, run_id="run_1").allowed is True
+
+
+def test_expire_accepts_an_explicit_age_and_run(tracker: CostTracker) -> None:
+    guard = BudgetGuard(BudgetConfig(per_run=1.00), tracker)
+    guard.reserve(
+        0.10,
+        run_id="run_1",
+        now=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+    )
+    guard.reserve(
+        0.20,
+        run_id="run_2",
+        now=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+    )
+
+    released = guard.expire_reservations(
+        older_than=timedelta(minutes=30),
+        run_id="run_1",
+        now=datetime(2026, 1, 1, 1, 0, tzinfo=UTC),
+    )
+
+    assert released == 1
+    assert guard.spent("run_1") == pytest.approx(0.0)
+    assert guard.spent("run_2") == pytest.approx(0.20)
+
+
+def test_expire_leaves_a_reservation_replaced_by_an_actual_alone(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(BudgetConfig(per_run=0.50), tracker)
+    guard.reserve(
+        0.30,
+        run_id="run_1",
+        provider="acme",
+        operation="image_gen",
+        now=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+    )
+    tracker.record_actual(
+        provider="acme",
+        operation="image_gen",
+        amount_usd=0.20,
+        run_id="run_1",
+    )
+
+    released = guard.expire(
+        older_than=0,
+        now=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    assert released == 0
+    assert guard.spent("run_1") == pytest.approx(0.20)
+
+
+def test_release_and_expire_need_a_cost_ledger() -> None:
+    guard = BudgetGuard(BudgetConfig(per_call=1.0))
+
+    with pytest.raises(ConfigError):
+        guard.release("reservation-id")
+    with pytest.raises(ConfigError):
+        guard.expire()
+
+
+def test_release_requires_some_way_to_identify_the_reservation(
+    tracker: CostTracker,
+) -> None:
+    guard = BudgetGuard(BudgetConfig(per_run=0.50), tracker)
+
+    with pytest.raises(ConfigError):
+        guard.release()
+
+
+def test_release_and_expire_helpers_work_without_a_long_lived_guard(
+    tracker: CostTracker,
+) -> None:
+    config = BudgetConfig(per_run=0.50)
+    guard = BudgetGuard(config, tracker)
+    reservation = guard.reserve(0.30, run_id="run_1")
+    assert release_reservation(reservation, config=config, tracker=tracker) == 1
+
+    reservation = guard.reserve(0.30, run_id="run_1")
+    assert expire_reservations(older_than=0, config=config, tracker=tracker) == 1
+    assert reservation.reservation_id

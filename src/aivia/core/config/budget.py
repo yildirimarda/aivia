@@ -5,12 +5,15 @@ amount that may be spent in that scope. ``per_provider`` holds the monthly limit
 for each provider. ``confirm_above`` is the estimated spend above which a run
 needs explicit confirmation; ``0`` disables the confirmation check. Alert
 thresholds are sorted ascending so alerts fire from the lowest threshold upward,
-and ``on_exceed`` selects what happens when a cap is reached.
+``on_exceed`` selects what happens when a cap is reached, and
+``reservation_ttl_seconds`` is how long an abandoned reservation may hold budget
+before it can be expired.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -49,6 +52,12 @@ _PROVIDER_ALIASES = (
     "providers",
 )
 _ALERT_ALIASES = ("alert_thresholds", "thresholds")
+_RESERVATION_TTL_ALIASES = (
+    "reservation_ttl",
+    "reservation_expiry_seconds",
+    "reservation_max_age_seconds",
+    "reservation_timeout_seconds",
+)
 _CONFIRM_ALIASES = (
     "confirm_over",
     "confirmation_threshold",
@@ -85,6 +94,7 @@ class BudgetConfig(ConfigModel):
     confirm_above: float = Field(default=0.0, ge=0)
     per_provider: dict[str, float] = Field(default_factory=dict)
     alerts: list[float] = Field(default_factory=list)
+    reservation_ttl_seconds: float = Field(default=3600.0, ge=0)
     on_exceed: OnExceed = OnExceed.PAUSE
 
     @model_validator(mode="before")
@@ -105,6 +115,12 @@ class BudgetConfig(ConfigModel):
             if alias in values:
                 threshold = values.pop(alias)
                 values.setdefault("confirm_above", threshold)
+        for alias in _RESERVATION_TTL_ALIASES:
+            if alias in values:
+                ttl = values.pop(alias)
+                if isinstance(ttl, timedelta):
+                    ttl = ttl.total_seconds()
+                values.setdefault("reservation_ttl_seconds", ttl)
         if "per_provider" in values:
             values["per_provider"] = _normalise_provider_limits(values["per_provider"])
         return values
@@ -145,3 +161,8 @@ class BudgetConfig(ConfigModel):
     def confirmation_threshold(self) -> float:
         """Alias for :attr:`confirm_above`, the spend that needs confirmation."""
         return self.confirm_above
+
+    @property
+    def reservation_ttl(self) -> float:
+        """Alias for :attr:`reservation_ttl_seconds`."""
+        return self.reservation_ttl_seconds
