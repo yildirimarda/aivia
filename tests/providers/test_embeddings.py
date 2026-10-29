@@ -982,16 +982,12 @@ def test_the_estimator_uses_the_embeddings_chain_and_prices() -> None:
         "dear": ProviderMeta(
             name="dear",
             capabilities=[CAPABILITY_EMBEDDINGS],
-            pricing={
-                CAPABILITY_EMBEDDINGS: ProviderPrice(amount_usd=0.50)
-            },
+            pricing={CAPABILITY_EMBEDDINGS: ProviderPrice(amount_usd=0.50)},
         ),
         "cheap": ProviderMeta(
             name="cheap",
             capabilities=[CAPABILITY_EMBEDDINGS],
-            pricing={
-                CAPABILITY_EMBEDDINGS: ProviderPrice(amount_usd=0.01)
-            },
+            pricing={CAPABILITY_EMBEDDINGS: ProviderPrice(amount_usd=0.01)},
         ),
     }
     recipe = FormatRecipeConfig.model_validate({"stages": [{"stage": "embed"}]})

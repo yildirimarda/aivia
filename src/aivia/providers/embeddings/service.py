@@ -341,9 +341,7 @@ class EmbeddingService:
         if self._batch_size is None or len(request.inputs) <= self._batch_size:
             return await target.embed(request)
         responses: list[tuple[int, EmbeddingResponse]] = []
-        for offset, inputs in enumerate(
-            batch_inputs(request.inputs, self._batch_size)
-        ):
+        for offset, inputs in enumerate(batch_inputs(request.inputs, self._batch_size)):
             batch = request.model_copy(update={"inputs": inputs})
             response = await target.embed(batch)
             responses.append((offset * self._batch_size, response))
