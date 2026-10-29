@@ -77,8 +77,14 @@ def static_metadata(provider: type[Provider]) -> ProviderMeta | None:
     )
 
 
+def _load_builtin_adapters() -> None:
+    """Import built-in adapters the top-level package does not load itself."""
+    from aivia.providers.search import tavily as _tavily  # noqa: F401
+
+
 def build_provider_docs(registry: ProviderRegistry | None = None) -> str:
     """Return the Markdown matrix for every provider in *registry*."""
+    _load_builtin_adapters()
     source = provider_registry if registry is None else registry
     entries: dict[str, ProviderMeta] = {}
     for registration in source.registrations():

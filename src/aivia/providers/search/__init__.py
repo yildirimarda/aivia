@@ -37,8 +37,15 @@ from aivia.providers.search.service import (
     SearchService,
     search,
 )
+from aivia.providers.search.tavily import (
+    DEFAULT_BASE_URL,
+    Tavily,
+    TavilyProvider,
+    TavilySearchProvider,
+)
 
 __all__ = [
+    "DEFAULT_BASE_URL",
     "SEARCH_OPERATION",
     "SEARCH_UNIT",
     "RoutedSearch",
@@ -51,6 +58,9 @@ __all__ = [
     "SearchPrice",
     "SearchResultNormalizer",
     "SearchService",
+    "Tavily",
+    "TavilyProvider",
+    "TavilySearchProvider",
     "canonical_url",
     "dedupe_by_url",
     "dedupe_results",

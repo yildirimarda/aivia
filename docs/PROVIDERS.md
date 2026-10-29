@@ -34,6 +34,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | `llm` | 60/min | - | - | unknown |
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
+| `tavily` | `search` | 60/min | - | - | unknown |
 
 ## Pricing
 
@@ -81,6 +82,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | - |
 | `openai_compatible` | - | - |
 | `s3` | `storage` | $0 per call |
+| `tavily` | - | - |
 
 ## Supported options
 
@@ -111,6 +113,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | - |
 | `openai_compatible` | - | - |
 | `s3` | - | - |
+| `tavily` | - | - |
 
 ## Licensing
 
@@ -141,3 +144,4 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | unknown | no | - |
 | `openai_compatible` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
+| `tavily` | - | unknown | no | - |
