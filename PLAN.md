@@ -288,7 +288,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add aggregator image editing for instruction edit, inpainting and outpainting with per operation fixtures (tests/providers/image_edit/test_aggregator.py)
 - [x] Add local background removal producing alpha png output at no cost (tests/providers/image_edit/test_rembg.py)
 - [x] Add remote background removal and upscaling with validated factors and asserted dimensions (tests/providers/image_edit/test_remote_ops.py)
-- [ ] Add Pexels and Pixabay stock providers for images and video recording attribution (tests/providers/stock/test_stock.py)
+- [x] Add Pexels and Pixabay stock providers for images and video recording attribution (tests/providers/stock/test_stock.py)
 - [ ] Rank stock candidates against the intended description with a vision model and drop everything below the configured relevance (tests/media/test_stock_relevance.py)
 - [ ] Add prompt and content screening that blocks configured terms before any provider call and returns a token paid services require (tests/media/test_screening.py)
 - [ ] Implement the image service requiring a screened prompt and running cache, budget, router, provider, validation, storage, cost and sidecar in one place (tests/media/test_image_service.py)

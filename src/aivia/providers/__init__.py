@@ -372,6 +372,16 @@ if TYPE_CHECKING:
         TavilyProvider,
         TavilySearchProvider,
     )
+    from aivia.providers.stock.pexels import (
+        Pexels,
+        PexelsProvider,
+        PexelsStockProvider,
+    )
+    from aivia.providers.stock.pixabay import (
+        Pixabay,
+        PixabayProvider,
+        PixabayStockProvider,
+    )
 
 _LAZY_EMBEDDING_PROVIDERS = frozenset(
     {
@@ -486,6 +496,10 @@ _LAZY_SERPAPI_PROVIDERS = frozenset(
     {"SerpAPI", "SerpAPIProvider", "SerpAPISearchProvider"}
 )
 _LAZY_TAVILY_PROVIDERS = frozenset({"Tavily", "TavilyProvider", "TavilySearchProvider"})
+_LAZY_PEXELS_PROVIDERS = frozenset({"Pexels", "PexelsProvider", "PexelsStockProvider"})
+_LAZY_PIXABAY_PROVIDERS = frozenset(
+    {"Pixabay", "PixabayProvider", "PixabayStockProvider"}
+)
 _LAZY_PAGE_FETCH_PROVIDERS = frozenset(
     {
         "HttpPageFetchProvider",
@@ -788,6 +802,36 @@ def __getattr__(name: str) -> Any:
         tavily_value = tavily_values[name]
         globals()[name] = tavily_value
         return tavily_value
+    if name in _LAZY_PEXELS_PROVIDERS:
+        from aivia.providers.stock.pexels import (
+            Pexels,
+            PexelsProvider,
+            PexelsStockProvider,
+        )
+
+        pexels_values = {
+            "Pexels": Pexels,
+            "PexelsProvider": PexelsProvider,
+            "PexelsStockProvider": PexelsStockProvider,
+        }
+        pexels_value = pexels_values[name]
+        globals()[name] = pexels_value
+        return pexels_value
+    if name in _LAZY_PIXABAY_PROVIDERS:
+        from aivia.providers.stock.pixabay import (
+            Pixabay,
+            PixabayProvider,
+            PixabayStockProvider,
+        )
+
+        pixabay_values = {
+            "Pixabay": Pixabay,
+            "PixabayProvider": PixabayProvider,
+            "PixabayStockProvider": PixabayStockProvider,
+        }
+        pixabay_value = pixabay_values[name]
+        globals()[name] = pixabay_value
+        return pixabay_value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -1006,6 +1050,12 @@ __all__ = [
     "PageFetchResponse",
     "PageFetcher",
     "PageKind",
+    "Pexels",
+    "PexelsProvider",
+    "PexelsStockProvider",
+    "Pixabay",
+    "PixabayProvider",
+    "PixabayStockProvider",
     "ProtocolModel",
     "Provider",
     "ProviderFactory",
