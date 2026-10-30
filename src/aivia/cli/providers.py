@@ -5,26 +5,33 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import ipaddress
 import math
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
+from aivia.cli.confirm import confirm_action
 from aivia.cli.registry import register_command
+from aivia.core import paths
 from aivia.core.dry_run import DRY_RUN_PROVIDER_TYPE
 from aivia.core.errors import ConfigError
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.redact import redact
 from aivia.providers import docs as provider_docs
 from aivia.providers.base import HealthStatus, Provider, ProviderHealth
+from aivia.providers.http_spec import HttpProviderSpec, HttpSpecError
 from aivia.providers.mock import register_mock_providers
 from aivia.providers.registry import registry as provider_registry
 
 __all__ = [
     "LIVE_BUDGET_ENV",
+    "PROVIDERS_DIR_NAME",
     "configure",
+    "run_add_spec",
     "run_check",
     "run_docs",
     "run_list",
@@ -32,6 +39,7 @@ __all__ = [
 ]
 
 LIVE_BUDGET_ENV = "AIVA_LIVE_BUDGET_USD"
+PROVIDERS_DIR_NAME = "providers.d"
 _NO_SPEND = 0.0
 
 
@@ -42,6 +50,37 @@ def _configure_list(parser: argparse.ArgumentParser) -> None:
         help="only list providers that declare this capability",
     )
     parser.set_defaults(_providers_handler=run_list)
+
+
+def _configure_add_spec(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "spec",
+        metavar="PATH",
+        help="YAML provider spec to inspect and add to providers.d",
+    )
+    parser.add_argument(
+        "--allow-host",
+        "--allowed-host",
+        dest="allow_hosts",
+        action="append",
+        default=[],
+        metavar="HOST",
+        help="allow a target host; repeatable or comma separated",
+    )
+    parser.add_argument(
+        "--allowlist",
+        dest="allowlist",
+        action="append",
+        default=[],
+        metavar="HOST",
+        help="alias for --allow-host; repeatable or comma separated",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="replace a spec that is already installed",
+    )
+    parser.set_defaults(_providers_handler=run_add_spec)
 
 
 def _configure_check(parser: argparse.ArgumentParser) -> None:
@@ -90,6 +129,13 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="List registered provider types and their capabilities",
     )
     _configure_list(list_parser)
+    add_spec_parser = subparsers.add_parser(
+        "add-spec",
+        aliases=["add_spec"],
+        help="Inspect, confirm and install a declarative provider spec",
+        description="Inspect, confirm and install a declarative provider spec",
+    )
+    _configure_add_spec(add_spec_parser)
     check_parser = subparsers.add_parser(
         "check",
         help="Run live health checks under an explicit budget cap",
@@ -109,9 +155,138 @@ def run_providers(args: argparse.Namespace) -> int:
     handler = getattr(args, "_providers_handler", None)
     if handler is None:
         print("error: missing providers command", file=sys.stderr)
-        print("usage: aivia providers {list, check, docs}", file=sys.stderr)
+        print(
+            "usage: aivia providers {list, add-spec, check, docs}",
+            file=sys.stderr,
+        )
         return 2
     return int(handler(args))
+
+
+def _host_entries(values: Iterable[str] | None) -> list[str]:
+    """Split repeatable allowlist arguments on commas and whitespace."""
+    entries: list[str] = []
+    for value in values or ():
+        entries.extend(
+            part.strip("[]")
+            for part in value.replace(",", " ").split()
+            if part.strip("[]")
+        )
+    return entries
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Return whether *host* is a loopback name or address, without DNS."""
+    candidate = host.strip().lower().rstrip(".")
+    if not candidate:
+        return False
+    if candidate == "localhost" or candidate.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(candidate).is_loopback
+    except ValueError:
+        return False
+
+
+def _spec_urls(spec: HttpProviderSpec) -> tuple[str, ...]:
+    """Every outbound URL the spec declares, in a stable order."""
+    urls: list[str] = []
+    if spec.base_url:
+        urls.append(spec.base_url)
+    for operation in spec.operations:
+        if operation.url is not None:
+            urls.append(operation.url)
+    return tuple(urls)
+
+
+def _validate_tls(spec: HttpProviderSpec) -> None:
+    """Reject cleartext HTTP to anything except a loopback host."""
+    insecure: list[str] = []
+    for url in _spec_urls(spec):
+        parsed = urlsplit(url)
+        if parsed.scheme.lower() == "https":
+            continue
+        if _is_loopback_host(parsed.hostname or ""):
+            continue
+        insecure.append(url)
+    if insecure:
+        raise HttpSpecError(
+            "provider spec must use TLS for non-loopback hosts: " + ", ".join(insecure),
+            details={"urls": insecure},
+        )
+
+
+def _spec_destination(
+    source: Path,
+    spec: HttpProviderSpec,
+    config_file: str | Path | None,
+) -> Path:
+    """Resolve the providers.d path for *source* without touching the filesystem."""
+    directory = paths.resolve_paths(config_file).config_dir / PROVIDERS_DIR_NAME
+    if source.suffix.lower() in {".yaml", ".yml"}:
+        name = source.name
+    else:
+        stem = spec.name or source.stem or "provider"
+        name = f"{Path(stem).name}.yaml"
+    return directory / Path(name).name
+
+
+def run_add_spec(args: argparse.Namespace) -> int:
+    """Inspect a provider spec, require confirmation and install it."""
+    source = Path(args.spec).expanduser()
+    try:
+        spec = HttpProviderSpec.from_file(source)
+    except (ConfigError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    hosts = spec.target_hosts
+    secrets = spec.secret_names
+    print(f"Provider: {spec.name or source.stem}")
+    print(f"Target hosts: {', '.join(hosts) if hosts else '(none)'}")
+    print(f"Secret names: {', '.join(secrets) if secrets else '(none)'}")
+
+    try:
+        _validate_tls(spec)
+        allowlist = _host_entries(
+            [*getattr(args, "allow_hosts", []), *getattr(args, "allowlist", [])]
+        )
+        spec.validate_hosts(allowlist)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if not confirm_action(
+        f"Add provider spec {spec.name or source.name}?",
+        assume_yes=bool(getattr(args, "yes", False)),
+    ):
+        return 1
+
+    destination = _spec_destination(source, spec, getattr(args, "config", None))
+    if destination.exists():
+        if destination.resolve() == source.resolve():
+            print(f"Provider spec is already installed: {destination}")
+            return 0
+        if not bool(getattr(args, "force", False)):
+            print(
+                f"error: provider spec already exists: {destination}",
+                file=sys.stderr,
+            )
+            print("pass --force to replace it", file=sys.stderr)
+            return 1
+
+    if bool(getattr(args, "dry_run", False)):
+        print(f"Would add provider spec: {destination}")
+        return 0
+
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+    except OSError as exc:
+        print(f"error: cannot write {destination}: {exc}", file=sys.stderr)
+        return 1
+    print(f"Added provider spec: {destination}")
+    return 0
 
 
 def _static_metadata(provider: type[Provider]) -> ProviderMeta | None:
