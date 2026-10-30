@@ -284,7 +284,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the Google image provider (tests/providers/image/test_google_image.py)
 - [x] Build a declarative HTTP provider engine supporting sync and async APIs with sandboxed body templates, pricing and mock server tests (tests/providers/media/test_http_spec.py)
 - [x] Add a providers add spec command that prints target hosts and secret names and requires confirmation, rejecting non TLS urls unless loopback and hosts outside the allowlist (tests/cli/test_providers_add_spec.py)
-- [ ] Pass reference images only to providers declaring image input support (tests/providers/image/test_reference_input.py)
+- [x] Pass reference images only to providers declaring image input support (tests/providers/image/test_reference_input.py)
 - [ ] Add aggregator image editing for instruction edit, inpainting and outpainting with per operation fixtures (tests/providers/image_edit/test_aggregator.py)
 - [ ] Add local background removal producing alpha png output at no cost (tests/providers/image_edit/test_rembg.py)
 - [ ] Add remote background removal and upscaling with validated factors and asserted dimensions (tests/providers/image_edit/test_remote_ops.py)
