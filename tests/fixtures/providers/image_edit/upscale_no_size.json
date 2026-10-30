@@ -1,0 +1,8 @@
+{
+  "images": [
+    {
+      "url": "https://media.example.com/upscaled-unknown.png",
+      "content_type": "image/png"
+    }
+  ]
+}
