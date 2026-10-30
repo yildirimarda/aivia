@@ -1,5 +1,7 @@
 """Media provider helpers and canonical request/result DTOs."""
 
+from typing import TYPE_CHECKING, Any
+
 from aivia.providers.media.adapt import (
     AdaptationAction,
     AdaptationError,
@@ -48,7 +50,69 @@ from aivia.providers.media.dto import (
     VideoResult,
 )
 
+if TYPE_CHECKING:
+    from aivia.providers.http_spec import (
+        DEFAULT_RESULT_FIELDS,
+        DeclarativeHttpProvider,
+        HttpAsyncSpec,
+        HTTPProvider,
+        HttpProviderSpec,
+        HttpRequestSpec,
+        HttpResponseSpec,
+        HttpSpec,
+        HttpSpecEngine,
+        HttpSpecError,
+        HttpSpecProvider,
+        HttpSpecResult,
+        HttpSpecTemplateError,
+        ProviderSpec,
+        build_http_provider,
+        extract_path,
+        http_provider_from_spec,
+        load_http_spec,
+        load_http_spec_file,
+        load_http_specs,
+        parse_http_spec,
+    )
+
+_HTTP_SPEC_NAMES = frozenset(
+    {
+        "DEFAULT_RESULT_FIELDS",
+        "HTTPProvider",
+        "DeclarativeHttpProvider",
+        "HttpAsyncSpec",
+        "HttpProviderSpec",
+        "HttpRequestSpec",
+        "HttpResponseSpec",
+        "HttpSpec",
+        "HttpSpecEngine",
+        "HttpSpecError",
+        "HttpSpecProvider",
+        "HttpSpecResult",
+        "HttpSpecTemplateError",
+        "ProviderSpec",
+        "build_http_provider",
+        "extract_path",
+        "http_provider_from_spec",
+        "load_http_spec",
+        "load_http_spec_file",
+        "load_http_specs",
+        "parse_http_spec",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Load the HTTP spec engine lazily to avoid an import cycle."""
+    if name in _HTTP_SPEC_NAMES:
+        from aivia.providers import http_spec
+
+        return getattr(http_spec, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
+    "DEFAULT_RESULT_FIELDS",
     "AdaptationAction",
     "AdaptationError",
     "AdaptationResult",
@@ -64,6 +128,18 @@ __all__ = [
     "AsyncMediaJob",
     "AsyncMediaJobHelper",
     "DatabaseAsyncJobStore",
+    "DeclarativeHttpProvider",
+    "HTTPProvider",
+    "HttpAsyncSpec",
+    "HttpProviderSpec",
+    "HttpRequestSpec",
+    "HttpResponseSpec",
+    "HttpSpec",
+    "HttpSpecEngine",
+    "HttpSpecError",
+    "HttpSpecProvider",
+    "HttpSpecResult",
+    "HttpSpecTemplateError",
     "ImageRequest",
     "ImageResult",
     "InMemoryAsyncJobStore",
@@ -76,6 +152,7 @@ __all__ = [
     "MusicRequest",
     "MusicResult",
     "ProviderConstraints",
+    "ProviderSpec",
     "SpeechRequest",
     "SpeechResult",
     "UnadaptableRequestError",
@@ -88,6 +165,13 @@ __all__ = [
     "adapt_request",
     "adapt_speech_request",
     "adapt_video_request",
+    "build_http_provider",
     "clamp_duration",
+    "extract_path",
+    "http_provider_from_spec",
+    "load_http_spec",
+    "load_http_spec_file",
+    "load_http_specs",
+    "parse_http_spec",
     "snap_size",
 ]
