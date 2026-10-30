@@ -634,6 +634,7 @@ cleanup_exit() {
 # on fine-grained PATs, so check-run data is invisible to the agent token.
 # Workflow runs are readable with "Actions: Read-only".
 RERUN_DONE=""
+CIDBG=/dev/null
 wait_for_merge() {
   local pr="$1" deadline=$(( $(date +%s) + TIMEOUT_MIN * 60 ))
   local first_fail=0 told=0
@@ -680,7 +681,7 @@ wait_for_merge() {
       if (( fails > 0 )); then
         (( first_fail )) || first_fail="$(date +%s)"
         if (( pending == 0 )) || (( $(date +%s) - first_fail > 900 )); then
-          info "CI failed on PR #$pr"
+          info "CI failed on PR #$pr (failed runs: $fails, still running: $pending)"
           return 3
         fi
         if (( ! told )); then
@@ -697,19 +698,39 @@ wait_for_merge() {
 
 # Fetch the tail of the failing CI log for a PR's head commit — readable with
 # the agent token's "Actions: Read-only" permission.
-ci_fail_log() {
+# Strip the per-line "job<TAB>step<TAB>timestamp " prefix that `gh run view
+# --log-failed` adds and cut everything from "Post job cleanup." on — on
+# Windows that cleanup is ~16 lines of git noise that would push the actual
+# compiler error out of a tail window.
+_clean_job_log() {
+  awk -F'\t' '{
+    line = $0
+    if (NF >= 3) { line = $3; for (i = 4; i <= NF; i++) line = line "\t" $i }
+    sub(/^[0-9T:.-]+Z /, "", line)
+    if (line ~ /^Post job cleanup\./) exit
+    print line
+  }' | tail -60
+}
+
+# One pass over the failing runs of the PR head. Every gh error goes to $CIDBG
+# (never swallowed): an empty result is otherwise indistinguishable from "no
+# failure found", which is exactly the failure mode that hid CI logs before.
+_ci_fail_log_once() {
   local pr="$1" head runs rid rname jobs jid jname out n=0 k
-  head="$(gh_c pr view "$pr" --json headRefOid -q .headRefOid 2>/dev/null || true)"
-  [[ -n "$head" ]] || return 0
+  head="$(gh_c pr view "$pr" --json headRefOid -q .headRefOid 2>>"$CIDBG" || true)"
+  echo "head=$head" >> "$CIDBG"
+  [[ -n "$head" ]] || { echo "no head sha for PR #$pr" >> "$CIDBG"; return 0; }
   runs="$(gh_c api "repos/{owner}/{repo}/actions/runs?head_sha=$head&per_page=30" \
         --jq '.workflow_runs[] | select(.name != "automerge") | select(.conclusion=="failure" or .conclusion=="timed_out" or .conclusion=="cancelled") | [.id, .name] | @tsv' \
-        2>/dev/null || true)"
+        2>>"$CIDBG" || true)"
+  echo "failed runs: ${runs:-<none>}" >> "$CIDBG"
   [[ -n "$runs" ]] || return 0
   while IFS=$'\t' read -r rid rname; do
     [[ -n "$rid" ]] || continue
     jobs="$(gh_c run view "$rid" --json jobs \
           --jq '.jobs[] | select(.conclusion=="failure" or .conclusion=="timed_out") | [.databaseId, .name] | @tsv' \
-          2>/dev/null || true)"
+          2>>"$CIDBG" || true)"
+    echo "run $rid jobs: ${jobs:-<none>}" >> "$CIDBG"
     if [[ -z "$jobs" ]]; then
       echo "### workflow \"$rname\" (run $rid) did not finish — no failed job recorded (cancelled/timed out)"
       continue
@@ -721,13 +742,38 @@ ci_fail_log() {
       # Log archives lag behind the failure conclusion — retry briefly.
       out=""
       for k in 1 2 3; do
-        out="$(gh_c run view --job "$jid" --log-failed 2>/dev/null | tail -50)"
+        out="$(gh_c run view --job "$jid" --log-failed 2>>"$CIDBG" | _clean_job_log)"
         [[ -n "$out" ]] && break
+        echo "job $jid: log empty on try $k" >> "$CIDBG"
         sleep 10
       done
       printf '%s\n' "${out:-<log not available yet>}"
     done <<< "$jobs"
   done <<< "$runs"
+}
+
+# The failing-CI log for a PR's head commit, readable with the agent token's
+# "Actions: Read-only" permission. Retried as a whole (GitHub's run/job lists
+# can lag the failure by a few seconds), with a trace of every step written to
+# logs/<ts>-cifail.txt so an empty result can be diagnosed afterwards. The
+# status line goes to stderr: stdout is the log itself.
+ci_fail_log() {
+  local pr="$1" out="" attempt
+  mkdir -p logs
+  CIDBG="logs/$(date +%Y%m%d-%H%M%S)-cifail.txt"
+  : > "$CIDBG"
+  for attempt in 1 2 3; do
+    out="$(_ci_fail_log_once "$pr")"
+    [[ -n "$out" ]] && break
+    echo "attempt $attempt: empty result" >> "$CIDBG"
+    sleep 15
+  done
+  if [[ -n "$out" ]]; then
+    info "CI log captured: $(printf '%s\n' "$out" | wc -l | tr -d ' ') lines (trace: $CIDBG)" >&2
+  else
+    info "CI log EMPTY after 3 tries — see $CIDBG" >&2
+  fi
+  printf '%s\n' "$out"
 }
 
 prompt_ci_fix() {
