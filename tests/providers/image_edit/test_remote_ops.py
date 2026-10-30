@@ -179,18 +179,12 @@ def test_metadata_registration_and_aliases_describe_the_provider() -> None:
     assert RemoteImageEdit is RemoteOpsImageEditProvider
     assert RemoteImageEditProvider is RemoteOpsImageEditProvider
     assert RemoteBackgroundRemovalAndUpscale is RemoteOpsImageEditProvider
-    assert (
-        RemoteBackgroundRemovalAndUpscaleProvider is RemoteOpsImageEditProvider
-    )
+    assert RemoteBackgroundRemovalAndUpscaleProvider is RemoteOpsImageEditProvider
     assert TopLevelRemoteOps is RemoteOpsImageEditProvider
     assert provider_registry.resolve("remote-ops") is RemoteOpsImageEditProvider
     assert provider_registry.resolve("remote_ops") is RemoteOpsImageEditProvider
-    assert (
-        provider_registry.resolve("remote-image-ops") is RemoteOpsImageEditProvider
-    )
-    assert (
-        provider_registry.resolve("remote-image-edit") is RemoteOpsImageEditProvider
-    )
+    assert provider_registry.resolve("remote-image-ops") is RemoteOpsImageEditProvider
+    assert provider_registry.resolve("remote-image-edit") is RemoteOpsImageEditProvider
 
 
 def test_remove_background_submits_an_image_and_keeps_the_source_size() -> None:
@@ -423,8 +417,6 @@ def test_a_fallback_model_is_used_when_an_operation_has_no_entry() -> None:
         poll_interval_seconds=0.001,
     )
 
-    asyncio.run(
-        provider.edit(_inline_request(ImageEditOperation.REMOVE_BACKGROUND))
-    )
+    asyncio.run(provider.edit(_inline_request(ImageEditOperation.REMOVE_BACKGROUND)))
 
     assert str(requests[0].url) == f"{REMOTE_OPS_DEFAULT_BASE_URL}/{UPSCALE_MODEL}"

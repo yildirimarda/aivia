@@ -718,9 +718,7 @@ def __getattr__(name: str) -> Any:
             "DEFAULT_UPSCALE_FACTORS": DEFAULT_UPSCALE_FACTORS,
             "REMOTE_OPS_DEFAULT_BASE_URL": REMOTE_OPS_DEFAULT_BASE_URL,
             "SUPPORTED_UPSCALE_FACTORS": SUPPORTED_UPSCALE_FACTORS,
-            "RemoteBackgroundRemovalAndUpscale": (
-                RemoteBackgroundRemovalAndUpscale
-            ),
+            "RemoteBackgroundRemovalAndUpscale": (RemoteBackgroundRemovalAndUpscale),
             "RemoteBackgroundRemovalAndUpscaleProvider": (
                 RemoteBackgroundRemovalAndUpscaleProvider
             ),
