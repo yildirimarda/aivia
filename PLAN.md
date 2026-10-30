@@ -282,7 +282,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the Replicate image provider with a versioned model id from config (tests/providers/image/test_replicate.py)
 - [x] Add the OpenAI image provider handling sizes, counts and both base64 and url responses (tests/providers/image/test_openai_image.py)
 - [x] Add the Google image provider (tests/providers/image/test_google_image.py)
-- [ ] Build a declarative HTTP provider engine supporting sync and async APIs with sandboxed body templates, pricing and mock server tests (tests/providers/media/test_http_spec.py)
+- [x] Build a declarative HTTP provider engine supporting sync and async APIs with sandboxed body templates, pricing and mock server tests (tests/providers/media/test_http_spec.py)
 - [ ] Add a providers add spec command that prints target hosts and secret names and requires confirmation, rejecting non TLS urls unless loopback and hosts outside the allowlist (tests/cli/test_providers_add_spec.py)
 - [ ] Pass reference images only to providers declaring image input support (tests/providers/image/test_reference_input.py)
 - [ ] Add aggregator image editing for instruction edit, inpainting and outpainting with per operation fixtures (tests/providers/image_edit/test_aggregator.py)
@@ -714,3 +714,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Build run and estimate routers through the provider factory so configured options and secrets apply (tests/core/test_provider_wiring.py)
 - [ ] Isolate prompt loading tests from the real user config directory so local prompts cannot change default assertions (tests/llm/test_prompts.py)
 - [ ] Isolate provider docs CLI tests from the real user config directory so they never bootstrap the host home (tests/test_provider_docs.py)
+- [ ] Load declarative provider specs from providers.d and register them for configured chains (tests/core/test_provider_specs.py)
