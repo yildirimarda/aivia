@@ -44,6 +44,7 @@ from aivia.providers.protocols.embeddings import (
 )
 from aivia.providers.protocols.image import (
     CAPABILITY_IMAGE_GEN,
+    CAPABILITY_IMAGE_INPUT,
     ImageProvider,
     ImageRequest,
     ImageResponse,
@@ -178,6 +179,7 @@ __all__ = [
     "CAPABILITY_EMBEDDINGS",
     "CAPABILITY_IMAGE_EDIT",
     "CAPABILITY_IMAGE_GEN",
+    "CAPABILITY_IMAGE_INPUT",
     "CAPABILITY_LIPSYNC",
     "CAPABILITY_LLM",
     "CAPABILITY_MUSIC_GEN",
