@@ -1,0 +1,12 @@
+{
+  "images": [
+    {
+      "url": "https://media.example.com/edit-1.png",
+      "width": 1024,
+      "height": 768,
+      "content_type": "image/png"
+    }
+  ],
+  "seed": 11,
+  "prompt": "add a red hat"
+}

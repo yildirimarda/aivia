@@ -1,0 +1,12 @@
+{
+  "images": [
+    {
+      "url": "https://media.example.com/outpaint-1.png",
+      "width": 1536,
+      "height": 1024,
+      "content_type": "image/png"
+    }
+  ],
+  "seed": 33,
+  "prompt": "continue the landscape beyond the frame"
+}
