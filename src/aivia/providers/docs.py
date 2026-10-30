@@ -91,6 +91,8 @@ def _load_builtin_adapters() -> None:
     from aivia.providers.search import brave as _brave  # noqa: F401
     from aivia.providers.search import exa as _exa  # noqa: F401
     from aivia.providers.search import tavily as _tavily  # noqa: F401
+    from aivia.providers.stock import pexels as _pexels  # noqa: F401
+    from aivia.providers.stock import pixabay as _pixabay  # noqa: F401
 
 
 def build_provider_docs(registry: ProviderRegistry | None = None) -> str:

@@ -50,6 +50,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-image` | `image_gen` | 60/min | - | - | unknown |
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
 | `openai_image` | `image_gen` | 60/min | - | - | unknown |
+| `pexels` | `stock` | 60/min | - | Pexels License ([terms](https://www.pexels.com/license/)) | yes |
+| `pixabay` | `stock` | 60/min | - | Pixabay Content License ([terms](https://pixabay.com/service/license-summary/)) | yes |
 | `rembg` | `image_edit` | 60/min | - | - | unknown |
 | `remote-background-removal` | `image_edit` | 60/min | - | - | unknown |
 | `remote-image-edit` | `image_edit` | 60/min | - | - | unknown |
@@ -126,6 +128,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-image` | - | - |
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
+| `pexels` | - | - |
+| `pixabay` | - | - |
 | `rembg` | `image_edit` | $0 per image |
 | `remote-background-removal` | - | - |
 | `remote-image-edit` | - | - |
@@ -185,6 +189,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-image` | - | - |
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
+| `pexels` | - | - |
+| `pixabay` | - | - |
 | `rembg` | - | - |
 | `remote-background-removal` | - | - |
 | `remote-image-edit` | - | - |
@@ -244,6 +250,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-image` | - | unknown | no | - |
 | `openai_compatible` | - | unknown | no | - |
 | `openai_image` | - | unknown | no | - |
+| `pexels` | Pexels License ([terms](https://www.pexels.com/license/)) | yes | no | Free to use under the Pexels License; a credit line is recorded but not required. |
+| `pixabay` | Pixabay Content License ([terms](https://pixabay.com/service/license-summary/)) | yes | no | Free to use under the Pixabay Content License; a credit line is recorded but not required. |
 | `rembg` | - | unknown | no | - |
 | `remote-background-removal` | - | unknown | no | - |
 | `remote-image-edit` | - | unknown | no | - |
