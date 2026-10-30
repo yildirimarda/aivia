@@ -23,7 +23,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `llm_native` | `search` | 60/min | - | - | unknown |
 | `llm_search` | `search` | 60/min | - | - | unknown |
 | `local` | `storage` | 60/min | - | - | unknown |
+| `local-background-removal` | `image_edit` | 60/min | - | - | unknown |
 | `local-embeddings` | `embeddings` | 60/min | - | - | unknown |
+| `local-rembg` | `image_edit` | 60/min | - | - | unknown |
 | `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
 | `mock-character-trainer` | `character_trainer` | 60/min | - | - | unknown |
 | `mock-delivery` | `delivery` | 60/min | - | - | unknown |
@@ -48,6 +50,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-image` | `image_gen` | 60/min | - | - | unknown |
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
 | `openai_image` | `image_gen` | 60/min | - | - | unknown |
+| `rembg` | `image_edit` | 60/min | - | - | unknown |
 | `replicate` | `image_gen` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
@@ -72,7 +75,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `llm_native` | - | - |
 | `llm_search` | - | - |
 | `local` | `storage` | $0 per call |
+| `local-background-removal` | `image_edit` | $0 per image |
 | `local-embeddings` | - | - |
+| `local-rembg` | `image_edit` | $0 per image |
 | `mock` | `character_trainer` | $0.5 per call |
 | `mock` | `delivery` | $0 per call |
 | `mock` | `embeddings` | $0.00002 per call |
@@ -114,6 +119,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-image` | - | - |
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
+| `rembg` | `image_edit` | $0 per image |
 | `replicate` | - | - |
 | `s3` | `storage` | $0 per call |
 | `serpapi` | - | - |
@@ -138,7 +144,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `llm_native` | - | - |
 | `llm_search` | - | - |
 | `local` | - | - |
+| `local-background-removal` | - | - |
 | `local-embeddings` | - | - |
+| `local-rembg` | - | - |
 | `mock` | - | - |
 | `mock-character-trainer` | - | - |
 | `mock-delivery` | - | - |
@@ -163,6 +171,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-image` | - | - |
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
+| `rembg` | - | - |
 | `replicate` | - | - |
 | `s3` | - | - |
 | `serpapi` | - | - |
@@ -187,7 +196,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `llm_native` | - | unknown | no | - |
 | `llm_search` | - | unknown | no | - |
 | `local` | - | unknown | no | - |
+| `local-background-removal` | - | unknown | no | - |
 | `local-embeddings` | - | unknown | no | - |
+| `local-rembg` | - | unknown | no | - |
 | `mock` | - | unknown | no | - |
 | `mock-character-trainer` | - | unknown | no | - |
 | `mock-delivery` | - | unknown | no | - |
@@ -212,6 +223,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-image` | - | unknown | no | - |
 | `openai_compatible` | - | unknown | no | - |
 | `openai_image` | - | unknown | no | - |
+| `rembg` | - | unknown | no | - |
 | `replicate` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
 | `serpapi` | - | unknown | no | - |

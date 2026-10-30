@@ -299,6 +299,21 @@ if TYPE_CHECKING:
         AggregatorImageEditProvider,
         AggregatorProvider,
     )
+    from aivia.providers.image_edit.rembg import (
+        DEFAULT_MODEL as REMBG_DEFAULT_MODEL,
+    )
+    from aivia.providers.image_edit.rembg import (
+        DEFAULT_TOLERANCE,
+        LocalBackgroundRemoval,
+        LocalBackgroundRemovalProvider,
+        LocalBackgroundRemover,
+        Rembg,
+        RembgImageEdit,
+        RembgImageEditProvider,
+        RembgProvider,
+        Remover,
+        remove_background,
+    )
     from aivia.providers.pagefetch import (
         HttpPageFetchProvider,
         PageFetch,
@@ -406,6 +421,21 @@ _LAZY_AGGREGATOR_PROVIDERS = frozenset(
         "AggregatorImageEdit",
         "AggregatorImageEditProvider",
         "AggregatorProvider",
+    }
+)
+_LAZY_REMBG_PROVIDERS = frozenset(
+    {
+        "DEFAULT_TOLERANCE",
+        "LocalBackgroundRemoval",
+        "LocalBackgroundRemovalProvider",
+        "LocalBackgroundRemover",
+        "REMBG_DEFAULT_MODEL",
+        "Rembg",
+        "RembgImageEdit",
+        "RembgImageEditProvider",
+        "RembgProvider",
+        "Remover",
+        "remove_background",
     }
 )
 _LAZY_LLM_SEARCH_PROVIDERS = frozenset(
@@ -603,6 +633,37 @@ def __getattr__(name: str) -> Any:
         aggregator_value = aggregator_values[name]
         globals()[name] = aggregator_value
         return aggregator_value
+    if name in _LAZY_REMBG_PROVIDERS:
+        from aivia.providers.image_edit.rembg import (
+            DEFAULT_MODEL,
+            DEFAULT_TOLERANCE,
+            LocalBackgroundRemoval,
+            LocalBackgroundRemovalProvider,
+            LocalBackgroundRemover,
+            Rembg,
+            RembgImageEdit,
+            RembgImageEditProvider,
+            RembgProvider,
+            Remover,
+            remove_background,
+        )
+
+        rembg_values = {
+            "DEFAULT_TOLERANCE": DEFAULT_TOLERANCE,
+            "LocalBackgroundRemoval": LocalBackgroundRemoval,
+            "LocalBackgroundRemovalProvider": LocalBackgroundRemovalProvider,
+            "LocalBackgroundRemover": LocalBackgroundRemover,
+            "REMBG_DEFAULT_MODEL": DEFAULT_MODEL,
+            "Rembg": Rembg,
+            "RembgImageEdit": RembgImageEdit,
+            "RembgImageEditProvider": RembgImageEditProvider,
+            "RembgProvider": RembgProvider,
+            "Remover": Remover,
+            "remove_background": remove_background,
+        }
+        rembg_value = rembg_values[name]
+        globals()[name] = rembg_value
+        return rembg_value
     if name in _LAZY_LLM_SEARCH_PROVIDERS:
         from aivia.providers.search.llm_search import (
             LLMNative,
@@ -680,6 +741,7 @@ __all__ = [
     "DEFAULT_BASE_URL",
     "DEFAULT_MAX_TOKENS",
     "DEFAULT_RESULT_FIELDS",
+    "DEFAULT_TOLERANCE",
     "EMBEDDING_DEFAULT_BATCH_SIZE",
     "EMBEDDING_DEFAULT_CACHE_SIZE",
     "EMBEDDING_DEFAULT_DIMENSIONS",
@@ -689,6 +751,7 @@ __all__ = [
     "EMBEDDING_TOKEN_UNIT",
     "LLM_OPERATION",
     "MOCK_EPOCH",
+    "REMBG_DEFAULT_MODEL",
     "SUPPORTED_OPERATIONS",
     "TOKENS_PER_MILLION",
     "TOKEN_UNIT",
@@ -790,6 +853,9 @@ __all__ = [
     "LLMTokenCost",
     "LLMUsage",
     "LLMWebSearchProvider",
+    "LocalBackgroundRemoval",
+    "LocalBackgroundRemovalProvider",
+    "LocalBackgroundRemover",
     "LocalEmbeddingProvider",
     "LocalEmbeddings",
     "LocalEmbeddingsProvider",
@@ -877,6 +943,11 @@ __all__ = [
     "ProviderState",
     "ReadableContent",
     "ReadablePageFetchProvider",
+    "Rembg",
+    "RembgImageEdit",
+    "RembgImageEditProvider",
+    "RembgProvider",
+    "Remover",
     "Replicate",
     "ReplicateImageProvider",
     "ReplicateProvider",
@@ -965,6 +1036,7 @@ __all__ = [
     "register_mock_providers",
     "register_provider",
     "registry",
+    "remove_background",
     "resolve_provider",
     "service_from_config",
     "storage_provider_from_config",
