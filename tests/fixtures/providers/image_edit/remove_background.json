@@ -1,0 +1,10 @@
+{
+  "images": [
+    {
+      "url": "https://media.example.com/cutout-1.png",
+      "width": 64,
+      "height": 48,
+      "content_type": "image/png"
+    }
+  ]
+}

@@ -51,6 +51,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
 | `openai_image` | `image_gen` | 60/min | - | - | unknown |
 | `rembg` | `image_edit` | 60/min | - | - | unknown |
+| `remote-background-removal` | `image_edit` | 60/min | - | - | unknown |
+| `remote-image-edit` | `image_edit` | 60/min | - | - | unknown |
+| `remote-image-ops` | `image_edit` | 60/min | - | - | unknown |
+| `remote-ops` | `image_edit` | 60/min | - | - | unknown |
+| `remote-upscale` | `image_edit` | 60/min | - | - | unknown |
+| `remote_image_ops` | `image_edit` | 60/min | - | - | unknown |
+| `remote_ops` | `image_edit` | 60/min | - | - | unknown |
 | `replicate` | `image_gen` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
@@ -120,6 +127,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
 | `rembg` | `image_edit` | $0 per image |
+| `remote-background-removal` | - | - |
+| `remote-image-edit` | - | - |
+| `remote-image-ops` | - | - |
+| `remote-ops` | - | - |
+| `remote-upscale` | - | - |
+| `remote_image_ops` | - | - |
+| `remote_ops` | - | - |
 | `replicate` | - | - |
 | `s3` | `storage` | $0 per call |
 | `serpapi` | - | - |
@@ -172,6 +186,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
 | `rembg` | - | - |
+| `remote-background-removal` | - | - |
+| `remote-image-edit` | - | - |
+| `remote-image-ops` | - | - |
+| `remote-ops` | - | - |
+| `remote-upscale` | - | - |
+| `remote_image_ops` | - | - |
+| `remote_ops` | - | - |
 | `replicate` | - | - |
 | `s3` | - | - |
 | `serpapi` | - | - |
@@ -224,6 +245,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai_compatible` | - | unknown | no | - |
 | `openai_image` | - | unknown | no | - |
 | `rembg` | - | unknown | no | - |
+| `remote-background-removal` | - | unknown | no | - |
+| `remote-image-edit` | - | unknown | no | - |
+| `remote-image-ops` | - | unknown | no | - |
+| `remote-ops` | - | unknown | no | - |
+| `remote-upscale` | - | unknown | no | - |
+| `remote_image_ops` | - | unknown | no | - |
+| `remote_ops` | - | unknown | no | - |
 | `replicate` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
 | `serpapi` | - | unknown | no | - |

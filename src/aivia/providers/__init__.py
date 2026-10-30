@@ -314,6 +314,21 @@ if TYPE_CHECKING:
         Remover,
         remove_background,
     )
+    from aivia.providers.image_edit.remote_ops import (
+        DEFAULT_SCALES,
+        DEFAULT_UPSCALE_FACTORS,
+        REMOTE_OPS_DEFAULT_BASE_URL,
+        SUPPORTED_UPSCALE_FACTORS,
+        RemoteBackgroundRemovalAndUpscale,
+        RemoteBackgroundRemovalAndUpscaleProvider,
+        RemoteImageEdit,
+        RemoteImageEditProvider,
+        RemoteImageOps,
+        RemoteImageOpsProvider,
+        RemoteOps,
+        RemoteOpsImageEditProvider,
+        RemoteOpsProvider,
+    )
     from aivia.providers.pagefetch import (
         HttpPageFetchProvider,
         PageFetch,
@@ -436,6 +451,23 @@ _LAZY_REMBG_PROVIDERS = frozenset(
         "RembgProvider",
         "Remover",
         "remove_background",
+    }
+)
+_LAZY_REMOTE_OPS_PROVIDERS = frozenset(
+    {
+        "DEFAULT_SCALES",
+        "DEFAULT_UPSCALE_FACTORS",
+        "REMOTE_OPS_DEFAULT_BASE_URL",
+        "SUPPORTED_UPSCALE_FACTORS",
+        "RemoteBackgroundRemovalAndUpscale",
+        "RemoteBackgroundRemovalAndUpscaleProvider",
+        "RemoteImageEdit",
+        "RemoteImageEditProvider",
+        "RemoteImageOps",
+        "RemoteImageOpsProvider",
+        "RemoteOps",
+        "RemoteOpsImageEditProvider",
+        "RemoteOpsProvider",
     }
 )
 _LAZY_LLM_SEARCH_PROVIDERS = frozenset(
@@ -664,6 +696,43 @@ def __getattr__(name: str) -> Any:
         rembg_value = rembg_values[name]
         globals()[name] = rembg_value
         return rembg_value
+    if name in _LAZY_REMOTE_OPS_PROVIDERS:
+        from aivia.providers.image_edit.remote_ops import (
+            DEFAULT_SCALES,
+            DEFAULT_UPSCALE_FACTORS,
+            REMOTE_OPS_DEFAULT_BASE_URL,
+            SUPPORTED_UPSCALE_FACTORS,
+            RemoteBackgroundRemovalAndUpscale,
+            RemoteBackgroundRemovalAndUpscaleProvider,
+            RemoteImageEdit,
+            RemoteImageEditProvider,
+            RemoteImageOps,
+            RemoteImageOpsProvider,
+            RemoteOps,
+            RemoteOpsImageEditProvider,
+            RemoteOpsProvider,
+        )
+
+        remote_ops_values = {
+            "DEFAULT_SCALES": DEFAULT_SCALES,
+            "DEFAULT_UPSCALE_FACTORS": DEFAULT_UPSCALE_FACTORS,
+            "REMOTE_OPS_DEFAULT_BASE_URL": REMOTE_OPS_DEFAULT_BASE_URL,
+            "SUPPORTED_UPSCALE_FACTORS": SUPPORTED_UPSCALE_FACTORS,
+            "RemoteBackgroundRemovalAndUpscale": (RemoteBackgroundRemovalAndUpscale),
+            "RemoteBackgroundRemovalAndUpscaleProvider": (
+                RemoteBackgroundRemovalAndUpscaleProvider
+            ),
+            "RemoteImageEdit": RemoteImageEdit,
+            "RemoteImageEditProvider": RemoteImageEditProvider,
+            "RemoteImageOps": RemoteImageOps,
+            "RemoteImageOpsProvider": RemoteImageOpsProvider,
+            "RemoteOps": RemoteOps,
+            "RemoteOpsImageEditProvider": RemoteOpsImageEditProvider,
+            "RemoteOpsProvider": RemoteOpsProvider,
+        }
+        remote_ops_value = remote_ops_values[name]
+        globals()[name] = remote_ops_value
+        return remote_ops_value
     if name in _LAZY_LLM_SEARCH_PROVIDERS:
         from aivia.providers.search.llm_search import (
             LLMNative,
@@ -741,7 +810,9 @@ __all__ = [
     "DEFAULT_BASE_URL",
     "DEFAULT_MAX_TOKENS",
     "DEFAULT_RESULT_FIELDS",
+    "DEFAULT_SCALES",
     "DEFAULT_TOLERANCE",
+    "DEFAULT_UPSCALE_FACTORS",
     "EMBEDDING_DEFAULT_BATCH_SIZE",
     "EMBEDDING_DEFAULT_CACHE_SIZE",
     "EMBEDDING_DEFAULT_DIMENSIONS",
@@ -752,7 +823,9 @@ __all__ = [
     "LLM_OPERATION",
     "MOCK_EPOCH",
     "REMBG_DEFAULT_MODEL",
+    "REMOTE_OPS_DEFAULT_BASE_URL",
     "SUPPORTED_OPERATIONS",
+    "SUPPORTED_UPSCALE_FACTORS",
     "TOKENS_PER_MILLION",
     "TOKEN_UNIT",
     "Aggregator",
@@ -947,6 +1020,15 @@ __all__ = [
     "RembgImageEdit",
     "RembgImageEditProvider",
     "RembgProvider",
+    "RemoteBackgroundRemovalAndUpscale",
+    "RemoteBackgroundRemovalAndUpscaleProvider",
+    "RemoteImageEdit",
+    "RemoteImageEditProvider",
+    "RemoteImageOps",
+    "RemoteImageOpsProvider",
+    "RemoteOps",
+    "RemoteOpsImageEditProvider",
+    "RemoteOpsProvider",
     "Remover",
     "Replicate",
     "ReplicateImageProvider",
