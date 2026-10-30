@@ -42,7 +42,11 @@ from aivia.providers.media.dto import (
     VideoRequest,
 )
 from aivia.providers.protocols.base import ProtocolModel
-from aivia.providers.protocols.image import normalize_aspect_ratio
+from aivia.providers.protocols.image import (
+    CAPABILITY_IMAGE_GEN,
+    CAPABILITY_IMAGE_INPUT,
+    normalize_aspect_ratio,
+)
 from aivia.providers.protocols.media import MediaDimensions
 
 __all__ = [
@@ -417,14 +421,19 @@ class MediaConstraints(ProtocolModel):
 
         A capability without any declared tokens is treated as unconstrained
         rather than as supporting nothing, because an empty list usually means
-        the adapter did not publish options at all.
+        the adapter did not publish options at all. A provider that declares
+        ``image_input`` accepts the ``reference_images`` option even when it
+        does not spell the token out in ``supported_options``.
         """
         source = (
             metadata
             if isinstance(metadata, ProviderMeta)
             else ProviderMeta.model_validate(metadata)
         )
-        tokens = source.supported_options.get(capability.strip(), ())
+        name = capability.strip()
+        tokens = list(source.supported_options.get(name, ()))
+        if name == CAPABILITY_IMAGE_GEN and source.supports(CAPABILITY_IMAGE_INPUT):
+            tokens.append("reference_images")
         return cls.from_options(tokens)
 
     @classmethod

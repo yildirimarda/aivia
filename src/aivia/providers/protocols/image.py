@@ -25,6 +25,7 @@ from aivia.providers.protocols.media import ImageFormat, MediaDimensions, MediaI
 
 __all__ = [
     "CAPABILITY_IMAGE_GEN",
+    "CAPABILITY_IMAGE_INPUT",
     "ImageProvider",
     "ImageRequest",
     "ImageResponse",
@@ -33,6 +34,9 @@ __all__ = [
 
 CAPABILITY_IMAGE_GEN = "image_gen"
 """The capability name an image generation provider declares."""
+
+CAPABILITY_IMAGE_INPUT = "image_input"
+"""The capability a provider declares when it accepts reference images."""
 
 _ASPECT_RATIO = re.compile(r"^(?P<width>\d+)\s*:\s*(?P<height>\d+)$")
 

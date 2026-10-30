@@ -37,6 +37,15 @@ from aivia.providers.image.openai import (
     OpenAIImages,
     OpenAIImagesProvider,
 )
+from aivia.providers.image.reference import (
+    CAPABILITY_IMAGE_INPUT,
+    ReferenceInputNotSupportedError,
+    ensure_reference_support,
+    filter_providers_for_reference_input,
+    prepare_image_request,
+    required_image_capabilities,
+    supports_reference_images,
+)
 from aivia.providers.image.replicate import (
     REPLICATE_API_URL,
     REPLICATE_BASE_URL,
@@ -47,6 +56,7 @@ from aivia.providers.image.replicate import (
 )
 
 __all__ = [
+    "CAPABILITY_IMAGE_INPUT",
     "DEFAULT_BASE_URL",
     "DEFAULT_QUEUE_URL",
     "FAL_DEFAULT_BASE_URL",
@@ -77,7 +87,13 @@ __all__ = [
     "OpenAIImageProvider",
     "OpenAIImages",
     "OpenAIImagesProvider",
+    "ReferenceInputNotSupportedError",
     "Replicate",
     "ReplicateImageProvider",
     "ReplicateProvider",
+    "ensure_reference_support",
+    "filter_providers_for_reference_input",
+    "prepare_image_request",
+    "required_image_capabilities",
+    "supports_reference_images",
 ]
