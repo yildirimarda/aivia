@@ -291,6 +291,14 @@ if TYPE_CHECKING:
         ReplicateImageProvider,
         ReplicateProvider,
     )
+    from aivia.providers.image_edit.aggregator import (
+        AGGREGATOR_DEFAULT_BASE_URL,
+        SUPPORTED_OPERATIONS,
+        Aggregator,
+        AggregatorImageEdit,
+        AggregatorImageEditProvider,
+        AggregatorProvider,
+    )
     from aivia.providers.pagefetch import (
         HttpPageFetchProvider,
         PageFetch,
@@ -389,6 +397,16 @@ _LAZY_OPENAI_IMAGE_PROVIDERS = frozenset(
 )
 _LAZY_REPLICATE_PROVIDERS = frozenset(
     {"Replicate", "ReplicateImageProvider", "ReplicateProvider"}
+)
+_LAZY_AGGREGATOR_PROVIDERS = frozenset(
+    {
+        "AGGREGATOR_DEFAULT_BASE_URL",
+        "SUPPORTED_OPERATIONS",
+        "Aggregator",
+        "AggregatorImageEdit",
+        "AggregatorImageEditProvider",
+        "AggregatorProvider",
+    }
 )
 _LAZY_LLM_SEARCH_PROVIDERS = frozenset(
     {
@@ -564,6 +582,27 @@ def __getattr__(name: str) -> Any:
         replicate_value = replicate_values[name]
         globals()[name] = replicate_value
         return replicate_value
+    if name in _LAZY_AGGREGATOR_PROVIDERS:
+        from aivia.providers.image_edit.aggregator import (
+            AGGREGATOR_DEFAULT_BASE_URL,
+            SUPPORTED_OPERATIONS,
+            Aggregator,
+            AggregatorImageEdit,
+            AggregatorImageEditProvider,
+            AggregatorProvider,
+        )
+
+        aggregator_values = {
+            "AGGREGATOR_DEFAULT_BASE_URL": AGGREGATOR_DEFAULT_BASE_URL,
+            "SUPPORTED_OPERATIONS": SUPPORTED_OPERATIONS,
+            "Aggregator": Aggregator,
+            "AggregatorImageEdit": AggregatorImageEdit,
+            "AggregatorImageEditProvider": AggregatorImageEditProvider,
+            "AggregatorProvider": AggregatorProvider,
+        }
+        aggregator_value = aggregator_values[name]
+        globals()[name] = aggregator_value
+        return aggregator_value
     if name in _LAZY_LLM_SEARCH_PROVIDERS:
         from aivia.providers.search.llm_search import (
             LLMNative,
@@ -623,6 +662,7 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "AGGREGATOR_DEFAULT_BASE_URL",
     "CAPABILITY_EMBEDDINGS",
     "CAPABILITY_IMAGE_EDIT",
     "CAPABILITY_IMAGE_GEN",
@@ -649,8 +689,13 @@ __all__ = [
     "EMBEDDING_TOKEN_UNIT",
     "LLM_OPERATION",
     "MOCK_EPOCH",
+    "SUPPORTED_OPERATIONS",
     "TOKENS_PER_MILLION",
     "TOKEN_UNIT",
+    "Aggregator",
+    "AggregatorImageEdit",
+    "AggregatorImageEditProvider",
+    "AggregatorProvider",
     "Anthropic",
     "AnthropicLLMProvider",
     "AnthropicProvider",

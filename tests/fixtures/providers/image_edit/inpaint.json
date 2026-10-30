@@ -1,0 +1,12 @@
+{
+  "images": [
+    {
+      "url": "https://media.example.com/inpaint-1.png",
+      "width": 1024,
+      "height": 768,
+      "content_type": "image/png"
+    }
+  ],
+  "seed": 22,
+  "prompt": "replace the sky with a sunset"
+}

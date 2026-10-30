@@ -9,6 +9,8 @@ This matrix is generated from the metadata every registered provider declares. C
 
 | Provider | Capabilities | Rate limit | Quality rank | License | Commercial use |
 | --- | --- | --- | --- | --- | --- |
+| `aggregator` | `image_edit` | 60/min | - | - | unknown |
+| `aggregator-image-edit` | `image_edit` | 60/min | - | - | unknown |
 | `anthropic` | `llm` | 60/min | - | - | unknown |
 | `brave` | `search` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
@@ -56,6 +58,8 @@ This matrix is generated from the metadata every registered provider declares. C
 
 | Provider | Capability | Price |
 | --- | --- | --- |
+| `aggregator` | - | - |
+| `aggregator-image-edit` | - | - |
 | `anthropic` | - | - |
 | `brave` | - | - |
 | `exa` | - | - |
@@ -120,6 +124,8 @@ This matrix is generated from the metadata every registered provider declares. C
 
 | Provider | Capability | Options |
 | --- | --- | --- |
+| `aggregator` | - | - |
+| `aggregator-image-edit` | - | - |
 | `anthropic` | - | - |
 | `brave` | - | - |
 | `exa` | - | - |
@@ -167,6 +173,8 @@ This matrix is generated from the metadata every registered provider declares. C
 
 | Provider | License | Commercial use | Attribution required | Notes |
 | --- | --- | --- | --- | --- |
+| `aggregator` | - | unknown | no | - |
+| `aggregator-image-edit` | - | unknown | no | - |
 | `anthropic` | - | unknown | no | - |
 | `brave` | - | unknown | no | - |
 | `exa` | - | unknown | no | - |
