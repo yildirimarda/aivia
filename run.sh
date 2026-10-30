@@ -14,8 +14,14 @@ ENGINE="${ENGINE:-opencode}"     # opencode (free, OpenRouter) | claude (paid, A
 MODE="plan"
 COUNT=1
 WAIT=1
-TIMEOUT_MIN=20
+TIMEOUT_MIN=45
 CI_RETRIES=1
+STALL_MIN=45            # kill a session that emits no event for this long (0 = off)
+RUN_ID="$$-$(date +%s)"
+CONTAINER_NAME=""
+AGENT_SEQ=0
+WD_PID=""
+SNAP=""
 
 MODEL=""
 USE_GRAPH=1
@@ -32,13 +38,14 @@ ANTHROPIC_KEY=""
 #   MODEL=openrouter/vendor/model
 #   ENGINE=opencode          (or claude)
 #   CI_RETRIES=5
-#   TIMEOUT_MIN=40
+#   TIMEOUT_MIN=40           (minutes to wait for a PR merge)
+#   STALL_MIN=45             (kill a session silent this long; 0 = off)
 # Precedence: CLI flags > this file > committed defaults (opencode.json).
 if [[ -f "$REPO_DIR/.agentloop.local" ]]; then
   while IFS='=' read -r _k _v; do
     [[ "$_k" =~ ^[A-Z_]+$ ]] || continue
     case "$_k" in
-      ENGINE|MODEL|CI_RETRIES|TIMEOUT_MIN|MAX_GROWTH|IMAGE|AUTO_REPLAN|HEADROOM)
+      ENGINE|MODEL|CI_RETRIES|TIMEOUT_MIN|MAX_GROWTH|IMAGE|AUTO_REPLAN|HEADROOM|STALL_MIN)
         printf -v "$_k" '%s' "$_v" ;;
     esac
   done < "$REPO_DIR/.agentloop.local"
@@ -61,14 +68,16 @@ Modes
                             "gh-admin" keychain token (no host gh login needed)
 
 Options
-  -e, --engine NAME         opencode (default; free OpenRouter models),
+  -e, --engine NAME         opencode (default; OpenRouter or NVIDIA NIM models),
                             claude (paid; Claude Code + Anthropic API key),
                             or codex (paid; OpenAI Codex CLI + CODEX_API_KEY)
       --no-discover         forbid the agent from adding items to PLAN.md
       --max-growth N        abort if the plan grows by more than N items
                             over this run (default 10)
       --no-wait             don't wait for the PR to merge before the next item
-      --timeout N           minutes to wait for a merge (default 20)
+      --timeout N           minutes to wait for a merge (default 45)
+      --stall-timeout N     kill a session that produced no output for N
+                            minutes — a hung model/API (default 45; 0 = off)
       --ci-retries N        when a PR's CI fails, automatically feed the
                             failing log back to the agent on the same branch
                             and let it fix, up to N times (default 1; 0 = off)
@@ -84,6 +93,8 @@ Options
                             delaying context compaction. Persist with
                             HEADROOM=1 in .agentloop.local
   -m, --model ID            override the model from opencode.json
+                            (OpenRouter: openrouter/vendor/model; NVIDIA NIM:
+                            nvidia-nim/vendor/model, keychain entry "nvidia")
       --no-graph            skip the Graphify index step
       --image NAME          container image (default "agent")
   -h, --help                this
@@ -121,6 +132,7 @@ while (( $# )); do
     --max-growth)   MAX_GROWTH="${2:?--max-growth needs a number}"; shift 2 ;;
     --no-wait)      WAIT=0; shift ;;
     --timeout)      TIMEOUT_MIN="${2:?--timeout needs minutes}"; shift 2 ;;
+    --stall-timeout) STALL_MIN="${2:?--stall-timeout needs minutes}"; shift 2 ;;
     --ci-retries)   CI_RETRIES="${2:?--ci-retries needs a number}"; shift 2 ;;
     --auto-replan)  AUTO_REPLAN=1; shift ;;
     --ambitious)    AMBITIOUS=1; shift ;;
@@ -211,6 +223,27 @@ docker info >/dev/null 2>&1 \
 docker image inspect "$IMAGE" >/dev/null 2>&1 \
   || die "image '$IMAGE' not found. Build it:  docker build -t $IMAGE -f Dockerfile.agent ."
 
+# A previous run killed with Ctrl+C / a crash can leave its container running
+# against this checkout, which then fights the new run over the same files.
+# Containers are labelled per repo, so stop any leftovers before starting.
+# The label holds the full repo path, so other projects' containers are never
+# touched. A container whose owning run.sh is still alive means a second run in
+# this same checkout — refuse instead of killing it.
+_stale="$(docker ps -a --filter "label=agentloop.repo=$REPO_DIR" \
+          --format '{{.ID}} {{.Label "agentloop.run"}}' 2>/dev/null || true)"
+if [[ -n "$_stale" ]]; then
+  while read -r _cid _crun; do
+    [[ -n "$_cid" ]] || continue
+    _cpid="${_crun%%-*}"
+    if [[ -n "$_cpid" && "$_cpid" =~ ^[0-9]+$ ]] && kill -0 "$_cpid" 2>/dev/null; then
+      die "another run.sh (pid $_cpid) is already working in this checkout.
+Stop it first (Ctrl+C in its terminal, or: kill $_cpid)."
+    fi
+    echo "  found a leftover agent container from an earlier run — stopping it"
+    docker kill "$_cid" >/dev/null 2>&1 || true
+  done <<< "$_stale"
+fi
+
 # The agent works in THIS checkout — same directory, same branches. Anything
 # you leave uncommitted would be swept into its commits or dragged across its
 # branch switches. Refuse to start dirty. (Corollary, not enforceable here:
@@ -228,6 +261,7 @@ GH_AGENT_TOKEN=""
 OPENROUTER_KEY=""
 ANTHROPIC_KEY=""
 CODEX_KEY=""
+NVIDIA_KEY=""
 
 if [[ "$MODE" == "ghsetup" ]]; then
   # One-time repo administration needs an admin-capable token, deliberately
@@ -242,7 +276,18 @@ else
     CODEX_KEY="$(keychain codex)"
     OPENROUTER_KEY="$(security find-generic-password -s openrouter -w 2>/dev/null || true)"
   else
-    OPENROUTER_KEY="$(keychain openrouter)"
+    # NVIDIA NIM is optional; OpenRouter is required unless the chosen model is
+    # an NVIDIA one. (A model set only in opencode.json is not visible here —
+    # then put MODEL=nvidia-nim/... in .agentloop.local, or keep an openrouter
+    # key around.)
+    NVIDIA_KEY="$(security find-generic-password -s nvidia -w 2>/dev/null || true)"
+    case "${MODEL:-}" in
+      nvidia*/*)
+        [[ -n "$NVIDIA_KEY" ]] || die "keychain entry 'nvidia' not found. Add it with:
+  security add-generic-password -s nvidia -a \"\$USER\" -w '<nvapi-...>'"
+        OPENROUTER_KEY="$(security find-generic-password -s openrouter -w 2>/dev/null || true)" ;;
+      *) OPENROUTER_KEY="$(keychain openrouter)" ;;
+    esac
   fi
 fi
 
@@ -261,6 +306,9 @@ in_container() {
   # repeated CLT install prompts and a broken (ancient system) interpreter
   # the moment the host runs ruff/pytest/uv in a project managed by agentloop.
   docker run --rm \
+    --label "agentloop.repo=$REPO_DIR" \
+    --label "agentloop.run=$RUN_ID" \
+    ${CONTAINER_NAME:+--name "$CONTAINER_NAME"} \
     --add-host=host.docker.internal:host-gateway \
     -v "$REPO_DIR:/work" \
     -v agent-venv:/work/.venv \
@@ -269,6 +317,7 @@ in_container() {
     -e OPENROUTER_API_KEY="$OPENROUTER_KEY" \
     -e ANTHROPIC_API_KEY="$ANTHROPIC_KEY" \
     -e CODEX_API_KEY="$CODEX_KEY" \
+    -e NVIDIA_API_KEY="$NVIDIA_KEY" \
     -e GH_TOKEN="${GH_RUN_TOKEN:-$GH_AGENT_TOKEN}" \
     -e GH_PROMPT_DISABLED=1 \
     -e GH_NO_UPDATE_NOTIFIER=1 \
@@ -368,12 +417,45 @@ stream_view() {
   fi
 }
 
+# Background guard for one agent session: kills the container when the log has
+# been silent for STALL_MIN (a hung API call — the 504 stalls that otherwise
+# burn hours). Total session length is deliberately NOT capped: a healthy long
+# session keeps emitting events. The reason goes to $3; run_agent reads it
+# after the pipeline ends.
+agent_watchdog() {
+  local name="$1" log="$2" flag="$3" now m
+  while sleep 30; do
+    docker inspect -f '{{.State.Running}}' "$name" >/dev/null 2>&1 || continue
+    now="$(date +%s)"
+    m="$(stat -f %m "$log" 2>/dev/null || stat -c %Y "$log" 2>/dev/null || echo "$now")"
+    if (( STALL_MIN > 0 )) && (( now - m > STALL_MIN * 60 )); then
+      echo "no output for ${STALL_MIN}m — model/API looks hung (--stall-timeout)" > "$flag"
+      docker kill "$name" >/dev/null 2>&1; return 0
+    fi
+  done
+}
+
+stop_watchdog() {
+  [[ -n "$WD_PID" ]] || return 0
+  kill "$WD_PID" 2>/dev/null || true
+  wait "$WD_PID" 2>/dev/null || true
+  WD_PID=""
+}
+
 run_agent() {
-  local prompt="$1" log
+  local prompt="$1" log wdflag
   log="logs/$(date +%Y%m%d-%H%M%S)-$ENGINE.jsonl"
   info "engine: $ENGINE"
   info "log: $log (full transcript; terminal shows tool calls only)"
   echo
+  AGENT_SEQ=$(( AGENT_SEQ + 1 ))
+  CONTAINER_NAME="agentloop-$RUN_ID-$AGENT_SEQ"
+  wdflag="$(mktemp -t agentloop-wd)"; : > "$wdflag"
+  : > "$log"
+  if (( STALL_MIN > 0 )); then
+    agent_watchdog "$CONTAINER_NAME" "$log" "$wdflag" &
+    WD_PID=$!
+  fi
 
   if [[ "$ENGINE" == "claude" ]]; then
     # Headless Claude Code. bypassPermissions is safe for the same reason it
@@ -410,6 +492,14 @@ run_agent() {
     in_container opencode run --format json ${MODEL:+-m "$MODEL"} "$prompt" | tee "$log" | stream_view
   fi
   local rc=${PIPESTATUS[0]}
+  stop_watchdog
+  CONTAINER_NAME=""
+  if [[ -s "$wdflag" ]]; then
+    echo
+    echo "  ✖ agent stopped by watchdog: $(cat "$wdflag")"
+    rc=124
+  fi
+  rm -f "$wdflag"
 
   echo
   if command -v jq >/dev/null 2>&1 && [[ -s "$log" ]]; then
@@ -481,11 +571,59 @@ abandon_work_branch() {
     git branch -D "$WORK_BRANCH" >/dev/null 2>&1 || true
     info "cleaned up: back on main, removed $WORK_BRANCH"
   else
-    echo "  the crashed session left uncommitted changes on $WORK_BRANCH."
-    echo "  Inspect with:  git status && git diff"
-    echo "  Keep something? commit it there. Discard everything:"
-    echo "    git checkout -- . && git clean -fd && git switch main && git branch -D $WORK_BRANCH"
+    # Uncommitted leftovers: never destroy them — park them and go back to main.
+    keep_branch_and_return "the session left uncommitted changes"
   fi
+}
+
+# On any failed/aborted run: leave the checkout on a clean main (so ./run.sh
+# can start again immediately) but KEEP the work branch for inspection, and say
+# exactly how to look at it or throw it away. Leftover uncommitted changes are
+# stashed (never discarded). Also used by the Ctrl+C handler.
+keep_branch_and_return() {
+  local why="${1:-}" pr="${2:-}" br stashed=""
+  br="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  [[ -n "$br" && "$br" != "main" && "$br" != "master" && "$br" != "HEAD" ]] || return 0
+  if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+    git stash push -u -q -m "agentloop: leftovers from $br" >/dev/null 2>&1 && stashed=1
+  fi
+  echo
+  if git switch main --quiet 2>/dev/null; then
+    echo "  Back on main${why:+ ($why)} — the work branch is kept for inspection:"
+    echo "    branch:    $br${pr:+   (PR #$pr)}"
+    echo "    look at it:    git switch $br"
+    echo "    throw it away: git branch -D $br${pr:+  &&  gh pr close $pr --delete-branch}"
+    echo "    or just start again from main:  ./run.sh   (add --task \"...\" for a one-off)"
+    [[ -n "$stashed" ]] && echo "    uncommitted leftovers were stashed:  git stash list   (restore on that branch: git stash pop)"
+  else
+    echo "  Could not switch back to main${why:+ ($why)}; still on $br."
+    echo "  Check:  git status"
+  fi
+}
+
+# Ctrl+C / kill: stop every container of this run first (a bare Ctrl+C can
+# leave docker running in the background), then return to main.
+kill_run_containers() {
+  local ids
+  ids="$(docker ps -q --filter "label=agentloop.run=$RUN_ID" 2>/dev/null || true)"
+  # shellcheck disable=SC2086
+  [[ -n "$ids" ]] && docker kill $ids >/dev/null 2>&1
+  return 0
+}
+on_interrupt() {
+  trap '' INT TERM
+  echo
+  echo "  interrupted — stopping the agent container..."
+  stop_watchdog
+  kill_run_containers
+  keep_branch_and_return "interrupted"
+  exit 130
+}
+cleanup_exit() {
+  stop_watchdog
+  kill_run_containers
+  [[ -n "$SNAP" ]] && rm -f "$SNAP"
+  return 0
 }
 
 # Poll until the PR merges, CI fails, or we time out. No agent turns, no
@@ -495,16 +633,13 @@ abandon_work_branch() {
 # commit), NOT from check runs: GitHub does not offer the "Checks" permission
 # on fine-grained PATs, so check-run data is invisible to the agent token.
 # Workflow runs are readable with "Actions: Read-only".
+RERUN_DONE=""
 wait_for_merge() {
   local pr="$1" deadline=$(( $(date +%s) + TIMEOUT_MIN * 60 ))
-  # The automerge workflow only acts on PRs labelled "automated". Models
-  # sometimes forget the label when opening the PR — labelling is
-  # deterministic, so do it here. No-op if already labelled; if it was
-  # missing, the "labeled" event triggers the automerge workflow now.
-  gh_c pr edit "$pr" --add-label automated >/dev/null 2>&1 || true
+  local first_fail=0 told=0
   echo "> waiting for PR #$pr to merge (timeout ${TIMEOUT_MIN}m)"
   while (( $(date +%s) < deadline )); do
-    local out state head fails
+    local out state head
     out="$(gh_c pr view "$pr" --json state,headRefOid \
           -q '[.state, .headRefOid] | join(" ")' 2>/dev/null || true)"
     state="${out%% *}"
@@ -515,12 +650,43 @@ wait_for_merge() {
       CLOSED) info "PR was closed without merging"; return 2 ;;
     esac
     if [[ -n "$head" && "$head" != "$state" ]]; then
-      fails="$(gh_c api "repos/{owner}/{repo}/actions/runs?head_sha=$head&per_page=30" \
-        --jq '[.workflow_runs[] | select(.name != "automerge") | select(.conclusion=="failure" or .conclusion=="timed_out" or .conclusion=="cancelled")] | length' \
-        2>/dev/null || echo 0)"
-      if [[ "${fails:-0}" -gt 0 ]] 2>/dev/null; then
-        info "CI failed on PR #$pr"
-        return 3
+      local runs fails=0 pending=0 rid rname rstatus rconc
+      runs="$(gh_c api "repos/{owner}/{repo}/actions/runs?head_sha=$head&per_page=30" \
+        --jq '.workflow_runs[] | select(.name != "automerge") | [.id, .name, .status, (.conclusion // "")] | @tsv' \
+        2>/dev/null || true)"
+      while IFS=$'\t' read -r rid rname rstatus rconc; do
+        [[ -n "$rid" ]] || continue
+        if [[ "$rstatus" != "completed" ]]; then pending=$(( pending + 1 )); continue; fi
+        case "$rconc" in
+          failure|timed_out) fails=$(( fails + 1 )) ;;
+          cancelled)
+            # GitHub sometimes cancels runs on its own. Re-run each once.
+            if [[ " $RERUN_DONE " != *" $rid "* ]]; then
+              RERUN_DONE="$RERUN_DONE $rid"
+              if gh_c run rerun "$rid" >/dev/null 2>&1; then
+                info "run $rid ($rname) was cancelled — re-running it"
+                pending=$(( pending + 1 ))
+              else
+                fails=$(( fails + 1 ))
+              fi
+            else
+              fails=$(( fails + 1 ))
+            fi ;;
+        esac
+      done <<< "$runs"
+      # A failure is only reported once every other check has finished (or 15
+      # minutes passed), so the agent gets the logs of ALL failed jobs — e.g.
+      # the Windows job, not just whichever failed first.
+      if (( fails > 0 )); then
+        (( first_fail )) || first_fail="$(date +%s)"
+        if (( pending == 0 )) || (( $(date +%s) - first_fail > 900 )); then
+          info "CI failed on PR #$pr"
+          return 3
+        fi
+        if (( ! told )); then
+          info "a check failed — waiting for the remaining checks to finish"
+          told=1
+        fi
       fi
     fi
     sleep 20
@@ -532,23 +698,36 @@ wait_for_merge() {
 # Fetch the tail of the failing CI log for a PR's head commit — readable with
 # the agent token's "Actions: Read-only" permission.
 ci_fail_log() {
-  local pr="$1" head rid
+  local pr="$1" head runs rid rname jobs jid jname out n=0 k
   head="$(gh_c pr view "$pr" --json headRefOid -q .headRefOid 2>/dev/null || true)"
   [[ -n "$head" ]] || return 0
-  rid="$(gh_c api "repos/{owner}/{repo}/actions/runs?head_sha=$head&per_page=30" \
-        --jq '[.workflow_runs[] | select(.name != "automerge") | select(.conclusion=="failure" or .conclusion=="timed_out")][0].id' \
+  runs="$(gh_c api "repos/{owner}/{repo}/actions/runs?head_sha=$head&per_page=30" \
+        --jq '.workflow_runs[] | select(.name != "automerge") | select(.conclusion=="failure" or .conclusion=="timed_out" or .conclusion=="cancelled") | [.id, .name] | @tsv' \
         2>/dev/null || true)"
-  [[ -n "$rid" && "$rid" != "null" ]] || return 0
-  # Failed job names first — a bare log tail doesn't say WHICH check died.
-  gh_c run view "$rid" 2>/dev/null | grep -E "^X|✗|failure" | head -10
-  # Log archives lag behind the failure conclusion — retry briefly.
-  local out="" i
-  for i in 1 2 3; do
-    out="$(gh_c run view "$rid" --log-failed 2>/dev/null | tail -80)"
-    [[ -n "$out" ]] && break
-    sleep 10
-  done
-  printf '%s\n' "$out"
+  [[ -n "$runs" ]] || return 0
+  while IFS=$'\t' read -r rid rname; do
+    [[ -n "$rid" ]] || continue
+    jobs="$(gh_c run view "$rid" --json jobs \
+          --jq '.jobs[] | select(.conclusion=="failure" or .conclusion=="timed_out") | [.databaseId, .name] | @tsv' \
+          2>/dev/null || true)"
+    if [[ -z "$jobs" ]]; then
+      echo "### workflow \"$rname\" (run $rid) did not finish — no failed job recorded (cancelled/timed out)"
+      continue
+    fi
+    while IFS=$'\t' read -r jid jname; do
+      [[ -n "$jid" ]] || continue
+      n=$(( n + 1 )); (( n > 4 )) && break
+      echo "### FAILED JOB: $rname / $jname"
+      # Log archives lag behind the failure conclusion — retry briefly.
+      out=""
+      for k in 1 2 3; do
+        out="$(gh_c run view --job "$jid" --log-failed 2>/dev/null | tail -50)"
+        [[ -n "$out" ]] && break
+        sleep 10
+      done
+      printf '%s\n' "${out:-<log not available yet>}"
+    done <<< "$jobs"
+  done <<< "$runs"
 }
 
 prompt_ci_fix() {
@@ -566,12 +745,18 @@ by taking MAIN's version of every line except this PR's own item, which
 keeps its [x]. Never let a conflict resolution untick someone else's item.
 Do this:
 
-1. Diagnose the failure from the log tail below. If the log is missing or
-   unclear, do NOT dig through git history or PR metadata — open
-   .github/workflows/ci.yml and run every check command it defines (lint,
-   format check, type check, tests), in order, exactly as written there.
-   One of them will fail exactly like CI did. That is always the fastest
-   reproduction.
+1. Diagnose the failure from the log below; it lists every failed job. If the
+   log is missing or unclear, do NOT dig through git history or PR metadata —
+   open EVERY workflow in .github/workflows/ (not only ci.yml) and run the
+   check commands they define (lint, format check, type check, tests), in
+   order, exactly as written there. That is the fastest reproduction.
+   Platform note: this container is Linux. If a failed job runs on windows or
+   macos (or a different toolchain, e.g. an MSRV/minimum-version job), the
+   failure usually will NOT reproduce here — do not conclude "all green, no
+   fix needed". Fix it directly from the log: typically platform-specific code
+   or imports (and their tests) missing a platform guard such as
+   #[cfg(unix)] / sys.platform checks, path-separator or line-ending
+   assumptions, or APIs newer than the minimum supported version.
 2. Fix the CODE. Never weaken, skip or delete tests to get green. If a
    lockfile check failed, regenerate the lockfile with the project's
    dependency tool (e.g. uv lock) and commit it.
@@ -579,7 +764,7 @@ Do this:
 4. Commit and push to this same branch — the existing PR updates itself.
 5. Stop. Do not merge, do not start anything else.
 
---- FAILING CI LOG (tail) ---
+--- FAILING CI LOG (per failed job; tail) ---
 $3
 --- END LOG ---
 EOF
@@ -799,6 +984,9 @@ do_replan() {
 }
 
 # ── One-shot modes ───────────────────────────────────────────────────────────
+trap on_interrupt INT TERM
+trap cleanup_exit EXIT
+
 case "$MODE" in
   reindex)
     graph_sync force; exit 0 ;;
@@ -870,9 +1058,12 @@ existing PR updates. The 'create a branch' step in AGENTS.md does not apply."
              info "merged — back on main" ;;
           3) echo
              echo "CI is still failing on PR #$pr after $AWAIT_FIXES automatic fix attempt(s)."
-             echo "Take over:  git switch \$(gh pr view $pr --json headRefName -q .headRefName)" ;;
+             fb="$(gh_c pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)"
+             keep_branch_and_return "CI failing" "$pr"
+             echo "  Take over:  git switch ${fb:-<branch>}  &&  ./run.sh --task \"<what to fix>\"" ;;
           *) pu="$(gh_c pr view "$pr" --json url -q .url 2>/dev/null || true)"
-             echo "PR #$pr did not merge yet: ${pu:-open it on GitHub}" ;;
+             echo "PR #$pr did not merge yet: ${pu:-open it on GitHub}"
+             keep_branch_and_return "PR did not merge" "$pr" ;;
         esac
       else
         info "--no-wait: not waiting for the merge (automerge lands it when CI is green)"
@@ -883,7 +1074,6 @@ esac
 
 # ── Plan loop ────────────────────────────────────────────────────────────────
 SNAP="$(mktemp -t planbefore)"
-trap 'rm -f "$SNAP"' EXIT
 
 completed_n=0
 total_added=0
@@ -950,7 +1140,8 @@ for (( i = 1; i <= COUNT; i++ )); do
     fi
     echo
     echo "STOPPING: commits exist but no pull request was opened."
-    echo "Open it manually, or re-run to let the agent retry."
+    keep_branch_and_return "no PR was opened"
+    echo "  To retry: push the branch and open the PR yourself, or delete it and re-run."
     exit 1
   fi
   info "PR #$pr opened"
@@ -967,13 +1158,15 @@ for (( i = 1; i <= COUNT; i++ )); do
     3) fb="$(gh_c pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || echo '<branch>')"
        echo
        echo "STOPPING: CI is still failing on PR #$pr after $AWAIT_FIXES automatic fix attempt(s)."
-       echo "Take over on the same branch:"
-       echo "  git switch $fb"
-       echo "  ./run.sh --task \"<what to fix>\""
+       keep_branch_and_return "CI failing" "$pr"
+       echo "  Take over on the same branch:"
+       echo "    git switch $fb"
+       echo "    ./run.sh --task \"<what to fix>\""
        exit 1 ;;
     *) pu="$(gh_c pr view "$pr" --json url -q .url 2>/dev/null || true)"
        echo
        echo "STOPPING: PR #$pr did not merge. Take a look: ${pu:-open it on GitHub}"
+       keep_branch_and_return "PR did not merge" "$pr"
        exit 1 ;;
   esac
 
