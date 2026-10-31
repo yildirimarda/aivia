@@ -320,6 +320,9 @@ class ScreeningToken(str):
         }
 
 
+_ScreeningTokenMaybe = ScreeningToken | None
+
+
 @dataclass(frozen=True, slots=True)
 class ScreeningResult:
     """The non-raising outcome of a screening check."""
@@ -327,7 +330,7 @@ class ScreeningResult:
     allowed: bool
     text: str
     kind: str
-    token: (ScreeningToken | None) = None
+    token: _ScreeningTokenMaybe = None
     blocked_terms: tuple[str, ...] = ()
     categories: tuple[str, ...] = ()
     reason: str = ""
