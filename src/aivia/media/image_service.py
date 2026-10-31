@@ -16,6 +16,7 @@ reused image is visible in the ledger without counting as spend.
 from __future__ import annotations
 
 import hashlib
+import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,6 +85,7 @@ __all__ = [
     "generate_image",
     "image_service_from_config",
     "service_from_config",
+    "variation_seeds",
 ]
 
 ToolchainLike = ToolchainFingerprint | Mapping[str, Any] | str | None
@@ -106,6 +108,29 @@ def _image_format(value: str) -> ImageFormat:
         return ImageFormat(value)
     except ValueError:
         return ImageFormat.PNG
+
+
+def variation_seeds(
+    seed: int | None,
+    count: int,
+    *,
+    fallback: int | None = None,
+) -> tuple[int, ...]:
+    """Return one distinct seed per requested variation.
+
+    An explicit *seed* is expanded to ``seed + index`` so the same request
+    always yields the same values. Without one, a fresh 32-bit base is drawn
+    unless *fallback* supplies a base; every output still receives its own
+    seed so the variation is reproducible from the recorded value.
+    """
+    if isinstance(count, bool) or not isinstance(count, int):
+        raise TypeError("count must be an integer")
+    if count < 1:
+        raise ValueError("count must be positive")
+    base = fallback if seed is None and fallback is not None else seed
+    if base is None:
+        base = secrets.randbits(32)
+    return tuple(base + index for index in range(count))
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +161,21 @@ class ImageOutcome:
     def images(self) -> list[ImageResult]:
         """Every image in the provider response."""
         return list(self.response.images)
+
+    @property
+    def seeds(self) -> tuple[int | None, ...]:
+        """The recorded seed for every output, in response order."""
+        return tuple(image.seed for image in self.response.images)
+
+    @property
+    def seed(self) -> int | None:
+        """The first recorded seed, or ``None``."""
+        return self.seeds[0] if self.seeds else None
+
+    @property
+    def variation_seeds(self) -> tuple[int | None, ...]:
+        """Alias for :attr:`seeds`."""
+        return self.seeds
 
     @property
     def outputs(self) -> tuple[Asset, ...]:
@@ -448,6 +488,33 @@ class ImageService:
             config=self._safety,
         )
 
+    @staticmethod
+    def _seed_for(request: ImageRequest, index: int) -> int | None:
+        """Return the seed one output of *request* will be recorded with."""
+        if request.seed is None:
+            return None
+        return request.seed + index
+
+    @staticmethod
+    def _response_seeds(
+        request: ImageRequest,
+        response: ImageResponse,
+        base_seed: int,
+    ) -> tuple[int, ...]:
+        """Choose the seed recorded for each image in *response*.
+
+        An explicit request seed always expands to ``seed + index``. Without
+        one, distinct seeds reported by the provider are kept; missing or
+        duplicate values fall back to a fresh base so every output differs.
+        """
+        if request.seed is None:
+            reported = [image.seed for image in response.images]
+            if all(seed is not None for seed in reported) and len(set(reported)) == len(
+                reported
+            ):
+                return tuple(cast(int, seed) for seed in reported)
+        return variation_seeds(base_seed, response.count)
+
     def _parameters(self, request: ImageRequest, index: int = 0) -> dict[str, Any]:
         return {
             "negative_prompt": request.negative_prompt,
@@ -458,7 +525,7 @@ class ImageService:
             "format": request.format.value,
             "quality": request.quality,
             "style": request.style,
-            "seed": request.seed,
+            "seed": self._seed_for(request, index),
             "count": request.count,
             "index": index,
         }
@@ -579,9 +646,15 @@ class ImageService:
             budget = self._budget.remaining(run_id, operation=operation_name)
 
         required = (CAPABILITY_IMAGE_INPUT,) if request.reference_images else None
+        base_seed = request.seed if request.seed is not None else secrets.randbits(32)
+        provider_request = (
+            request
+            if request.seed is not None
+            else request.model_copy(update={"seed": base_seed})
+        )
 
         async def run(provider: Provider) -> ImageResponse:
-            return await cast(ImageProvider, provider).generate(request)
+            return await cast(ImageProvider, provider).generate(provider_request)
 
         response = await self._router.execute(
             CAPABILITY_IMAGE_GEN,
@@ -597,6 +670,16 @@ class ImageService:
         if selection is None:
             raise RuntimeError("router completed an image call without a selection")
         provider_name = response.provider or selection.name
+
+        seeds = self._response_seeds(request, response, base_seed)
+        response = response.model_copy(
+            update={
+                "images": [
+                    image.model_copy(update={"seed": seed})
+                    for image, seed in zip(response.images, seeds, strict=True)
+                ]
+            }
+        )
 
         materialised: list[tuple[MediaProbe, StorageObject | None]] = []
         for index, result in enumerate(response.images):
@@ -665,6 +748,7 @@ class ImageService:
                 content_hash=probe.sha256,
                 run_id=run_id,
                 pinned=pinned,
+                seed=seeds[index],
                 analysis=AssetAnalysis(width=probe.width, height=probe.height),
                 cost_links=cost_links,
             )
@@ -757,7 +841,7 @@ class ImageService:
             for key, asset in zip(keys, assets, strict=True)
         ]
         images: list[ImageResult] = []
-        for payload in payloads:
+        for payload, asset in zip(payloads, assets, strict=True):
             probe = validate_media(payload, limits=self._limits)
             images.append(
                 ImageResult(
@@ -765,6 +849,7 @@ class ImageService:
                     format=_image_format(probe.format.value),
                     width=probe.width,
                     height=probe.height,
+                    seed=asset.seed,
                 )
             )
         response = ImageResponse(

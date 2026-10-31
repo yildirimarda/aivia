@@ -104,6 +104,7 @@ assets = Table(
     Column("analysis", JSON, nullable=False, server_default=text("'{}'")),
     Column("alt_text", Text, nullable=False, server_default=text("''")),
     Column("pinned", Boolean, nullable=False, server_default=text("0")),
+    Column("seed", Integer, nullable=True),
     Column("quality_score", Float, nullable=True),
     Column("run_id", String(64), nullable=False, server_default=text("''")),
     Column("schema_version", Integer, nullable=False, server_default=text("1")),

@@ -544,8 +544,10 @@ class Asset(ModelBase):
     ``provider`` and ``model`` stay empty for user supplied files; generated
     assets fill them in. ``prompt_hash`` is derived from ``prompt`` when it is
     omitted, so a generated asset cannot lose the value used for caching.
-    ``license``, ``cost_links`` and ``analysis`` default to empty records so
-    callers can read nested fields without checking for ``None``.
+    ``seed`` records the generation seed that produced this output, so each
+    variation keeps its own reproducible value. ``license``, ``cost_links`` and
+    ``analysis`` default to empty records so callers can read nested fields
+    without checking for ``None``.
     """
 
     id: str = Field(
@@ -630,6 +632,10 @@ class Asset(ModelBase):
     pinned: bool = Field(
         default=False,
         validation_alias=AliasChoices("pinned", "is_pinned", "final"),
+    )
+    seed: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("seed", "generation_seed"),
     )
     quality_score: float | None = Field(
         default=None,

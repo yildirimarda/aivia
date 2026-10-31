@@ -19,12 +19,13 @@ from aivia.core.db import (
     OrderRepository,
     RunRepository,
     alembic_config,
+    assets,
     create_database_engine,
     current_revision,
     runs,
     upgrade_database,
 )
-from aivia.core.models import Asset, AssetKind, CostEvent, RunState
+from aivia.core.models import CostEvent, RunState
 
 
 def _revisions() -> tuple[str, str]:
@@ -40,7 +41,7 @@ def _revisions() -> tuple[str, str]:
 
 
 def _seed(engine: Engine) -> None:
-    """Write one run, asset and cost event through their repositories."""
+    """Write one run, asset and cost event using the previous schema."""
     with engine.begin() as connection:
         connection.execute(
             runs.insert().values(
@@ -54,16 +55,17 @@ def _seed(engine: Engine) -> None:
             )
         )
 
-    AssetRepository(engine).create(
-        Asset(
-            id="asset_previous",
-            kind=AssetKind.IMAGE,
-            label="hero",
-            prompt="a cake",
-            pinned=True,
-            run_id="run_previous",
+    with engine.begin() as connection:
+        connection.execute(
+            assets.insert().values(
+                id="asset_previous",
+                kind="image",
+                label="hero",
+                prompt="a cake",
+                pinned=True,
+                run_id="run_previous",
+            )
         )
-    )
     CostEventRepository(engine).create(
         CostEvent(
             id="cost_previous",
