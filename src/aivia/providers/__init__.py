@@ -382,6 +382,12 @@ if TYPE_CHECKING:
         PixabayProvider,
         PixabayStockProvider,
     )
+    from aivia.providers.video.fal import (
+        FalVideo,
+        FalVideoGen,
+        FalVideoGenProvider,
+        FalVideoProvider,
+    )
 
 _LAZY_EMBEDDING_PROVIDERS = frozenset(
     {
@@ -415,6 +421,14 @@ _LAZY_EMBEDDING_PROVIDERS = frozenset(
 _LAZY_BRAVE_PROVIDERS = frozenset({"Brave", "BraveProvider", "BraveSearchProvider"})
 _LAZY_EXA_PROVIDERS = frozenset({"Exa", "ExaProvider", "ExaSearchProvider"})
 _LAZY_FAL_PROVIDERS = frozenset({"Fal", "FalImageProvider", "FalProvider"})
+_LAZY_FAL_VIDEO_PROVIDERS = frozenset(
+    {
+        "FalVideo",
+        "FalVideoGen",
+        "FalVideoGenProvider",
+        "FalVideoProvider",
+    }
+)
 _LAZY_GOOGLE_IMAGE_PROVIDERS = frozenset(
     {
         "Google",
@@ -601,6 +615,23 @@ def __getattr__(name: str) -> Any:
         fal_value = fal_values[name]
         globals()[name] = fal_value
         return fal_value
+    if name in _LAZY_FAL_VIDEO_PROVIDERS:
+        from aivia.providers.video.fal import (
+            FalVideo,
+            FalVideoGen,
+            FalVideoGenProvider,
+            FalVideoProvider,
+        )
+
+        fal_video_values = {
+            "FalVideo": FalVideo,
+            "FalVideoGen": FalVideoGen,
+            "FalVideoGenProvider": FalVideoGenProvider,
+            "FalVideoProvider": FalVideoProvider,
+        }
+        fal_video_value = fal_video_values[name]
+        globals()[name] = fal_video_value
+        return fal_video_value
     if name in _LAZY_GOOGLE_IMAGE_PROVIDERS:
         from aivia.providers.image.google import (
             Google,
@@ -921,6 +952,10 @@ __all__ = [
     "Fal",
     "FalImageProvider",
     "FalProvider",
+    "FalVideo",
+    "FalVideoGen",
+    "FalVideoGenProvider",
+    "FalVideoProvider",
     "FinishReason",
     "Gemini",
     "GeminiLLMProvider",

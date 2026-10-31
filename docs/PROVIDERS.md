@@ -15,6 +15,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | `search` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
 | `fal` | `image_gen` | 60/min | - | - | unknown |
+| `fal-video` | `video_gen` | 60/min | - | - | unknown |
+| `fal_video` | `video_gen` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
 | `google` | `image_gen` | 60/min | - | - | unknown |
 | `google-image` | `image_gen` | 60/min | - | - | unknown |
@@ -76,6 +78,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | - | - |
 | `exa` | - | - |
 | `fal` | - | - |
+| `fal-video` | - | - |
+| `fal_video` | - | - |
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
@@ -154,6 +158,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | - | - |
 | `exa` | - | - |
 | `fal` | - | - |
+| `fal-video` | - | - |
+| `fal_video` | - | - |
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
@@ -215,6 +221,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `brave` | - | unknown | no | - |
 | `exa` | - | unknown | no | - |
 | `fal` | - | unknown | no | - |
+| `fal-video` | - | unknown | no | - |
+| `fal_video` | - | unknown | no | - |
 | `gemini` | - | unknown | no | - |
 | `google` | - | unknown | no | - |
 | `google-image` | - | unknown | no | - |

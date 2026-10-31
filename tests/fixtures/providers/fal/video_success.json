@@ -1,0 +1,15 @@
+{
+  "video": {
+    "url": "https://fal.media/files/clip-1.mp4",
+    "content_type": "video/mp4",
+    "width": 1280,
+    "height": 720,
+    "duration": 5.0,
+    "fps": 24,
+    "has_audio": true,
+    "seed": 7,
+    "thumbnail_url": "https://fal.media/files/clip-1.jpg"
+  },
+  "seed": 7,
+  "prompt": "a calm ocean at sunrise"
+}
