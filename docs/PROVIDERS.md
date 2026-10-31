@@ -20,7 +20,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `gemini` | `llm` | 60/min | - | - | unknown |
 | `google` | `image_gen` | 60/min | - | - | unknown |
 | `google-image` | `image_gen` | 60/min | - | - | unknown |
+| `google-veo` | `video_gen` | 60/min | - | - | unknown |
 | `google_image` | `image_gen` | 60/min | - | - | unknown |
+| `google_veo` | `video_gen` | 60/min | - | - | unknown |
 | `http` | `page_fetch` | 60/min | - | - | unknown |
 | `llm_native` | `search` | 60/min | - | - | unknown |
 | `llm_search` | `search` | 60/min | - | - | unknown |
@@ -63,9 +65,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `remote_image_ops` | `image_edit` | 60/min | - | - | unknown |
 | `remote_ops` | `image_edit` | 60/min | - | - | unknown |
 | `replicate` | `image_gen` | 60/min | - | - | unknown |
+| `replicate-video` | `video_gen` | 60/min | - | - | unknown |
+| `replicate_video` | `video_gen` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
 | `tavily` | `search` | 60/min | - | - | unknown |
+| `veo` | `video_gen` | 60/min | - | - | unknown |
+| `veo-video` | `video_gen` | 60/min | - | - | unknown |
+| `veo_video` | `video_gen` | 60/min | - | - | unknown |
 | `voyage` | `embeddings` | 60/min | - | - | unknown |
 
 ## Pricing
@@ -83,7 +90,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
+| `google-veo` | - | - |
 | `google_image` | - | - |
+| `google_veo` | - | - |
 | `http` | `page_fetch` | $0 per call |
 | `llm_native` | - | - |
 | `llm_search` | - | - |
@@ -143,9 +152,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `remote_image_ops` | - | - |
 | `remote_ops` | - | - |
 | `replicate` | - | - |
+| `replicate-video` | - | - |
+| `replicate_video` | - | - |
 | `s3` | `storage` | $0 per call |
 | `serpapi` | - | - |
 | `tavily` | - | - |
+| `veo` | - | - |
+| `veo-video` | - | - |
+| `veo_video` | - | - |
 | `voyage` | - | - |
 
 ## Supported options
@@ -163,7 +177,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
+| `google-veo` | - | - |
 | `google_image` | - | - |
+| `google_veo` | - | - |
 | `http` | - | - |
 | `llm_native` | - | - |
 | `llm_search` | - | - |
@@ -206,9 +222,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `remote_image_ops` | - | - |
 | `remote_ops` | - | - |
 | `replicate` | - | - |
+| `replicate-video` | - | - |
+| `replicate_video` | - | - |
 | `s3` | - | - |
 | `serpapi` | - | - |
 | `tavily` | - | - |
+| `veo` | - | - |
+| `veo-video` | - | - |
+| `veo_video` | - | - |
 | `voyage` | - | - |
 
 ## Licensing
@@ -226,7 +247,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `gemini` | - | unknown | no | - |
 | `google` | - | unknown | no | - |
 | `google-image` | - | unknown | no | - |
+| `google-veo` | - | unknown | no | - |
 | `google_image` | - | unknown | no | - |
+| `google_veo` | - | unknown | no | - |
 | `http` | - | unknown | no | - |
 | `llm_native` | - | unknown | no | - |
 | `llm_search` | - | unknown | no | - |
@@ -269,7 +292,12 @@ This matrix is generated from the metadata every registered provider declares. C
 | `remote_image_ops` | - | unknown | no | - |
 | `remote_ops` | - | unknown | no | - |
 | `replicate` | - | unknown | no | - |
+| `replicate-video` | - | unknown | no | - |
+| `replicate_video` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
 | `serpapi` | - | unknown | no | - |
 | `tavily` | - | unknown | no | - |
+| `veo` | - | unknown | no | - |
+| `veo-video` | - | unknown | no | - |
+| `veo_video` | - | unknown | no | - |
 | `voyage` | - | unknown | no | - |
