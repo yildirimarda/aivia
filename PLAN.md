@@ -307,7 +307,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Filter providers by first and last frame and native audio support and strip unwanted audio verified by ffprobe (tests/providers/video/test_flags.py)
 - [x] Add a video to video adapter or document the skip when the capability is absent (tests/providers/video/test_v2v.py)
 - [x] Implement the video service requiring a screened prompt with budget checks before submit, cost on completion, recorded failures and caching (tests/media/test_video_service.py)
-- [ ] Add video quality assurance with scene aware frame sampling, vision checks, retries and image to video fallback (tests/media/test_video_qa.py)
+- [x] Add video quality assurance with scene aware frame sampling, vision checks, retries and image to video fallback (tests/media/test_video_qa.py)
 - [ ] Add video utilities for trim, speed, concatenation with crossfade, frame and audio extraction, seamless loops and GIF, WebP and MP4 outputs with size caps (tests/media/test_video_utils.py)
 - [ ] Add ElevenLabs, OpenAI, Google or Azure and local text to speech providers with voice mapping and per character cost (tests/providers/tts)
 - [ ] Resolve per language voices with fallback, list voices and pass pronunciation hints where supported (tests/media/test_voices.py)
