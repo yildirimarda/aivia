@@ -17,6 +17,7 @@ provider.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
@@ -42,8 +43,9 @@ from aivia.providers.media import (
     AsyncJobStatus,
     AsyncMediaJobHelper,
 )
-from aivia.providers.protocols.media import VideoFormat
+from aivia.providers.protocols.media import MediaInput, VideoFormat
 from aivia.providers.protocols.video import (
+    CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
     VideoRequest,
     VideoResponse,
@@ -77,7 +79,7 @@ FAL_QUEUE_URL = DEFAULT_BASE_URL
 
 _DEFAULT_METADATA = ProviderMeta(
     name="fal",
-    capabilities=[CAPABILITY_VIDEO_GEN],
+    capabilities=[CAPABILITY_VIDEO_GEN, CAPABILITY_VIDEO_FIRST_FRAME],
 )
 
 _CONTENT_POLICY_MARKERS = (
@@ -310,11 +312,32 @@ def _raise_job_failure(body: Mapping[str, Any], provider: str) -> None:
     raise InvalidRequestError(text, details=details)
 
 
+def _media_url(media: MediaInput) -> str:
+    if media.url is not None:
+        return media.url
+    if media.data is None:
+        raise InvalidRequestError("fal video frame needs inline data or a URL")
+    media_type = media.media_type or "image/png"
+    encoded = base64.b64encode(media.data).decode("ascii")
+    return f"data:{media_type};base64,{encoded}"
+
+
+def _frame_url(media: MediaInput, field: str) -> str:
+    if media.media_type is not None and not media.media_type.startswith("image/"):
+        raise InvalidRequestError(
+            f"fal video {field} must be an image",
+            details={"field": field, "media_type": media.media_type},
+        )
+    return _media_url(media)
+
+
 def _build_payload(request: VideoRequest) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "prompt": request.prompt,
         "num_videos": request.count,
     }
+    if request.first_frame is not None:
+        payload["image_url"] = _frame_url(request.first_frame, "first_frame")
     if request.negative_prompt is not None:
         payload["negative_prompt"] = request.negative_prompt
     if request.seed is not None:
@@ -728,6 +751,21 @@ class FalVideoProvider(Provider):
                 details={"provider": self.name},
             )
         model = _validate_model(model)
+        if request.first_frame is not None and not self.supports(
+            CAPABILITY_VIDEO_FIRST_FRAME
+        ):
+            raise InvalidRequestError(
+                "fal video provider does not declare first frame support",
+                details={
+                    "provider": self.name,
+                    "required_capability": CAPABILITY_VIDEO_FIRST_FRAME,
+                },
+            )
+        if request.last_frame is not None:
+            raise InvalidRequestError(
+                "fal video provider does not support a last frame",
+                details={"provider": self.name, "field": "last_frame"},
+            )
         payload = _build_payload(request)
         idempotency_key = _text(request.metadata.get("idempotency_key"))
         return await self._helper.submit(

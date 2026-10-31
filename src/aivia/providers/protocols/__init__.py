@@ -166,7 +166,9 @@ from aivia.providers.protocols.tts import (
     TTSResponse,
 )
 from aivia.providers.protocols.video import (
+    CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
+    CAPABILITY_VIDEO_IMAGE_INPUT,
     VideoProvider,
     VideoRequest,
     VideoResponse,
@@ -192,7 +194,9 @@ __all__ = [
     "CAPABILITY_STORAGE",
     "CAPABILITY_STT",
     "CAPABILITY_TTS",
+    "CAPABILITY_VIDEO_FIRST_FRAME",
     "CAPABILITY_VIDEO_GEN",
+    "CAPABILITY_VIDEO_IMAGE_INPUT",
     "AudioFormat",
     "CapabilityProvider",
     "CharacterTrainer",
