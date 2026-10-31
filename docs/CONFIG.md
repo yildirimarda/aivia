@@ -43,7 +43,7 @@ This reference is generated from the registered configuration models, their JSON
 | `render` | [RenderConfig](#render) or null | Deterministic renderer settings that never require an AI call. |
 | `retention` | [RetentionConfig](#retention) or null | How long intermediates, cache, logs and personal data are kept. Final outputs are pinned and are never removed unless ``delete_final_outputs`` is explicitly enabled. |
 | `review` | [ReviewConfig](#review) or null | Approval policy for the optional human review stage. ``approval_mode`` is ``always`` (a reviewer must approve every run), ``ask`` (the default: approve unless a profile says otherwise) or ``never`` (skip the review stage). When a review is not answered before ``timeout_seconds``, ``on_timeout`` decides whether it is rejected, approved or only escalated with a notification. |
-| `safety` | [SafetyConfig](#safety) or null | Prompt and media screening before a paid or published call. |
+| `safety` | [SafetyConfig](#safety) or null | Prompt and media screening before a paid or published call. ``blocked_terms`` holds literal words and phrases that must never reach a paid provider. ``block_categories`` names broader policy categories; the screener treats those names as literal terms too so a category such as ``violence`` is blocked even when no narrower term is configured. |
 | `schedule` | [ScheduleConfig](#schedule) or null | Named cron schedules, their timezone and the default entry. Entries may be written directly under the section (``schedule: {daily: {...}}``) or nested under ``schedules``. A single top-level ``cron`` and ``profile`` pair is treated as the ``default`` entry. |
 | `scoring` | [ScoringConfig](#scoring) or null | Versioned rubric, dimension weights and score thresholds for research. |
 | `storage` | [StorageConfig](#storage) or null | Where generated media and intermediates are stored. Credentials are referenced by name and resolved through the secrets loader, never written into the configuration file. |
@@ -454,12 +454,13 @@ Approval policy for the optional human review stage. ``approval_mode`` is ``alwa
 
 ## `safety`
 
-Prompt and media screening before a paid or published call.
+Prompt and media screening before a paid or published call. ``blocked_terms`` holds literal words and phrases that must never reach a paid provider. ``block_categories`` names broader policy categories; the screener treats those names as literal terms too so a category such as ``violence`` is blocked even when no narrower term is configured.
 
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
 | `allow_regenerate` | boolean | `true` |  |  |
 | `block_categories` | array of string |  |  |  |
+| `blocked_terms` | array of string |  |  |  |
 | `enabled` | boolean | `true` |  |  |
 | `screen_media` | boolean | `true` |  |  |
 | `screen_prompts` | boolean | `true` |  |  |

@@ -238,13 +238,47 @@ class ApiConfig(ConfigModel):
 
 
 class SafetyConfig(ConfigModel):
-    """Prompt and media screening before a paid or published call."""
+    """Prompt and media screening before a paid or published call.
+
+    ``blocked_terms`` holds literal words and phrases that must never reach a
+    paid provider. ``block_categories`` names broader policy categories; the
+    screener treats those names as literal terms too so a category such as
+    ``violence`` is blocked even when no narrower term is configured.
+    """
 
     enabled: bool = True
     screen_prompts: bool = True
     screen_media: bool = True
+    blocked_terms: list[str] = Field(default_factory=list)
     block_categories: list[str] = Field(default_factory=list)
     allow_regenerate: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_term_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(data)
+        for alias in (
+            "block_terms",
+            "blocked",
+            "terms",
+            "banned_terms",
+            "deny_terms",
+            "blocklist",
+        ):
+            if alias in values:
+                value = values.pop(alias)
+                values.setdefault("blocked_terms", value)
+        return values
+
+    @field_validator("blocked_terms", "block_categories")
+    @classmethod
+    def _validate_terms(cls, value: list[str]) -> list[str]:
+        terms = [term.strip() for term in value]
+        if any(not term for term in terms):
+            raise ValueError("screening terms must not be empty")
+        return terms
 
 
 class PlatformAccountConfig(ConfigModel):
