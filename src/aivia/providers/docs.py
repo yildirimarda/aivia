@@ -88,6 +88,9 @@ def _load_builtin_adapters() -> None:
     from aivia.providers.image import openai as _openai_image  # noqa: F401
     from aivia.providers.image import replicate as _replicate  # noqa: F401
     from aivia.providers.image_edit import aggregator as _aggregator  # noqa: F401
+    from aivia.providers.music import elevenlabs as _elevenlabs_music  # noqa: F401
+    from aivia.providers.music import local as _local_music  # noqa: F401
+    from aivia.providers.music import stable_audio as _stable_audio  # noqa: F401
     from aivia.providers.search import brave as _brave  # noqa: F401
     from aivia.providers.search import exa as _exa  # noqa: F401
     from aivia.providers.search import tavily as _tavily  # noqa: F401

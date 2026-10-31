@@ -372,6 +372,21 @@ if TYPE_CHECKING:
         RemoteOpsImageEditProvider,
         RemoteOpsProvider,
     )
+    from aivia.providers.music import (
+        ElevenLabsMusic,
+        ElevenLabsMusicGen,
+        ElevenLabsMusicGenProvider,
+        ElevenLabsMusicProvider,
+        Encoder,
+        LocalMusic,
+        LocalMusicProvider,
+        LocalMusicStub,
+        LocalMusicStubProvider,
+        StableAudio,
+        StableAudioMusic,
+        StableAudioMusicProvider,
+        StableAudioProvider,
+    )
     from aivia.providers.pagefetch import (
         HttpPageFetchProvider,
         PageFetch,
@@ -605,6 +620,24 @@ _LAZY_PAGE_FETCH_PROVIDERS = frozenset(
     }
 )
 
+_LAZY_MUSIC_PROVIDERS = frozenset(
+    {
+        "Encoder",
+        "ElevenLabsMusic",
+        "ElevenLabsMusicGen",
+        "ElevenLabsMusicGenProvider",
+        "ElevenLabsMusicProvider",
+        "LocalMusic",
+        "LocalMusicProvider",
+        "LocalMusicStub",
+        "LocalMusicStubProvider",
+        "StableAudio",
+        "StableAudioMusic",
+        "StableAudioMusicProvider",
+        "StableAudioProvider",
+    }
+)
+
 _LAZY_STT_PROVIDERS = frozenset(
     {
         "DEFAULT_MODEL",
@@ -702,6 +735,12 @@ def __getattr__(name: str) -> Any:
         from aivia.providers import tts as tts_package
 
         value = getattr(tts_package, name)
+        globals()[name] = value
+        return value
+    if name in _LAZY_MUSIC_PROVIDERS:
+        from aivia.providers import music as music_package
+
+        value = getattr(music_package, name)
         globals()[name] = value
         return value
     if name in _LAZY_PAGE_FETCH_PROVIDERS:
@@ -1158,6 +1197,10 @@ __all__ = [
     "DatabaseAsyncJobStore",
     "DeclarativeHttpProvider",
     "ElevenLabs",
+    "ElevenLabsMusic",
+    "ElevenLabsMusicGen",
+    "ElevenLabsMusicGenProvider",
+    "ElevenLabsMusicProvider",
     "ElevenLabsProvider",
     "ElevenLabsTTS",
     "ElevenLabsTTSProvider",
@@ -1175,6 +1218,7 @@ __all__ = [
     "EmbeddingService",
     "EmbeddingTokenCost",
     "EmbeddingUsage",
+    "Encoder",
     "Exa",
     "ExaProvider",
     "ExaSearchProvider",
@@ -1252,6 +1296,10 @@ __all__ = [
     "LocalEmbeddingProvider",
     "LocalEmbeddings",
     "LocalEmbeddingsProvider",
+    "LocalMusic",
+    "LocalMusicProvider",
+    "LocalMusicStub",
+    "LocalMusicStubProvider",
     "LocalSTT",
     "LocalSTTProvider",
     "LocalStorage",
@@ -1402,6 +1450,10 @@ __all__ = [
     "SerpAPI",
     "SerpAPIProvider",
     "SerpAPISearchProvider",
+    "StableAudio",
+    "StableAudioMusic",
+    "StableAudioMusicProvider",
+    "StableAudioProvider",
     "StockAsset",
     "StockMediaKind",
     "StockOrientation",
