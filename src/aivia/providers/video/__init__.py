@@ -9,6 +9,11 @@ from aivia.providers.protocols.video import (
     CAPABILITY_VIDEO_GEN,
     CAPABILITY_VIDEO_IMAGE_INPUT,
 )
+from aivia.providers.video.adapt import (
+    VideoAdaptation,
+    adapt_video_request,
+    split_duration,
+)
 from aivia.providers.video.fal import (
     DEFAULT_BASE_URL,
     DEFAULT_QUEUE_URL,
@@ -82,4 +87,7 @@ __all__ = [
     "VeoVideoGen",
     "VeoVideoGenProvider",
     "VeoVideoProvider",
+    "VideoAdaptation",
+    "adapt_video_request",
+    "split_duration",
 ]
