@@ -247,9 +247,10 @@ def test_forced_alignment_can_transcribe_audio_or_use_a_transcript() -> None:
     assert align_word_timestamps("Hello", from_transcript.transcript)[0].word == (
         "Hello"
     )
-    assert aligned_word_timestamps(
-        "Hello", from_transcript.transcript
-    )[0].start_seconds == 1.0
+    assert (
+        aligned_word_timestamps("Hello", from_transcript.transcript)[0].start_seconds
+        == 1.0
+    )
 
 
 def test_term_verification_matches_fuzzy_terms_with_their_timing() -> None:
@@ -323,9 +324,12 @@ def test_term_verification_reads_the_configured_threshold() -> None:
     assert verification_threshold({"orders": {"name_verify": {"threshold": 0.7}}}) == (
         0.7
     )
-    assert verification_threshold(OrdersConfig.from_mapping(
-        {"name_verify": {"threshold": 0.85}}
-    )) == 0.85
+    assert (
+        verification_threshold(
+            OrdersConfig.from_mapping({"name_verify": {"threshold": 0.85}})
+        )
+        == 0.85
+    )
     assert verification_threshold(0.75) == 0.75
 
     transcript = _response(_word("Smyth", 0.0, 0.5))

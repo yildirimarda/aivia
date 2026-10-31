@@ -290,9 +290,7 @@ def _tokens_from_words(words: Sequence[Any]) -> list[_Token]:
                 details={"index": index},
             )
         tokens.append(_token_from_word(word, index))
-    starts = [
-        token.start for token in tokens if token.start is not None
-    ]
+    starts = [token.start for token in tokens if token.start is not None]
     if starts != sorted(starts):
         raise ValidationError("transcript words must be ordered by start_seconds")
     return tokens
@@ -302,9 +300,7 @@ def _transcript_from_response(response: STTResponse) -> _Transcript:
     words = response.all_words
     return _Transcript(
         tokens=(
-            _tokens_from_words(words)
-            if words
-            else _tokens_from_text(response.text)
+            _tokens_from_words(words) if words else _tokens_from_text(response.text)
         ),
         duration=response_duration_seconds(response),
         language=response.language,
@@ -337,9 +333,7 @@ def _transcript_from_source(source: Any) -> _Transcript:
         )
     if isinstance(source, Mapping):
         values = dict(source)
-        if "text" in values and not any(
-            key in values for key in ("words", "segments")
-        ):
+        if "text" in values and not any(key in values for key in ("words", "segments")):
             return _Transcript(
                 tokens=_tokens_from_text(str(values["text"])),
                 duration=None,
@@ -361,11 +355,7 @@ def _transcript_from_source(source: Any) -> _Transcript:
         words = list(source.all_words)
         text = getattr(source, "text", "") or ""
         return _Transcript(
-            tokens=(
-                _tokens_from_words(words)
-                if words
-                else _tokens_from_text(text)
-            ),
+            tokens=(_tokens_from_words(words) if words else _tokens_from_text(text)),
             duration=getattr(source, "duration_seconds", None),
             language=getattr(source, "language", None),
             provider=getattr(source, "provider", "") or "",
@@ -864,11 +854,7 @@ def align_text(
 
     duration = parsed.duration
     if duration is None:
-        ends = [
-            word.end_seconds
-            for word in aligned
-            if word.end_seconds is not None
-        ]
+        ends = [word.end_seconds for word in aligned if word.end_seconds is not None]
         duration = max(ends) if ends else None
     if interpolate:
         _interpolate(aligned, duration=duration)
@@ -1375,9 +1361,7 @@ def _match_term(
 
     window = windows[starts.index(best_start)]
     timed = [
-        token
-        for token in window
-        if token.start is not None and token.end is not None
+        token for token in window if token.start is not None and token.end is not None
     ]
     words = [
         WordTimestamp(
@@ -1512,8 +1496,7 @@ def verify_terms(
     parsed = _transcript_from_source(transcript)
     verification = TermVerification(
         terms=[
-            _match_term(term, parsed, threshold=score_threshold)
-            for term in expected
+            _match_term(term, parsed, threshold=score_threshold) for term in expected
         ],
         threshold=score_threshold,
         metadata={"provider": parsed.provider, "model": parsed.model},
