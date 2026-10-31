@@ -27,6 +27,7 @@ from aivia.providers.registry import register_provider
 from aivia.providers.tts.common import (
     as_text,
     format_language,
+    phoneme_ssml,
     resolve_api_key,
     sniff_audio_format,
     validate_base_url,
@@ -53,6 +54,7 @@ AZURE_TTS_API_VERSION = DEFAULT_API_VERSION
 _DEFAULT_METADATA = ProviderMeta(
     name="azure-tts",
     capabilities=[CAPABILITY_TTS],
+    supported_options={CAPABILITY_TTS: ["pronunciation"]},
     pricing={
         CAPABILITY_TTS: ProviderPrice(amount_usd=0.000016, unit="character"),
     },
@@ -115,7 +117,7 @@ def _rate(speed: float) -> str | None:
 
 
 def _ssml(request: TTSRequest, voice: str, language: str) -> str:
-    text = escape(request.text)
+    text = phoneme_ssml(request.text, request.pronunciation)
     rate = _rate(request.speed)
     if rate is None:
         prosody = f"<prosody>{text}</prosody>"

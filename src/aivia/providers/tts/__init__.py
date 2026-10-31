@@ -15,6 +15,7 @@ from aivia.providers.tts.azure import (
     AzureTTS,
     AzureTTSProvider,
 )
+from aivia.providers.tts.common import phoneme_ssml
 from aivia.providers.tts.cost import (
     CHARACTER_UNIT,
     TTS_OPERATION,
@@ -116,5 +117,6 @@ __all__ = [
     "TTSPrice",
     "VoiceMap",
     "VoiceMapping",
+    "phoneme_ssml",
     "tts_cost_event",
 ]
