@@ -48,6 +48,7 @@ from aivia.providers.media import (
 from aivia.providers.protocols.media import VideoFormat
 from aivia.providers.protocols.video import (
     CAPABILITY_VIDEO_GEN,
+    CAPABILITY_VIDEO_INPUT,
     VideoRequest,
     VideoResponse,
     VideoResult,
@@ -837,6 +838,17 @@ class VeoVideoProvider(Provider):
             raise InvalidRequestError(
                 "veo video provider does not support reference frames",
                 details={"provider": self.name, "field": field},
+            )
+        if request.source_video is not None and not self.supports(
+            CAPABILITY_VIDEO_INPUT
+        ):
+            raise InvalidRequestError(
+                "veo video provider does not declare video input support",
+                details={
+                    "provider": self.name,
+                    "field": "source_video",
+                    "required_capability": CAPABILITY_VIDEO_INPUT,
+                },
             )
         payload = _build_payload(request)
         idempotency_key = _text(request.metadata.get("idempotency_key"))
