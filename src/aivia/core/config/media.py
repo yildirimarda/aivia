@@ -21,6 +21,8 @@ __all__ = [
     "DEFAULT_MEDIA_SUBTITLE_MAX_GAP_SECONDS",
     "DEFAULT_MUSIC_CLIPPING_PEAK_DB",
     "DEFAULT_MUSIC_DURATION_TOLERANCE_SECONDS",
+    "DEFAULT_MUSIC_LIBRARY_TEMPO_BUCKET_BPM",
+    "DEFAULT_MUSIC_LIBRARY_TEMPO_TOLERANCE_BPM",
     "DEFAULT_MUSIC_MAX_CLIPPING_RATIO",
     "DEFAULT_MUSIC_MAX_LOUDNESS_LUFS",
     "DEFAULT_MUSIC_MAX_SILENCE_RATIO",
@@ -30,6 +32,13 @@ __all__ = [
     "DEFAULT_MUSIC_SILENCE_NOISE_DB",
     "MAX_MEDIA_SIMILARITY",
     "MIN_MEDIA_SIMILARITY",
+    "MIN_MUSIC_LIBRARY_LIMIT",
+    "MUSIC_LIBRARY_DURATION_WEIGHT",
+    "MUSIC_LIBRARY_GENRE_WEIGHT",
+    "MUSIC_LIBRARY_LICENSE_WEIGHT",
+    "MUSIC_LIBRARY_MOOD_WEIGHT",
+    "MUSIC_LIBRARY_TAG_WEIGHT",
+    "MUSIC_LIBRARY_TEMPO_WEIGHT",
 ]
 
 DEFAULT_MEDIA_ALIGNMENT_SIMILARITY_THRESHOLD = 0.8
@@ -94,3 +103,30 @@ DEFAULT_MUSIC_SILENCE_MIN_SECONDS = 0.5
 
 DEFAULT_MUSIC_CLIPPING_PEAK_DB = 0.0
 """The peak level at or above which a sample counts as clipped."""
+
+DEFAULT_MUSIC_LIBRARY_TEMPO_TOLERANCE_BPM = 5.0
+"""How far a library track tempo may differ from a requested tempo, in BPM."""
+
+DEFAULT_MUSIC_LIBRARY_TEMPO_BUCKET_BPM = 10.0
+"""The width of one tempo bucket in the library tempo index, in BPM."""
+
+MIN_MUSIC_LIBRARY_LIMIT = 1
+"""The smallest number of ranked library matches a caller may request."""
+
+MUSIC_LIBRARY_MOOD_WEIGHT = 4.0
+"""The rank bonus for a matching library mood."""
+
+MUSIC_LIBRARY_GENRE_WEIGHT = 3.0
+"""The rank bonus for a matching library genre."""
+
+MUSIC_LIBRARY_TAG_WEIGHT = 2.0
+"""The rank bonus for each matching library tag."""
+
+MUSIC_LIBRARY_TEMPO_WEIGHT = 2.0
+"""The maximum rank bonus for a matching library tempo."""
+
+MUSIC_LIBRARY_DURATION_WEIGHT = 3.0
+"""The maximum rank bonus for a matching library duration."""
+
+MUSIC_LIBRARY_LICENSE_WEIGHT = 1.0
+"""The rank bonus for a matching library license filter."""
