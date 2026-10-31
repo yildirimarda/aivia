@@ -16,6 +16,9 @@ __all__ = [
     "DEFAULT_MEDIA_MAX_BYTES",
     "DEFAULT_MEDIA_MAX_PIXELS",
     "DEFAULT_MEDIA_MIN_ANIMATED_FRAME_RATE",
+    "DEFAULT_MEDIA_SUBTITLE_MAX_CHARS",
+    "DEFAULT_MEDIA_SUBTITLE_MAX_DURATION_SECONDS",
+    "DEFAULT_MEDIA_SUBTITLE_MAX_GAP_SECONDS",
     "MAX_MEDIA_SIMILARITY",
     "MIN_MEDIA_SIMILARITY",
 ]
@@ -46,3 +49,12 @@ DEFAULT_MEDIA_ANIMATED_FRAME_RATE = 15.0
 
 DEFAULT_MEDIA_MIN_ANIMATED_FRAME_RATE = 8.0
 """Lowest frame rate a size-capped animated output may fall back to."""
+
+DEFAULT_MEDIA_SUBTITLE_MAX_CHARS = 42
+"""Longest cue text before the next word starts a new subtitle cue."""
+
+DEFAULT_MEDIA_SUBTITLE_MAX_DURATION_SECONDS = 6.0
+"""Longest cue duration before the next word starts a new subtitle cue."""
+
+DEFAULT_MEDIA_SUBTITLE_MAX_GAP_SECONDS = 1.0
+"""A pause longer than this starts a new subtitle cue."""
