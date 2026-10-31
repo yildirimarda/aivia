@@ -217,6 +217,14 @@ from aivia.media.video_pricing import (
     price_video,
     video_cost,
 )
+from aivia.media.video_service import (
+    VideoFailure,
+    VideoOutcome,
+    VideoService,
+    VideoServiceResult,
+    generate_video,
+    video_service_from_config,
+)
 
 __all__ = [
     "ANALYSIS_OPERATION",
@@ -301,6 +309,8 @@ __all__ = [
     "VideoCostEstimate",
     "VideoEstimate",
     "VideoEstimator",
+    "VideoFailure",
+    "VideoOutcome",
     "VideoPrice",
     "VideoPriceTier",
     "VideoPricing",
@@ -308,6 +318,8 @@ __all__ = [
     "VideoPricingModel",
     "VideoRate",
     "VideoResolutionTier",
+    "VideoService",
+    "VideoServiceResult",
     "VisionAnalysis",
     "VisionAnalysisOutput",
     "VisionAnalyzer",
@@ -359,6 +371,7 @@ __all__ = [
     "generate_and_animate",
     "generate_description",
     "generate_image",
+    "generate_video",
     "generate_with_quality",
     "get_image_dimensions",
     "i2v",
@@ -415,5 +428,6 @@ __all__ = [
     "validate_token",
     "video_cache_key",
     "video_cost",
+    "video_service_from_config",
     "vision_description",
 ]
