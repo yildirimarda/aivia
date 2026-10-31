@@ -296,7 +296,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add image quality assurance with a vision score, retries up to the configured limit and fallback to the next provider or stock (tests/media/test_image_qa.py)
 - [x] Build a reusable batch runner library with a concurrency cap, a batch wide budget stop and a per item manifest, with no CLI parsing (tests/media/test_batch_runner.py)
 - [x] Define video request and result models with duration, aspect, resolution, fps, seed, first and last frame and audio flags (tests/providers/video/test_dto.py)
-- [ ] Add the fal video provider with queue states, poll progress and timeout handling (tests/providers/video/test_fal.py)
+- [x] Add the fal video provider with queue states, poll progress and timeout handling (tests/providers/video/test_fal.py)
 - [ ] Add fal image to video using a first frame input behind a capability flag (tests/providers/video/test_fal_i2v.py)
 - [ ] Add the Replicate video provider and one direct vendor integration authenticating through a credential reference (tests/providers/video/test_replicate_veo.py)
 - [ ] Provide a sample async declarative video spec passing a mock server test (tests/providers/video/test_http_spec_video.py)
