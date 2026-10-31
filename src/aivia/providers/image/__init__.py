@@ -4,6 +4,14 @@ Importing this package gives callers the built-in image providers and their
 aliases. Each adapter registers itself with the provider registry.
 """
 
+from aivia.providers.image.cost import (
+    IMAGE_OPERATION,
+    IMAGE_UNIT,
+    ImageCost,
+    ImageCostCalculator,
+    ImagePrice,
+    image_cost_event,
+)
 from aivia.providers.image.fal import (
     DEFAULT_BASE_URL,
     DEFAULT_QUEUE_URL,
@@ -65,6 +73,8 @@ __all__ = [
     "GOOGLE_BASE_URL",
     "GOOGLE_DEFAULT_BASE_URL",
     "GOOGLE_IMAGEN_API_URL",
+    "IMAGE_OPERATION",
+    "IMAGE_UNIT",
     "OPENAI_API_URL",
     "OPENAI_BASE_URL",
     "OPENAI_DEFAULT_BASE_URL",
@@ -82,6 +92,9 @@ __all__ = [
     "GoogleImages",
     "GoogleImagesProvider",
     "GoogleProvider",
+    "ImageCost",
+    "ImageCostCalculator",
+    "ImagePrice",
     "OpenAI",
     "OpenAIImage",
     "OpenAIImageProvider",
@@ -93,6 +106,7 @@ __all__ = [
     "ReplicateProvider",
     "ensure_reference_support",
     "filter_providers_for_reference_input",
+    "image_cost_event",
     "prepare_image_request",
     "required_image_capabilities",
     "supports_reference_images",
