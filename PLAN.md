@@ -302,7 +302,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Provide a sample async declarative video spec passing a mock server test (tests/providers/video/test_http_spec_video.py)
 - [x] Adapt video requests by clamping limits with recorded warnings and optionally splitting long requests into multiple clips with combined cost (tests/providers/video/test_adapt.py)
 - [x] Implement video pricing models for per second, per clip, resolution tiers and audio options with estimator tests (tests/media/test_video_pricing.py)
-- [ ] Validate downloaded video with ffprobe, store it as an asset and serve identical requests from cache (tests/media/test_video_cache.py)
+- [x] Validate downloaded video with ffprobe, store it as an asset and serve identical requests from cache (tests/media/test_video_cache.py)
 - [ ] Add a helper that generates or selects a still and animates it, keeping linked cost events (tests/media/test_i2v_flow.py)
 - [ ] Filter providers by first and last frame and native audio support and strip unwanted audio verified by ffprobe (tests/providers/video/test_flags.py)
 - [ ] Add a video to video adapter or document the skip when the capability is absent (tests/providers/video/test_v2v.py)
