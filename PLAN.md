@@ -319,7 +319,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add music providers for vocals and instrumentals plus a local stub, recording commercial use metadata (tests/providers/music)
 - [x] Generate several music candidates, prefilter by duration, silence, clipping and loudness and record the chosen index (tests/media/test_music_candidates.py)
 - [x] Implement the music service with caching, cost, license metadata and a commercial license gate blocking publish or deliver (tests/media/test_music_service.py)
-- [ ] Add a local royalty free music library indexed by mood, tempo, genre and license with selection by tags and duration (tests/media/test_music_library.py)
+- [x] Add a local royalty free music library indexed by mood, tempo, genre and license with selection by tags and duration (tests/media/test_music_library.py)
 - [ ] Add audio analysis for tempo, silence and loudness plus multi track mixing with verified voice ducking (tests/media/test_audio_mix.py)
 - [ ] Add media generate commands for image, video, speech, transcription, music and sfx with provider, strategy, prompt files, estimate and dry run support (tests/cli/test_media_generate.py)
 - [ ] Add a media edit command for instruction edits, background removal, upscaling and outpainting (tests/cli/test_media_edit.py)
