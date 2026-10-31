@@ -19,6 +19,15 @@ __all__ = [
     "DEFAULT_MEDIA_SUBTITLE_MAX_CHARS",
     "DEFAULT_MEDIA_SUBTITLE_MAX_DURATION_SECONDS",
     "DEFAULT_MEDIA_SUBTITLE_MAX_GAP_SECONDS",
+    "DEFAULT_MUSIC_CLIPPING_PEAK_DB",
+    "DEFAULT_MUSIC_DURATION_TOLERANCE_SECONDS",
+    "DEFAULT_MUSIC_MAX_CLIPPING_RATIO",
+    "DEFAULT_MUSIC_MAX_LOUDNESS_LUFS",
+    "DEFAULT_MUSIC_MAX_SILENCE_RATIO",
+    "DEFAULT_MUSIC_MIN_DURATION_SECONDS",
+    "DEFAULT_MUSIC_MIN_LOUDNESS_LUFS",
+    "DEFAULT_MUSIC_SILENCE_MIN_SECONDS",
+    "DEFAULT_MUSIC_SILENCE_NOISE_DB",
     "MAX_MEDIA_SIMILARITY",
     "MIN_MEDIA_SIMILARITY",
 ]
@@ -58,3 +67,30 @@ DEFAULT_MEDIA_SUBTITLE_MAX_DURATION_SECONDS = 6.0
 
 DEFAULT_MEDIA_SUBTITLE_MAX_GAP_SECONDS = 1.0
 """A pause longer than this starts a new subtitle cue."""
+
+DEFAULT_MUSIC_MIN_DURATION_SECONDS = 0.0
+"""The shortest music candidate accepted when no target duration is supplied."""
+
+DEFAULT_MUSIC_DURATION_TOLERANCE_SECONDS = 2.0
+"""How far a candidate may differ from a requested duration."""
+
+DEFAULT_MUSIC_MAX_SILENCE_RATIO = 0.35
+"""The largest share of a music candidate that may be silence."""
+
+DEFAULT_MUSIC_MAX_CLIPPING_RATIO = 0.001
+"""The largest share of samples at full scale before a candidate is clipped."""
+
+DEFAULT_MUSIC_MIN_LOUDNESS_LUFS = -30.0
+"""The quietest integrated loudness a music candidate may have."""
+
+DEFAULT_MUSIC_MAX_LOUDNESS_LUFS = -6.0
+"""The loudest integrated loudness a music candidate may have."""
+
+DEFAULT_MUSIC_SILENCE_NOISE_DB = -50.0
+"""The noise floor below which ffmpeg counts a stretch as silence."""
+
+DEFAULT_MUSIC_SILENCE_MIN_SECONDS = 0.5
+"""The shortest pause ffmpeg reports as silence."""
+
+DEFAULT_MUSIC_CLIPPING_PEAK_DB = 0.0
+"""The peak level at or above which a sample counts as clipped."""
