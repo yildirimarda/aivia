@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -584,6 +584,7 @@ class ImageService:
         key_prefix: str | None = None,
         pinned: bool = True,
         estimated: bool = False,
+        exclude: Iterable[str] | None = None,
     ) -> ImageOutcome:
         """Generate *request* through the screened paid path.
 
@@ -663,6 +664,7 @@ class ImageService:
             remaining_budget=budget,
             units=float(request.count),
             unit_kind=IMAGE_UNIT,
+            exclude=exclude,
         )
         if not isinstance(response, ImageResponse):
             raise TypeError("image provider must return an ImageResponse")
