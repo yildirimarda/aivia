@@ -342,6 +342,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Skip splitting video requests that pin a first or last frame and record why (tests/providers/video/test_adapt.py)
 - [ ] Persist validated video fps, format and audio presence on the asset so cache hits rebuild the exact result (tests/media/test_video_metadata.py)
 - [ ] Add a video cost calculator resolving per second, per clip, tier and audio prices into linked cost events (tests/providers/video/test_cost.py)
+- [ ] Declare native audio support on video providers that forward generate_audio and regenerate the capability matrix (tests/providers/video/test_audio_capability.py)
+- [ ] Apply the video audio policy before storing a clip and record when returned audio was stripped (tests/media/test_video_audio.py)
 
 ## Milestone 9: Composition and rendering
 
