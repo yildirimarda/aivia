@@ -29,6 +29,7 @@ from aivia.providers.tts.common import (
     decode_base64_audio,
     format_language,
     pcm_to_wav,
+    phoneme_ssml,
     resolve_api_key,
     validate_base_url,
 )
@@ -70,6 +71,7 @@ GOOGLE_TTS_API_URL = DEFAULT_BASE_URL
 _DEFAULT_METADATA = ProviderMeta(
     name="google-tts",
     capabilities=[CAPABILITY_TTS],
+    supported_options={CAPABILITY_TTS: ["pronunciation"]},
     pricing={
         CAPABILITY_TTS: ProviderPrice(amount_usd=0.000016, unit="character"),
     },
@@ -119,8 +121,13 @@ def _payload(
     voice_config: dict[str, Any] = {"languageCode": language, "name": voice}
     if request.model is not None:
         voice_config["modelName"] = request.model
+    if request.pronunciation:
+        spoken = phoneme_ssml(request.text, request.pronunciation)
+        speech_input: dict[str, str] = {"ssml": f"<speak>{spoken}</speak>"}
+    else:
+        speech_input = {"text": request.text}
     return {
-        "input": {"text": request.text},
+        "input": speech_input,
         "voice": voice_config,
         "audioConfig": audio_config,
     }

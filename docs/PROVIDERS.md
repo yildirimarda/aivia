@@ -203,9 +203,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | - | - |
 | `aggregator-image-edit` | - | - |
 | `anthropic` | - | - |
-| `azure` | - | - |
-| `azure-tts` | - | - |
-| `azure_speech` | - | - |
+| `azure` | `tts` | `pronunciation` |
+| `azure-tts` | `tts` | `pronunciation` |
+| `azure_speech` | `tts` | `pronunciation` |
 | `brave` | - | - |
 | `elevenlabs` | - | - |
 | `elevenlabs-tts` | - | - |
@@ -217,11 +217,11 @@ This matrix is generated from the metadata every registered provider declares. C
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
-| `google-speech` | - | - |
-| `google-tts` | - | - |
+| `google-speech` | `tts` | `pronunciation` |
+| `google-tts` | `tts` | `pronunciation` |
 | `google-veo` | - | - |
 | `google_image` | - | - |
-| `google_tts` | - | - |
+| `google_tts` | `tts` | `pronunciation` |
 | `google_veo` | - | - |
 | `http` | - | - |
 | `kokoro` | - | - |

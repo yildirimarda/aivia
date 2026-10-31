@@ -27,6 +27,7 @@ __all__ = [
     "decode_base64_audio",
     "format_language",
     "pcm_to_wav",
+    "phoneme_ssml",
     "resolve_api_key",
     "sniff_audio_format",
     "validate_base_url",
@@ -163,6 +164,64 @@ def pcm_to_wav(
         target.setframerate(sample_rate)
         target.writeframes(data)
     return buffer.getvalue()
+
+
+def phoneme_ssml(
+    text: str,
+    pronunciation: Mapping[str, str] | None = None,
+    *,
+    alphabet: str = "ipa",
+) -> str:
+    """Render *text* as escaped SSML with optional phoneme replacements.
+
+    The text is escaped before markup is inserted, so a pronunciation hint can
+    never inject SSML. Longer hints are matched first and matching is
+    case-insensitive at word boundaries.
+    """
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    if pronunciation is None:
+        hints: dict[str, str] = {}
+    elif isinstance(pronunciation, Mapping):
+        hints = {}
+        for raw_key, raw_value in pronunciation.items():
+            key = as_text(raw_key)
+            value = as_text(raw_value)
+            if not key or not value:
+                raise ValueError("pronunciation hints must be non-empty")
+            hints[key] = value
+    else:
+        raise TypeError("pronunciation must be a mapping")
+    if not hints:
+        return _escape_xml(text)
+    words = sorted(hints, key=len, reverse=True)
+    pattern = re.compile(
+        r"(?<!\w)(?:" + "|".join(re.escape(word) for word in words) + r")(?!\w)",
+        re.IGNORECASE,
+    )
+    folded = {key.casefold(): value for key, value in hints.items()}
+    pieces: list[str] = []
+    cursor = 0
+    for match in pattern.finditer(text):
+        pieces.append(_escape_xml(text[cursor : match.start()]))
+        word = match.group()
+        phonetic = hints.get(word) or folded.get(word.casefold(), "")
+        pieces.append(
+            f'<phoneme alphabet="{_escape_attribute(alphabet)}" '
+            f'ph="{_escape_attribute(phonetic)}">'
+            f"{_escape_xml(word)}</phoneme>"
+        )
+        cursor = match.end()
+    pieces.append(_escape_xml(text[cursor:]))
+    return "".join(pieces)
+
+
+def _escape_xml(value: str) -> str:
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _escape_attribute(value: str) -> str:
+    return _escape_xml(value).replace('"', "&quot;")
 
 
 def word_timestamps_from_alignment(
