@@ -350,6 +350,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Probe the configured local text to speech executable and model in health so a missing binary fails early (tests/providers/tts/test_local.py)
 - [ ] Convert local text to speech output to the requested container with ffmpeg and reject unsupported conversions (tests/providers/tts/test_local.py)
 - [ ] Implement the speech to text service with audio hash caching, duration based budget and cost plus a transcript sidecar (tests/media/test_stt_service.py)
+- [ ] Include the selected provider license in the music cache key so a rights change cannot serve stale clearance (tests/media/test_music_service.py)
+- [ ] Persist measured music format, sample rate and channels on the asset so cache hits rebuild the exact track (tests/media/test_music_service.py)
 
 ## Milestone 9: Composition and rendering
 
