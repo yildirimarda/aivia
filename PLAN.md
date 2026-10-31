@@ -315,7 +315,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add local and API speech to text providers with word level timestamps and per minute cost (tests/providers/stt)
 - [x] Add forced alignment of known text to audio and term verification by fuzzy match (tests/media/test_align_verify.py)
 - [x] Add a subtitle model with SRT and VTT export plus a dynamic ASS generator with word highlighting, style presets and safe areas (tests/media/test_subtitles.py)
-- [ ] Implement per language line breaking rules and assert glyph coverage for Turkish and German characters against the bundled font (tests/media/test_subtitle_i18n.py)
+- [x] Implement per language line breaking rules and assert glyph coverage for Turkish and German characters against the bundled font (tests/media/test_subtitle_i18n.py)
 - [ ] Add music providers for vocals and instrumentals plus a local stub, recording commercial use metadata (tests/providers/music)
 - [ ] Generate several music candidates, prefilter by duration, silence, clipping and loudness and record the chosen index (tests/media/test_music_candidates.py)
 - [ ] Implement the music service with caching, cost, license metadata and a commercial license gate blocking publish or deliver (tests/media/test_music_service.py)
