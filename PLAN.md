@@ -309,7 +309,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the video service requiring a screened prompt with budget checks before submit, cost on completion, recorded failures and caching (tests/media/test_video_service.py)
 - [x] Add video quality assurance with scene aware frame sampling, vision checks, retries and image to video fallback (tests/media/test_video_qa.py)
 - [x] Add video utilities for trim, speed, concatenation with crossfade, frame and audio extraction, seamless loops and GIF, WebP and MP4 outputs with size caps (tests/media/test_video_utils.py)
-- [ ] Add ElevenLabs, OpenAI, Google or Azure and local text to speech providers with voice mapping and per character cost (tests/providers/tts)
+- [x] Add ElevenLabs, OpenAI, Google or Azure and local text to speech providers with voice mapping and per character cost (tests/providers/tts)
 - [ ] Resolve per language voices with fallback, list voices and pass pronunciation hints where supported (tests/media/test_voices.py)
 - [ ] Implement the speech service with caching by text, voice and settings plus loudness normalization, duration measurement, trimming and fades (tests/media/test_tts_service.py)
 - [ ] Add local and API speech to text providers with word level timestamps and per minute cost (tests/providers/stt)
@@ -347,6 +347,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Reject a source video whose media type is not video before any video-to-video provider call (tests/providers/video/test_v2v.py)
 - [ ] Normalize differing clip dimensions and frame rates before crossfading so mixed sources join cleanly (tests/media/test_video_utils.py)
 - [ ] Drop audio with a recorded warning when a retimed or looped clip has no track (tests/media/test_video_utils.py)
+- [ ] Probe the configured local text to speech executable and model in health so a missing binary fails early (tests/providers/tts/test_local.py)
+- [ ] Convert local text to speech output to the requested container with ffmpeg and reject unsupported conversions (tests/providers/tts/test_local.py)
 
 ## Milestone 9: Composition and rendering
 

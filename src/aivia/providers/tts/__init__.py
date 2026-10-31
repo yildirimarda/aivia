@@ -1,0 +1,120 @@
+"""Text to speech provider adapters.
+
+Importing this package makes every built-in speech adapter available to the
+provider registry. Each adapter resolves logical voice aliases through
+:class:`~aivia.providers.tts.voice.VoiceMap` and records per-character cost
+through :class:`~aivia.providers.tts.cost.TTSCostCalculator`.
+"""
+
+from aivia.providers.tts.azure import (
+    AZURE_TTS_API_VERSION,
+    Azure,
+    AzureProvider,
+    AzureSpeech,
+    AzureSpeechProvider,
+    AzureTTS,
+    AzureTTSProvider,
+)
+from aivia.providers.tts.cost import (
+    CHARACTER_UNIT,
+    TTS_OPERATION,
+    TTSCost,
+    TTSCostCalculator,
+    TTSPrice,
+    tts_cost_event,
+)
+from aivia.providers.tts.elevenlabs import (
+    ELEVENLABS_BASE_URL,
+    ELEVENLABS_DEFAULT_BASE_URL,
+    ElevenLabs,
+    ElevenLabsProvider,
+    ElevenLabsTTS,
+    ElevenLabsTTSProvider,
+)
+from aivia.providers.tts.google import (
+    GOOGLE_API_URL,
+    GOOGLE_BASE_URL,
+    GOOGLE_DEFAULT_BASE_URL,
+    GOOGLE_TTS_API_URL,
+    Google,
+    GoogleCloudTTS,
+    GoogleCloudTTSProvider,
+    GoogleProvider,
+    GoogleTTS,
+    GoogleTTSProvider,
+)
+from aivia.providers.tts.local import (
+    DEFAULT_SAMPLE_RATE,
+    Kokoro,
+    KokoroTTS,
+    KokoroTTSProvider,
+    Local,
+    LocalTTS,
+    LocalTTSProvider,
+    Piper,
+    PiperTTS,
+    PiperTTSProvider,
+    Synthesizer,
+)
+from aivia.providers.tts.openai import (
+    OPENAI_BASE_URL,
+    OPENAI_DEFAULT_BASE_URL,
+    OpenAI,
+    OpenAISpeech,
+    OpenAISpeechProvider,
+    OpenAITTS,
+    OpenAITTSProvider,
+)
+from aivia.providers.tts.voice import VoiceMap, VoiceMapping
+
+__all__ = [
+    "AZURE_TTS_API_VERSION",
+    "CHARACTER_UNIT",
+    "DEFAULT_SAMPLE_RATE",
+    "ELEVENLABS_BASE_URL",
+    "ELEVENLABS_DEFAULT_BASE_URL",
+    "GOOGLE_API_URL",
+    "GOOGLE_BASE_URL",
+    "GOOGLE_DEFAULT_BASE_URL",
+    "GOOGLE_TTS_API_URL",
+    "OPENAI_BASE_URL",
+    "OPENAI_DEFAULT_BASE_URL",
+    "TTS_OPERATION",
+    "Azure",
+    "AzureProvider",
+    "AzureSpeech",
+    "AzureSpeechProvider",
+    "AzureTTS",
+    "AzureTTSProvider",
+    "ElevenLabs",
+    "ElevenLabsProvider",
+    "ElevenLabsTTS",
+    "ElevenLabsTTSProvider",
+    "Google",
+    "GoogleCloudTTS",
+    "GoogleCloudTTSProvider",
+    "GoogleProvider",
+    "GoogleTTS",
+    "GoogleTTSProvider",
+    "Kokoro",
+    "KokoroTTS",
+    "KokoroTTSProvider",
+    "Local",
+    "LocalTTS",
+    "LocalTTSProvider",
+    "OpenAI",
+    "OpenAISpeech",
+    "OpenAISpeechProvider",
+    "OpenAITTS",
+    "OpenAITTSProvider",
+    "Piper",
+    "PiperTTS",
+    "PiperTTSProvider",
+    "Synthesizer",
+    "TTSCost",
+    "TTSCostCalculator",
+    "TTSPrice",
+    "VoiceMap",
+    "VoiceMapping",
+    "tts_cost_event",
+]
