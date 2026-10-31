@@ -40,10 +40,23 @@ from aivia.core.config import media as media_defaults
 from aivia.core.config.sections import AccessibilityConfig
 from aivia.core.errors import ValidationError
 from aivia.core.platforms import Platform, SafeArea, get_platform
+from aivia.media.text_layout import (
+    DEFAULT_LINE_BREAK_LANGUAGE,
+    break_lines,
+    bundled_font_path,
+    font_covers_text,
+    hyphenate_word,
+    line_break_opportunities,
+    missing_glyphs,
+    split_syllables,
+    wrap_subtitle_text,
+    wrap_text,
+)
 from aivia.providers.protocols.audio import WordTimestamp
 from aivia.providers.protocols.stt import STTResponse
 
 __all__ = [
+    "DEFAULT_LINE_BREAK_LANGUAGE",
     "DEFAULT_SUBTITLE_FONT",
     "DEFAULT_SUBTITLE_FONT_SIZE",
     "DEFAULT_SUBTITLE_HIGHLIGHT_COLOR",
@@ -65,13 +78,16 @@ __all__ = [
     "SubtitleWord",
     "ass_color",
     "ass_for",
+    "break_lines",
     "build_ass",
     "build_cues",
+    "bundled_font_path",
     "cues_from_words",
     "export_ass",
     "export_srt",
     "export_subtitles",
     "export_vtt",
+    "font_covers_text",
     "format_ass_timestamp",
     "format_srt_timestamp",
     "format_vtt_timestamp",
@@ -85,10 +101,14 @@ __all__ = [
     "generate_vtt",
     "get_style_preset",
     "group_words",
+    "hyphenate_word",
+    "line_break_opportunities",
     "list_style_presets",
+    "missing_glyphs",
     "parse_style",
     "render_ass",
     "resolve_style",
+    "split_syllables",
     "style_preset",
     "subtitle_from_alignment",
     "subtitle_from_transcript",
@@ -97,6 +117,8 @@ __all__ = [
     "to_ass_color",
     "to_srt",
     "to_vtt",
+    "wrap_subtitle_text",
+    "wrap_text",
     "write_ass",
     "write_srt",
     "write_subtitles",
@@ -952,6 +974,19 @@ class SubtitleCue(BaseModel):
     def lines(self) -> list[str]:
         """The cue text split into display lines."""
         return self.text.splitlines()
+
+    def wrapped_lines(
+        self,
+        *,
+        max_chars: int,
+        language: str = "",
+    ) -> list[str]:
+        """Return the cue text wrapped with the language line break rules."""
+        return break_lines(self.text, max_chars=max_chars, language=language)
+
+    def wrap(self, *, max_chars: int, language: str = "") -> str:
+        """Return the cue text wrapped into display lines joined by newlines."""
+        return wrap_text(self.text, max_chars=max_chars, language=language)
 
     @property
     def timed_words(self) -> list[WordTimestamp]:
