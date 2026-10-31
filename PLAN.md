@@ -313,7 +313,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Resolve per language voices with fallback, list voices and pass pronunciation hints where supported (tests/media/test_voices.py)
 - [x] Implement the speech service with caching by text, voice and settings plus loudness normalization, duration measurement, trimming and fades (tests/media/test_tts_service.py)
 - [x] Add local and API speech to text providers with word level timestamps and per minute cost (tests/providers/stt)
-- [ ] Add forced alignment of known text to audio and term verification by fuzzy match (tests/media/test_align_verify.py)
+- [x] Add forced alignment of known text to audio and term verification by fuzzy match (tests/media/test_align_verify.py)
 - [ ] Add a subtitle model with SRT and VTT export plus a dynamic ASS generator with word highlighting, style presets and safe areas (tests/media/test_subtitles.py)
 - [ ] Implement per language line breaking rules and assert glyph coverage for Turkish and German characters against the bundled font (tests/media/test_subtitle_i18n.py)
 - [ ] Add music providers for vocals and instrumentals plus a local stub, recording commercial use metadata (tests/providers/music)

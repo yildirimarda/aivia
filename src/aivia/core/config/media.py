@@ -9,13 +9,25 @@ safe defaults used when no override is supplied.
 from __future__ import annotations
 
 __all__ = [
+    "DEFAULT_MEDIA_ALIGNMENT_SIMILARITY_THRESHOLD",
     "DEFAULT_MEDIA_ANIMATED_FRAME_RATE",
     "DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS",
     "DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS",
     "DEFAULT_MEDIA_MAX_BYTES",
     "DEFAULT_MEDIA_MAX_PIXELS",
     "DEFAULT_MEDIA_MIN_ANIMATED_FRAME_RATE",
+    "MAX_MEDIA_SIMILARITY",
+    "MIN_MEDIA_SIMILARITY",
 ]
+
+DEFAULT_MEDIA_ALIGNMENT_SIMILARITY_THRESHOLD = 0.8
+"""Word similarity at or above this pairs a script word with a transcript word."""
+
+MAX_MEDIA_SIMILARITY = 1.0
+"""The highest possible normalized similarity score."""
+
+MIN_MEDIA_SIMILARITY = 0.0
+"""The lowest possible normalized similarity score."""
 
 DEFAULT_MEDIA_MAX_BYTES = 100 * 1024 * 1024
 """Default cap for one downloaded asset, in bytes."""
