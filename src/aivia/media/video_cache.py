@@ -21,6 +21,7 @@ counting as spend.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,7 +44,12 @@ from aivia.core.media_probe import (
     sniff_media,
     validate_media,
 )
-from aivia.core.models.asset import Asset, AssetAnalysis, AssetKind
+from aivia.core.models.asset import (
+    Asset,
+    AssetAnalysis,
+    AssetCostLink,
+    AssetKind,
+)
 from aivia.core.models.cost import CostEvent
 from aivia.providers.protocols.media import MediaInput, VideoFormat
 from aivia.providers.protocols.storage import (
@@ -448,6 +454,7 @@ class VideoCache:
         storage: StorageProvider | None = None,
         key: str | None = None,
         key_prefix: str | None = None,
+        cost_links: Iterable[AssetCostLink] | None = None,
     ) -> VideoCacheOutcome:
         """Validate *result*, store it as a video asset and cache the request.
 
@@ -455,6 +462,10 @@ class VideoCache:
         arrived: sniff the container, run ffprobe, enforce the media limits,
         write the validated payload to storage, then record the asset under the
         request key. Nothing is stored or cached when validation fails.
+
+        ``cost_links`` attaches the cost events that produced the clip to the
+        stored asset, so a caller that records a video event does not have to
+        update the asset in a second write.
         """
         if not isinstance(request, VideoRequest):
             raise TypeError("request must be a VideoRequest")
@@ -494,6 +505,7 @@ class VideoCache:
                 height=probe.height,
                 duration_seconds=probe.duration_seconds,
             ),
+            cost_links=list(cost_links or ()),
         )
         if self._cache is not None and not self._cache.no_cache:
             asset = self._cache.store(asset, key=self.key(request, index=index))
