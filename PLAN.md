@@ -308,7 +308,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a video to video adapter or document the skip when the capability is absent (tests/providers/video/test_v2v.py)
 - [x] Implement the video service requiring a screened prompt with budget checks before submit, cost on completion, recorded failures and caching (tests/media/test_video_service.py)
 - [x] Add video quality assurance with scene aware frame sampling, vision checks, retries and image to video fallback (tests/media/test_video_qa.py)
-- [ ] Add video utilities for trim, speed, concatenation with crossfade, frame and audio extraction, seamless loops and GIF, WebP and MP4 outputs with size caps (tests/media/test_video_utils.py)
+- [x] Add video utilities for trim, speed, concatenation with crossfade, frame and audio extraction, seamless loops and GIF, WebP and MP4 outputs with size caps (tests/media/test_video_utils.py)
 - [ ] Add ElevenLabs, OpenAI, Google or Azure and local text to speech providers with voice mapping and per character cost (tests/providers/tts)
 - [ ] Resolve per language voices with fallback, list voices and pass pronunciation hints where supported (tests/media/test_voices.py)
 - [ ] Implement the speech service with caching by text, voice and settings plus loudness normalization, duration measurement, trimming and fades (tests/media/test_tts_service.py)
@@ -345,6 +345,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Declare native audio support on video providers that forward generate_audio and regenerate the capability matrix (tests/providers/video/test_audio_capability.py)
 - [ ] Apply the video audio policy before storing a clip and record when returned audio was stripped (tests/media/test_video_audio.py)
 - [ ] Reject a source video whose media type is not video before any video-to-video provider call (tests/providers/video/test_v2v.py)
+- [ ] Normalize differing clip dimensions and frame rates before crossfading so mixed sources join cleanly (tests/media/test_video_utils.py)
+- [ ] Drop audio with a recorded warning when a retimed or looped clip has no track (tests/media/test_video_utils.py)
 
 ## Milestone 9: Composition and rendering
 
