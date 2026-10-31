@@ -231,6 +231,7 @@ safety:
   enabled: true
   screen_prompts: true
   screen_media: true
+  blocked_terms: []
   block_categories: []
   allow_regenerate: true
 

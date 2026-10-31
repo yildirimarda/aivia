@@ -290,7 +290,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add remote background removal and upscaling with validated factors and asserted dimensions (tests/providers/image_edit/test_remote_ops.py)
 - [x] Add Pexels and Pixabay stock providers for images and video recording attribution (tests/providers/stock/test_stock.py)
 - [x] Rank stock candidates against the intended description with a vision model and drop everything below the configured relevance (tests/media/test_stock_relevance.py)
-- [ ] Add prompt and content screening that blocks configured terms before any provider call and returns a token paid services require (tests/media/test_screening.py)
+- [x] Add prompt and content screening that blocks configured terms before any provider call and returns a token paid services require (tests/media/test_screening.py)
 - [ ] Implement the image service requiring a screened prompt and running cache, budget, router, provider, validation, storage, cost and sidecar in one place (tests/media/test_image_service.py)
 - [ ] Handle variation counts and seeds, recording a distinct seed per output (tests/media/test_variations.py)
 - [ ] Add image quality assurance with a vision score, retries up to the configured limit and fallback to the next provider or stock (tests/media/test_image_qa.py)
