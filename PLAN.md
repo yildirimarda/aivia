@@ -294,7 +294,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the image service requiring a screened prompt and running cache, budget, router, provider, validation, storage, cost and sidecar in one place (tests/media/test_image_service.py)
 - [x] Handle variation counts and seeds, recording a distinct seed per output (tests/media/test_variations.py)
 - [x] Add image quality assurance with a vision score, retries up to the configured limit and fallback to the next provider or stock (tests/media/test_image_qa.py)
-- [ ] Build a reusable batch runner library with a concurrency cap, a batch wide budget stop and a per item manifest, with no CLI parsing (tests/media/test_batch_runner.py)
+- [x] Build a reusable batch runner library with a concurrency cap, a batch wide budget stop and a per item manifest, with no CLI parsing (tests/media/test_batch_runner.py)
 - [ ] Define video request and result models with duration, aspect, resolution, fps, seed, first and last frame and audio flags (tests/providers/video/test_dto.py)
 - [ ] Add the fal video provider with queue states, poll progress and timeout handling (tests/providers/video/test_fal.py)
 - [ ] Add fal image to video using a first frame input behind a capability flag (tests/providers/video/test_fal_i2v.py)
