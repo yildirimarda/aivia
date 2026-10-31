@@ -1055,6 +1055,7 @@ class Router:
         remaining_budget: float | None = None,
         units: float = 1.0,
         unit_kind: str | None = None,
+        exclude: Iterable[str] | None = None,
     ) -> T:
         """Run *operation* with fallback across the capability chain.
 
@@ -1079,6 +1080,8 @@ class Router:
         raises :class:`~aivia.core.errors.ProviderExhaustedError` with the
         attempted providers and the last error, chained as the cause. The
         successful selection remains available through :attr:`last_selection`.
+        ``exclude`` starts the walk with providers already ruled out, which is
+        how a caller moves on after a result failed a quality gate.
         """
         if not callable(operation):
             raise TypeError("operation must be callable")
@@ -1086,7 +1089,7 @@ class Router:
         names = _coerce_required(capability, required)
         target = names[0]
         attempted: list[RouteAttempt] = []
-        excluded: set[str] = set()
+        excluded: set[str] = set(exclude or ())
         last_error: AiviaError | None = None
 
         while True:
