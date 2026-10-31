@@ -304,7 +304,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement video pricing models for per second, per clip, resolution tiers and audio options with estimator tests (tests/media/test_video_pricing.py)
 - [x] Validate downloaded video with ffprobe, store it as an asset and serve identical requests from cache (tests/media/test_video_cache.py)
 - [x] Add a helper that generates or selects a still and animates it, keeping linked cost events (tests/media/test_i2v_flow.py)
-- [ ] Filter providers by first and last frame and native audio support and strip unwanted audio verified by ffprobe (tests/providers/video/test_flags.py)
+- [x] Filter providers by first and last frame and native audio support and strip unwanted audio verified by ffprobe (tests/providers/video/test_flags.py)
 - [ ] Add a video to video adapter or document the skip when the capability is absent (tests/providers/video/test_v2v.py)
 - [ ] Implement the video service requiring a screened prompt with budget checks before submit, cost on completion, recorded failures and caching (tests/media/test_video_service.py)
 - [ ] Add video quality assurance with scene aware frame sampling, vision checks, retries and image to video fallback (tests/media/test_video_qa.py)
@@ -342,6 +342,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Skip splitting video requests that pin a first or last frame and record why (tests/providers/video/test_adapt.py)
 - [ ] Persist validated video fps, format and audio presence on the asset so cache hits rebuild the exact result (tests/media/test_video_metadata.py)
 - [ ] Add a video cost calculator resolving per second, per clip, tier and audio prices into linked cost events (tests/providers/video/test_cost.py)
+- [ ] Declare native audio support on video providers that forward generate_audio and regenerate the capability matrix (tests/providers/video/test_audio_capability.py)
+- [ ] Apply the video audio policy before storing a clip and record when returned audio was stripped (tests/media/test_video_audio.py)
 
 ## Milestone 9: Composition and rendering
 

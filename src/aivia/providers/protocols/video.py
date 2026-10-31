@@ -24,9 +24,13 @@ from aivia.providers.protocols.image import normalize_aspect_ratio
 from aivia.providers.protocols.media import MediaDimensions, MediaInput, VideoFormat
 
 __all__ = [
+    "CAPABILITY_VIDEO_AUDIO",
+    "CAPABILITY_VIDEO_AUDIO_NATIVE",
     "CAPABILITY_VIDEO_FIRST_FRAME",
     "CAPABILITY_VIDEO_GEN",
     "CAPABILITY_VIDEO_IMAGE_INPUT",
+    "CAPABILITY_VIDEO_LAST_FRAME",
+    "CAPABILITY_VIDEO_NATIVE_AUDIO",
     "VideoProvider",
     "VideoRequest",
     "VideoResponse",
@@ -41,6 +45,41 @@ CAPABILITY_VIDEO_FIRST_FRAME = "video_first_frame"
 
 CAPABILITY_VIDEO_IMAGE_INPUT = CAPABILITY_VIDEO_FIRST_FRAME
 """Alias naming the first frame image input capability."""
+
+CAPABILITY_VIDEO_LAST_FRAME = "video_last_frame"
+"""The capability a provider declares when it accepts a last frame image."""
+
+
+class _NativeAudioCapability(str):
+    """The native soundtrack capability, accepting its historical spellings."""
+
+    _ALIASES = frozenset({"video_native_audio", "video_audio", "native_audio"})
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return str(other).strip() in self._ALIASES
+        return False
+
+    def __ne__(self, other: object) -> bool:
+        return not self.__eq__(other)
+
+    def __hash__(self) -> int:
+        return hash(str(self))
+
+    def strip(self, chars: str | None = None, /) -> str:
+        if chars is None:
+            return self
+        return super().strip(chars)
+
+
+CAPABILITY_VIDEO_NATIVE_AUDIO = _NativeAudioCapability("video_native_audio")
+"""The capability a provider declares when it generates a native soundtrack."""
+
+CAPABILITY_VIDEO_AUDIO = CAPABILITY_VIDEO_NATIVE_AUDIO
+"""Alias naming the native soundtrack capability."""
+
+CAPABILITY_VIDEO_AUDIO_NATIVE = CAPABILITY_VIDEO_NATIVE_AUDIO
+"""Alias naming the native soundtrack capability."""
 
 
 def _strip(value: Any) -> Any:
