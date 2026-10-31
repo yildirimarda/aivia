@@ -1,0 +1,64 @@
+# One minimal example of the declarative provider spec schema.
+#
+# It describes a queued (async) text to video API: submit returns a job id,
+# poll reports progress and the finished job returns one or more clips. Load it
+# with `aivia providers add-spec examples/provider_spec.example.yaml` after
+# reviewing the target host and secret name it prints.
+name: sample-video
+description: Sample queued text to video provider
+capabilities: [video_gen]
+base_url: https://video.example.test
+default_model: sample-video-1
+headers:
+  authorization: Bearer {{ secrets.api_key }}
+  accept: application/json
+async:
+  submit:
+    method: POST
+    path: /v1/videos
+    body:
+      prompt: "{{ request.prompt }}"
+      negative_prompt: "{{ request.negative_prompt }}"
+      duration_seconds: "{{ request.duration_seconds | default(5) }}"
+      aspect_ratio: "{{ request.aspect_ratio | default('16:9') }}"
+      fps: "{{ request.fps | default(24) }}"
+      seed: "{{ request.seed }}"
+      count: "{{ request.count }}"
+      generate_audio: "{{ request.generate_audio }}"
+  poll:
+    method: GET
+    path: /v1/videos/{{ remote_id }}
+  cancel:
+    method: POST
+    path: /v1/videos/{{ remote_id }}/cancel
+  remote_id: job.id
+  status: job.state
+  progress: job.progress
+  error_code: job.error_code
+  error_message: job.error_message
+  states:
+    queued: [queued]
+    running: [processing]
+    succeeded: [completed]
+    failed: [failed]
+    cancelled: [cancelled]
+  results: data.videos
+response:
+  fields:
+    url: file.url
+    format: file.content_type
+    width: file.width
+    height: file.height
+    duration_seconds: file.duration_seconds
+    fps: file.fps
+    has_audio: file.has_audio
+    seed: file.seed
+    thumbnail_url: file.thumbnail_url
+pricing:
+  video_gen:
+    amount_usd: 0.35
+    unit: clip
+secrets:
+  api_key: SAMPLE_VIDEO_API_KEY
+supported_options:
+  video_gen: [duration_seconds, aspect_ratio, fps, seed, generate_audio]
