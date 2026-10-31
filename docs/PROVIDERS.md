@@ -23,6 +23,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `fal` | `image_gen` | 60/min | - | - | unknown |
 | `fal-video` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
 | `fal_video` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
+| `faster-whisper` | `stt` | 60/min | - | - | unknown |
+| `faster_whisper` | `stt` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
 | `google` | `image_gen` | 60/min | - | - | unknown |
 | `google-image` | `image_gen` | 60/min | - | - | unknown |
@@ -41,7 +43,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `local-background-removal` | `image_edit` | 60/min | - | - | unknown |
 | `local-embeddings` | `embeddings` | 60/min | - | - | unknown |
 | `local-rembg` | `image_edit` | 60/min | - | - | unknown |
+| `local-stt` | `stt` | 60/min | - | - | unknown |
 | `local-tts` | `tts` | 60/min | - | - | unknown |
+| `local-whisper` | `stt` | 60/min | - | - | unknown |
+| `local_stt` | `stt` | 60/min | - | - | unknown |
 | `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
 | `mock-character-trainer` | `character_trainer` | 60/min | - | - | unknown |
 | `mock-delivery` | `delivery` | 60/min | - | - | unknown |
@@ -65,10 +70,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-embeddings` | `embeddings` | 60/min | - | - | unknown |
 | `openai-image` | `image_gen` | 60/min | - | - | unknown |
 | `openai-speech` | `tts` | 60/min | - | - | unknown |
+| `openai-stt` | `stt` | 60/min | - | - | unknown |
+| `openai-transcription` | `stt` | 60/min | - | - | unknown |
 | `openai-tts` | `tts` | 60/min | - | - | unknown |
+| `openai-whisper` | `stt` | 60/min | - | - | unknown |
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
 | `openai_image` | `image_gen` | 60/min | - | - | unknown |
 | `openai_speech` | `tts` | 60/min | - | - | unknown |
+| `openai_stt` | `stt` | 60/min | - | - | unknown |
 | `pexels` | `stock` | 60/min | - | Pexels License ([terms](https://www.pexels.com/license/)) | yes |
 | `piper` | `tts` | 60/min | - | - | unknown |
 | `piper-tts` | `tts` | 60/min | - | - | unknown |
@@ -91,6 +100,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `veo-video` | `video_gen` | 60/min | - | - | unknown |
 | `veo_video` | `video_gen` | 60/min | - | - | unknown |
 | `voyage` | `embeddings` | 60/min | - | - | unknown |
+| `whisper` | `stt` | 60/min | - | - | unknown |
+| `whisper-api` | `stt` | 60/min | - | - | unknown |
 
 ## Pricing
 
@@ -110,6 +121,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `fal` | - | - |
 | `fal-video` | - | - |
 | `fal_video` | - | - |
+| `faster-whisper` | `stt` | $0 per minute |
+| `faster_whisper` | `stt` | $0 per minute |
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
@@ -128,7 +141,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `local-background-removal` | `image_edit` | $0 per image |
 | `local-embeddings` | - | - |
 | `local-rembg` | `image_edit` | $0 per image |
+| `local-stt` | `stt` | $0 per minute |
 | `local-tts` | `tts` | $0 per character |
+| `local-whisper` | `stt` | $0 per minute |
+| `local_stt` | `stt` | $0 per minute |
 | `mock` | `character_trainer` | $0.5 per call |
 | `mock` | `delivery` | $0 per call |
 | `mock` | `embeddings` | $0.00002 per call |
@@ -169,10 +185,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-embeddings` | - | - |
 | `openai-image` | - | - |
 | `openai-speech` | `tts` | $0.000015 per character |
+| `openai-stt` | `stt` | $0.006 per minute |
+| `openai-transcription` | `stt` | $0.006 per minute |
 | `openai-tts` | `tts` | $0.000015 per character |
+| `openai-whisper` | `stt` | $0.006 per minute |
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
 | `openai_speech` | `tts` | $0.000015 per character |
+| `openai_stt` | `stt` | $0.006 per minute |
 | `pexels` | - | - |
 | `piper` | `tts` | $0 per character |
 | `piper-tts` | `tts` | $0 per character |
@@ -195,6 +215,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `veo-video` | - | - |
 | `veo_video` | - | - |
 | `voyage` | - | - |
+| `whisper` | `stt` | $0.006 per minute |
+| `whisper-api` | `stt` | $0.006 per minute |
 
 ## Supported options
 
@@ -214,6 +236,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `fal` | - | - |
 | `fal-video` | - | - |
 | `fal_video` | - | - |
+| `faster-whisper` | - | - |
+| `faster_whisper` | - | - |
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
@@ -232,7 +256,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `local-background-removal` | - | - |
 | `local-embeddings` | - | - |
 | `local-rembg` | - | - |
+| `local-stt` | - | - |
 | `local-tts` | - | - |
+| `local-whisper` | - | - |
+| `local_stt` | - | - |
 | `mock` | - | - |
 | `mock-character-trainer` | - | - |
 | `mock-delivery` | - | - |
@@ -256,10 +283,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-embeddings` | - | - |
 | `openai-image` | - | - |
 | `openai-speech` | - | - |
+| `openai-stt` | - | - |
+| `openai-transcription` | - | - |
 | `openai-tts` | - | - |
+| `openai-whisper` | - | - |
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
 | `openai_speech` | - | - |
+| `openai_stt` | - | - |
 | `pexels` | - | - |
 | `piper` | - | - |
 | `piper-tts` | - | - |
@@ -282,6 +313,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `veo-video` | - | - |
 | `veo_video` | - | - |
 | `voyage` | - | - |
+| `whisper` | - | - |
+| `whisper-api` | - | - |
 
 ## Licensing
 
@@ -301,6 +334,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `fal` | - | unknown | no | - |
 | `fal-video` | - | unknown | no | - |
 | `fal_video` | - | unknown | no | - |
+| `faster-whisper` | - | unknown | no | - |
+| `faster_whisper` | - | unknown | no | - |
 | `gemini` | - | unknown | no | - |
 | `google` | - | unknown | no | - |
 | `google-image` | - | unknown | no | - |
@@ -319,7 +354,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `local-background-removal` | - | unknown | no | - |
 | `local-embeddings` | - | unknown | no | - |
 | `local-rembg` | - | unknown | no | - |
+| `local-stt` | - | unknown | no | - |
 | `local-tts` | - | unknown | no | - |
+| `local-whisper` | - | unknown | no | - |
+| `local_stt` | - | unknown | no | - |
 | `mock` | - | unknown | no | - |
 | `mock-character-trainer` | - | unknown | no | - |
 | `mock-delivery` | - | unknown | no | - |
@@ -343,10 +381,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai-embeddings` | - | unknown | no | - |
 | `openai-image` | - | unknown | no | - |
 | `openai-speech` | - | unknown | no | - |
+| `openai-stt` | - | unknown | no | - |
+| `openai-transcription` | - | unknown | no | - |
 | `openai-tts` | - | unknown | no | - |
+| `openai-whisper` | - | unknown | no | - |
 | `openai_compatible` | - | unknown | no | - |
 | `openai_image` | - | unknown | no | - |
 | `openai_speech` | - | unknown | no | - |
+| `openai_stt` | - | unknown | no | - |
 | `pexels` | Pexels License ([terms](https://www.pexels.com/license/)) | yes | no | Free to use under the Pexels License; a credit line is recorded but not required. |
 | `piper` | - | unknown | no | - |
 | `piper-tts` | - | unknown | no | - |
@@ -369,3 +411,5 @@ This matrix is generated from the metadata every registered provider declares. C
 | `veo-video` | - | unknown | no | - |
 | `veo_video` | - | unknown | no | - |
 | `voyage` | - | unknown | no | - |
+| `whisper` | - | unknown | no | - |
+| `whisper-api` | - | unknown | no | - |
