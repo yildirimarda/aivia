@@ -17,7 +17,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `azure_speech` | `tts` | 60/min | - | - | unknown |
 | `brave` | `search` | 60/min | - | - | unknown |
 | `elevenlabs` | `tts` | 60/min | - | - | unknown |
+| `elevenlabs-music` | `music_gen` | 60/min | - | ElevenLabs Music Terms ([terms](https://elevenlabs.io/terms-of-use)) | yes |
+| `elevenlabs-music-gen` | `music_gen` | 60/min | - | ElevenLabs Music Terms ([terms](https://elevenlabs.io/terms-of-use)) | yes |
 | `elevenlabs-tts` | `tts` | 60/min | - | - | unknown |
+| `elevenlabs_music` | `music_gen` | 60/min | - | ElevenLabs Music Terms ([terms](https://elevenlabs.io/terms-of-use)) | yes |
 | `elevenlabs_tts` | `tts` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
 | `fal` | `image_gen` | 60/min | - | - | unknown |
@@ -42,10 +45,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `local` | `storage` | 60/min | - | - | unknown |
 | `local-background-removal` | `image_edit` | 60/min | - | - | unknown |
 | `local-embeddings` | `embeddings` | 60/min | - | - | unknown |
+| `local-music` | `music_gen` | 60/min | - | CC0-1.0 ([terms](https://creativecommons.org/publicdomain/zero/1.0/)) | yes |
+| `local-music-stub` | `music_gen` | 60/min | - | CC0-1.0 ([terms](https://creativecommons.org/publicdomain/zero/1.0/)) | yes |
 | `local-rembg` | `image_edit` | 60/min | - | - | unknown |
 | `local-stt` | `stt` | 60/min | - | - | unknown |
 | `local-tts` | `tts` | 60/min | - | - | unknown |
 | `local-whisper` | `stt` | 60/min | - | - | unknown |
+| `local_music` | `music_gen` | 60/min | - | CC0-1.0 ([terms](https://creativecommons.org/publicdomain/zero/1.0/)) | yes |
 | `local_stt` | `stt` | 60/min | - | - | unknown |
 | `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
 | `mock-character-trainer` | `character_trainer` | 60/min | - | - | unknown |
@@ -95,6 +101,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `replicate_video` | `video_gen` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
+| `stable-audio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
+| `stable_audio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
+| `stableaudio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `tavily` | `search` | 60/min | - | - | unknown |
 | `veo` | `video_gen` | 60/min | - | - | unknown |
 | `veo-video` | `video_gen` | 60/min | - | - | unknown |
@@ -115,7 +124,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `azure_speech` | `tts` | $0.000016 per character |
 | `brave` | - | - |
 | `elevenlabs` | `tts` | $0.00015 per character |
+| `elevenlabs-music` | - | - |
+| `elevenlabs-music-gen` | - | - |
 | `elevenlabs-tts` | `tts` | $0.00015 per character |
+| `elevenlabs_music` | - | - |
 | `elevenlabs_tts` | `tts` | $0.00015 per character |
 | `exa` | - | - |
 | `fal` | - | - |
@@ -140,10 +152,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `local` | `storage` | $0 per call |
 | `local-background-removal` | `image_edit` | $0 per image |
 | `local-embeddings` | - | - |
+| `local-music` | `music_gen` | $0 per second |
+| `local-music-stub` | `music_gen` | $0 per second |
 | `local-rembg` | `image_edit` | $0 per image |
 | `local-stt` | `stt` | $0 per minute |
 | `local-tts` | `tts` | $0 per character |
 | `local-whisper` | `stt` | $0 per minute |
+| `local_music` | `music_gen` | $0 per second |
 | `local_stt` | `stt` | $0 per minute |
 | `mock` | `character_trainer` | $0.5 per call |
 | `mock` | `delivery` | $0 per call |
@@ -210,6 +225,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `replicate_video` | - | - |
 | `s3` | `storage` | $0 per call |
 | `serpapi` | - | - |
+| `stable-audio` | - | - |
+| `stable_audio` | - | - |
+| `stableaudio` | - | - |
 | `tavily` | - | - |
 | `veo` | - | - |
 | `veo-video` | - | - |
@@ -230,7 +248,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `azure_speech` | `tts` | `pronunciation` |
 | `brave` | - | - |
 | `elevenlabs` | - | - |
+| `elevenlabs-music` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm` |
+| `elevenlabs-music-gen` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm` |
 | `elevenlabs-tts` | - | - |
+| `elevenlabs_music` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm` |
 | `elevenlabs_tts` | - | - |
 | `exa` | - | - |
 | `fal` | - | - |
@@ -255,10 +276,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `local` | - | - |
 | `local-background-removal` | - | - |
 | `local-embeddings` | - | - |
+| `local-music` | `music_gen` | `vocals`, `instrumental`, `wav`, `pcm`, `mp3`, `ogg`, `opus`, `flac` |
+| `local-music-stub` | `music_gen` | `vocals`, `instrumental`, `wav`, `pcm`, `mp3`, `ogg`, `opus`, `flac` |
 | `local-rembg` | - | - |
 | `local-stt` | - | - |
 | `local-tts` | - | - |
 | `local-whisper` | - | - |
+| `local_music` | `music_gen` | `vocals`, `instrumental`, `wav`, `pcm`, `mp3`, `ogg`, `opus`, `flac` |
 | `local_stt` | - | - |
 | `mock` | - | - |
 | `mock-character-trainer` | - | - |
@@ -308,6 +332,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `replicate_video` | - | - |
 | `s3` | - | - |
 | `serpapi` | - | - |
+| `stable-audio` | `music_gen` | `instrumental`, `mp3`, `wav` |
+| `stable_audio` | `music_gen` | `instrumental`, `mp3`, `wav` |
+| `stableaudio` | `music_gen` | `instrumental`, `mp3`, `wav` |
 | `tavily` | - | - |
 | `veo` | - | - |
 | `veo-video` | - | - |
@@ -328,7 +355,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `azure_speech` | - | unknown | no | - |
 | `brave` | - | unknown | no | - |
 | `elevenlabs` | - | unknown | no | - |
+| `elevenlabs-music` | ElevenLabs Music Terms ([terms](https://elevenlabs.io/terms-of-use)) | yes | no | Commercial use follows the ElevenLabs plan and terms; free plans may require attribution. Review the current terms before publishing. |
+| `elevenlabs-music-gen` | ElevenLabs Music Terms ([terms](https://elevenlabs.io/terms-of-use)) | yes | no | Commercial use follows the ElevenLabs plan and terms; free plans may require attribution. Review the current terms before publishing. |
 | `elevenlabs-tts` | - | unknown | no | - |
+| `elevenlabs_music` | ElevenLabs Music Terms ([terms](https://elevenlabs.io/terms-of-use)) | yes | no | Commercial use follows the ElevenLabs plan and terms; free plans may require attribution. Review the current terms before publishing. |
 | `elevenlabs_tts` | - | unknown | no | - |
 | `exa` | - | unknown | no | - |
 | `fal` | - | unknown | no | - |
@@ -353,10 +383,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `local` | - | unknown | no | - |
 | `local-background-removal` | - | unknown | no | - |
 | `local-embeddings` | - | unknown | no | - |
+| `local-music` | CC0-1.0 ([terms](https://creativecommons.org/publicdomain/zero/1.0/)) | yes | no | Synthesized locally by the stub; no third-party rights attach to the generated audio. |
+| `local-music-stub` | CC0-1.0 ([terms](https://creativecommons.org/publicdomain/zero/1.0/)) | yes | no | Synthesized locally by the stub; no third-party rights attach to the generated audio. |
 | `local-rembg` | - | unknown | no | - |
 | `local-stt` | - | unknown | no | - |
 | `local-tts` | - | unknown | no | - |
 | `local-whisper` | - | unknown | no | - |
+| `local_music` | CC0-1.0 ([terms](https://creativecommons.org/publicdomain/zero/1.0/)) | yes | no | Synthesized locally by the stub; no third-party rights attach to the generated audio. |
 | `local_stt` | - | unknown | no | - |
 | `mock` | - | unknown | no | - |
 | `mock-character-trainer` | - | unknown | no | - |
@@ -406,6 +439,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `replicate_video` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
 | `serpapi` | - | unknown | no | - |
+| `stable-audio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
+| `stable_audio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
+| `stableaudio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
 | `tavily` | - | unknown | no | - |
 | `veo` | - | unknown | no | - |
 | `veo-video` | - | unknown | no | - |
