@@ -82,6 +82,7 @@ class AdaptationAction(StrEnum):
     CLAMPED_DURATION = "clamped_duration"
     CLAMPED_COUNT = "clamped_count"
     TRUNCATED_PROMPT = "truncated_prompt"
+    SPLIT_DURATION = "split_duration"
 
 
 class AdaptationError(InvalidRequestError):
