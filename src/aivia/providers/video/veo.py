@@ -751,9 +751,7 @@ class VeoVideoProvider(Provider):
     def endpoint_for(self, model: str) -> str:
         """Return the long-running generation endpoint for *model*."""
         text = _validate_model(model)
-        return (
-            f"{self._base_url}/{self._api_version}/models/{text}{_PREDICT_SUFFIX}"
-        )
+        return f"{self._base_url}/{self._api_version}/models/{text}{_PREDICT_SUFFIX}"
 
     def operation_url(self, name: str) -> str:
         """Return the polling URL for an operation name or absolute URL."""

@@ -55,8 +55,7 @@ REPLICATE_GET_URL = f"{REPLICATE_DEFAULT_BASE_URL}/predictions/{PREDICTION_ID}"
 
 VEO_MODEL = "veo-3.0-generate-001"
 VEO_ENDPOINT = (
-    f"{DEFAULT_BASE_URL}/{DEFAULT_API_VERSION}/models/{VEO_MODEL}"
-    ":predictLongRunning"
+    f"{DEFAULT_BASE_URL}/{DEFAULT_API_VERSION}/models/{VEO_MODEL}:predictLongRunning"
 )
 OPERATION_NAME = f"models/{VEO_MODEL}/operations/op-1"
 OPERATION_URL = f"{DEFAULT_BASE_URL}/{DEFAULT_API_VERSION}/{OPERATION_NAME}"
@@ -289,9 +288,7 @@ def test_replicate_video_rejects_a_model_without_a_version() -> None:
     )
     with pytest.raises(InvalidRequestError):
         asyncio.run(
-            provider.generate(
-                VideoRequest(prompt="a wave", model=REPLICATE_MODEL_NAME)
-            )
+            provider.generate(VideoRequest(prompt="a wave", model=REPLICATE_MODEL_NAME))
         )
 
 
