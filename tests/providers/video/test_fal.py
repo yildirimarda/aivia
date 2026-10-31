@@ -19,7 +19,11 @@ from aivia.core.errors import (
 from aivia.providers import FalVideo as TopLevelFalVideo
 from aivia.providers import provider_registry
 from aivia.providers.media import AsyncJobState, AsyncJobTimeoutError
-from aivia.providers.protocols import CAPABILITY_VIDEO_GEN, VideoRequest
+from aivia.providers.protocols import (
+    CAPABILITY_VIDEO_FIRST_FRAME,
+    CAPABILITY_VIDEO_GEN,
+    VideoRequest,
+)
 from aivia.providers.protocols.media import VideoFormat
 from aivia.providers.video import (
     DEFAULT_BASE_URL,
@@ -91,8 +95,12 @@ def test_metadata_and_registration_describe_the_video_provider() -> None:
     provider = _provider(lambda request: httpx.Response(200, json={}))
 
     assert provider.name == "fal"
-    assert provider.capabilities == (CAPABILITY_VIDEO_GEN,)
+    assert provider.capabilities == (
+        CAPABILITY_VIDEO_GEN,
+        CAPABILITY_VIDEO_FIRST_FRAME,
+    )
     assert provider.supports(CAPABILITY_VIDEO_GEN)
+    assert provider.supports(CAPABILITY_VIDEO_FIRST_FRAME)
     assert provider.base_url == DEFAULT_BASE_URL
     assert provider.default_model == MODEL
     assert provider.endpoint == ENDPOINT

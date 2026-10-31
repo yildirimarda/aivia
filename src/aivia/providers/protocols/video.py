@@ -24,7 +24,9 @@ from aivia.providers.protocols.image import normalize_aspect_ratio
 from aivia.providers.protocols.media import MediaDimensions, MediaInput, VideoFormat
 
 __all__ = [
+    "CAPABILITY_VIDEO_FIRST_FRAME",
     "CAPABILITY_VIDEO_GEN",
+    "CAPABILITY_VIDEO_IMAGE_INPUT",
     "VideoProvider",
     "VideoRequest",
     "VideoResponse",
@@ -33,6 +35,12 @@ __all__ = [
 
 CAPABILITY_VIDEO_GEN = "video_gen"
 """The capability name a video generation provider declares."""
+
+CAPABILITY_VIDEO_FIRST_FRAME = "video_first_frame"
+"""The capability a provider declares when it accepts a first frame image."""
+
+CAPABILITY_VIDEO_IMAGE_INPUT = CAPABILITY_VIDEO_FIRST_FRAME
+"""Alias naming the first frame image input capability."""
 
 
 def _strip(value: Any) -> Any:
