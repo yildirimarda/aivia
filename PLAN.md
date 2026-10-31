@@ -312,7 +312,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add ElevenLabs, OpenAI, Google or Azure and local text to speech providers with voice mapping and per character cost (tests/providers/tts)
 - [x] Resolve per language voices with fallback, list voices and pass pronunciation hints where supported (tests/media/test_voices.py)
 - [x] Implement the speech service with caching by text, voice and settings plus loudness normalization, duration measurement, trimming and fades (tests/media/test_tts_service.py)
-- [ ] Add local and API speech to text providers with word level timestamps and per minute cost (tests/providers/stt)
+- [x] Add local and API speech to text providers with word level timestamps and per minute cost (tests/providers/stt)
 - [ ] Add forced alignment of known text to audio and term verification by fuzzy match (tests/media/test_align_verify.py)
 - [ ] Add a subtitle model with SRT and VTT export plus a dynamic ASS generator with word highlighting, style presets and safe areas (tests/media/test_subtitles.py)
 - [ ] Implement per language line breaking rules and assert glyph coverage for Turkish and German characters against the bundled font (tests/media/test_subtitle_i18n.py)
@@ -349,6 +349,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Drop audio with a recorded warning when a retimed or looped clip has no track (tests/media/test_video_utils.py)
 - [ ] Probe the configured local text to speech executable and model in health so a missing binary fails early (tests/providers/tts/test_local.py)
 - [ ] Convert local text to speech output to the requested container with ffmpeg and reject unsupported conversions (tests/providers/tts/test_local.py)
+- [ ] Implement the speech to text service with audio hash caching, duration based budget and cost plus a transcript sidecar (tests/media/test_stt_service.py)
 
 ## Milestone 9: Composition and rendering
 

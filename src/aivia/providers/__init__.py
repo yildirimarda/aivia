@@ -605,6 +605,44 @@ _LAZY_PAGE_FETCH_PROVIDERS = frozenset(
     }
 )
 
+_LAZY_STT_PROVIDERS = frozenset(
+    {
+        "DEFAULT_MODEL",
+        "MINUTE_UNIT",
+        "OPENAI_DEFAULT_BASE_URL",
+        "OPENAI_STT_BASE_URL",
+        "STT_OPERATION",
+        "FasterWhisper",
+        "FasterWhisperProvider",
+        "FasterWhisperSTT",
+        "LocalSTT",
+        "LocalSTTProvider",
+        "OpenAISpeechToText",
+        "OpenAISpeechToTextProvider",
+        "OpenAISTT",
+        "OpenAISTTProvider",
+        "OpenAITranscription",
+        "OpenAITranscriptionProvider",
+        "STTCost",
+        "STTCostCalculator",
+        "STTPrice",
+        "Transcriber",
+        "Whisper",
+        "WhisperAPI",
+        "WhisperAPIProvider",
+        "WhisperLocal",
+        "WhisperLocalSTT",
+        "WhisperSTT",
+        "WhisperSTTProvider",
+        "audio_filename",
+        "load_audio",
+        "response_duration_seconds",
+        "segments_from_values",
+        "stt_cost_event",
+        "words_from_values",
+    }
+)
+
 _LAZY_TTS_PROVIDERS = frozenset(
     {
         "CHARACTER_UNIT",
@@ -652,6 +690,12 @@ def __getattr__(name: str) -> Any:
         from aivia.providers import embeddings as embeddings_package
 
         value = getattr(embeddings_package, name)
+        globals()[name] = value
+        return value
+    if name in _LAZY_STT_PROVIDERS:
+        from aivia.providers import stt as stt_package
+
+        value = getattr(stt_package, name)
         globals()[name] = value
         return value
     if name in _LAZY_TTS_PROVIDERS:
@@ -1053,6 +1097,7 @@ __all__ = [
     "DEFAULT_API_VERSION",
     "DEFAULT_BASE_URL",
     "DEFAULT_MAX_TOKENS",
+    "DEFAULT_MODEL",
     "DEFAULT_RESULT_FIELDS",
     "DEFAULT_SCALES",
     "DEFAULT_TOLERANCE",
@@ -1065,9 +1110,13 @@ __all__ = [
     "EMBEDDING_TOKENS_PER_MILLION",
     "EMBEDDING_TOKEN_UNIT",
     "LLM_OPERATION",
+    "MINUTE_UNIT",
     "MOCK_EPOCH",
+    "OPENAI_DEFAULT_BASE_URL",
+    "OPENAI_STT_BASE_URL",
     "REMBG_DEFAULT_MODEL",
     "REMOTE_OPS_DEFAULT_BASE_URL",
+    "STT_OPERATION",
     "SUPPORTED_OPERATIONS",
     "SUPPORTED_UPSCALE_FACTORS",
     "TOKENS_PER_MILLION",
@@ -1137,6 +1186,9 @@ __all__ = [
     "FalVideoGen",
     "FalVideoGenProvider",
     "FalVideoProvider",
+    "FasterWhisper",
+    "FasterWhisperProvider",
+    "FasterWhisperSTT",
     "FinishReason",
     "Gemini",
     "GeminiLLMProvider",
@@ -1200,6 +1252,8 @@ __all__ = [
     "LocalEmbeddingProvider",
     "LocalEmbeddings",
     "LocalEmbeddingsProvider",
+    "LocalSTT",
+    "LocalSTTProvider",
     "LocalStorage",
     "LocalStorageProvider",
     "LocalTTS",
@@ -1270,10 +1324,16 @@ __all__ = [
     "OpenAIImagesProvider",
     "OpenAILLMProvider",
     "OpenAIProvider",
+    "OpenAISTT",
+    "OpenAISTTProvider",
     "OpenAISpeech",
     "OpenAISpeechProvider",
+    "OpenAISpeechToText",
+    "OpenAISpeechToTextProvider",
     "OpenAITTS",
     "OpenAITTSProvider",
+    "OpenAITranscription",
+    "OpenAITranscriptionProvider",
     "PageFetch",
     "PageFetchProvider",
     "PageFetchRequest",
@@ -1326,6 +1386,9 @@ __all__ = [
     "SFXProvider",
     "SFXRequest",
     "SFXResponse",
+    "STTCost",
+    "STTCostCalculator",
+    "STTPrice",
     "STTProvider",
     "STTRequest",
     "STTResponse",
@@ -1360,6 +1423,7 @@ __all__ = [
     "ToolCall",
     "ToolChoice",
     "ToolDefinition",
+    "Transcriber",
     "TranscriptSegment",
     "UnsupportedVideoFlagsError",
     "Veo",
@@ -1384,8 +1448,16 @@ __all__ = [
     "VoyageEmbeddingProvider",
     "VoyageEmbeddings",
     "WebPageFetchProvider",
+    "Whisper",
+    "WhisperAPI",
+    "WhisperAPIProvider",
+    "WhisperLocal",
+    "WhisperLocalSTT",
+    "WhisperSTT",
+    "WhisperSTTProvider",
     "WordTimestamp",
     "apply_audio_policy",
+    "audio_filename",
     "batch_inputs",
     "build_http_provider",
     "build_mock_providers",
@@ -1418,6 +1490,7 @@ __all__ = [
     "host_is_allowed",
     "http_provider_from_spec",
     "is_blocked_ip",
+    "load_audio",
     "load_http_spec",
     "load_http_spec_file",
     "load_http_specs",
@@ -1437,6 +1510,8 @@ __all__ = [
     "remove_unwanted_audio",
     "required_video_capabilities",
     "resolve_provider",
+    "response_duration_seconds",
+    "segments_from_values",
     "service_from_config",
     "should_strip_audio",
     "storage_provider_from_config",
@@ -1445,6 +1520,7 @@ __all__ = [
     "strip_audio_if_unwanted",
     "strip_unwanted_audio",
     "strip_video_audio",
+    "stt_cost_event",
     "supports_audio",
     "supports_first_frame",
     "supports_last_frame",
@@ -1453,4 +1529,5 @@ __all__ = [
     "tts_cost_event",
     "video_flags",
     "wants_native_audio",
+    "words_from_values",
 ]
