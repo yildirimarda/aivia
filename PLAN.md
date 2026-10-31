@@ -340,6 +340,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Record the analysis provider and model on the result so provenance survives storage (tests/media/test_image_analysis.py)
 - [ ] Add first frame input to the Replicate and Veo video providers behind the video first frame capability (tests/providers/video/test_replicate_veo_frames.py)
 - [ ] Skip splitting video requests that pin a first or last frame and record why (tests/providers/video/test_adapt.py)
+- [ ] Persist validated video fps, format and audio presence on the asset so cache hits rebuild the exact result (tests/media/test_video_metadata.py)
 
 ## Milestone 9: Composition and rendering
 
