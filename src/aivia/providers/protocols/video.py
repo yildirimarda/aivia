@@ -6,7 +6,9 @@ the media service can estimate cost and adapt unsupported values before the
 call.
 
 Optional first and last frames use :class:`MediaInput`. A provider that cannot
-consume a frame must reject the request instead of silently ignoring it.
+consume a frame must reject the request instead of silently ignoring it. A
+video-to-video request carries the source clip in ``source_video`` and likewise
+requires a provider that declares ``video_input`` support.
 """
 
 from __future__ import annotations
@@ -29,8 +31,11 @@ __all__ = [
     "CAPABILITY_VIDEO_FIRST_FRAME",
     "CAPABILITY_VIDEO_GEN",
     "CAPABILITY_VIDEO_IMAGE_INPUT",
+    "CAPABILITY_VIDEO_INPUT",
     "CAPABILITY_VIDEO_LAST_FRAME",
     "CAPABILITY_VIDEO_NATIVE_AUDIO",
+    "CAPABILITY_VIDEO_TO_VIDEO",
+    "CAPABILITY_VIDEO_V2V",
     "VideoProvider",
     "VideoRequest",
     "VideoResponse",
@@ -48,6 +53,15 @@ CAPABILITY_VIDEO_IMAGE_INPUT = CAPABILITY_VIDEO_FIRST_FRAME
 
 CAPABILITY_VIDEO_LAST_FRAME = "video_last_frame"
 """The capability a provider declares when it accepts a last frame image."""
+
+CAPABILITY_VIDEO_INPUT = "video_input"
+"""The capability a provider declares when it accepts a source video."""
+
+CAPABILITY_VIDEO_TO_VIDEO = CAPABILITY_VIDEO_INPUT
+"""Alias naming the video-to-video capability."""
+
+CAPABILITY_VIDEO_V2V = CAPABILITY_VIDEO_INPUT
+"""Short alias for the video-to-video capability."""
 
 
 class _NativeAudioCapability(str):
@@ -99,7 +113,8 @@ class VideoRequest(ProtocolModel):
     ``width`` and ``height`` must be supplied together; ``aspect_ratio`` is the
     alternative when an exact size is not required. ``generate_audio`` asks for
     a native soundtrack and ``audio_prompt`` describes it when the provider
-    supports audio direction.
+    supports audio direction. ``source_video`` carries an existing clip for a
+    provider that can restyle or otherwise transform video.
     """
 
     prompt: str = Field(min_length=1)
@@ -107,6 +122,7 @@ class VideoRequest(ProtocolModel):
     model: str | None = None
     first_frame: MediaInput | None = None
     last_frame: MediaInput | None = None
+    source_video: MediaInput | None = None
     duration_seconds: float | None = Field(default=None, gt=0.0)
     width: int | None = Field(default=None, gt=0)
     height: int | None = Field(default=None, gt=0)

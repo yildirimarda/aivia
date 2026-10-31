@@ -40,6 +40,7 @@ from aivia.providers.protocols.video import (
     CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
     CAPABILITY_VIDEO_IMAGE_INPUT,
+    CAPABILITY_VIDEO_INPUT,
     CAPABILITY_VIDEO_LAST_FRAME,
     CAPABILITY_VIDEO_NATIVE_AUDIO,
     VideoRequest,
@@ -52,6 +53,7 @@ __all__ = [
     "CAPABILITY_VIDEO_FIRST_FRAME",
     "CAPABILITY_VIDEO_GEN",
     "CAPABILITY_VIDEO_IMAGE_INPUT",
+    "CAPABILITY_VIDEO_INPUT",
     "CAPABILITY_VIDEO_LAST_FRAME",
     "CAPABILITY_VIDEO_NATIVE_AUDIO",
     "FFmpegRunner",
@@ -84,6 +86,7 @@ __all__ = [
     "supports_first_frame",
     "supports_last_frame",
     "supports_native_audio",
+    "supports_video_input",
     "video_flags",
     "wants_native_audio",
 ]
@@ -95,6 +98,10 @@ _FIRST_FRAME_OPTIONS = frozenset(
     {"first_frame", "first_frame_image", "image_url", "image_input"}
 )
 _LAST_FRAME_OPTIONS = frozenset({"last_frame", "last_frame_image", "end_image"})
+_VIDEO_INPUT_OPTIONS = frozenset(
+    {"source_video", "video_input", "input_video", "reference_video", "video_url"}
+)
+_VIDEO_INPUT_ALIASES = frozenset({"video_input", "video_to_video", "video_v2v"})
 _NATIVE_AUDIO_OPTIONS = frozenset(
     {"generate_audio", "audio", "native_audio", "audio_prompt"}
 )
@@ -122,6 +129,10 @@ def _declares(
         return True
     if capability in _AUDIO_ALIASES and any(
         metadata.supports(alias) for alias in _AUDIO_ALIASES
+    ):
+        return True
+    if capability in _VIDEO_INPUT_ALIASES and any(
+        metadata.supports(alias) for alias in _VIDEO_INPUT_ALIASES
     ):
         return True
     supported = metadata.supported_options.get(CAPABILITY_VIDEO_GEN, ())
@@ -155,6 +166,13 @@ def supports_native_audio(
     )
 
 
+def supports_video_input(
+    source: Provider | ProviderMeta | Mapping[str, Any],
+) -> bool:
+    """Whether *source* accepts an existing clip for video-to-video work."""
+    return _declares(_metadata(source), CAPABILITY_VIDEO_INPUT, _VIDEO_INPUT_OPTIONS)
+
+
 supports_audio = supports_native_audio
 """Alias for :func:`supports_native_audio`."""
 
@@ -165,6 +183,7 @@ class VideoFlags:
 
     first_frame: bool = False
     last_frame: bool = False
+    video_input: bool = False
     native_audio: bool = False
 
     @property
@@ -183,6 +202,11 @@ class VideoFlags:
         return self.last_frame
 
     @property
+    def video(self) -> bool:
+        """Alias for :attr:`video_input`."""
+        return self.video_input
+
+    @property
     def capabilities(self) -> tuple[str, ...]:
         """The capability names implied by these flags, in stable order."""
         names: list[str] = []
@@ -190,6 +214,8 @@ class VideoFlags:
             names.append(CAPABILITY_VIDEO_FIRST_FRAME)
         if self.last_frame:
             names.append(CAPABILITY_VIDEO_LAST_FRAME)
+        if self.video_input:
+            names.append(CAPABILITY_VIDEO_INPUT)
         if self.native_audio:
             names.append(CAPABILITY_VIDEO_NATIVE_AUDIO)
         return tuple(names)
@@ -202,6 +228,7 @@ def declared_video_flags(
     return VideoFlags(
         first_frame=supports_first_frame(source),
         last_frame=supports_last_frame(source),
+        video_input=supports_video_input(source),
         native_audio=supports_native_audio(source),
     )
 
@@ -221,9 +248,10 @@ def required_video_capabilities(request: VideoRequest) -> tuple[str, ...]:
     """Return the extra capabilities *request* needs from its provider.
 
     A plain text-to-video request needs nothing beyond ``video_gen``. A request
-    that pins a frame requires the matching frame capability, and a request
-    that asks for native audio requires the audio capability, so the router can
-    skip providers that would silently ignore those inputs.
+    that pins a frame requires the matching frame capability, a request that
+    carries a source clip requires ``video_input``, and a request that asks for
+    native audio requires the audio capability, so the router can skip
+    providers that would silently ignore those inputs.
     """
     if not isinstance(request, VideoRequest):
         raise TypeError("request must be a VideoRequest")
@@ -232,6 +260,8 @@ def required_video_capabilities(request: VideoRequest) -> tuple[str, ...]:
         required.append(CAPABILITY_VIDEO_FIRST_FRAME)
     if request.last_frame is not None:
         required.append(CAPABILITY_VIDEO_LAST_FRAME)
+    if request.source_video is not None:
+        required.append(CAPABILITY_VIDEO_INPUT)
     if wants_native_audio(request):
         required.append(CAPABILITY_VIDEO_NATIVE_AUDIO)
     return tuple(required)
@@ -245,6 +275,8 @@ def _supports_capability(
         return supports_first_frame(source)
     if capability == CAPABILITY_VIDEO_LAST_FRAME:
         return supports_last_frame(source)
+    if capability in _VIDEO_INPUT_ALIASES:
+        return supports_video_input(source)
     if capability in _AUDIO_ALIASES:
         return supports_native_audio(source)
     return _metadata(source).supports(capability)
@@ -334,6 +366,8 @@ def _missing_capability(
         return CAPABILITY_VIDEO_FIRST_FRAME, "first_frame"
     if request.last_frame is not None and not supports_last_frame(source):
         return CAPABILITY_VIDEO_LAST_FRAME, "last_frame"
+    if request.source_video is not None and not supports_video_input(source):
+        return CAPABILITY_VIDEO_INPUT, "source_video"
     if wants_native_audio(request) and not supports_native_audio(source):
         return CAPABILITY_VIDEO_NATIVE_AUDIO, "generate_audio"
     return None
