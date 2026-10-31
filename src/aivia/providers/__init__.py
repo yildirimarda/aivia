@@ -605,6 +605,46 @@ _LAZY_PAGE_FETCH_PROVIDERS = frozenset(
     }
 )
 
+_LAZY_TTS_PROVIDERS = frozenset(
+    {
+        "CHARACTER_UNIT",
+        "TTS_OPERATION",
+        "Azure",
+        "AzureProvider",
+        "AzureSpeech",
+        "AzureSpeechProvider",
+        "AzureTTS",
+        "AzureTTSProvider",
+        "ElevenLabs",
+        "ElevenLabsProvider",
+        "ElevenLabsTTS",
+        "ElevenLabsTTSProvider",
+        "GoogleCloudTTS",
+        "GoogleCloudTTSProvider",
+        "GoogleTTS",
+        "GoogleTTSProvider",
+        "Kokoro",
+        "KokoroTTS",
+        "KokoroTTSProvider",
+        "Local",
+        "LocalTTS",
+        "LocalTTSProvider",
+        "OpenAISpeech",
+        "OpenAISpeechProvider",
+        "OpenAITTS",
+        "OpenAITTSProvider",
+        "Piper",
+        "PiperTTS",
+        "PiperTTSProvider",
+        "TTSCost",
+        "TTSCostCalculator",
+        "TTSPrice",
+        "VoiceMap",
+        "VoiceMapping",
+        "tts_cost_event",
+    }
+)
+
 
 def __getattr__(name: str) -> Any:
     """Load an adapter only when it is explicitly requested."""
@@ -612,6 +652,12 @@ def __getattr__(name: str) -> Any:
         from aivia.providers import embeddings as embeddings_package
 
         value = getattr(embeddings_package, name)
+        globals()[name] = value
+        return value
+    if name in _LAZY_TTS_PROVIDERS:
+        from aivia.providers import tts as tts_package
+
+        value = getattr(tts_package, name)
         globals()[name] = value
         return value
     if name in _LAZY_PAGE_FETCH_PROVIDERS:
@@ -1003,6 +1049,7 @@ __all__ = [
     "CAPABILITY_VIDEO_NATIVE_AUDIO",
     "CAPABILITY_VIDEO_TO_VIDEO",
     "CAPABILITY_VIDEO_V2V",
+    "CHARACTER_UNIT",
     "DEFAULT_API_VERSION",
     "DEFAULT_BASE_URL",
     "DEFAULT_MAX_TOKENS",
@@ -1025,6 +1072,7 @@ __all__ = [
     "SUPPORTED_UPSCALE_FACTORS",
     "TOKENS_PER_MILLION",
     "TOKEN_UNIT",
+    "TTS_OPERATION",
     "Aggregator",
     "AggregatorImageEdit",
     "AggregatorImageEditProvider",
@@ -1042,6 +1090,12 @@ __all__ = [
     "AsyncMediaJob",
     "AsyncMediaJobHelper",
     "AudioFormat",
+    "Azure",
+    "AzureProvider",
+    "AzureSpeech",
+    "AzureSpeechProvider",
+    "AzureTTS",
+    "AzureTTSProvider",
     "BatchedEmbeddingProvider",
     "Brave",
     "BraveProvider",
@@ -1054,6 +1108,10 @@ __all__ = [
     "ContentPart",
     "DatabaseAsyncJobStore",
     "DeclarativeHttpProvider",
+    "ElevenLabs",
+    "ElevenLabsProvider",
+    "ElevenLabsTTS",
+    "ElevenLabsTTSProvider",
     "Embedding",
     "EmbeddingCache",
     "EmbeddingCacheEntry",
@@ -1084,6 +1142,8 @@ __all__ = [
     "GeminiLLMProvider",
     "GeminiProvider",
     "Google",
+    "GoogleCloudTTS",
+    "GoogleCloudTTSProvider",
     "GoogleImage",
     "GoogleImageProvider",
     "GoogleImagen",
@@ -1091,6 +1151,8 @@ __all__ = [
     "GoogleImages",
     "GoogleImagesProvider",
     "GoogleProvider",
+    "GoogleTTS",
+    "GoogleTTSProvider",
     "HTTPProvider",
     "HealthStatus",
     "HttpAsyncSpec",
@@ -1116,6 +1178,9 @@ __all__ = [
     "ImageResponse",
     "ImageResult",
     "InMemoryAsyncJobStore",
+    "Kokoro",
+    "KokoroTTS",
+    "KokoroTTSProvider",
     "LLMCostCalculator",
     "LLMNative",
     "LLMNativeProvider",
@@ -1128,6 +1193,7 @@ __all__ = [
     "LLMTokenCost",
     "LLMUsage",
     "LLMWebSearchProvider",
+    "Local",
     "LocalBackgroundRemoval",
     "LocalBackgroundRemovalProvider",
     "LocalBackgroundRemover",
@@ -1136,6 +1202,8 @@ __all__ = [
     "LocalEmbeddingsProvider",
     "LocalStorage",
     "LocalStorageProvider",
+    "LocalTTS",
+    "LocalTTSProvider",
     "MediaDimensions",
     "MediaInput",
     "MediaJob",
@@ -1202,6 +1270,10 @@ __all__ = [
     "OpenAIImagesProvider",
     "OpenAILLMProvider",
     "OpenAIProvider",
+    "OpenAISpeech",
+    "OpenAISpeechProvider",
+    "OpenAITTS",
+    "OpenAITTSProvider",
     "PageFetch",
     "PageFetchProvider",
     "PageFetchRequest",
@@ -1211,6 +1283,9 @@ __all__ = [
     "Pexels",
     "PexelsProvider",
     "PexelsStockProvider",
+    "Piper",
+    "PiperTTS",
+    "PiperTTSProvider",
     "Pixabay",
     "PixabayProvider",
     "PixabayStockProvider",
@@ -1271,6 +1346,9 @@ __all__ = [
     "StockRequest",
     "StockResponse",
     "StockResult",
+    "TTSCost",
+    "TTSCostCalculator",
+    "TTSPrice",
     "TTSProvider",
     "TTSRequest",
     "TTSResponse",
@@ -1300,6 +1378,8 @@ __all__ = [
     "VideoRequest",
     "VideoResponse",
     "VideoResult",
+    "VoiceMap",
+    "VoiceMapping",
     "Voyage",
     "VoyageEmbeddingProvider",
     "VoyageEmbeddings",
@@ -1370,6 +1450,7 @@ __all__ = [
     "supports_last_frame",
     "supports_native_audio",
     "token_cost_for_usage",
+    "tts_cost_event",
     "video_flags",
     "wants_native_audio",
 ]

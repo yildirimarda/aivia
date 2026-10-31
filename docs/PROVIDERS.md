@@ -12,7 +12,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | `image_edit` | 60/min | - | - | unknown |
 | `aggregator-image-edit` | `image_edit` | 60/min | - | - | unknown |
 | `anthropic` | `llm` | 60/min | - | - | unknown |
+| `azure` | `tts` | 60/min | - | - | unknown |
+| `azure-tts` | `tts` | 60/min | - | - | unknown |
+| `azure_speech` | `tts` | 60/min | - | - | unknown |
 | `brave` | `search` | 60/min | - | - | unknown |
+| `elevenlabs` | `tts` | 60/min | - | - | unknown |
+| `elevenlabs-tts` | `tts` | 60/min | - | - | unknown |
+| `elevenlabs_tts` | `tts` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
 | `fal` | `image_gen` | 60/min | - | - | unknown |
 | `fal-video` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
@@ -20,16 +26,22 @@ This matrix is generated from the metadata every registered provider declares. C
 | `gemini` | `llm` | 60/min | - | - | unknown |
 | `google` | `image_gen` | 60/min | - | - | unknown |
 | `google-image` | `image_gen` | 60/min | - | - | unknown |
+| `google-speech` | `tts` | 60/min | - | - | unknown |
+| `google-tts` | `tts` | 60/min | - | - | unknown |
 | `google-veo` | `video_gen` | 60/min | - | - | unknown |
 | `google_image` | `image_gen` | 60/min | - | - | unknown |
+| `google_tts` | `tts` | 60/min | - | - | unknown |
 | `google_veo` | `video_gen` | 60/min | - | - | unknown |
 | `http` | `page_fetch` | 60/min | - | - | unknown |
+| `kokoro` | `tts` | 60/min | - | - | unknown |
+| `kokoro-tts` | `tts` | 60/min | - | - | unknown |
 | `llm_native` | `search` | 60/min | - | - | unknown |
 | `llm_search` | `search` | 60/min | - | - | unknown |
 | `local` | `storage` | 60/min | - | - | unknown |
 | `local-background-removal` | `image_edit` | 60/min | - | - | unknown |
 | `local-embeddings` | `embeddings` | 60/min | - | - | unknown |
 | `local-rembg` | `image_edit` | 60/min | - | - | unknown |
+| `local-tts` | `tts` | 60/min | - | - | unknown |
 | `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
 | `mock-character-trainer` | `character_trainer` | 60/min | - | - | unknown |
 | `mock-delivery` | `delivery` | 60/min | - | - | unknown |
@@ -52,9 +64,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | `llm` | 60/min | - | - | unknown |
 | `openai-embeddings` | `embeddings` | 60/min | - | - | unknown |
 | `openai-image` | `image_gen` | 60/min | - | - | unknown |
+| `openai-speech` | `tts` | 60/min | - | - | unknown |
+| `openai-tts` | `tts` | 60/min | - | - | unknown |
 | `openai_compatible` | `llm` | 60/min | - | - | unknown |
 | `openai_image` | `image_gen` | 60/min | - | - | unknown |
+| `openai_speech` | `tts` | 60/min | - | - | unknown |
 | `pexels` | `stock` | 60/min | - | Pexels License ([terms](https://www.pexels.com/license/)) | yes |
+| `piper` | `tts` | 60/min | - | - | unknown |
+| `piper-tts` | `tts` | 60/min | - | - | unknown |
 | `pixabay` | `stock` | 60/min | - | Pixabay Content License ([terms](https://pixabay.com/service/license-summary/)) | yes |
 | `rembg` | `image_edit` | 60/min | - | - | unknown |
 | `remote-background-removal` | `image_edit` | 60/min | - | - | unknown |
@@ -82,7 +99,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | - | - |
 | `aggregator-image-edit` | - | - |
 | `anthropic` | - | - |
+| `azure` | `tts` | $0.000016 per character |
+| `azure-tts` | `tts` | $0.000016 per character |
+| `azure_speech` | `tts` | $0.000016 per character |
 | `brave` | - | - |
+| `elevenlabs` | `tts` | $0.00015 per character |
+| `elevenlabs-tts` | `tts` | $0.00015 per character |
+| `elevenlabs_tts` | `tts` | $0.00015 per character |
 | `exa` | - | - |
 | `fal` | - | - |
 | `fal-video` | - | - |
@@ -90,16 +113,22 @@ This matrix is generated from the metadata every registered provider declares. C
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
+| `google-speech` | `tts` | $0.000016 per character |
+| `google-tts` | `tts` | $0.000016 per character |
 | `google-veo` | - | - |
 | `google_image` | - | - |
+| `google_tts` | `tts` | $0.000016 per character |
 | `google_veo` | - | - |
 | `http` | `page_fetch` | $0 per call |
+| `kokoro` | `tts` | $0 per character |
+| `kokoro-tts` | `tts` | $0 per character |
 | `llm_native` | - | - |
 | `llm_search` | - | - |
 | `local` | `storage` | $0 per call |
 | `local-background-removal` | `image_edit` | $0 per image |
 | `local-embeddings` | - | - |
 | `local-rembg` | `image_edit` | $0 per image |
+| `local-tts` | `tts` | $0 per character |
 | `mock` | `character_trainer` | $0.5 per call |
 | `mock` | `delivery` | $0 per call |
 | `mock` | `embeddings` | $0.00002 per call |
@@ -139,9 +168,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | - |
 | `openai-embeddings` | - | - |
 | `openai-image` | - | - |
+| `openai-speech` | `tts` | $0.000015 per character |
+| `openai-tts` | `tts` | $0.000015 per character |
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
+| `openai_speech` | `tts` | $0.000015 per character |
 | `pexels` | - | - |
+| `piper` | `tts` | $0 per character |
+| `piper-tts` | `tts` | $0 per character |
 | `pixabay` | - | - |
 | `rembg` | `image_edit` | $0 per image |
 | `remote-background-removal` | - | - |
@@ -169,7 +203,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | - | - |
 | `aggregator-image-edit` | - | - |
 | `anthropic` | - | - |
+| `azure` | - | - |
+| `azure-tts` | - | - |
+| `azure_speech` | - | - |
 | `brave` | - | - |
+| `elevenlabs` | - | - |
+| `elevenlabs-tts` | - | - |
+| `elevenlabs_tts` | - | - |
 | `exa` | - | - |
 | `fal` | - | - |
 | `fal-video` | - | - |
@@ -177,16 +217,22 @@ This matrix is generated from the metadata every registered provider declares. C
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
+| `google-speech` | - | - |
+| `google-tts` | - | - |
 | `google-veo` | - | - |
 | `google_image` | - | - |
+| `google_tts` | - | - |
 | `google_veo` | - | - |
 | `http` | - | - |
+| `kokoro` | - | - |
+| `kokoro-tts` | - | - |
 | `llm_native` | - | - |
 | `llm_search` | - | - |
 | `local` | - | - |
 | `local-background-removal` | - | - |
 | `local-embeddings` | - | - |
 | `local-rembg` | - | - |
+| `local-tts` | - | - |
 | `mock` | - | - |
 | `mock-character-trainer` | - | - |
 | `mock-delivery` | - | - |
@@ -209,9 +255,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | - |
 | `openai-embeddings` | - | - |
 | `openai-image` | - | - |
+| `openai-speech` | - | - |
+| `openai-tts` | - | - |
 | `openai_compatible` | - | - |
 | `openai_image` | - | - |
+| `openai_speech` | - | - |
 | `pexels` | - | - |
+| `piper` | - | - |
+| `piper-tts` | - | - |
 | `pixabay` | - | - |
 | `rembg` | - | - |
 | `remote-background-removal` | - | - |
@@ -239,7 +290,13 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | - | unknown | no | - |
 | `aggregator-image-edit` | - | unknown | no | - |
 | `anthropic` | - | unknown | no | - |
+| `azure` | - | unknown | no | - |
+| `azure-tts` | - | unknown | no | - |
+| `azure_speech` | - | unknown | no | - |
 | `brave` | - | unknown | no | - |
+| `elevenlabs` | - | unknown | no | - |
+| `elevenlabs-tts` | - | unknown | no | - |
+| `elevenlabs_tts` | - | unknown | no | - |
 | `exa` | - | unknown | no | - |
 | `fal` | - | unknown | no | - |
 | `fal-video` | - | unknown | no | - |
@@ -247,16 +304,22 @@ This matrix is generated from the metadata every registered provider declares. C
 | `gemini` | - | unknown | no | - |
 | `google` | - | unknown | no | - |
 | `google-image` | - | unknown | no | - |
+| `google-speech` | - | unknown | no | - |
+| `google-tts` | - | unknown | no | - |
 | `google-veo` | - | unknown | no | - |
 | `google_image` | - | unknown | no | - |
+| `google_tts` | - | unknown | no | - |
 | `google_veo` | - | unknown | no | - |
 | `http` | - | unknown | no | - |
+| `kokoro` | - | unknown | no | - |
+| `kokoro-tts` | - | unknown | no | - |
 | `llm_native` | - | unknown | no | - |
 | `llm_search` | - | unknown | no | - |
 | `local` | - | unknown | no | - |
 | `local-background-removal` | - | unknown | no | - |
 | `local-embeddings` | - | unknown | no | - |
 | `local-rembg` | - | unknown | no | - |
+| `local-tts` | - | unknown | no | - |
 | `mock` | - | unknown | no | - |
 | `mock-character-trainer` | - | unknown | no | - |
 | `mock-delivery` | - | unknown | no | - |
@@ -279,9 +342,14 @@ This matrix is generated from the metadata every registered provider declares. C
 | `openai` | - | unknown | no | - |
 | `openai-embeddings` | - | unknown | no | - |
 | `openai-image` | - | unknown | no | - |
+| `openai-speech` | - | unknown | no | - |
+| `openai-tts` | - | unknown | no | - |
 | `openai_compatible` | - | unknown | no | - |
 | `openai_image` | - | unknown | no | - |
+| `openai_speech` | - | unknown | no | - |
 | `pexels` | Pexels License ([terms](https://www.pexels.com/license/)) | yes | no | Free to use under the Pexels License; a credit line is recorded but not required. |
+| `piper` | - | unknown | no | - |
+| `piper-tts` | - | unknown | no | - |
 | `pixabay` | Pixabay Content License ([terms](https://pixabay.com/service/license-summary/)) | yes | no | Free to use under the Pixabay Content License; a credit line is recorded but not required. |
 | `rembg` | - | unknown | no | - |
 | `remote-background-removal` | - | unknown | no | - |

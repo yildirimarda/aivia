@@ -93,6 +93,11 @@ def _load_builtin_adapters() -> None:
     from aivia.providers.search import tavily as _tavily  # noqa: F401
     from aivia.providers.stock import pexels as _pexels  # noqa: F401
     from aivia.providers.stock import pixabay as _pixabay  # noqa: F401
+    from aivia.providers.tts import azure as _azure_tts  # noqa: F401
+    from aivia.providers.tts import elevenlabs as _elevenlabs  # noqa: F401
+    from aivia.providers.tts import google as _google_tts  # noqa: F401
+    from aivia.providers.tts import local as _local_tts  # noqa: F401
+    from aivia.providers.tts import openai as _openai_tts  # noqa: F401
     from aivia.providers.video import fal as _fal_video  # noqa: F401
     from aivia.providers.video import replicate as _replicate_video  # noqa: F401
     from aivia.providers.video import veo as _veo  # noqa: F401
