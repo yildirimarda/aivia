@@ -94,6 +94,8 @@ def _load_builtin_adapters() -> None:
     from aivia.providers.stock import pexels as _pexels  # noqa: F401
     from aivia.providers.stock import pixabay as _pixabay  # noqa: F401
     from aivia.providers.video import fal as _fal_video  # noqa: F401
+    from aivia.providers.video import replicate as _replicate_video  # noqa: F401
+    from aivia.providers.video import veo as _veo  # noqa: F401
 
 
 def build_provider_docs(registry: ProviderRegistry | None = None) -> str:

@@ -390,6 +390,20 @@ if TYPE_CHECKING:
         FalVideoGenProvider,
         FalVideoProvider,
     )
+    from aivia.providers.video.replicate import (
+        ReplicateVideo,
+        ReplicateVideoGen,
+        ReplicateVideoGenProvider,
+        ReplicateVideoProvider,
+    )
+    from aivia.providers.video.veo import (
+        Veo,
+        VeoProvider,
+        VeoVideo,
+        VeoVideoGen,
+        VeoVideoGenProvider,
+        VeoVideoProvider,
+    )
 
 _LAZY_EMBEDDING_PROVIDERS = frozenset(
     {
@@ -429,6 +443,24 @@ _LAZY_FAL_VIDEO_PROVIDERS = frozenset(
         "FalVideoGen",
         "FalVideoGenProvider",
         "FalVideoProvider",
+    }
+)
+_LAZY_REPLICATE_VIDEO_PROVIDERS = frozenset(
+    {
+        "ReplicateVideo",
+        "ReplicateVideoGen",
+        "ReplicateVideoGenProvider",
+        "ReplicateVideoProvider",
+    }
+)
+_LAZY_VEO_PROVIDERS = frozenset(
+    {
+        "Veo",
+        "VeoProvider",
+        "VeoVideo",
+        "VeoVideoGen",
+        "VeoVideoGenProvider",
+        "VeoVideoProvider",
     }
 )
 _LAZY_GOOGLE_IMAGE_PROVIDERS = frozenset(
@@ -634,6 +666,44 @@ def __getattr__(name: str) -> Any:
         fal_video_value = fal_video_values[name]
         globals()[name] = fal_video_value
         return fal_video_value
+    if name in _LAZY_REPLICATE_VIDEO_PROVIDERS:
+        from aivia.providers.video.replicate import (
+            ReplicateVideo,
+            ReplicateVideoGen,
+            ReplicateVideoGenProvider,
+            ReplicateVideoProvider,
+        )
+
+        replicate_video_values = {
+            "ReplicateVideo": ReplicateVideo,
+            "ReplicateVideoGen": ReplicateVideoGen,
+            "ReplicateVideoGenProvider": ReplicateVideoGenProvider,
+            "ReplicateVideoProvider": ReplicateVideoProvider,
+        }
+        replicate_video_value = replicate_video_values[name]
+        globals()[name] = replicate_video_value
+        return replicate_video_value
+    if name in _LAZY_VEO_PROVIDERS:
+        from aivia.providers.video.veo import (
+            Veo,
+            VeoProvider,
+            VeoVideo,
+            VeoVideoGen,
+            VeoVideoGenProvider,
+            VeoVideoProvider,
+        )
+
+        veo_values = {
+            "Veo": Veo,
+            "VeoProvider": VeoProvider,
+            "VeoVideo": VeoVideo,
+            "VeoVideoGen": VeoVideoGen,
+            "VeoVideoGenProvider": VeoVideoGenProvider,
+            "VeoVideoProvider": VeoVideoProvider,
+        }
+        veo_value = veo_values[name]
+        globals()[name] = veo_value
+        return veo_value
     if name in _LAZY_GOOGLE_IMAGE_PROVIDERS:
         from aivia.providers.image.google import (
             Google,
@@ -1122,6 +1192,10 @@ __all__ = [
     "Replicate",
     "ReplicateImageProvider",
     "ReplicateProvider",
+    "ReplicateVideo",
+    "ReplicateVideoGen",
+    "ReplicateVideoGenProvider",
+    "ReplicateVideoProvider",
     "S3Storage",
     "S3StorageProvider",
     "SFXClip",
@@ -1160,6 +1234,12 @@ __all__ = [
     "ToolChoice",
     "ToolDefinition",
     "TranscriptSegment",
+    "Veo",
+    "VeoProvider",
+    "VeoVideo",
+    "VeoVideoGen",
+    "VeoVideoGenProvider",
+    "VeoVideoProvider",
     "VideoFormat",
     "VideoProvider",
     "VideoRequest",
