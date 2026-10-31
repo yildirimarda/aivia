@@ -9,6 +9,14 @@ safe defaults used when no override is supplied.
 from __future__ import annotations
 
 __all__ = [
+    "DEFAULT_AUDIO_ANALYSIS_MAX_BPM",
+    "DEFAULT_AUDIO_ANALYSIS_MIN_BPM",
+    "DEFAULT_AUDIO_DUCKING_ATTACK_MS",
+    "DEFAULT_AUDIO_DUCKING_RATIO",
+    "DEFAULT_AUDIO_DUCKING_RELEASE_MS",
+    "DEFAULT_AUDIO_DUCKING_THRESHOLD_DB",
+    "DEFAULT_AUDIO_MIX_CHANNELS",
+    "DEFAULT_AUDIO_MIX_SAMPLE_RATE",
     "DEFAULT_MEDIA_ALIGNMENT_SIMILARITY_THRESHOLD",
     "DEFAULT_MEDIA_ANIMATED_FRAME_RATE",
     "DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS",
@@ -40,6 +48,30 @@ __all__ = [
     "MUSIC_LIBRARY_TAG_WEIGHT",
     "MUSIC_LIBRARY_TEMPO_WEIGHT",
 ]
+
+DEFAULT_AUDIO_ANALYSIS_MIN_BPM = 40.0
+"""The slowest tempo the audio analyser reports, in beats per minute."""
+
+DEFAULT_AUDIO_ANALYSIS_MAX_BPM = 240.0
+"""The fastest tempo the audio analyser reports, in beats per minute."""
+
+DEFAULT_AUDIO_DUCKING_THRESHOLD_DB = -25.0
+"""The voice level at which the sidechain compressor starts ducking."""
+
+DEFAULT_AUDIO_DUCKING_RATIO = 8.0
+"""How strongly the music bed is compressed while a voice is present."""
+
+DEFAULT_AUDIO_DUCKING_ATTACK_MS = 20.0
+"""Milliseconds the ducking compressor takes to react to a voice."""
+
+DEFAULT_AUDIO_DUCKING_RELEASE_MS = 300.0
+"""Milliseconds the music bed takes to return after a voice stops."""
+
+DEFAULT_AUDIO_MIX_SAMPLE_RATE = 48_000
+"""Default sample rate for a mixed audio output."""
+
+DEFAULT_AUDIO_MIX_CHANNELS = 2
+"""Default channel count for a mixed audio output."""
 
 DEFAULT_MEDIA_ALIGNMENT_SIMILARITY_THRESHOLD = 0.8
 """Word similarity at or above this pairs a script word with a transcript word."""
