@@ -716,3 +716,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Isolate prompt loading tests from the real user config directory so local prompts cannot change default assertions (tests/llm/test_prompts.py)
 - [ ] Isolate provider docs CLI tests from the real user config directory so they never bootstrap the host home (tests/test_provider_docs.py)
 - [ ] Load declarative provider specs from providers.d and register them for configured chains (tests/core/test_provider_specs.py)
+- [ ] Validate every file under examples against its schema so examples cannot drift (tests/test_examples.py)
