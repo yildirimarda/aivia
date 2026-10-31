@@ -37,7 +37,6 @@ _WORD = re.compile(r"\S+")
 _LANGUAGE = re.compile(r"^([a-z]{2,3})-([a-z]{2})$")
 
 
-
 def validate_base_url(value: str, *, field: str = "base_url") -> str:
     """Return *value* as an absolute, credential-free http(s) URL."""
     if not isinstance(value, str):
