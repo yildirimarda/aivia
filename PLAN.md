@@ -318,7 +318,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement per language line breaking rules and assert glyph coverage for Turkish and German characters against the bundled font (tests/media/test_subtitle_i18n.py)
 - [x] Add music providers for vocals and instrumentals plus a local stub, recording commercial use metadata (tests/providers/music)
 - [x] Generate several music candidates, prefilter by duration, silence, clipping and loudness and record the chosen index (tests/media/test_music_candidates.py)
-- [ ] Implement the music service with caching, cost, license metadata and a commercial license gate blocking publish or deliver (tests/media/test_music_service.py)
+- [x] Implement the music service with caching, cost, license metadata and a commercial license gate blocking publish or deliver (tests/media/test_music_service.py)
 - [ ] Add a local royalty free music library indexed by mood, tempo, genre and license with selection by tags and duration (tests/media/test_music_library.py)
 - [ ] Add audio analysis for tempo, silence and loudness plus multi track mixing with verified voice ducking (tests/media/test_audio_mix.py)
 - [ ] Add media generate commands for image, video, speech, transcription, music and sfx with provider, strategy, prompt files, estimate and dry run support (tests/cli/test_media_generate.py)
@@ -350,6 +350,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Probe the configured local text to speech executable and model in health so a missing binary fails early (tests/providers/tts/test_local.py)
 - [ ] Convert local text to speech output to the requested container with ffmpeg and reject unsupported conversions (tests/providers/tts/test_local.py)
 - [ ] Implement the speech to text service with audio hash caching, duration based budget and cost plus a transcript sidecar (tests/media/test_stt_service.py)
+- [ ] Include the selected provider license in the music cache key so a rights change cannot serve stale clearance (tests/media/test_music_service.py)
+- [ ] Persist measured music format, sample rate and channels on the asset so cache hits rebuild the exact track (tests/media/test_music_service.py)
 
 ## Milestone 9: Composition and rendering
 
