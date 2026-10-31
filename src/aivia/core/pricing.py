@@ -94,6 +94,8 @@ _UNITS: dict[str, _Unit] = {
     "clips": ("clip", 1.0),
     "video": ("clip", 1.0),
     "videos": ("clip", 1.0),
+    "track": ("clip", 1.0),
+    "tracks": ("clip", 1.0),
     "millisecond": ("time", 0.001),
     "milliseconds": ("time", 0.001),
     "ms": ("time", 0.001),
