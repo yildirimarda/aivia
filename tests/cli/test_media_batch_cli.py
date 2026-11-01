@@ -201,6 +201,73 @@ def test_completed_items_resume_from_the_manifest(
     assert "Total cost: $0.060000" in third_out
 
 
+def test_changed_row_content_invalidates_a_resumed_item(
+    config: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class FakeOutcome:
+        provider = "fake"
+        model = "fake"
+        amount_usd = 0.02
+        cached = False
+
+    async def fake_generate(runtime: Any, args: Any, kind: str) -> FakeOutcome:
+        calls.append(args.prompt)
+        return FakeOutcome()
+
+    monkeypatch.setattr(media_module, "_generate", fake_generate)
+    manifest = tmp_path / "manifest.json"
+    batch = tmp_path / "items.csv"
+    batch.write_text(
+        "id,prompt\none,A lighthouse\ntwo,A castle\n",
+        encoding="utf-8",
+    )
+    arguments = (
+        "media",
+        "batch",
+        str(batch),
+        "--manifest",
+        str(manifest),
+        "--config",
+        str(config),
+    )
+
+    first_code, first_out, _first_err = run_cli(capsys, *arguments)
+
+    assert first_code == 0
+    assert calls == ["A lighthouse", "A castle"]
+    assert "Total cost: $0.040000" in first_out
+    first_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    first_fingerprint = first_payload["items"]["one"]["fingerprint"]
+    assert first_fingerprint
+
+    batch.write_text(
+        "id,prompt\none,A bright lighthouse\ntwo,A castle\n",
+        encoding="utf-8",
+    )
+    second_code, second_out, second_err = run_cli(capsys, *arguments)
+
+    assert second_code == 0
+    assert second_err == ""
+    assert calls == ["A lighthouse", "A castle", "A bright lighthouse"]
+    assert second_out.count("resumed") == 1
+    assert "Total cost: $0.040000" in second_out
+    second_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert second_payload["items"]["one"]["fingerprint"] != first_fingerprint
+
+    third_code, third_out, third_err = run_cli(capsys, *arguments)
+
+    assert third_code == 0
+    assert third_err == ""
+    assert calls == ["A lighthouse", "A castle", "A bright lighthouse"]
+    assert third_out.count("resumed") == 2
+    assert "Total cost: $0.040000" in third_out
+
+
 def test_a_bad_batch_file_is_reported_without_running(
     config: Path,
     tmp_path: Path,

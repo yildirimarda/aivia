@@ -62,6 +62,7 @@ MANIFEST_NAME = "batch-manifest.json"
 
 Handler = Callable[[Any], Any]
 KeyFunction = Callable[..., str]
+FingerprintFunction = Callable[..., str]
 CostFunction = Callable[[Any], float]
 EstimateFunction = Callable[[Any, int], float]
 Clock = Callable[[], datetime]
@@ -209,6 +210,7 @@ class BatchItemResult:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     resumed: bool = False
+    fingerprint: str = ""
 
     @property
     def succeeded(self) -> bool:
@@ -256,6 +258,7 @@ class BatchItemResult:
             "started_at": _iso(self.started_at),
             "finished_at": _iso(self.finished_at),
             "resumed": self.resumed,
+            "fingerprint": self.fingerprint,
         }
 
     @classmethod
@@ -281,6 +284,7 @@ class BatchItemResult:
             started_at=_parse_time(data.get("started_at")),
             finished_at=_parse_time(data.get("finished_at")),
             resumed=bool(data.get("resumed", False)),
+            fingerprint=str(data.get("fingerprint", "") or ""),
         )
 
 
@@ -526,6 +530,7 @@ class BatchRunner:
         provider: str = "",
         manifest: str | Path | BatchManifest | None = None,
         key: KeyFunction | str | None = None,
+        fingerprint: FingerprintFunction | str | None = None,
         cost_of: CostFunction | None = None,
         resume: bool = False,
         stop_on_error: bool = False,
@@ -535,6 +540,12 @@ class BatchRunner:
             raise TypeError("handler must be callable")
         if key is not None and not callable(key) and not isinstance(key, str):
             raise TypeError("key must be callable, a field name or None")
+        if (
+            fingerprint is not None
+            and not callable(fingerprint)
+            and not isinstance(fingerprint, str)
+        ):
+            raise TypeError("fingerprint must be callable, a field name or None")
         if cost_of is not None and not callable(cost_of):
             raise TypeError("cost_of must be callable")
         if (
@@ -587,6 +598,7 @@ class BatchRunner:
         self._operation = operation.strip()
         self._provider = provider.strip()
         self._key = key
+        self._fingerprint = fingerprint
         self._cost_of = cost_of or _extract_cost
         self._resume = bool(resume)
         self._stop_on_error = bool(stop_on_error)
@@ -612,6 +624,11 @@ class BatchRunner:
         """The manifest this runner writes."""
         return self._manifest
 
+    @property
+    def fingerprint(self) -> FingerprintFunction | str | None:
+        """The content fingerprint source used to validate resumed entries."""
+        return self._fingerprint
+
     def _key_for(self, item: Any, index: int) -> str:
         if self._key is None:
             return _default_key(item, index)
@@ -628,6 +645,20 @@ class BatchRunner:
         else:
             text = _key_text(function(item))
         return text or str(index)
+
+    def _fingerprint_for(self, item: Any, index: int) -> str:
+        if self._fingerprint is None:
+            return ""
+        if isinstance(self._fingerprint, str):
+            if isinstance(item, Mapping):
+                value = item.get(self._fingerprint)
+            else:
+                value = getattr(item, self._fingerprint, None)
+            return _key_text(value)
+        function = self._fingerprint
+        if _accepts_index(function):
+            return _key_text(function(item, index))
+        return _key_text(function(item))
 
     def _estimate_for(self, item: Any, index: int) -> float:
         if self._estimate is None:
@@ -703,6 +734,9 @@ class BatchRunner:
             raise TypeError("handler must be callable")
         values = tuple(items)
         keys = tuple(self._key_for(item, index) for index, item in enumerate(values))
+        fingerprints = tuple(
+            self._fingerprint_for(item, index) for index, item in enumerate(values)
+        )
         seen: set[str] = set()
         duplicates: set[str] = set()
         for key in keys:
@@ -720,19 +754,32 @@ class BatchRunner:
 
         started_at = self._clock()
         results = [
-            BatchItemResult(key=key, index=index, status=BatchItemStatus.PENDING)
+            BatchItemResult(
+                key=key,
+                index=index,
+                status=BatchItemStatus.PENDING,
+                fingerprint=fingerprints[index],
+            )
             for index, key in enumerate(keys)
         ]
         spent = 0.0
         if do_resume:
             for index, key in enumerate(keys):
                 previous = self._manifest.get(key)
-                if previous is not None and previous.succeeded:
+                if (
+                    previous is not None
+                    and previous.succeeded
+                    and (
+                        self._fingerprint is None
+                        or previous.fingerprint == fingerprints[index]
+                    )
+                ):
                     results[index] = replace(
                         previous,
                         index=index,
                         key=key,
                         resumed=True,
+                        fingerprint=fingerprints[index],
                     )
                     spent += previous.cost_usd
 
@@ -770,6 +817,7 @@ class BatchRunner:
                             index=index,
                             status=BatchItemStatus.BUDGET_STOPPED,
                             finished_at=self._clock(),
+                            fingerprint=fingerprints[index],
                         )
                         results[index] = stopped_result
                     else:
@@ -778,6 +826,7 @@ class BatchRunner:
                             index=index,
                             status=BatchItemStatus.RUNNING,
                             started_at=self._clock(),
+                            fingerprint=fingerprints[index],
                         )
                         results[index] = running
                 if stopped_result is not None:
@@ -799,6 +848,7 @@ class BatchRunner:
                         error=error,
                         error_type=error_type,
                         error_code=error_code,
+                        fingerprint=fingerprints[index],
                     )
                     async with lock:
                         stop = True
@@ -817,6 +867,7 @@ class BatchRunner:
                         error=error,
                         error_type=error_type,
                         error_code=error_code,
+                        fingerprint=fingerprints[index],
                     )
                     async with lock:
                         if self._stop_on_error:
@@ -839,6 +890,7 @@ class BatchRunner:
                         error=error,
                         error_type=error_type,
                         error_code=error_code,
+                        fingerprint=fingerprints[index],
                     )
                     async with lock:
                         results[index] = result
@@ -854,6 +906,7 @@ class BatchRunner:
                     cost_usd=cost,
                     started_at=running.started_at,
                     finished_at=self._clock(),
+                    fingerprint=fingerprints[index],
                 )
                 async with lock:
                     spent += cost
@@ -886,6 +939,7 @@ class BatchRunner:
                 index=index,
                 status=status,
                 finished_at=self._clock(),
+                fingerprint=fingerprints[index],
             )
             results[index] = replacement
             await save(replacement)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import hashlib
 import io
 import mimetypes
 import re
@@ -41,6 +42,8 @@ from aivia.core.db import create_database_engine, upgrade_database
 from aivia.core.dry_run import apply_dry_run
 from aivia.core.errors import AiviaError, ConfigError
 from aivia.core.estimate import Estimator, render_estimate
+from aivia.core.models.base import canonical_json
+from aivia.core.resume import stable_value
 from aivia.core.router import Router
 from aivia.media.batch_runner import BatchResult, BatchRunner
 from aivia.media.facade import MEDIA_METRICS_FILENAME, MediaServiceFacade
@@ -1351,6 +1354,7 @@ class _BatchItem:
     index: int
     kind: str
     args: argparse.Namespace
+    fingerprint: str = ""
 
 
 def _normalize_batch_item(raw: Mapping[Any, Any], *, position: int) -> dict[str, Any]:
@@ -1458,6 +1462,11 @@ def _batch_key(
     return str(index)
 
 
+def _batch_fingerprint(values: Mapping[str, Any], kind: str) -> str:
+    payload = {"kind": kind, "values": stable_value(dict(values))}
+    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
 def _batch_items(args: argparse.Namespace) -> list[_BatchItem]:
     path = Path(args.file).expanduser()
     if not path.is_file():
@@ -1489,6 +1498,7 @@ def _batch_items(args: argparse.Namespace) -> list[_BatchItem]:
                 index=index,
                 kind=kind,
                 args=item_args,
+                fingerprint=_batch_fingerprint(values, kind),
             )
         )
     return items
@@ -1597,6 +1607,7 @@ def _run_batch(args: argparse.Namespace) -> int:
             concurrency=args.concurrency,
             max_cost_usd=args.max_cost,
             manifest=manifest,
+            fingerprint=lambda item: item.fingerprint,
             resume=args.resume,
         )
         result = runner.run_sync(items)

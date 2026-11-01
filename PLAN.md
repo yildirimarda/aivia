@@ -352,7 +352,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the speech to text service with audio hash caching, duration based budget and cost plus a transcript sidecar (tests/media/test_stt_service.py)
 - [x] Include the selected provider license in the music cache key so a rights change cannot serve stale clearance (tests/media/test_music_service.py)
 - [x] Persist measured music format, sample rate and channels on the asset so cache hits rebuild the exact track (tests/media/test_music_service.py)
-- [ ] Invalidate a resumed batch item when its row content changes by storing a content fingerprint (tests/cli/test_media_batch_cli.py)
+- [x] Invalidate a resumed batch item when its row content changes by storing a content fingerprint (tests/cli/test_media_batch_cli.py)
 - [ ] Recover pending media API jobs on API startup so a restart cannot strand a submitted job (tests/api/test_media_api.py)
 - [ ] Make the default worker skip media API jobs so it cannot claim and dead-letter them (tests/cli/test_worker.py)
 - [ ] Apply the per clip budget policy before media submits and record the chosen cheaper hint (tests/media/test_media_clip_budget.py)
@@ -371,6 +371,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Probe ffmpeg in local text to speech health when the default output needs conversion (tests/providers/tts/test_local.py)
 - [ ] Probe or accept a duration hint for remote audio before the speech to text budget check (tests/media/test_stt_service.py)
 - [ ] Persist measured speech format, sample rate and channels on the asset so cache hits rebuild the exact audio (tests/media/test_tts_service.py)
+- [ ] Include CLI batch defaults and referenced input file contents in the content fingerprint so changed inputs invalidate a resumed row (tests/cli/test_media_batch_cli.py)
 
 ## Milestone 9: Composition and rendering
 
