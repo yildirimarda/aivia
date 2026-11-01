@@ -5,8 +5,9 @@ submitted to ``models/{model}:predictLongRunning`` and returns an operation
 name. The operation is polled until ``done`` is true, after which the finished
 clip URLs live under the operation response.
 
-A first frame is sent as the instance ``image``, either inline base64 bytes or
-a URI when the frame already lives in storage.
+A first frame is sent as the instance ``image``. An HTTP(S) frame is downloaded
+and inlined as base64 before submission because Veo only accepts a ``gcsUri``
+for frames that already live in Cloud Storage; any other URI is forwarded as-is.
 
 The adapter authenticates with an API key supplied either directly or through a
 credential reference resolved by :class:`~aivia.core.secrets.SecretsLoader`.
@@ -20,6 +21,7 @@ same prompt unchanged.
 from __future__ import annotations
 
 import base64
+import mimetypes
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
@@ -412,6 +414,22 @@ def _raise_job_failure(body: Mapping[str, Any], provider: str) -> None:
     if _is_content_policy(message, code, status):
         raise ContentPolicyError(text, details=details)
     raise InvalidRequestError(text, details=details)
+
+
+def _downloaded_frame_media_type(
+    media: MediaInput,
+    response: httpx.Response,
+) -> str | None:
+    if media.media_type is not None:
+        return media.media_type
+    content_type = response.headers.get("content-type", "")
+    header: str = content_type.split(";", 1)[0].strip().lower()
+    if header.startswith("image/"):
+        return header
+    guessed = mimetypes.guess_type(media.url or "")[0]
+    if guessed is not None and guessed.startswith("image/"):
+        return guessed
+    return None
 
 
 def _frame_image(media: MediaInput) -> dict[str, str]:
@@ -875,6 +893,56 @@ class VeoVideoProvider(Provider):
             )
         return downloaded
 
+    async def _inline_first_frame(self, request: VideoRequest) -> VideoRequest:
+        frame = request.first_frame
+        if frame is None or frame.url is None:
+            return request
+        if urlsplit(frame.url).scheme.lower() not in {"http", "https"}:
+            return request
+        response = await self.http.get(frame.url, raise_for_status=True)
+        try:
+            declared = response.headers.get("content-length", "").strip()
+            if (
+                self._max_download_bytes is not None
+                and declared.isdigit()
+                and int(declared) > self._max_download_bytes
+            ):
+                raise ValidationError(
+                    f"first frame is {declared} bytes, above the "
+                    f"{self._max_download_bytes} byte cap",
+                    details={
+                        "url": frame.url,
+                        "size_bytes": int(declared),
+                        "limit": self._max_download_bytes,
+                    },
+                )
+            data = response.content
+            if (
+                self._max_download_bytes is not None
+                and len(data) > self._max_download_bytes
+            ):
+                raise ValidationError(
+                    f"first frame is {len(data)} bytes, above the "
+                    f"{self._max_download_bytes} byte cap",
+                    details={
+                        "url": frame.url,
+                        "size_bytes": len(data),
+                        "limit": self._max_download_bytes,
+                    },
+                )
+            media_type = _downloaded_frame_media_type(frame, response)
+        finally:
+            await response.aclose()
+        return request.model_copy(
+            update={
+                "first_frame": MediaInput(
+                    data=data,
+                    media_type=media_type,
+                    filename=frame.filename,
+                )
+            }
+        )
+
     async def submit(self, request: VideoRequest) -> AsyncJob:
         """Submit *request* to Veo and return the stored operation job."""
         if not isinstance(request, VideoRequest):
@@ -909,7 +977,7 @@ class VeoVideoProvider(Provider):
                     "required_capability": CAPABILITY_VIDEO_INPUT,
                 },
             )
-        payload = _build_payload(request)
+        payload = _build_payload(await self._inline_first_frame(request))
         idempotency_key = _text(request.metadata.get("idempotency_key"))
         return await self._helper.submit(
             {"model": model, "payload": payload},

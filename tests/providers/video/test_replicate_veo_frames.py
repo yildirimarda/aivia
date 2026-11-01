@@ -11,7 +11,7 @@ from typing import Any, cast
 import httpx
 import pytest
 
-from aivia.core.errors import InvalidRequestError
+from aivia.core.errors import InvalidRequestError, ValidationError
 from aivia.core.models.provider import ProviderMeta
 from aivia.providers import (
     CAPABILITY_VIDEO_FIRST_FRAME as TOP_LEVEL_FIRST_FRAME,
@@ -34,6 +34,8 @@ from aivia.providers.video.veo import DEFAULT_API_VERSION, DEFAULT_BASE_URL
 
 API_KEY = "test-key"
 FRAME_URL = "https://example.com/frames/first.png"
+FRAME_BYTES = b"veo-http-first-frame"
+FRAME_CONTENT_TYPE = {"content-type": "image/png"}
 
 REPLICATE_MODEL = "owner/video-model:abc123def456"
 REPLICATE_ENDPOINT = f"{REPLICATE_DEFAULT_BASE_URL}/predictions"
@@ -59,6 +61,11 @@ def _routes(
         key = (request.method, str(request.url))
         responses = routes[key]
         status, body = responses.pop(0) if len(responses) > 1 else responses[0]
+        if isinstance(body, bytes):
+            return httpx.Response(status, content=body)
+        if isinstance(body, tuple):
+            content, headers = body
+            return httpx.Response(status, content=content, headers=headers)
         return httpx.Response(status, json=body)
 
     return requests, handler
@@ -92,6 +99,7 @@ def _replicate_routes() -> dict[tuple[str, str], list[tuple[int, Any]]]:
 
 def _veo_routes() -> dict[tuple[str, str], list[tuple[int, Any]]]:
     return {
+        ("GET", FRAME_URL): [(200, (FRAME_BYTES, FRAME_CONTENT_TYPE))],
         ("POST", VEO_ENDPOINT): [(200, {"name": OPERATION_NAME, "done": False})],
         ("GET", OPERATION_URL): [
             (200, {"name": OPERATION_NAME, "done": False}),
@@ -167,7 +175,12 @@ def _veo_payload(
 
     asyncio.run(provider.generate(request))
 
-    return cast("dict[str, Any]", json.loads(requests[0].content))
+    post = next(
+        candidate
+        for candidate in requests
+        if candidate.method == "POST" and str(candidate.url) == VEO_ENDPOINT
+    )
+    return cast("dict[str, Any]", json.loads(post.content))
 
 
 def test_the_first_frame_capability_is_exported_and_declared() -> None:
@@ -354,7 +367,9 @@ def test_veo_inline_first_frame_defaults_to_png() -> None:
     assert image == {"bytesBase64Encoded": encoded, "mimeType": "image/png"}
 
 
-def test_veo_sends_a_first_frame_url_as_a_gcs_uri() -> None:
+def test_veo_downloads_an_http_first_frame_and_sends_it_inline() -> None:
+    encoded = base64.b64encode(FRAME_BYTES).decode("ascii")
+
     payload = _veo_payload(
         VideoRequest(
             prompt="animate this still",
@@ -362,7 +377,133 @@ def test_veo_sends_a_first_frame_url_as_a_gcs_uri() -> None:
         )
     )
 
-    assert payload["instances"][0]["image"] == {"gcsUri": FRAME_URL}
+    assert payload["instances"][0]["image"] == {
+        "bytesBase64Encoded": encoded,
+        "mimeType": "image/png",
+    }
+    assert "gcsUri" not in payload["instances"][0]["image"]
+
+
+def test_veo_downloads_an_http_first_frame_before_submitting() -> None:
+    requests, handler = _routes(_veo_routes())
+    provider = _veo(handler)
+
+    asyncio.run(
+        provider.generate(
+            VideoRequest(
+                prompt="animate this still",
+                first_frame=MediaInput(url=FRAME_URL, media_type="image/png"),
+            )
+        )
+    )
+
+    frame_index = next(
+        index
+        for index, request in enumerate(requests)
+        if request.method == "GET" and str(request.url) == FRAME_URL
+    )
+    post_index = next(
+        index
+        for index, request in enumerate(requests)
+        if request.method == "POST" and str(request.url) == VEO_ENDPOINT
+    )
+    assert frame_index < post_index
+
+
+def test_veo_infers_a_downloaded_frame_type_from_the_response() -> None:
+    requests, handler = _routes(_veo_routes())
+
+    def _response(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == FRAME_URL:
+            return httpx.Response(
+                200,
+                content=FRAME_BYTES,
+                headers={"content-type": "image/webp; charset=binary"},
+            )
+        return handler(request)
+
+    provider = _veo(_response)
+
+    asyncio.run(
+        provider.generate(
+            VideoRequest(
+                prompt="animate this still",
+                first_frame=MediaInput(url=FRAME_URL),
+            )
+        )
+    )
+
+    post = next(
+        candidate
+        for candidate in requests
+        if candidate.method == "POST" and str(candidate.url) == VEO_ENDPOINT
+    )
+    payload = cast("dict[str, Any]", json.loads(post.content))
+    assert payload["instances"][0]["image"]["mimeType"] == "image/webp"
+
+
+def test_veo_keeps_an_explicit_first_frame_media_type() -> None:
+    encoded = base64.b64encode(FRAME_BYTES).decode("ascii")
+
+    payload = _veo_payload(
+        VideoRequest(
+            prompt="animate this still",
+            first_frame=MediaInput(url=FRAME_URL, media_type="image/jpeg"),
+        )
+    )
+
+    assert payload["instances"][0]["image"] == {
+        "bytesBase64Encoded": encoded,
+        "mimeType": "image/jpeg",
+    }
+
+
+def test_veo_caps_a_downloaded_first_frame() -> None:
+    requests, handler = _routes(_veo_routes())
+    provider = _veo(handler, max_download_bytes=4)
+
+    with pytest.raises(ValidationError) as caught:
+        asyncio.run(
+            provider.generate(
+                VideoRequest(
+                    prompt="animate this still",
+                    first_frame=MediaInput(url=FRAME_URL, media_type="image/png"),
+                )
+            )
+        )
+
+    assert caught.value.details["limit"] == 4
+    assert not any(
+        request.method == "POST" and str(request.url) == VEO_ENDPOINT
+        for request in requests
+    )
+
+
+def test_veo_reports_a_failed_first_frame_download() -> None:
+    requests, handler = _routes(_veo_routes())
+
+    def _response(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == FRAME_URL:
+            return httpx.Response(404, json={"error": "missing"})
+        return handler(request)
+
+    provider = _veo(_response)
+
+    with pytest.raises(InvalidRequestError) as caught:
+        asyncio.run(
+            provider.generate(
+                VideoRequest(
+                    prompt="animate this still",
+                    first_frame=MediaInput(url=FRAME_URL, media_type="image/png"),
+                )
+            )
+        )
+
+    assert caught.value.details["status"] == 404
+    assert not any(
+        request.method == "POST" and str(request.url) == VEO_ENDPOINT
+        for request in requests
+    )
 
 
 def test_veo_omits_the_image_without_a_first_frame() -> None:

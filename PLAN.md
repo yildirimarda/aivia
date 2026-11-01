@@ -377,6 +377,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Store sound effect cost sidecars through the storage provider so remote outputs get them too (tests/media/test_sfx_service.py)
 - [ ] Claim async job recovery atomically so two processes cannot resubmit the same crashed job (tests/providers/media/test_async_job.py)
 - [ ] Cap animated frame count and total decoded pixels in media probe validation (tests/core/test_media_probe.py)
+- [ ] Guard a remote first frame download with the shared SSRF policy before a Veo call (tests/providers/video/test_replicate_veo_frames.py)
 
 ## Milestone 9: Composition and rendering
 
