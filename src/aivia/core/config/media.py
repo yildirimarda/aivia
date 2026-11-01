@@ -21,6 +21,7 @@ __all__ = [
     "DEFAULT_MEDIA_ANIMATED_FRAME_RATE",
     "DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS",
     "DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS",
+    "DEFAULT_MEDIA_LOOP_SIMILARITY_THRESHOLD",
     "DEFAULT_MEDIA_MAX_ANIMATED_FRAMES",
     "DEFAULT_MEDIA_MAX_ANIMATED_PIXELS",
     "DEFAULT_MEDIA_MAX_BYTES",
@@ -98,6 +99,9 @@ DEFAULT_MEDIA_MAX_ANIMATED_PIXELS = 250_000_000
 
 DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS = 10.0
 """Seconds ffprobe may run before it is treated as a validation failure."""
+
+DEFAULT_MEDIA_LOOP_SIMILARITY_THRESHOLD = 0.98
+"""First and last loop frames at or above this similarity form a seamless seam."""
 
 DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS = 300.0
 """Seconds a deterministic ffmpeg transform may run before it fails."""
