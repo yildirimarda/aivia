@@ -187,9 +187,7 @@ def _face_style(value: Any) -> FontStyle | None:
             text_style = TextStyle(value)
         except ValueError:
             return None
-        return (
-            FontStyle.ITALIC if text_style is TextStyle.ITALIC else FontStyle.REGULAR
-        )
+        return FontStyle.ITALIC if text_style is TextStyle.ITALIC else FontStyle.REGULAR
     return None
 
 
@@ -342,9 +340,7 @@ class FontFamily:
     @property
     def styles(self) -> tuple[FontStyle, ...]:
         """The faces this family provides, in canonical order."""
-        return tuple(
-            style for style in FontStyle if style in self.members
-        )
+        return tuple(style for style in FontStyle if style in self.members)
 
     def __contains__(self, style: object) -> bool:
         return isinstance(style, FontStyle) and style in self.members
@@ -428,9 +424,7 @@ def _language_fonts(value: object | None) -> dict[str, tuple[str, ...]]:
             values.append(entry.strip())
         elif isinstance(entry, Iterable) and not isinstance(entry, (str, Mapping)):
             values.extend(
-                item.strip()
-                for item in entry
-                if isinstance(item, str) and item.strip()
+                item.strip() for item in entry if isinstance(item, str) and item.strip()
             )
         for field in (
             "subtitle_font",
@@ -521,18 +515,13 @@ class FontManager:
         root = (
             package_fonts_dir()
             if fonts_dir is None
-            or (
-                isinstance(fonts_dir, str)
-                and fonts_dir.strip() in ("", "package")
-            )
+            or (isinstance(fonts_dir, str) and fonts_dir.strip() in ("", "package"))
             else Path(fonts_dir).expanduser()
         )
 
         family = config.default_font if default_family is None else default_family
         fallbacks = (
-            config.fallback_fonts
-            if fallback_families is None
-            else fallback_families
+            config.fallback_fonts if fallback_families is None else fallback_families
         )
         if not isinstance(family, str) or not family.strip():
             raise FontError("default font family must not be empty")
@@ -754,8 +743,7 @@ class FontManager:
         if self._require_bundled:
             if not self._families:
                 raise FontError(
-                    "bundled fonts are not available "
-                    "(system fallback is disabled)",
+                    "bundled fonts are not available (system fallback is disabled)",
                     details={
                         "fonts_dir": str(self._fonts_dir),
                         "require_bundled": True,

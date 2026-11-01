@@ -61,17 +61,13 @@ def test_bundled_families_and_faces_resolve_case_insensitively() -> None:
     assert manager.available_families == ("Lato",)
     assert manager.resolve("Lato").name == "Lato-Regular.ttf"
     assert manager.resolve("lato", weight=TextWeight.BOLD).name == "Lato-Bold.ttf"
-    assert (
-        manager.resolve("LATO", style=TextStyle.ITALIC).name == "Lato-Italic.ttf"
-    )
+    assert manager.resolve("LATO", style=TextStyle.ITALIC).name == "Lato-Italic.ttf"
     assert (
         manager.resolve("Lato", weight="semibold", style="italic").name
         == "Lato-BoldItalic.ttf"
     )
     assert manager.resolve("Lato-Bold").name == "Lato-Bold.ttf"
-    assert (
-        manager.select("Lato-BoldItalic").style is FontStyle.BOLDITALIC
-    )
+    assert manager.select("Lato-BoldItalic").style is FontStyle.BOLDITALIC
 
 
 def test_explicit_font_file_wins_over_the_bundled_directory(tmp_path: Path) -> None:
@@ -117,12 +113,8 @@ def test_missing_face_falls_through_the_language_chain(tmp_path: Path) -> None:
     )
 
     assert manager.resolve(language="tr").name == "Primary-Regular.ttf"
-    assert (
-        manager.resolve(language="tr", weight="bold").name == "Secondary-Bold.ttf"
-    )
-    assert (
-        manager.resolve(language="tr-TR", weight="bold").name == "Secondary-Bold.ttf"
-    )
+    assert manager.resolve(language="tr", weight="bold").name == "Secondary-Bold.ttf"
+    assert manager.resolve(language="tr-TR", weight="bold").name == "Secondary-Bold.ttf"
 
 
 def test_per_language_chain_precedes_the_global_and_default_fallbacks(
