@@ -432,6 +432,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add typed keyframe fields to the layer schema so concrete layers keep animations and JSON schema exports them (tests/compose/test_schema.py)
 - [ ] Add validated position and size fields to visual layers so renderer geometry round-trips through the schema (tests/compose/test_layers.py)
 - [ ] Wrap composition text with the shared language-aware line break rules instead of splitting long words arbitrarily (tests/compose/test_text.py)
+- [ ] Resolve text layer defaults from render config instead of hardcoded family and size (tests/compose/test_text.py)
 
 ## Milestone 10: Research engine
 
