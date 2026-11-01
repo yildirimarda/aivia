@@ -358,6 +358,17 @@ from aivia.compose.video import (
     VideoRenderResult,
     render_video,
 )
+from aivia.compose.web_card import (
+    DEFAULT_WEB_CARD_PLAY_LABEL,
+    WEB_CARD_RENDERER_VERSION,
+    WebCardError,
+    WebCardRenderResult,
+    build_web_card,
+    export_web_card,
+    render_web_card,
+    web_card_html,
+    write_web_card,
+)
 
 if TYPE_CHECKING:
     from aivia.compose.anim_outputs import (
@@ -417,6 +428,7 @@ __all__ = [
     "DEFAULT_PIXEL_FORMAT",
     "DEFAULT_PRESET",
     "DEFAULT_VIDEO_CODEC",
+    "DEFAULT_WEB_CARD_PLAY_LABEL",
     "EASING_FUNCTIONS",
     "FONT_EXTENSIONS",
     "LOOP_RENDERER_VERSION",
@@ -425,6 +437,7 @@ __all__ = [
     "RENDERER_VERSION",
     "TRANSITION_VERSION",
     "VIDEO_RENDERER_VERSION",
+    "WEB_CARD_RENDERER_VERSION",
     "Anchor",
     "AnimatedOutput",
     "AnimatedOutputError",
@@ -571,6 +584,8 @@ __all__ = [
     "VideoRenderError",
     "VideoRenderResult",
     "VideoRenderer",
+    "WebCardError",
+    "WebCardRenderResult",
     "add_backing_box",
     "add_contrast_treatment",
     "add_outline",
@@ -602,6 +617,7 @@ __all__ = [
     "build_ffmpeg_filtergraph",
     "build_filtergraph",
     "build_subtitle_filter",
+    "build_web_card",
     "burn_subtitles",
     "check_faces",
     "choose_text_color",
@@ -654,6 +670,7 @@ __all__ = [
     "export_loop",
     "export_seamless",
     "export_seamless_loop",
+    "export_web_card",
     "export_webp",
     "face_regions",
     "face_regions_from_analysis",
@@ -718,6 +735,7 @@ __all__ = [
     "render_still",
     "render_transition",
     "render_video",
+    "render_web_card",
     "render_webp",
     "resolve_contrast",
     "resolve_font",
@@ -754,9 +772,11 @@ __all__ = [
     "validate_composition",
     "validate_composition_or_raise",
     "vision_faces",
+    "web_card_html",
     "write_composition",
     "write_composition_file",
     "write_subtitle_document",
+    "write_web_card",
     "zoom",
 ]
 
