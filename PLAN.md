@@ -761,3 +761,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate every file under examples against its schema so examples cannot drift (tests/test_examples.py)
 - [ ] Load every built-in adapter before provider lookup so real config types resolve outside docs (tests/cli/test_media_generate.py)
 - [ ] Include local background removal and remote ops adapters in provider docs and regenerate the matrix (tests/test_provider_docs.py)
+- [ ] Break the media probe import cycle so its test module collects without importing providers first (tests/core/test_media_probe.py)

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from aivia.core.models.base import canonical_json, utcnow
 from aivia.core.models.cost import CostEvent
@@ -311,6 +312,13 @@ def build_cost_sidecar(
     chosen_version, versions = _resolve_pricing_version(versions, pricing_version)
     fingerprint = ToolchainFingerprint.model_validate(toolchain_fingerprint)
     selected_run = run_id.strip() if run_id is not None else _common_run_id(records)
+    raw_output = str(output)
+    parsed_output = urlsplit(raw_output)
+    selected_output = (
+        raw_output
+        if parsed_output.scheme.lower() in {"http", "https", "file"}
+        else str(Path(raw_output).expanduser())
+    )
 
     totals = SidecarTotals(
         total_usd=math.fsum(item.amount_usd for item in items),
@@ -321,7 +329,7 @@ def build_cost_sidecar(
     )
 
     return CostSidecar(
-        output=str(Path(output).expanduser()),
+        output=selected_output,
         run_id=selected_run,
         totals=totals,
         items=items,
