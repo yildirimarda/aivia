@@ -21,6 +21,7 @@ counting as spend.
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -70,6 +71,9 @@ __all__ = [
     "cached_video",
     "load_cached_video",
     "store_video",
+    "validated_video_format",
+    "validated_video_fps",
+    "validated_video_has_audio",
     "video_cache_key",
 ]
 
@@ -188,6 +192,69 @@ def video_cache_key(
 
 def _video_format(probe: MediaProbe, fallback: VideoFormat) -> VideoFormat:
     return _VIDEO_FORMATS.get(probe.format, fallback)
+
+
+def validated_video_format(
+    probe: MediaProbe,
+    fallback: VideoFormat,
+) -> VideoFormat:
+    """Return the container ffprobe validated, falling back to *fallback*."""
+    return _video_format(probe, fallback)
+
+
+def _frame_rate_fps(value: str | None) -> int | None:
+    """Parse an ffprobe frame-rate fraction such as ``30000/1001``."""
+    if not value:
+        return None
+    numerator_text, separator, denominator_text = value.strip().partition("/")
+    try:
+        numerator = float(numerator_text)
+        denominator = float(denominator_text) if separator else 1.0
+    except ValueError:
+        return None
+    if not math.isfinite(numerator) or not math.isfinite(denominator):
+        return None
+    if numerator <= 0.0 or denominator <= 0.0:
+        return None
+    rate = numerator / denominator
+    if not math.isfinite(rate) or rate <= 0.0:
+        return None
+    return round(rate)
+
+
+def validated_video_fps(
+    probe: MediaProbe,
+    fallback: int | None = None,
+) -> int | None:
+    """Return the frame rate ffprobe measured, or *fallback* when unknown."""
+    info = probe.ffprobe
+    if info is not None:
+        stream = info.primary_video
+        if stream is not None:
+            measured = _frame_rate_fps(stream.frame_rate)
+            if measured is not None:
+                return measured
+    return fallback
+
+
+def validated_video_has_audio(probe: MediaProbe, fallback: bool) -> bool:
+    """Return whether ffprobe found an audio stream, or *fallback*."""
+    if probe.ffprobe is not None:
+        return bool(probe.ffprobe.audio_streams)
+    return bool(fallback)
+
+
+def _stored_video_format(
+    analysis: AssetAnalysis,
+    fallback: VideoFormat,
+) -> VideoFormat:
+    value = _text(analysis.format)
+    if value:
+        try:
+            return VideoFormat(value)
+        except ValueError:
+            pass
+    return fallback
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,12 +477,19 @@ class VideoCache:
             )
         result = VideoResult(
             data=payload,
-            format=_VIDEO_FORMATS.get(signature.format, request.format),
+            format=_stored_video_format(
+                asset.analysis,
+                _VIDEO_FORMATS.get(signature.format, request.format),
+            ),
             width=asset.analysis.width,
             height=asset.analysis.height,
             duration_seconds=asset.analysis.duration_seconds,
-            fps=request.fps,
-            has_audio=bool(request.generate_audio),
+            fps=(asset.analysis.fps if asset.analysis.fps is not None else request.fps),
+            has_audio=(
+                asset.analysis.has_audio
+                if asset.analysis.has_audio is not None
+                else bool(request.generate_audio)
+            ),
             seed=asset.seed,
         )
         event = (
@@ -488,6 +562,12 @@ class VideoCache:
             if seed is not None
             else (result.seed if result.seed is not None else request.seed)
         )
+        video_format = validated_video_format(probe, result.format)
+        video_fps = validated_video_fps(
+            probe,
+            result.fps if result.fps is not None else request.fps,
+        )
+        video_has_audio = validated_video_has_audio(probe, result.has_audio)
         asset = Asset(
             kind=AssetKind.VIDEO,
             provider=provider_name,
@@ -504,6 +584,9 @@ class VideoCache:
                 width=probe.width,
                 height=probe.height,
                 duration_seconds=probe.duration_seconds,
+                fps=video_fps,
+                format=video_format.value,
+                has_audio=video_has_audio,
             ),
             cost_links=list(cost_links or ()),
         )
@@ -511,16 +594,12 @@ class VideoCache:
             asset = self._cache.store(asset, key=self.key(request, index=index))
         video = VideoResult(
             data=probe.data,
-            format=_video_format(probe, result.format),
+            format=video_format,
             width=probe.width,
             height=probe.height,
             duration_seconds=probe.duration_seconds,
-            fps=result.fps if result.fps is not None else request.fps,
-            has_audio=bool(
-                probe.ffprobe.audio_streams
-                if probe.ffprobe is not None
-                else result.has_audio
-            ),
+            fps=video_fps,
+            has_audio=video_has_audio,
             seed=asset.seed,
             metadata=dict(result.metadata),
         )
