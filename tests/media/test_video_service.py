@@ -22,6 +22,7 @@ from aivia.core.db import create_database_engine, upgrade_database
 from aivia.core.errors import (
     BudgetError,
     ContentPolicyError,
+    InvalidRequestError,
     ProviderExhaustedError,
     ValidationError,
 )
@@ -36,6 +37,7 @@ from aivia.providers import Provider
 from aivia.providers.protocols import (
     CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
+    CAPABILITY_VIDEO_INPUT,
     MediaInput,
     VideoFormat,
     VideoRequest,
@@ -249,6 +251,33 @@ def test_a_missing_or_mismatched_token_blocks_before_any_paid_step(
     assert tracker.count() == 0
     assert service.cache.cache is not None
     assert service.cache.cache.repository.list() == []
+    assert list(storage.root.rglob("*")) == []
+
+
+def test_a_non_video_source_is_rejected_before_any_paid_step(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+    engine: Engine,
+) -> None:
+    provider = FakeVideoProvider(
+        capabilities=(CAPABILITY_VIDEO_GEN, CAPABILITY_VIDEO_INPUT),
+    )
+    service = _service(provider, tracker, storage, engine)
+    request = VideoRequest(
+        prompt=PROMPT,
+        source_video=MediaInput(
+            url="https://example.com/media/source.png",
+            media_type="image/png",
+        ),
+    )
+
+    with pytest.raises(InvalidRequestError) as caught:
+        _run(service.generate(request, token=_token()))
+
+    assert caught.value.details["field"] == "source_video"
+    assert caught.value.details["media_type"] == "image/png"
+    assert provider.calls == []
+    assert tracker.count() == 0
     assert list(storage.root.rglob("*")) == []
 
 

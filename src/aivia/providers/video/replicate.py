@@ -57,6 +57,7 @@ from aivia.providers.protocols.video import (
     VideoResult,
 )
 from aivia.providers.registry import register_provider
+from aivia.providers.video.v2v import ensure_source_video_media_type
 
 __all__ = [
     "DEFAULT_BASE_URL",
@@ -858,6 +859,7 @@ class ReplicateVideoProvider(Provider):
         if not isinstance(request, VideoRequest):
             raise TypeError("request must be a VideoRequest")
 
+        ensure_source_video_media_type(request)
         model_name, model_version = self._model_and_version(request.model)
         model = f"{model_name}:{model_version}"
         if request.first_frame is not None and not self.supports(
