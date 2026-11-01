@@ -77,6 +77,13 @@ _DEFAULT_METADATA = ProviderMeta(
             "ogg",
             "opus",
             "flac",
+            "prompt",
+            "lyrics",
+            "duration",
+            "sample_rate",
+            "seed",
+            "count",
+            "format",
         ]
     },
     pricing={CAPABILITY_MUSIC_GEN: ProviderPrice(amount_usd=0.0, unit="second")},

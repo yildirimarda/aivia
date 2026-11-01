@@ -80,18 +80,27 @@ _FFMPEG_CODECS: dict[AudioFormat, str] = {
 _DEFAULT_METADATA = ProviderMeta(
     name="local-tts",
     capabilities=[CAPABILITY_TTS],
+    supported_options={
+        CAPABILITY_TTS: ["text", "model", "format", "sample_rate", "speed"]
+    },
     pricing={CAPABILITY_TTS: ProviderPrice(amount_usd=0.0, unit="character")},
 )
 
 _PIPER_METADATA = ProviderMeta(
     name="piper-tts",
     capabilities=[CAPABILITY_TTS],
+    supported_options={
+        CAPABILITY_TTS: ["text", "model", "format", "sample_rate", "speed"]
+    },
     pricing={CAPABILITY_TTS: ProviderPrice(amount_usd=0.0, unit="character")},
 )
 
 _KOKORO_METADATA = ProviderMeta(
     name="kokoro-tts",
     capabilities=[CAPABILITY_TTS],
+    supported_options={
+        CAPABILITY_TTS: ["text", "model", "format", "sample_rate", "speed"]
+    },
     pricing={CAPABILITY_TTS: ProviderPrice(amount_usd=0.0, unit="character")},
 )
 

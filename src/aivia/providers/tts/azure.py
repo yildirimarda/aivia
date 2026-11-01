@@ -54,7 +54,16 @@ AZURE_TTS_API_VERSION = DEFAULT_API_VERSION
 _DEFAULT_METADATA = ProviderMeta(
     name="azure-tts",
     capabilities=[CAPABILITY_TTS],
-    supported_options={CAPABILITY_TTS: ["pronunciation"]},
+    supported_options={
+        CAPABILITY_TTS: [
+            "pronunciation",
+            "text",
+            "model",
+            "language",
+            "format",
+            "speed",
+        ]
+    },
     pricing={
         CAPABILITY_TTS: ProviderPrice(amount_usd=0.000016, unit="character"),
     },

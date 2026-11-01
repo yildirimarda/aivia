@@ -67,6 +67,17 @@ ELEVENLABS_BASE_URL = DEFAULT_BASE_URL
 _DEFAULT_METADATA = ProviderMeta(
     name="elevenlabs-tts",
     capabilities=[CAPABILITY_TTS],
+    supported_options={
+        CAPABILITY_TTS: [
+            "text",
+            "model",
+            "language",
+            "format",
+            "sample_rate",
+            "speed",
+            "word_timestamps",
+        ]
+    },
     pricing={
         CAPABILITY_TTS: ProviderPrice(amount_usd=0.00015, unit="character"),
     },

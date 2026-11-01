@@ -69,7 +69,20 @@ MAX_DURATION_SECONDS = 190.0
 _DEFAULT_METADATA = ProviderMeta(
     name="stable-audio",
     capabilities=[CAPABILITY_MUSIC_GEN],
-    supported_options={CAPABILITY_MUSIC_GEN: ["instrumental", "mp3", "wav"]},
+    supported_options={
+        CAPABILITY_MUSIC_GEN: [
+            "instrumental",
+            "mp3",
+            "wav",
+            "prompt",
+            "duration",
+            "model",
+            "sample_rate",
+            "seed",
+            "count",
+            "format",
+        ]
+    },
     license=AssetLicense(
         name=LICENSE_NAME,
         url=LICENSE_URL,
