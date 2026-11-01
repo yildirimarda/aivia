@@ -407,7 +407,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Render text in video with entrance and exit animations sampled at start, middle and end (slow, tests/compose/test_text_video.py)
 - [x] Generate procedural overlays such as confetti, sparkles, snow and bokeh deterministically by seed without external assets (slow, tests/compose/test_overlays.py)
 - [x] Implement cut, crossfade and slide transitions with sampled frame checks (slow, tests/compose/test_transitions.py)
-- [ ] Mix audio tracks with volume, offsets, fades and ducking to the configured loudness and burn subtitles inside the safe area (slow, tests/compose/test_audio_subs.py)
+- [x] Mix audio tracks with volume, offsets, fades and ducking to the configured loudness and burn subtitles inside the safe area (slow, tests/compose/test_audio_subs.py)
 - [ ] Drive resolution, fps, codec, bitrate, loudness and duration from config with platform and profile overrides (slow, tests/compose/test_output_profiles.py)
 - [ ] Produce optimized GIF and animated WebP outputs respecting loop flags and size caps (slow, tests/compose/test_anim_outputs.py)
 - [ ] Render seamless loop outputs whose first and last frames are similar enough (slow, tests/compose/test_loop_output.py)
@@ -443,6 +443,9 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate procedural overlay effect parameters during composition validation so bad effects fail before rendering (tests/compose/test_validation.py)
 - [ ] Apply procedural overlay effects to video renders so confetti, sparkles, snow and bokeh animate in the output (slow, tests/compose/test_video_overlays.py)
 - [ ] Validate transition durations stay inside each layer window and report every violation (tests/compose/test_validation.py)
+- [ ] Validate subtitle cue spans against the composition duration so a cue cannot outlive the video (tests/compose/test_validation.py)
+- [ ] Convert an SRT or VTT subtitle file referenced by a composition to ASS before burning (tests/compose/test_audio_subs.py)
+- [ ] Validate composition safe area margins leave a visible area before subtitles are burned (tests/compose/test_validation.py)
 
 ## Milestone 10: Research engine
 

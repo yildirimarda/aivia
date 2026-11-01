@@ -247,10 +247,16 @@ def test_the_json_schema_describes_every_composition_field() -> None:
         "layers",
         "audio_tracks",
         "effects",
+        "subtitles",
+        "subtitle_file",
+        "platform",
+        "safe_area",
+        "loudness_lufs",
     }
     assert properties["schema_version"]["default"] == 1
     assert properties["layers"]["type"] == "array"
     assert {"Canvas", "Layer", "AudioTrack", "Effect"} <= set(schema["$defs"])
+    assert {"SubtitleTrack", "SubtitleCue"} <= set(schema["$defs"])
     assert schema == composition_json_schema() == composition_schema()
 
 
