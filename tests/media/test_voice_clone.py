@@ -267,3 +267,84 @@ def test_records_survive_a_new_service_bound_to_the_same_engine(
 
     assert [item.id for item in reopened.list()] == [clone.id]
     assert reopened.get(clone.id) is not None
+
+
+class FakeVoiceCloneProvider:
+    """A vendor that records deletes and can fail on demand."""
+
+    def __init__(self, *, result: bool = True, error: Exception | None = None) -> None:
+        self.deleted: list[str] = []
+        self.result = result
+        self.error = error
+
+    async def delete_voice(self, voice_id: str) -> bool:
+        if self.error is not None:
+            raise self.error
+        self.deleted.append(voice_id)
+        return self.result
+
+
+def test_delete_removes_the_vendor_voice_then_the_local_record(
+    engine: Engine,
+) -> None:
+    provider = FakeVoiceCloneProvider()
+    service = VoiceCloneService(engine, provider=provider)
+    clone = _create(service)
+
+    deleted = service.delete(clone.id)
+
+    assert provider.deleted == [VOICE_ID]
+    assert deleted is not None
+    assert deleted.id == clone.id
+    assert service.get(clone.id) is None
+
+
+def test_delete_keeps_the_record_when_the_vendor_delete_fails(
+    engine: Engine,
+) -> None:
+    provider = FakeVoiceCloneProvider(error=RuntimeError("vendor unavailable"))
+    service = VoiceCloneService(engine, provider=provider)
+    clone = _create(service)
+
+    with pytest.raises(RuntimeError, match="vendor unavailable"):
+        service.delete(clone.id)
+
+    assert provider.deleted == []
+    assert service.get(clone.id) is not None
+    assert [item.id for item in service.list()] == [clone.id]
+
+
+def test_delete_does_not_call_the_vendor_for_another_owner(engine: Engine) -> None:
+    provider = FakeVoiceCloneProvider()
+    service = VoiceCloneService(engine, provider=provider)
+    clone = _create(service)
+
+    assert service.delete(clone.id, owner="bob@example.test") is None
+
+    assert provider.deleted == []
+    assert service.get(clone.id) is not None
+
+
+def test_delete_accepts_a_provider_mapping_and_an_already_absent_vendor_voice(
+    engine: Engine,
+) -> None:
+    provider = FakeVoiceCloneProvider(result=False)
+    service = VoiceCloneService(engine, providers={PROVIDER: provider})
+    clone = _create(service)
+
+    deleted = service.delete(clone.id)
+
+    assert provider.deleted == [VOICE_ID]
+    assert deleted is not None
+    assert service.get(clone.id) is None
+
+
+def test_delete_accepts_a_provider_for_one_call(engine: Engine) -> None:
+    provider = FakeVoiceCloneProvider()
+    service = VoiceCloneService(engine)
+    clone = _create(service)
+
+    service.delete(clone.id, provider=provider)
+
+    assert provider.deleted == [VOICE_ID]
+    assert service.get(clone.id) is None
