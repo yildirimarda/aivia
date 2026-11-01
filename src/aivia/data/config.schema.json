@@ -3049,6 +3049,42 @@
       "additionalProperties": false,
       "description": "Video defaults shared by formats, profiles and platform overrides.",
       "properties": {
+        "audio_bitrate": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audio Bitrate"
+        },
+        "audio_codec": {
+          "default": "aac",
+          "title": "Audio Codec",
+          "type": "string"
+        },
+        "bitrate": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bitrate"
+        },
+        "codec": {
+          "default": "libx264",
+          "title": "Codec",
+          "type": "string"
+        },
         "duration_seconds": {
           "$ref": "#/$defs/DurationRangeConfig"
         },
@@ -3090,6 +3126,56 @@
       "additionalProperties": false,
       "description": "Partial video settings applied on top of the base video section.",
       "properties": {
+        "audio_bitrate": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audio Bitrate"
+        },
+        "audio_codec": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audio Codec"
+        },
+        "bitrate": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bitrate"
+        },
+        "codec": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Codec"
+        },
         "duration_seconds": {
           "anyOf": [
             {

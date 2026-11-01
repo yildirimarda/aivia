@@ -36,6 +36,11 @@ from .motion import (
     track_expression,
     tracks_for_layer,
 )
+from .output_profiles import (
+    OutputProfile,
+    apply_output_profile,
+    resolve_output_profile,
+)
 from .schema import (
     Anchor,
     Composition,
@@ -812,10 +817,12 @@ def build_ffmpeg_command(
     output: str | Path = "out.mp4",
     *,
     executable: str = "ffmpeg",
-    video_codec: str = DEFAULT_VIDEO_CODEC,
-    audio_codec: str = DEFAULT_AUDIO_CODEC,
+    video_codec: str | None = None,
+    audio_codec: str | None = None,
     preset: str = DEFAULT_PRESET,
     crf: int = DEFAULT_CRF,
+    bitrate: int | None = None,
+    audio_bitrate: int | None = None,
     pixel_format: str = DEFAULT_PIXEL_FORMAT,
     movflags: str | None = "+faststart",
     overwrite: bool = True,
@@ -825,6 +832,11 @@ def build_ffmpeg_command(
     loudness_lufs: float | None = None,
     normalize_loudness: bool | None = None,
     ducking: Any | None = None,
+    output_profile: OutputProfile | Mapping[str, Any] | None = None,
+    config: Any | None = None,
+    video: Any | None = None,
+    platform: str | None = None,
+    profile: str | None = None,
 ) -> FFmpegCommand:
     """Build an ffmpeg argv for *composition* without executing anything.
 
@@ -833,9 +845,46 @@ def build_ffmpeg_command(
     arguments that also carries the generated filtergraph and inputs. Audio
     tracks are mixed in the same command and a *subtitle_file* is burned with
     the ``ass`` filter; the builder never writes that file itself.
+
+    Passing *config* (or *video*) resolves the video configuration with the
+    optional *platform* and *profile* overrides and applies it to the
+    composition. An explicit *output_profile* wins over configuration. Codec,
+    bitrate and loudness arguments still win over the resolved profile.
     """
     if not isinstance(executable, str) or not executable.strip():
         raise FFmpegCommandError("executable must be a non-empty string")
+
+    value = _composition(composition)
+    if output_profile is not None or config is not None or video is not None:
+        resolved = (
+            output_profile
+            if isinstance(output_profile, OutputProfile)
+            else (
+                OutputProfile.from_mapping(output_profile)
+                if output_profile is not None
+                else resolve_output_profile(
+                    config if config is not None else video,
+                    platform=platform,
+                    profile=profile,
+                )
+            )
+        )
+        value = apply_output_profile(value, resolved)
+        if video_codec is None:
+            video_codec = resolved.codec
+        if audio_codec is None:
+            audio_codec = resolved.audio_codec
+        bitrate = bitrate if bitrate is not None else resolved.bitrate
+        audio_bitrate = (
+            audio_bitrate if audio_bitrate is not None else resolved.audio_bitrate
+        )
+        loudness_lufs = (
+            loudness_lufs if loudness_lufs is not None else resolved.loudness_lufs
+        )
+
+    video_codec = DEFAULT_VIDEO_CODEC if video_codec is None else video_codec
+    audio_codec = DEFAULT_AUDIO_CODEC if audio_codec is None else audio_codec
+
     if not isinstance(video_codec, str) or not video_codec.strip():
         raise FFmpegCommandError("video_codec must be a non-empty string")
     if not isinstance(audio_codec, str) or not audio_codec.strip():
@@ -844,6 +893,16 @@ def build_ffmpeg_command(
         raise FFmpegCommandError("crf must be an integer")
     if crf < 0:
         raise FFmpegCommandError("crf must not be negative")
+    if bitrate is not None:
+        if isinstance(bitrate, bool) or not isinstance(bitrate, int):
+            raise FFmpegCommandError("bitrate must be an integer")
+        if bitrate <= 0:
+            raise FFmpegCommandError("bitrate must be positive")
+    if audio_bitrate is not None:
+        if isinstance(audio_bitrate, bool) or not isinstance(audio_bitrate, int):
+            raise FFmpegCommandError("audio_bitrate must be an integer")
+        if audio_bitrate <= 0:
+            raise FFmpegCommandError("audio_bitrate must be positive")
     if not isinstance(preset, str) or not preset.strip():
         raise FFmpegCommandError("preset must be a non-empty string")
     if not isinstance(pixel_format, str) or not pixel_format.strip():
@@ -851,7 +910,6 @@ def build_ffmpeg_command(
     if movflags is not None and not isinstance(movflags, str):
         raise FFmpegCommandError("movflags must be a string or None")
 
-    value = _composition(composition)
     inputs = _command_inputs(value)
     audio = _audio_inputs(value) if include_audio else []
     settings = None
@@ -898,14 +956,17 @@ def build_ffmpeg_command(
             video_codec.strip(),
             "-preset",
             preset.strip(),
-            "-crf",
-            str(crf),
-            "-pix_fmt",
-            pixel_format.strip(),
         ]
     )
+    if bitrate is None:
+        argv.extend(["-crf", str(crf)])
+    else:
+        argv.extend(["-b:v", f"{bitrate}k"])
+    argv.extend(["-pix_fmt", pixel_format.strip()])
     if audio:
         argv.extend(["-map", "[out]", "-c:a", audio_codec.strip()])
+        if audio_bitrate is not None:
+            argv.extend(["-b:a", f"{audio_bitrate}k"])
         if settings is not None:
             argv.extend(["-ar", str(settings.sample_rate)])
             argv.extend(["-ac", str(settings.channels)])

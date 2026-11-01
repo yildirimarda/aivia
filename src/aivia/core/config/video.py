@@ -23,6 +23,8 @@ from aivia.core.config.base import ConfigModel
 from aivia.core.errors import ConfigError
 
 __all__ = [
+    "DEFAULT_AUDIO_CODEC",
+    "DEFAULT_VIDEO_CODEC",
     "DurationRangeConfig",
     "DurationRangeOverrideConfig",
     "PlatformVideoConfig",
@@ -40,6 +42,31 @@ __all__ = [
 ]
 
 _RESOLUTION = re.compile(r"^(?P<width>\d+)\s*[xX*\u00d7]\s*(?P<height>\d+)$")
+
+DEFAULT_VIDEO_CODEC = "libx264"
+"""The encoder used when neither a platform nor a profile names one."""
+
+DEFAULT_AUDIO_CODEC = "aac"
+"""The audio encoder used when neither a platform nor a profile names one."""
+
+_OUTPUT_ALIASES: dict[str, str] = {
+    "video_codec": "codec",
+    "video_bitrate": "bitrate",
+    "bitrate_kbps": "bitrate",
+    "video_bitrate_kbps": "bitrate",
+    "audio_bitrate_kbps": "audio_bitrate",
+}
+
+
+def _accept_output_aliases(data: Any) -> Any:
+    """Rename the long output-field aliases onto their canonical names."""
+    if not isinstance(data, Mapping):
+        return data
+    values = dict(data)
+    for alias, canonical in _OUTPUT_ALIASES.items():
+        if alias in values:
+            values.setdefault(canonical, values.pop(alias))
+    return values
 
 
 class Resolution(str):
@@ -113,21 +140,55 @@ class VideoOverridesConfig(ConfigModel):
     fps: int | None = Field(default=None, gt=0)
     duration_seconds: DurationRangeOverrideConfig | None = None
     loudness_lufs: float | None = None
+    codec: str | None = None
+    bitrate: int | None = Field(default=None, gt=0)
+    audio_codec: str | None = None
+    audio_bitrate: int | None = Field(default=None, gt=0)
 
     @field_validator("resolution", mode="after")
     @classmethod
     def _validate_resolution(cls, value: str | None) -> Resolution | None:
         return _as_resolution(value)
 
+    @field_validator("codec", "audio_codec", mode="after")
+    @classmethod
+    def _validate_codec(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        if not text:
+            raise ValueError("codec must be a non-empty string")
+        return text
+
     @model_validator(mode="before")
     @classmethod
     def _accept_duration_alias(cls, data: Any) -> Any:
-        if isinstance(data, Mapping) and "duration" in data:
-            values = dict(data)
+        values = _accept_output_aliases(data)
+        if isinstance(values, Mapping) and "duration" in values:
+            values = dict(values)
             duration = values.pop("duration")
             values.setdefault("duration_seconds", duration)
-            return values
-        return data
+        return values
+
+    @property
+    def video_codec(self) -> str | None:
+        """Alias for :attr:`codec`."""
+        return self.codec
+
+    @property
+    def video_bitrate(self) -> int | None:
+        """Alias for :attr:`bitrate`."""
+        return self.bitrate
+
+    @property
+    def bitrate_kbps(self) -> int | None:
+        """Alias for :attr:`bitrate` in kilobits per second."""
+        return self.bitrate
+
+    @property
+    def audio_bitrate_kbps(self) -> int | None:
+        """Alias for :attr:`audio_bitrate` in kilobits per second."""
+        return self.audio_bitrate
 
 
 class VideoConfig(ConfigModel):
@@ -137,6 +198,10 @@ class VideoConfig(ConfigModel):
     fps: int = Field(default=30, gt=0)
     duration_seconds: DurationRangeConfig = Field(default_factory=DurationRangeConfig)
     loudness_lufs: float = -14.0
+    codec: str = DEFAULT_VIDEO_CODEC
+    bitrate: int | None = Field(default=None, gt=0)
+    audio_codec: str = DEFAULT_AUDIO_CODEC
+    audio_bitrate: int | None = Field(default=None, gt=0)
     platforms: dict[str, VideoOverridesConfig] = Field(default_factory=dict)
     profiles: dict[str, VideoOverridesConfig] = Field(default_factory=dict)
 
@@ -148,12 +213,21 @@ class VideoConfig(ConfigModel):
             raise ValueError("resolution must be a string such as 1080x1920")
         return resolution
 
+    @field_validator("codec", "audio_codec", mode="after")
+    @classmethod
+    def _validate_codec(cls, value: str) -> str:
+        text = value.strip()
+        if not text:
+            raise ValueError("codec must be a non-empty string")
+        return text
+
     @model_validator(mode="before")
     @classmethod
     def _accept_override_aliases(cls, data: Any) -> Any:
-        if not isinstance(data, Mapping):
-            return data
-        values = dict(data)
+        values = _accept_output_aliases(data)
+        if not isinstance(values, Mapping):
+            return values
+        values = dict(values)
         for alias, canonical in (
             ("platform_overrides", "platforms"),
             ("profile_overrides", "profiles"),
@@ -187,6 +261,26 @@ class VideoConfig(ConfigModel):
     def profile_overrides(self) -> dict[str, VideoOverridesConfig]:
         """Alias for :attr:`profiles` used by callers that prefer the long name."""
         return self.profiles
+
+    @property
+    def video_codec(self) -> str:
+        """Alias for :attr:`codec`."""
+        return self.codec
+
+    @property
+    def video_bitrate(self) -> int | None:
+        """Alias for :attr:`bitrate`."""
+        return self.bitrate
+
+    @property
+    def bitrate_kbps(self) -> int | None:
+        """Alias for :attr:`bitrate` in kilobits per second."""
+        return self.bitrate
+
+    @property
+    def audio_bitrate_kbps(self) -> int | None:
+        """Alias for :attr:`audio_bitrate` in kilobits per second."""
+        return self.audio_bitrate
 
     def for_platform(self, platform: str) -> VideoConfig:
         """Return the video spec with *platform* overrides deep-merged in."""

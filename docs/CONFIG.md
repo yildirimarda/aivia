@@ -529,6 +529,10 @@ Video defaults shared by formats, profiles and platform overrides.
 
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
+| `audio_bitrate` | integer or null | `null` | > 0 |  |
+| `audio_codec` | string | `"aac"` |  |  |
+| `bitrate` | integer or null | `null` | > 0 |  |
+| `codec` | string | `"libx264"` |  |  |
 | `duration_seconds` | [DurationRangeConfig](#durationrangeconfig) |  |  | Inclusive lower and upper bounds for a generated video in seconds. |
 | `fps` | integer | `30` | > 0 |  |
 | `loudness_lufs` | number | `-14.0` |  |  |
@@ -953,6 +957,10 @@ Partial video settings applied on top of the base video section.
 
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
+| `audio_bitrate` | integer or null | `null` | > 0 |  |
+| `audio_codec` | string or null | `null` |  |  |
+| `bitrate` | integer or null | `null` | > 0 |  |
+| `codec` | string or null | `null` |  |  |
 | `duration_seconds` | [DurationRangeOverrideConfig](#durationrangeoverrideconfig) or null | `null` |  | A partial duration range used by platform and profile overrides. |
 | `fps` | integer or null | `null` | > 0 |  |
 | `loudness_lufs` | number or null | `null` |  |  |
