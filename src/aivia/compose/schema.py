@@ -55,6 +55,7 @@ __all__ = [
     "Effect",
     "EffectConfig",
     "EffectSpec",
+    "FaceBox",
     "FilterType",
     "FitMode",
     "Gradient",
@@ -77,6 +78,8 @@ __all__ = [
     "TextAlign",
     "TextLayer",
     "TextOverflow",
+    "TextPlacement",
+    "TextPlacementMode",
     "TextStyle",
     "TextWeight",
     "TrackRole",
@@ -857,6 +860,165 @@ def _margin_value(value: Any) -> float | tuple[float, float]:
     return number
 
 
+class TextPlacementMode(StrEnum):
+    """How a text layer chooses its rectangle on the canvas."""
+
+    MANUAL = "manual"
+    SMART = "smart"
+    AUTO = "auto"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> TextPlacementMode | None:
+        if not isinstance(value, str):
+            return None
+        key = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "automatic": cls.AUTO,
+            "auto_place": cls.AUTO,
+            "low_detail": cls.SMART,
+            "low_detail_region": cls.SMART,
+            "none": cls.MANUAL,
+            "off": cls.MANUAL,
+            "disabled": cls.MANUAL,
+        }
+        return aliases.get(key)
+
+    @property
+    def is_smart(self) -> bool:
+        """Whether this mode asks the renderer to find a calm region."""
+        return self is not TextPlacementMode.MANUAL
+
+
+class FaceBox(_SchemaModel):
+    """A rectangle around one face, in canvas pixels.
+
+    A composition builder fills this from a vision check so a render stays
+    deterministic and offline.
+    """
+
+    x: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("x", "left"),
+    )
+    y: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("y", "top"),
+    )
+    width: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("width", "w"),
+    )
+    height: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("height", "h"),
+    )
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @field_validator("x", "y", "width", "height", "confidence", mode="before")
+    @classmethod
+    def _validate_number(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return _finite(value, "face box")
+
+    @property
+    def box(self) -> tuple[float, float, float, float]:
+        """The region as ``(x, y, width, height)``."""
+        return self.x, self.y, self.width, self.height
+
+    @property
+    def area(self) -> float:
+        """The area of the rectangle in square pixels."""
+        return self.width * self.height
+
+
+class TextPlacement(_SchemaModel):
+    """Options for smart text placement.
+
+    ``mode`` defaults to smart when a placement block is present. ``faces``
+    carries rectangles produced by an earlier vision check; rendering itself
+    never runs that check.
+    """
+
+    mode: TextPlacementMode = Field(
+        default=TextPlacementMode.SMART,
+        validation_alias=AliasChoices("mode", "strategy", "placement_mode"),
+    )
+    avoid_faces: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("avoid_faces", "faces_avoid", "skip_faces"),
+    )
+    padding: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("padding", "pad"),
+    )
+    margin: float | tuple[float, float] = Field(
+        default=0.0,
+        validation_alias=AliasChoices("margin", "margins"),
+    )
+    face_padding: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("face_padding", "face_margin"),
+    )
+    faces: list[FaceBox] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("faces", "face_regions", "detected_faces"),
+    )
+    step: int | None = Field(
+        default=None,
+        gt=0,
+        validation_alias=AliasChoices("step", "grid_step"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_shorthand(cls, data: Any) -> Any:
+        if data is None:
+            return {}
+        if isinstance(data, bool):
+            return {"mode": "smart" if data else "manual"}
+        if isinstance(data, str):
+            return {"mode": data}
+        return data
+
+    @field_validator("avoid_faces", mode="before")
+    @classmethod
+    def _validate_flag(cls, value: Any) -> Any:
+        if not isinstance(value, bool):
+            raise ValueError("avoid_faces must be a boolean")
+        return value
+
+    @field_validator("padding", "face_padding", mode="before")
+    @classmethod
+    def _validate_padding(cls, value: Any) -> Any:
+        return _finite(value, "padding")
+
+    @field_validator("margin", mode="before")
+    @classmethod
+    def _validate_margin(cls, value: Any) -> Any:
+        return _margin_value(value)
+
+    @field_validator("faces", mode="before")
+    @classmethod
+    def _validate_faces(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        if isinstance(value, (FaceBox, Mapping)):
+            return [value]
+        return value
+
+    @property
+    def smart(self) -> bool:
+        """Whether placement should scan the image."""
+        return self.mode.is_smart
+
+
 class Canvas(_SchemaModel):
     """The pixel canvas a composition renders into.
 
@@ -1457,6 +1619,55 @@ class TextLayer(Layer):
         ge=0.0,
         validation_alias=AliasChoices("stroke_width", "outline_width"),
     )
+    placement: TextPlacement | None = Field(
+        default=None,
+        validation_alias=AliasChoices("placement", "text_placement"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fold_placement_options(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(data)
+        raw = values.get("placement", values.get("text_placement"))
+        options: dict[str, Any] = {}
+        if isinstance(raw, TextPlacement):
+            options.update(raw.model_dump())
+        elif isinstance(raw, Mapping):
+            options.update(raw)
+        elif isinstance(raw, bool):
+            options["mode"] = "smart" if raw else "manual"
+        elif raw is not None:
+            options["mode"] = raw
+
+        flat = {
+            "smart_placement": "mode",
+            "auto_place": "mode",
+            "placement_mode": "mode",
+            "avoid_faces": "avoid_faces",
+            "placement_padding": "padding",
+            "placement_margin": "margin",
+            "face_padding": "face_padding",
+            "face_regions": "faces",
+            "detected_faces": "faces",
+            "faces": "faces",
+        }
+        found = False
+        for name, target in flat.items():
+            if name not in values:
+                continue
+            value = values.pop(name)
+            if name in ("smart_placement", "auto_place"):
+                value = "smart" if value else "manual"
+            options.setdefault(target, value)
+            found = True
+        if not found:
+            return values
+        values.pop("placement", None)
+        values.pop("text_placement", None)
+        values["placement"] = options
+        return values
 
     @model_validator(mode="before")
     @classmethod
@@ -1533,6 +1744,26 @@ class TextLayer(Layer):
         if self.shrink_to_fit and self.min_font_size > self.font_size:
             raise ValueError("min_font_size must not exceed font_size")
         return self
+
+    @property
+    def smart_placement(self) -> bool:
+        """Whether this layer asks for smart text placement."""
+        return self.placement is not None and self.placement.smart
+
+    @property
+    def auto_place(self) -> bool:
+        """Alias for :attr:`smart_placement`."""
+        return self.smart_placement
+
+    @property
+    def placement_mode(self) -> TextPlacementMode | None:
+        """The configured placement mode, if any."""
+        return None if self.placement is None else self.placement.mode
+
+    @property
+    def avoid_faces(self) -> bool:
+        """Whether smart placement avoids configured face rectangles."""
+        return self.placement is not None and self.placement.avoid_faces
 
 
 class ShapeLayer(Layer):
