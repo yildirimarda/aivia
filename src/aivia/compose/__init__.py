@@ -37,11 +37,22 @@ from aivia.compose.schema import (
     VideoLayer,
     parse_layer,
 )
+from aivia.compose.validation import (
+    AssetCheck,
+    AssetLookup,
+    CompositionIssue,
+    CompositionIssues,
+    CompositionValidationError,
+    validate_composition,
+    validate_composition_or_raise,
+)
 
 __all__ = [
     "COMPOSITION_SCHEMA_VERSION",
     "CURRENT_COMPOSITION_SCHEMA_VERSION",
     "AnyLayer",
+    "AssetCheck",
+    "AssetLookup",
     "AudioTrack",
     "AudioTrackConfig",
     "AudioTrackRole",
@@ -52,8 +63,11 @@ __all__ = [
     "CanvasSpec",
     "Composition",
     "CompositionConfig",
+    "CompositionIssue",
+    "CompositionIssues",
     "CompositionSchema",
     "CompositionSpec",
+    "CompositionValidationError",
     "Effect",
     "EffectConfig",
     "EffectSpec",
@@ -74,4 +88,6 @@ __all__ = [
     "TrackRole",
     "VideoLayer",
     "parse_layer",
+    "validate_composition",
+    "validate_composition_or_raise",
 ]
