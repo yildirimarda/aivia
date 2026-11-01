@@ -1,0 +1,20 @@
+{
+  "renderer": "1",
+  "tolerance": {
+    "max_channel_difference": 0
+  },
+  "cases": {
+    "canvas": {
+      "file": "still_canvas.png",
+      "composition_id": "golden_canvas",
+      "width": 8,
+      "height": 6
+    },
+    "image_layers": {
+      "file": "still_image_layers.png",
+      "composition_id": "golden_image_layers",
+      "width": 8,
+      "height": 6
+    }
+  }
+}

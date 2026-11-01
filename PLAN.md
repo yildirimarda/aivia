@@ -430,6 +430,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Write composition files atomically so an interrupted save cannot leave a truncated document (tests/compose/test_io.py)
 - [ ] Validate keyframe times against their owning layer window so an animation cannot outlive its layer (tests/compose/test_validation.py)
 - [ ] Add typed keyframe fields to the layer schema so concrete layers keep animations and JSON schema exports them (tests/compose/test_schema.py)
+- [ ] Add validated position and size fields to visual layers so renderer geometry round-trips through the schema (tests/compose/test_layers.py)
 
 ## Milestone 10: Research engine
 
