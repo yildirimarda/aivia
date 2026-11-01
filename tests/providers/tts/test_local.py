@@ -448,3 +448,116 @@ def test_health_reports_a_missing_kokoro_model_path(tmp_path: Path) -> None:
 
     assert report.status is HealthStatus.UNHEALTHY
     assert report.details["model"] == str(missing)
+
+
+@pytest.mark.parametrize(
+    "audio_format",
+    [AudioFormat.MP3, AudioFormat.OGG, AudioFormat.PCM],
+)
+def test_health_reports_a_missing_ffmpeg_for_a_converted_default_output(
+    monkeypatch: pytest.MonkeyPatch,
+    audio_format: AudioFormat,
+) -> None:
+    def which(name: str) -> str | None:
+        return None if name == "ffmpeg" else name
+
+    monkeypatch.setattr("aivia.providers.tts.local.shutil.which", which)
+    provider = LocalTTSProvider(
+        executable=sys.executable,
+        format=audio_format,
+    )
+
+    report = asyncio.run(provider.health())
+
+    assert report.status is HealthStatus.UNHEALTHY
+    assert "ffmpeg" in report.message
+    assert "not found" in report.message
+    assert report.details["ffmpeg"] == "ffmpeg"
+    assert report.details["ffmpeg_executable"] == "ffmpeg"
+    assert report.details["format"] == audio_format.value
+
+
+def test_health_accepts_a_present_ffmpeg_for_a_converted_default_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "aivia.providers.tts.local.shutil.which",
+        lambda name: name,
+    )
+    provider = LocalTTSProvider(
+        executable=sys.executable,
+        format=AudioFormat.MP3,
+    )
+
+    report = asyncio.run(provider.health())
+
+    assert report.status is HealthStatus.HEALTHY
+    assert report.details["ffmpeg"] == "ffmpeg"
+    assert report.details["ffmpeg_executable"] == "ffmpeg"
+    assert report.details["format"] == "mp3"
+
+
+def test_health_does_not_probe_ffmpeg_for_the_default_wav_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probed: list[str] = []
+
+    def which(name: str) -> str | None:
+        probed.append(name)
+        return name
+
+    monkeypatch.setattr("aivia.providers.tts.local.shutil.which", which)
+    provider = LocalTTSProvider(executable=sys.executable)
+
+    report = asyncio.run(provider.health())
+
+    assert report.status is HealthStatus.HEALTHY
+    assert probed == [sys.executable]
+    assert "ffmpeg" not in report.details
+
+
+def test_health_skips_the_ffmpeg_probe_when_conversion_is_injected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def which(name: str) -> str | None:
+        return None if name == "ffmpeg" else name
+
+    monkeypatch.setattr("aivia.providers.tts.local.shutil.which", which)
+
+    def converter(
+        audio: bytes,
+        source: AudioFormat,
+        target: AudioFormat,
+        sample_rate: int,
+    ) -> bytes:
+        return MP3
+
+    def encoder(audio: bytes, target: AudioFormat, sample_rate: int) -> bytes:
+        return MP3
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(argv, 0, stdout=MP3, stderr=b"")
+
+    providers = [
+        LocalTTSProvider(
+            executable=sys.executable,
+            format=AudioFormat.MP3,
+            converter=converter,
+        ),
+        LocalTTSProvider(
+            executable=sys.executable,
+            format=AudioFormat.MP3,
+            encoder=encoder,
+        ),
+        LocalTTSProvider(
+            executable=sys.executable,
+            format=AudioFormat.MP3,
+            ffmpeg_runner=runner,
+        ),
+    ]
+
+    for provider in providers:
+        report = asyncio.run(provider.health())
+
+        assert report.status is HealthStatus.HEALTHY
+        assert "ffmpeg" not in report.details
