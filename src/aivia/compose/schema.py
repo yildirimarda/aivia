@@ -17,6 +17,7 @@ envelope keeps them for forward compatibility.
 
 from __future__ import annotations
 
+import itertools
 import math
 import re
 from collections.abc import Mapping
@@ -53,6 +54,9 @@ __all__ = [
     "EffectConfig",
     "EffectSpec",
     "FitMode",
+    "Gradient",
+    "GradientStop",
+    "GradientType",
     "ImageLayer",
     "Layer",
     "LayerAdapter",
@@ -185,6 +189,159 @@ class _SchemaModel(BaseModel):
         populate_by_name=True,
         validate_assignment=True,
     )
+
+
+class GradientType(StrEnum):
+    """The kinds of gradient a shape can paint with."""
+
+    LINEAR = "linear"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> GradientType | None:
+        if not isinstance(value, str):
+            return None
+        aliases = {"linear_gradient": cls.LINEAR, "stripes": cls.LINEAR}
+        return aliases.get(value.strip().lower().replace("-", "_").replace(" ", "_"))
+
+
+class GradientStop(_SchemaModel):
+    """One colour at a position along a gradient."""
+
+    color: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices("color", "colour"),
+    )
+    offset: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("offset", "position", "stop", "at"),
+    )
+
+    @field_validator("color", mode="before")
+    @classmethod
+    def _validate_color(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            raise ValueError("gradient colour must be a string")
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("gradient colour must not be empty")
+        return stripped
+
+    @field_validator("offset", mode="before")
+    @classmethod
+    def _validate_offset(cls, value: Any) -> Any:
+        return _finite(value, "gradient offset")
+
+
+class Gradient(_SchemaModel):
+    """A linear gradient made of ordered colour stops.
+
+    The two colour shorthand accepts ``start``/``end`` (and their aliases),
+    while ``stops`` and ``colors`` describe multi-colour gradients. Stops are
+    ordered by offset. An angle of zero runs left to right and ninety runs top
+    to bottom.
+    """
+
+    type: GradientType = Field(
+        default=GradientType.LINEAR,
+        validation_alias=AliasChoices("type", "kind"),
+    )
+    stops: list[GradientStop] = Field(
+        min_length=2,
+        validation_alias=AliasChoices("stops", "colors", "colours"),
+    )
+    angle: float = Field(
+        default=0.0,
+        validation_alias=AliasChoices("angle", "direction", "rotation"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_color_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {
+                "stops": [
+                    {"color": data, "offset": 0.0},
+                    {"color": data, "offset": 1.0},
+                ]
+            }
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(data)
+        if "stops" not in values:
+            colors = values.get("colors", values.get("colours"))
+            if colors is not None and not isinstance(colors, (str, bytes)):
+                values["stops"] = [
+                    {
+                        "color": color,
+                        "offset": 0.0
+                        if len(colors) == 1
+                        else index / (len(colors) - 1),
+                    }
+                    for index, color in enumerate(colors)
+                ]
+                values.pop("colors", None)
+                values.pop("colours", None)
+            else:
+                start = _first_present(
+                    values,
+                    "start_color",
+                    "start",
+                    "from_color",
+                    "from",
+                    "color",
+                )
+                end = _first_present(
+                    values,
+                    "end_color",
+                    "end",
+                    "to_color",
+                    "to",
+                    "color2",
+                )
+                if start is not None or end is not None:
+                    values["stops"] = [
+                        {"color": start or "#ffffff", "offset": 0.0},
+                        {"color": end or "#00000000", "offset": 1.0},
+                    ]
+        stops = values.get("stops")
+        if isinstance(stops, list):
+            normalized: list[Any] = []
+            for index, stop in enumerate(stops):
+                default_offset = index / (len(stops) - 1) if len(stops) > 1 else 0.0
+                if isinstance(stop, str):
+                    normalized.append({"color": stop, "offset": default_offset})
+                elif isinstance(stop, Mapping):
+                    item = dict(stop)
+                    if not any(
+                        key in item for key in ("offset", "position", "stop", "at")
+                    ):
+                        item["offset"] = default_offset
+                    normalized.append(item)
+                else:
+                    normalized.append(stop)
+            values["stops"] = normalized
+        return values
+
+    @field_validator("angle", mode="before")
+    @classmethod
+    def _validate_angle(cls, value: Any) -> Any:
+        return _finite(value, "gradient angle")
+
+    @model_validator(mode="after")
+    def _validate_stops(self) -> Self:
+        offsets = [stop.offset for stop in self.stops]
+        if any(left > right for left, right in itertools.pairwise(offsets)):
+            raise ValueError("gradient stops must be ordered by offset")
+        return self
+
+
+def _first_present(values: dict[str, Any], *names: str) -> Any:
+    for name in names:
+        if name in values:
+            return values.pop(name)
+    return None
 
 
 def _parse_size(value: Any) -> tuple[int, int]:
@@ -614,6 +771,65 @@ class ShapeLayer(Layer):
     shape: ShapeType = Field(
         validation_alias=AliasChoices("shape", "shape_type", "form"),
     )
+    fill: str | Gradient | None = Field(
+        default="#ffffff",
+        validation_alias=AliasChoices("fill", "fill_color", "color", "background"),
+    )
+    stroke: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "stroke",
+            "stroke_color",
+            "border",
+            "border_color",
+            "outline",
+        ),
+    )
+    stroke_width: float = Field(
+        default=1.0,
+        ge=0.0,
+        validation_alias=AliasChoices(
+            "stroke_width",
+            "border_width",
+            "outline_width",
+            "line_width",
+        ),
+    )
+    radius: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("radius", "corner_radius", "border_radius"),
+    )
+    gradient: Gradient | None = Field(
+        default=None,
+        validation_alias=AliasChoices("gradient", "fill_gradient"),
+    )
+
+    @field_validator("fill", mode="before")
+    @classmethod
+    def _strip_fill(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("stroke", mode="before")
+    @classmethod
+    def _validate_stroke(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("stroke must be a string")
+        stripped = value.strip()
+        return stripped or None
+
+    @field_validator("stroke_width", "radius", mode="before")
+    @classmethod
+    def _validate_shape_number(cls, value: Any) -> Any:
+        return _finite(value, "shape geometry")
+
+    @model_validator(mode="after")
+    def _validate_gradient_fill(self) -> Self:
+        if isinstance(self.fill, Gradient) and self.gradient is not None:
+            raise ValueError("set either a gradient fill or a gradient, not both")
+        return self
 
     @model_validator(mode="before")
     @classmethod
