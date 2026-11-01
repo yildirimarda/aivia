@@ -395,7 +395,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement keyframes and easing functions for position, scale, rotation and opacity (tests/compose/test_keyframes.py)
 - [x] Add the renderer interface and a Pillow still renderer for canvas, background and image layers with golden image tests and no AI or network imports (tests/compose/test_render_still.py)
 - [x] Add shape layers for rectangles, rounded rectangles, circles and lines with fill, stroke and gradient (tests/compose/test_shapes.py)
-- [ ] Add text layers with full typography control, wrapping and shrink to fit with ellipsis (tests/compose/test_text.py)
+- [x] Add text layers with full typography control, wrapping and shrink to fit with ellipsis (tests/compose/test_text.py)
 - [ ] Add a font manager resolving bundled families with per language fallback chains, treating system fallback as an error when bundled fonts are required (tests/compose/test_fonts.py)
 - [ ] Add sticker and logo layers with nine anchors, margins and an optional drop shadow (tests/compose/test_stickers.py)
 - [ ] Add masks, blend modes and basic filters to image layers with numeric difference tests (tests/compose/test_blend_filters.py)
@@ -431,6 +431,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate keyframe times against their owning layer window so an animation cannot outlive its layer (tests/compose/test_validation.py)
 - [ ] Add typed keyframe fields to the layer schema so concrete layers keep animations and JSON schema exports them (tests/compose/test_schema.py)
 - [ ] Add validated position and size fields to visual layers so renderer geometry round-trips through the schema (tests/compose/test_layers.py)
+- [ ] Wrap composition text with the shared language-aware line break rules instead of splitting long words arbitrarily (tests/compose/test_text.py)
 
 ## Milestone 10: Research engine
 

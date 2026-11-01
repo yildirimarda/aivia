@@ -70,7 +70,11 @@ __all__ = [
     "StickerLayer",
     "TextAlign",
     "TextLayer",
+    "TextOverflow",
+    "TextStyle",
+    "TextWeight",
     "TrackRole",
+    "VerticalAlign",
     "VideoLayer",
     "parse_layer",
 ]
@@ -159,6 +163,115 @@ class TextAlign(StrEnum):
             "centre": cls.CENTER,
             "middle": cls.CENTER,
             "end": cls.RIGHT,
+        }
+        return aliases.get(value.strip().lower())
+
+
+class VerticalAlign(StrEnum):
+    """Vertical placement of the text block inside its layer rectangle."""
+
+    TOP = "top"
+    MIDDLE = "middle"
+    BOTTOM = "bottom"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> VerticalAlign | None:
+        if not isinstance(value, str):
+            return None
+        aliases = {
+            "start": cls.TOP,
+            "center": cls.MIDDLE,
+            "centre": cls.MIDDLE,
+            "end": cls.BOTTOM,
+        }
+        return aliases.get(value.strip().lower())
+
+
+class TextStyle(StrEnum):
+    """The slant of a text layer."""
+
+    NORMAL = "normal"
+    ITALIC = "italic"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> TextStyle | None:
+        if not isinstance(value, str):
+            return None
+        aliases = {
+            "regular": cls.NORMAL,
+            "roman": cls.NORMAL,
+            "oblique": cls.ITALIC,
+        }
+        return aliases.get(value.strip().lower())
+
+
+class TextWeight(StrEnum):
+    """The weight of a text layer, mapped onto the bundled font files."""
+
+    THIN = "thin"
+    LIGHT = "light"
+    REGULAR = "regular"
+    MEDIUM = "medium"
+    SEMIBOLD = "semibold"
+    BOLD = "bold"
+    BLACK = "black"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> TextWeight | None:
+        aliases = {
+            "normal": cls.REGULAR,
+            "book": cls.REGULAR,
+            "demibold": cls.SEMIBOLD,
+            "semi_bold": cls.SEMIBOLD,
+            "semi-bold": cls.SEMIBOLD,
+            "heavy": cls.BLACK,
+            "extra_bold": cls.BLACK,
+            "extrabold": cls.BLACK,
+            "extra-bold": cls.BLACK,
+        }
+        if isinstance(value, int) and not isinstance(value, bool):
+            if value < 1 or value > 1000:
+                return None
+            if value < 300:
+                return cls.THIN if value < 200 else cls.LIGHT
+            if value < 500:
+                return cls.REGULAR
+            if value < 600:
+                return cls.MEDIUM
+            if value < 700:
+                return cls.SEMIBOLD
+            if value < 800:
+                return cls.BOLD
+            return cls.BLACK
+        if not isinstance(value, str):
+            return None
+        key = value.strip().lower()
+        if key.isdigit():
+            return cls._missing_(int(key))
+        return aliases.get(key)
+
+    @property
+    def is_bold(self) -> bool:
+        """Whether this weight selects the bold bundled font member."""
+        return self in (TextWeight.SEMIBOLD, TextWeight.BOLD, TextWeight.BLACK)
+
+
+class TextOverflow(StrEnum):
+    """What happens to text that still does not fit after wrapping."""
+
+    CLIP = "clip"
+    ELLIPSIS = "ellipsis"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> TextOverflow | None:
+        if not isinstance(value, str):
+            return None
+        aliases = {
+            "none": cls.CLIP,
+            "visible": cls.CLIP,
+            "hide": cls.CLIP,
+            "truncate": cls.ELLIPSIS,
+            "dots": cls.ELLIPSIS,
         }
         return aliases.get(value.strip().lower())
 
@@ -725,6 +838,63 @@ class TextLayer(Layer):
         default=TextAlign.LEFT,
         validation_alias=AliasChoices("align", "text_align", "alignment"),
     )
+    vertical_align: VerticalAlign = Field(
+        default=VerticalAlign.TOP,
+        validation_alias=AliasChoices("vertical_align", "valign", "vertical_alignment"),
+    )
+    font_weight: TextWeight = Field(
+        default=TextWeight.REGULAR,
+        validation_alias=AliasChoices("font_weight", "weight", "font-weight"),
+    )
+    font_style: TextStyle = Field(
+        default=TextStyle.NORMAL,
+        validation_alias=AliasChoices("font_style", "style", "font-style"),
+    )
+    line_height: float = Field(
+        default=1.2,
+        gt=0.0,
+        validation_alias=AliasChoices("line_height", "line_spacing", "line-height"),
+    )
+    letter_spacing: float = Field(
+        default=0.0,
+        validation_alias=AliasChoices("letter_spacing", "tracking", "letter-spacing"),
+    )
+    wrap: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("wrap", "wrap_text", "word_wrap"),
+    )
+    max_lines: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("max_lines", "lines", "max-lines"),
+    )
+    shrink_to_fit: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("shrink_to_fit", "shrink", "fit", "auto_shrink"),
+    )
+    min_font_size: float = Field(
+        default=8.0,
+        gt=0.0,
+        validation_alias=AliasChoices("min_font_size", "min_size", "minimum_font_size"),
+    )
+    overflow: TextOverflow = Field(
+        default=TextOverflow.ELLIPSIS,
+        validation_alias=AliasChoices("overflow", "text_overflow"),
+    )
+    ellipsis: str = Field(
+        default="\u2026",
+        min_length=1,
+        validation_alias=AliasChoices("ellipsis", "truncation"),
+    )
+    stroke: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("stroke", "stroke_color", "outline"),
+    )
+    stroke_width: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("stroke_width", "outline_width"),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -742,17 +912,65 @@ class TextLayer(Layer):
             raise ValueError("text must not be empty")
         return value
 
-    @field_validator("font_family", "color", mode="before")
+    @field_validator("font_family", mode="before")
     @classmethod
-    def _strip_text_field(cls, value: Any) -> Any:
+    def _strip_font_family(cls, value: Any) -> Any:
         if not isinstance(value, str):
             raise ValueError("value must be a string")
         return value.strip()
 
-    @field_validator("font_size", mode="before")
+    @field_validator("color", "ellipsis", mode="before")
     @classmethod
-    def _validate_font_size(cls, value: Any) -> Any:
-        return _finite(value, "font_size")
+    def _strip_text_field(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            raise ValueError("value must be a string")
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("value must not be empty")
+        return stripped
+
+    @field_validator("stroke", mode="before")
+    @classmethod
+    def _validate_stroke(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("stroke must be a string")
+        return value.strip() or None
+
+    @field_validator(
+        "font_size",
+        "line_height",
+        "letter_spacing",
+        "min_font_size",
+        "stroke_width",
+        mode="before",
+    )
+    @classmethod
+    def _validate_text_number(cls, value: Any) -> Any:
+        return _finite(value, "text style")
+
+    @field_validator("max_lines", mode="before")
+    @classmethod
+    def _validate_max_lines(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("max_lines must be an integer")
+        return value
+
+    @field_validator("wrap", "shrink_to_fit", mode="before")
+    @classmethod
+    def _validate_text_flag(cls, value: Any) -> Any:
+        if not isinstance(value, bool):
+            raise ValueError("value must be a boolean")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_shrink_bounds(self) -> Self:
+        if self.shrink_to_fit and self.min_font_size > self.font_size:
+            raise ValueError("min_font_size must not exceed font_size")
+        return self
 
 
 class ShapeLayer(Layer):
