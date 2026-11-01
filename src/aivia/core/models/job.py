@@ -130,6 +130,14 @@ class Job(ModelBase):
         default="",
         validation_alias=AliasChoices("run_id", "run"),
     )
+    idempotency_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "idempotency_key",
+            "idempotency",
+            "request_key",
+        ),
+    )
     attempts: int = Field(
         default=0,
         ge=0,
@@ -216,7 +224,13 @@ class Job(ModelBase):
     )
 
     @field_validator(
-        "id", "run_id", "claimed_by", "error_code", "error_message", mode="before"
+        "id",
+        "run_id",
+        "idempotency_key",
+        "claimed_by",
+        "error_code",
+        "error_message",
+        mode="before",
     )
     @classmethod
     def _strip_text(cls, value: Any) -> Any:

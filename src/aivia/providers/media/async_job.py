@@ -37,6 +37,7 @@ from typing import Any, Protocol, Self, runtime_checkable
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import Engine
+from sqlalchemy.exc import IntegrityError
 
 from aivia.core.config.http import HttpClientConfig
 from aivia.core.db.repos import JobRepository
@@ -511,6 +512,9 @@ class DatabaseAsyncJobStore:
         text = _text(key)
         if not text:
             return None
+        matches = self.repository.list(kind=self.kind, idempotency_key=text)
+        if matches:
+            return _from_job(matches[0])
         for job in self.repository.list(kind=self.kind):
             record = _from_job(job)
             if record.idempotency_key == text:
@@ -571,6 +575,7 @@ def _job_values(job: AsyncJob, *, kind: str) -> dict[str, Any]:
         "kind": kind,
         "state": _JOB_STATES[job.state],
         "run_id": "",
+        "idempotency_key": job.idempotency_key,
         "payload": {"request": dict(job.request), "provider": job.provider},
         "metadata": metadata,
         "error_code": job.error_code,
@@ -600,7 +605,7 @@ def _from_job(job: Job) -> AsyncJob:
         provider=_text(internal.get("provider") or raw_payload.get("provider")),
         remote_id=_text(internal.get("remote_id")),
         state=state,
-        idempotency_key=_text(internal.get("idempotency_key")),
+        idempotency_key=_text(job.idempotency_key or internal.get("idempotency_key")),
         request_digest=_text(internal.get("request_digest")),
         request=request,
         result_urls=list(urls),
@@ -839,6 +844,20 @@ class AsyncMediaJobHelper:
             return stored if stored is not None else job
         return self.require(job)
 
+    @staticmethod
+    def _reuse_existing(existing: AsyncJob, *, digest: str, key: str) -> AsyncJob:
+        if existing.request_digest and existing.request_digest != digest:
+            raise IdempotencyConflict(
+                f"idempotency key {key!r} was already used for async "
+                f"job {existing.id} with a different request",
+                details={
+                    "idempotency_key": key,
+                    "job_id": existing.id,
+                    "existing_job_id": existing.id,
+                },
+            )
+        return existing
+
     async def submit(
         self,
         request: Any,
@@ -864,17 +883,7 @@ class AsyncMediaJobHelper:
             if key:
                 existing = self._store.find_by_idempotency_key(key)
                 if existing is not None:
-                    if existing.request_digest and existing.request_digest != digest:
-                        raise IdempotencyConflict(
-                            f"idempotency key {key!r} was already used for async "
-                            f"job {existing.id} with a different request",
-                            details={
-                                "idempotency_key": key,
-                                "job_id": existing.id,
-                                "existing_job_id": existing.id,
-                            },
-                        )
-                    return existing
+                    return self._reuse_existing(existing, digest=digest, key=key)
 
             now = utcnow()
             job = AsyncJob(
@@ -888,7 +897,15 @@ class AsyncMediaJobHelper:
                 created_at=now,
                 updated_at=now,
             )
-            self._store.save(job)
+            try:
+                self._store.save(job)
+            except IntegrityError:
+                if not key:
+                    raise
+                existing = self._store.find_by_idempotency_key(key)
+                if existing is None:
+                    raise
+                return self._reuse_existing(existing, digest=digest, key=key)
             try:
                 response = await self._call(submit_fn, request)
             except Exception as exc:

@@ -34,6 +34,7 @@ from aivia.core.db.schema import metadata
 __all__ = [
     "CLAIM_INDEX_NAME",
     "IDEMPOTENCY_INDEX_NAME",
+    "JOB_IDEMPOTENCY_INDEX_NAME",
     "jobs",
     "runs",
     "stage_runs",
@@ -45,7 +46,11 @@ CLAIM_INDEX_NAME = "ix_jobs_claim"
 IDEMPOTENCY_INDEX_NAME = "uq_runs_idempotency_key"
 """The unique index that rejects a repeated non-empty run idempotency key."""
 
+JOB_IDEMPOTENCY_INDEX_NAME = "uq_jobs_kind_idempotency_key"
+"""The unique index that rejects a repeated non-empty job idempotency key."""
+
 _IDEMPOTENCY_PREDICATE = text("idempotency_key IS NOT NULL AND idempotency_key != ''")
+_JOB_IDEMPOTENCY_PREDICATE = text("idempotency_key != ''")
 
 runs = Table(
     "runs",
@@ -149,6 +154,12 @@ jobs = Table(
     Column("kind", String(64), nullable=False, server_default=text("'run'")),
     Column("state", String(32), nullable=False, server_default=text("'pending'")),
     Column(
+        "idempotency_key",
+        String(255),
+        nullable=False,
+        server_default=text("''"),
+    ),
+    Column(
         "run_id",
         String(64),
         ForeignKey("runs.id", ondelete="CASCADE"),
@@ -191,3 +202,11 @@ jobs = Table(
 
 Index(CLAIM_INDEX_NAME, jobs.c.state, jobs.c.not_before)
 Index("ix_jobs_run_id", jobs.c.run_id)
+Index(
+    JOB_IDEMPOTENCY_INDEX_NAME,
+    jobs.c.kind,
+    jobs.c.idempotency_key,
+    unique=True,
+    sqlite_where=_JOB_IDEMPOTENCY_PREDICATE,
+    postgresql_where=_JOB_IDEMPOTENCY_PREDICATE,
+)

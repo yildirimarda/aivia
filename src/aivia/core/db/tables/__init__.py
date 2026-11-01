@@ -44,6 +44,7 @@ from aivia.core.db.tables.aux import (
 from aivia.core.db.tables.core import (
     CLAIM_INDEX_NAME,
     IDEMPOTENCY_INDEX_NAME,
+    JOB_IDEMPOTENCY_INDEX_NAME,
     jobs,
     runs,
     stage_runs,
@@ -112,6 +113,7 @@ __all__ = [
     "FEEDBACK_CREATED_AT_INDEX_NAME",
     "FEEDBACK_SUBJECT_INDEX_NAME",
     "IDEMPOTENCY_INDEX_NAME",
+    "JOB_IDEMPOTENCY_INDEX_NAME",
     "LLM_CACHE_PROVIDER_INDEX_NAME",
     "ORDER_CREATED_AT_INDEX_NAME",
     "ORDER_IDEMPOTENCY_INDEX_NAME",

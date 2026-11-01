@@ -333,7 +333,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add an end to end media slice test where a second identical run costs nothing and totals match (tests/e2e/test_media_slice.py)
 - [x] Add voice cloning create, list and delete requiring explicit consent and storing provider voice id, consent metadata and owner (tests/media/test_voice_clone.py)
 - [x] Emit alt text and SRT and VTT sidecars for every audio and video output when accessibility output is enabled (tests/media/test_accessibility.py)
-- [ ] Make async media job idempotency keys unique across processes so a repeated key cannot submit twice (tests/providers/media/test_async_job.py)
+- [x] Make async media job idempotency keys unique across processes so a repeated key cannot submit twice (tests/providers/media/test_async_job.py)
 - [ ] Apply the media adaptation layer to every image, video, music and speech provider request before submission (tests/media/test_adapt_integration.py)
 - [ ] Reject oversized or decompression-bomb images in image utilities before decoding (tests/media/test_image_utils.py)
 - [ ] Cache vision image analysis by content hash so re-analyzing an unchanged image makes no paid call (tests/media/test_image_analysis.py)
@@ -359,6 +359,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add voice clone create and delete to the ElevenLabs adapter behind a capability flag (tests/providers/tts/test_elevenlabs_clone.py)
 - [ ] Delete the vendor voice when its local clone record is removed and keep the record when deletion fails (tests/media/test_voice_clone.py)
 - [ ] Store accessibility sidecars through the storage provider so remote audio and video outputs get them too (tests/media/test_accessibility.py)
+- [ ] Wait for an in-flight async submission when a repeated key races it so the caller never receives a job without a remote id (tests/providers/media/test_async_job.py)
+- [ ] Resume an async media job left pending by a crash before the remote id is stored so a repeated key can recover it (tests/providers/media/test_async_job.py)
 
 ## Milestone 9: Composition and rendering
 

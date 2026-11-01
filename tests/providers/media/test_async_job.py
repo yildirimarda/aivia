@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 import pytest
 from sqlalchemy import Engine
+from sqlalchemy.exc import IntegrityError
 
 from aivia.core.db import create_database_engine, upgrade_database
 from aivia.core.errors import InvalidRequestError, ValidationError
@@ -20,6 +21,7 @@ from aivia.providers.media import (
     AsyncJobState,
     AsyncJobTimeoutError,
     AsyncMediaJobHelper,
+    DatabaseAsyncJobStore,
 )
 
 
@@ -67,6 +69,20 @@ class FakeBackend:
 
     async def cancel(self, remote_id: str) -> None:
         self.cancels.append(remote_id)
+
+
+class ForgetfulStore(DatabaseAsyncJobStore):
+    """A store whose first key lookup misses, like a racing process."""
+
+    def __init__(self, engine: Engine, *, kind: str = "media_async") -> None:
+        super().__init__(engine, kind=kind)
+        self._miss_once = True
+
+    def find_by_idempotency_key(self, key: str) -> AsyncJob | None:
+        if self._miss_once:
+            self._miss_once = False
+            return None
+        return super().find_by_idempotency_key(key)
 
 
 @pytest.fixture
@@ -132,6 +148,90 @@ def test_submit_persists_the_remote_id_and_reuses_an_idempotency_key(
             helper.submit({"prompt": "a different wave"}, idempotency_key="request-1")
         )
     assert len(backend.submitted) == 1
+
+
+def test_a_repeated_key_from_another_process_cannot_submit_twice(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "data" / "aivia.db"
+    upgrade_database(database)
+    winner_engine = create_database_engine(database)
+    racer_engine = create_database_engine(database)
+    try:
+        winner_backend = FakeBackend()
+        winner = AsyncMediaJobHelper(
+            winner_backend,
+            engine=winner_engine,
+            provider="fake-media",
+            timeout_seconds=5.0,
+            poll_interval_seconds=1.0,
+            clock=FakeClock(),
+        )
+        racer_backend = FakeBackend()
+        racer = AsyncMediaJobHelper(
+            racer_backend,
+            store=ForgetfulStore(racer_engine),
+            provider="fake-media",
+            timeout_seconds=5.0,
+            poll_interval_seconds=1.0,
+            clock=FakeClock(),
+        )
+
+        first = asyncio.run(
+            winner.submit({"prompt": "a wave"}, idempotency_key="shared-key")
+        )
+        second = asyncio.run(
+            racer.submit({"prompt": "a wave"}, idempotency_key="shared-key")
+        )
+
+        assert second.id == first.id
+        assert second.remote_id == first.remote_id == "remote-1"
+        assert winner_backend.submitted == [{"prompt": "a wave"}]
+        assert racer_backend.submitted == []
+
+        with pytest.raises(IdempotencyConflict):
+            asyncio.run(
+                racer.submit(
+                    {"prompt": "a different wave"},
+                    idempotency_key="shared-key",
+                )
+            )
+        assert racer_backend.submitted == []
+    finally:
+        winner_engine.dispose()
+        racer_engine.dispose()
+
+
+def test_the_jobs_table_rejects_a_duplicate_async_idempotency_key(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "data" / "aivia.db"
+    upgrade_database(database)
+    engine = create_database_engine(database)
+    try:
+        store = DatabaseAsyncJobStore(engine)
+        store.save(
+            AsyncJob(id="job_first", provider="fake-media", idempotency_key="shared")
+        )
+
+        with pytest.raises(IntegrityError):
+            store.save(
+                AsyncJob(
+                    id="job_second",
+                    provider="fake-media",
+                    idempotency_key="shared",
+                )
+            )
+
+        store.save(AsyncJob(id="job_empty_a", provider="fake-media"))
+        store.save(AsyncJob(id="job_empty_b", provider="fake-media"))
+
+        other_kind = DatabaseAsyncJobStore(engine, kind="other_kind")
+        other_kind.save(
+            AsyncJob(id="job_other", provider="fake-media", idempotency_key="shared")
+        )
+    finally:
+        engine.dispose()
 
 
 def test_a_restarted_helper_resumes_the_persisted_job_without_resubmitting(
