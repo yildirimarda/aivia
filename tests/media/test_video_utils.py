@@ -13,6 +13,7 @@ import pytest
 
 from aivia.core.errors import ValidationError
 from aivia.media.video_utils import (
+    VideoAudioWarning,
     VideoOutputFormat,
     VideoSizeError,
     change_speed,
@@ -221,6 +222,7 @@ def test_change_speed_stretches_video_and_chains_atempo(tmp_path: Path) -> None:
         tmp_path / "fast.mp4",
         speed=4.0,
         ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner([5.0], audio=True),
     )
 
     graph = filter_graph(calls[0])
@@ -239,6 +241,7 @@ def test_change_speed_slows_audio_and_can_drop_it(tmp_path: Path) -> None:
         tmp_path / "slow.mp4",
         speed=0.25,
         ffmpeg_runner=writer(calls=slow_calls),
+        ffprobe_runner=probe_runner([5.0], audio=True),
     )
     change_speed(
         source,
@@ -258,6 +261,33 @@ def test_change_speed_rejects_a_non_positive_factor(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError, match="positive"):
         change_speed(source, tmp_path / "out.mp4", speed=0)
+
+
+def test_change_speed_drops_audio_and_warns_when_the_clip_has_none(
+    tmp_path: Path,
+) -> None:
+    source = source_file(tmp_path)
+    calls: list[list[str]] = []
+    probe_calls: list[list[str]] = []
+
+    with pytest.warns(VideoAudioWarning, match="no audio track"):
+        change_speed(
+            source,
+            tmp_path / "silent.mp4",
+            speed=2.0,
+            ffmpeg_runner=writer(calls=calls),
+            ffprobe_runner=probe_runner(
+                [5.0],
+                audio=False,
+                calls=probe_calls,
+            ),
+        )
+
+    assert len(probe_calls) == 1
+    assert "-af" not in calls[0]
+    assert "0:a:0?" not in calls[0]
+    assert "-an" in calls[0]
+    assert "atempo" not in filter_graph(calls[0])
 
 
 def test_concatenate_without_crossfade_uses_a_concat_list(tmp_path: Path) -> None:
@@ -490,12 +520,40 @@ def test_seamless_loop_can_keep_reversed_audio(tmp_path: Path) -> None:
         tmp_path / "loop.mp4",
         keep_audio=True,
         ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner([5.0], audio=True),
     )
 
     graph = filter_graph(calls[0])
     assert "asplit=2[af][ar]" in graph
     assert "areverse[arr]" in graph
     assert "[a]" in calls[0]
+
+
+def test_seamless_loop_drops_audio_and_warns_when_the_clip_has_none(
+    tmp_path: Path,
+) -> None:
+    source = source_file(tmp_path)
+    calls: list[list[str]] = []
+    probe_calls: list[list[str]] = []
+
+    with pytest.warns(VideoAudioWarning, match="no audio track"):
+        make_seamless_loop(
+            source,
+            tmp_path / "loop.mp4",
+            keep_audio=True,
+            ffmpeg_runner=writer(calls=calls),
+            ffprobe_runner=probe_runner(
+                [5.0],
+                audio=False,
+                calls=probe_calls,
+            ),
+        )
+
+    assert len(probe_calls) == 1
+    graph = filter_graph(calls[0])
+    assert "asplit" not in graph
+    assert "areverse" not in graph
+    assert "-an" in calls[0]
 
 
 def test_convert_video_infers_gif_and_uses_a_palette(tmp_path: Path) -> None:

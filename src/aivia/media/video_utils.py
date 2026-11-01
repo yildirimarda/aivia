@@ -24,6 +24,7 @@ import math
 import os
 import subprocess
 import tempfile
+import warnings
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
@@ -49,7 +50,10 @@ __all__ = [
     "DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS",
     "DEFAULT_VIDEO_CRF",
     "DEFAULT_VIDEO_QUALITY",
+    "AudioDroppedWarning",
     "FFmpegRunner",
+    "VideoAudioDroppedWarning",
+    "VideoAudioWarning",
     "VideoOutputFormat",
     "VideoSizeError",
     "VideoSource",
@@ -147,6 +151,17 @@ class VideoSizeError(ValidationError):
     """No encode attempt fit the requested byte cap."""
 
     code = "video_size"
+
+
+class VideoAudioWarning(UserWarning):
+    """Audio was requested but the source has no audio track."""
+
+
+AudioDroppedWarning = VideoAudioWarning
+"""Alias for :class:`VideoAudioWarning`."""
+
+VideoAudioDroppedWarning = VideoAudioWarning
+"""Alias for :class:`VideoAudioWarning`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -645,6 +660,22 @@ def _atempo_chain(speed: float) -> str:
     return ",".join(f"atempo={factor:.6f}" for factor in factors)
 
 
+def _has_audio(
+    path: Path,
+    *,
+    executable: str,
+    runner: FFprobeRunner | None,
+    timeout_seconds: float,
+) -> bool:
+    info = run_ffprobe(
+        path,
+        executable=executable,
+        timeout_seconds=timeout_seconds,
+        runner=runner,
+    )
+    return bool(info.audio_streams)
+
+
 def change_speed(
     source: VideoSource,
     destination: str | Path,
@@ -654,12 +685,15 @@ def change_speed(
     output_format: str | VideoOutputFormat | None = None,
     ffmpeg_executable: str = "ffmpeg",
     ffmpeg_runner: FFmpegRunner | None = None,
+    ffprobe_executable: str = "ffprobe",
+    ffprobe_runner: FFprobeRunner | None = None,
     timeout_seconds: float = DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS,
 ) -> Path:
     """Change playback speed; ``2.0`` doubles and ``0.5`` halves it.
 
     Audio is stretched with an ``atempo`` chain so it stays in sync. Set
-    ``keep_audio`` to false to drop the track instead.
+    ``keep_audio`` to false to drop the track instead. A source without an
+    audio track is encoded silently and emits :class:`VideoAudioWarning`.
     """
     path = Path(destination)
     fmt = (
@@ -670,11 +704,24 @@ def change_speed(
     factor = _number(speed, label="speed", positive=True)
     _check_destination([source], path)
     attempt = _default_attempt(fmt)
-    audio = keep_audio and fmt.supports_audio
+    wants_audio = keep_audio and fmt.supports_audio
     filters = [f"setpts=(PTS-STARTPTS)/{factor:.6f}"]
     filters.extend(_post_filters(attempt, width=None, height=None))
 
     with _materialize(source, prefix="aivia-video-speed-") as active:
+        audio = wants_audio
+        if audio and not _has_audio(
+            active,
+            executable=ffprobe_executable,
+            runner=ffprobe_runner,
+            timeout_seconds=timeout_seconds,
+        ):
+            audio = False
+            warnings.warn(
+                "source has no audio track; audio was dropped",
+                VideoAudioWarning,
+                stacklevel=2,
+            )
 
         def build(temporary: Path) -> list[str]:
             argv = _base(ffmpeg_executable)
@@ -1122,6 +1169,8 @@ def make_seamless_loop(
     output_format: str | VideoOutputFormat | None = None,
     ffmpeg_executable: str = "ffmpeg",
     ffmpeg_runner: FFmpegRunner | None = None,
+    ffprobe_executable: str = "ffprobe",
+    ffprobe_runner: FFprobeRunner | None = None,
     timeout_seconds: float = DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS,
 ) -> Path:
     """Turn a clip into a palindrome loop whose ends meet exactly.
@@ -1129,7 +1178,9 @@ def make_seamless_loop(
     The clip is followed by a reversed copy, so the last frame of the forward
     pass matches the first frame of the reverse pass and the last frame of the
     reverse pass matches the first frame of the forward pass. Audio is dropped
-    unless ``keep_audio`` is set, in which case it is reversed as well.
+    unless ``keep_audio`` is set, in which case it is reversed as well. A source
+    without an audio track is looped silently and emits
+    :class:`VideoAudioWarning`.
     """
     path = Path(destination)
     fmt = (
@@ -1139,32 +1190,45 @@ def make_seamless_loop(
     )
     _check_destination([source], path)
     attempt = _default_attempt(fmt)
-    audio = keep_audio and fmt.supports_audio
+    wants_audio = keep_audio and fmt.supports_audio
     post_filters = _post_filters(attempt, width=None, height=None)
-    parts = [
-        "[0:v]split=2[forward][reverse];"
-        "[reverse]reverse[reversed];"
-        "[forward][reversed]concat=n=2:v=1:a=0[v]"
-    ]
-    video_label = "v"
-    audio_label: str | None = None
-    if audio:
-        parts.append(
-            "[0:a]asplit=2[af][ar];[ar]areverse[arr];[af][arr]concat=n=2:v=0:a=1[a]"
-        )
-        audio_label = "a"
-    if post_filters:
-        parts.append(f"[{video_label}]{','.join(post_filters)}[vpost]")
-        video_label = "vpost"
-    graph = _finalize_graph(
-        parts,
-        video_label=video_label,
-        audio_label=audio_label,
-        fmt=fmt,
-        quality=attempt.quality,
-    )
 
     with _materialize(source, prefix="aivia-video-loop-") as active:
+        audio = wants_audio
+        if audio and not _has_audio(
+            active,
+            executable=ffprobe_executable,
+            runner=ffprobe_runner,
+            timeout_seconds=timeout_seconds,
+        ):
+            audio = False
+            warnings.warn(
+                "source has no audio track; audio was dropped",
+                VideoAudioWarning,
+                stacklevel=2,
+            )
+        parts = [
+            "[0:v]split=2[forward][reverse];"
+            "[reverse]reverse[reversed];"
+            "[forward][reversed]concat=n=2:v=1:a=0[v]"
+        ]
+        video_label = "v"
+        audio_label: str | None = None
+        if audio:
+            parts.append(
+                "[0:a]asplit=2[af][ar];[ar]areverse[arr];[af][arr]concat=n=2:v=0:a=1[a]"
+            )
+            audio_label = "a"
+        if post_filters:
+            parts.append(f"[{video_label}]{','.join(post_filters)}[vpost]")
+            video_label = "vpost"
+        graph = _finalize_graph(
+            parts,
+            video_label=video_label,
+            audio_label=audio_label,
+            fmt=fmt,
+            quality=attempt.quality,
+        )
 
         def build(temporary: Path) -> list[str]:
             argv = _base(ffmpeg_executable)
