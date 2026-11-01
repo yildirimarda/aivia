@@ -391,7 +391,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Define the composition schema with canvas, duration, fps, layers, audio tracks, effects and a schema version (tests/compose/test_schema.py)
 - [x] Add layer types for image, video, text, shape, sticker and logo with validation (tests/compose/test_layers.py)
 - [x] Validate compositions for unique ids, timings inside the duration, existing assets, sorted keyframes and value ranges, returning all errors (tests/compose/test_validation.py)
-- [ ] Support loading and saving compositions as YAML and JSON plus a JSON schema export (tests/compose/test_io.py)
+- [x] Support loading and saving compositions as YAML and JSON plus a JSON schema export (tests/compose/test_io.py)
 - [ ] Implement keyframes and easing functions for position, scale, rotation and opacity (tests/compose/test_keyframes.py)
 - [ ] Add the renderer interface and a Pillow still renderer for canvas, background and image layers with golden image tests and no AI or network imports (tests/compose/test_render_still.py)
 - [ ] Add shape layers for rectangles, rounded rectangles, circles and lines with fill, stroke and gradient (tests/compose/test_shapes.py)
@@ -427,6 +427,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Shape mixed left to right and right to left text correctly with per language direction defaults (tests/compose/test_bidi.py)
 - [ ] Upgrade older composition schema versions before validation and reject newer ones with a clear error (tests/compose/test_migrations.py)
 - [ ] Parse composition layers into their concrete classes so type specific fields are validated (tests/compose/test_validation.py)
+- [ ] Write composition files atomically so an interrupted save cannot leave a truncated document (tests/compose/test_io.py)
 
 ## Milestone 10: Research engine
 
