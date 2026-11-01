@@ -363,6 +363,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Resume an async media job left pending by a crash before the remote id is stored so a repeated key can recover it (tests/providers/media/test_async_job.py)
 - [ ] Key the media cache on the adapted request so a snapped size or clamped count is fully reused on a repeat (tests/media/test_adapt_cache.py)
 - [ ] Declare every option each media adapter accepts in supported_options so adaptation cannot reject a value the adapter handles (tests/providers/test_supported_options.py)
+- [ ] Cap animated image frame count and total decoded pixels in image utilities (tests/media/test_image_utils.py)
 
 ## Milestone 9: Composition and rendering
 

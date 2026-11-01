@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 from io import BytesIO
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from PIL import Image, PngImagePlugin
 
 from aivia.core.errors import ValidationError
 from aivia.media.image_utils import (
+    DEFAULT_MAX_IMAGE_PIXELS,
     ImageFit,
     ImageFormat,
     aspect_crop,
@@ -21,6 +23,18 @@ from aivia.media.image_utils import (
     strip_metadata,
     transform_image,
 )
+
+
+def declared_png(width: int, height: int) -> bytes:
+    header = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\x0dIHDR"
+    body = struct.pack(">II", width, height) + b"\x08\x02\x00\x00\x00"
+    return header + body + b"\x00\x00\x00\x00"
+
+
+def encoded_png(size: tuple[int, int] = (100, 50)) -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", size, (1, 2, 3)).save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 def two_tone(size: tuple[int, int] = (100, 50)) -> Image.Image:
@@ -288,6 +302,69 @@ def test_open_image_accepts_bytes_and_rejects_invalid_data() -> None:
     assert opened.size == (10, 10)
     with pytest.raises(ValidationError, match="could not open"):
         open_image(b"not an image")
+
+
+def test_open_image_rejects_a_decompression_bomb_before_decoding() -> None:
+    payload = declared_png(20_000, 20_000)
+
+    with pytest.raises(ValidationError, match="decompression bomb guard") as caught:
+        open_image(payload)
+
+    assert caught.value.details["pixels"] == 400_000_000
+    assert caught.value.details["limit"] == DEFAULT_MAX_IMAGE_PIXELS
+    assert caught.value.details["width"] == 20_000
+
+
+def test_open_image_rejects_a_decompression_bomb_file(tmp_path: Path) -> None:
+    source_path = tmp_path / "bomb.png"
+    source_path.write_bytes(declared_png(20_000, 20_000))
+
+    with pytest.raises(ValidationError, match="decompression bomb guard") as caught:
+        open_image(source_path)
+
+    assert caught.value.details["pixels"] == 400_000_000
+
+
+def test_open_image_honors_a_lower_pixel_limit() -> None:
+    payload = encoded_png((100, 50))
+
+    with pytest.raises(ValidationError, match="decompression bomb guard") as caught:
+        open_image(payload, max_pixels=4_999)
+
+    assert caught.value.details["pixels"] == 5_000
+    assert caught.value.details["limit"] == 4_999
+
+    opened = open_image(payload, max_pixels=5_000)
+    assert opened.size == (100, 50)
+
+
+def test_open_image_rejects_oversized_bytes_before_decoding() -> None:
+    payload = encoded_png()
+
+    with pytest.raises(ValidationError, match="byte cap") as caught:
+        open_image(payload, max_bytes=len(payload) - 1)
+
+    assert caught.value.details["size_bytes"] == len(payload)
+    assert caught.value.details["limit"] == len(payload) - 1
+
+
+def test_open_image_rejects_an_oversized_file(tmp_path: Path) -> None:
+    source_path = tmp_path / "large.png"
+    source_path.write_bytes(encoded_png())
+
+    with pytest.raises(ValidationError, match="byte cap"):
+        open_image(source_path, max_bytes=8)
+
+
+def test_transform_image_rejects_a_decompression_bomb_source(tmp_path: Path) -> None:
+    source_path = tmp_path / "bomb.png"
+    source_path.write_bytes(declared_png(20_000, 20_000))
+    destination = tmp_path / "out.png"
+
+    with pytest.raises(ValidationError, match="decompression bomb guard"):
+        transform_image(source_path, destination)
+
+    assert not destination.exists()
 
 
 def test_format_parse_rejects_an_unsupported_format() -> None:
