@@ -406,7 +406,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement keyframed motion in video including Ken Burns and parallax with sampled frame checks (slow, tests/compose/test_motion.py)
 - [x] Render text in video with entrance and exit animations sampled at start, middle and end (slow, tests/compose/test_text_video.py)
 - [x] Generate procedural overlays such as confetti, sparkles, snow and bokeh deterministically by seed without external assets (slow, tests/compose/test_overlays.py)
-- [ ] Implement cut, crossfade and slide transitions with sampled frame checks (slow, tests/compose/test_transitions.py)
+- [x] Implement cut, crossfade and slide transitions with sampled frame checks (slow, tests/compose/test_transitions.py)
 - [ ] Mix audio tracks with volume, offsets, fades and ducking to the configured loudness and burn subtitles inside the safe area (slow, tests/compose/test_audio_subs.py)
 - [ ] Drive resolution, fps, codec, bitrate, loudness and duration from config with platform and profile overrides (slow, tests/compose/test_output_profiles.py)
 - [ ] Produce optimized GIF and animated WebP outputs respecting loop flags and size caps (slow, tests/compose/test_anim_outputs.py)
