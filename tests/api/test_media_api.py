@@ -547,6 +547,83 @@ def test_media_api_runner_heartbeats_a_running_job(
     assert stored.attempts == 1
 
 
+def test_media_api_runner_cancels_the_in_flight_call_when_its_claim_is_recovered(
+    engine: Engine,
+    toolkit: MediaToolkit,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue = JobQueue(engine)
+    job = queue.enqueue(
+        Job(
+            kind="media.image",
+            payload={
+                "kind": "image",
+                "request": {"prompt": "A stranded lighthouse"},
+            },
+        )
+    )
+    entered = asyncio.Event()
+    cancelled = asyncio.Event()
+    tick = asyncio.Event()
+
+    async def blocking_generate(
+        kind: str,
+        request: Any = None,
+        **options: Any,
+    ) -> MediaResult:
+        entered.set()
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        raise AssertionError("the media call should have been cancelled")
+
+    monkeypatch.setattr(toolkit, "generate", blocking_generate)
+
+    class Clock:
+        def __init__(self) -> None:
+            self.now = datetime.now(UTC)
+
+        def __call__(self) -> datetime:
+            return self.now
+
+    clock = Clock()
+
+    async def sleep(seconds: float) -> None:
+        await tick.wait()
+        tick.clear()
+
+    runner = MediaJobRunner(
+        lambda: engine,
+        lambda: toolkit,
+        jobs=JobsConfig(heartbeat_seconds=1, stale_after_seconds=60),
+        clock=clock,
+        sleep=sleep,
+    )
+
+    async def main() -> None:
+        task = asyncio.create_task(runner.run(job.id))
+        await entered.wait()
+        recovered = queue.recover_stale(
+            stale_after_seconds=1,
+            now=clock.now + timedelta(seconds=2),
+        )
+        assert [item.id for item in recovered] == [job.id]
+        tick.set()
+        await asyncio.wait_for(task, timeout=2)
+
+    asyncio.run(main())
+
+    assert cancelled.is_set()
+    stored = queue.get(job.id)
+    assert stored is not None
+    assert stored.state is JobState.PENDING
+    assert stored.attempts == 1
+    assert stored.error_code == "stale_heartbeat"
+    assert "media" not in stored.metadata
+
+
 def test_api_startup_leaves_running_jobs_of_other_kinds_for_the_worker(
     engine: Engine,
     toolkit: MediaToolkit,
