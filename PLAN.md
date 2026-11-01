@@ -436,6 +436,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate mask asset references in compositions so missing masks fail before rendering (tests/compose/test_validation.py)
 - [ ] Scale vision face rectangles to canvas coordinates when a background image is fitted (tests/compose/test_placement.py)
 - [ ] Apply the contrast utility to text and subtitle layers from render config so low contrast backgrounds get a treatment (tests/compose/test_contrast.py)
+- [ ] Apply masks, blend modes and filters to video image layers in the FFmpeg command (tests/compose/test_ffmpeg_cmd.py)
 
 ## Milestone 10: Research engine
 
