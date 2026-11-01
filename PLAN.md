@@ -334,7 +334,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add voice cloning create, list and delete requiring explicit consent and storing provider voice id, consent metadata and owner (tests/media/test_voice_clone.py)
 - [x] Emit alt text and SRT and VTT sidecars for every audio and video output when accessibility output is enabled (tests/media/test_accessibility.py)
 - [x] Make async media job idempotency keys unique across processes so a repeated key cannot submit twice (tests/providers/media/test_async_job.py)
-- [ ] Apply the media adaptation layer to every image, video, music and speech provider request before submission (tests/media/test_adapt_integration.py)
+- [x] Apply the media adaptation layer to every image, video, music and speech provider request before submission (tests/media/test_adapt_integration.py)
 - [ ] Reject oversized or decompression-bomb images in image utilities before decoding (tests/media/test_image_utils.py)
 - [ ] Cache vision image analysis by content hash so re-analyzing an unchanged image makes no paid call (tests/media/test_image_analysis.py)
 - [ ] Record the analysis provider and model on the result so provenance survives storage (tests/media/test_image_analysis.py)
