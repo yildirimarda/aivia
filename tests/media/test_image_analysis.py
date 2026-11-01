@@ -5,19 +5,22 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Iterator
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import pytest
 from PIL import Image
+from sqlalchemy import Engine
 
+from aivia.core.db import create_database_engine, upgrade_database
 from aivia.core.errors import ValidationError
 from aivia.core.models.asset import AssetAnalysis, FaceRegion
 from aivia.llm.structured import StructuredOutputHelper
 from aivia.media.image_analysis import (
     ImageAnalysis,
+    ImageAnalysisCache,
     ImageAnalyzer,
     analyze_image,
     analyze_image_offline,
@@ -28,6 +31,7 @@ from aivia.media.image_analysis import (
     detect_text,
     dominant_colors,
     generate_alt_text,
+    image_content_hash,
     image_dimensions,
 )
 from aivia.providers.protocols.llm import (
@@ -43,6 +47,16 @@ from aivia.providers.protocols.llm import (
 
 def _run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
+
+
+@pytest.fixture
+def engine() -> Iterator[Engine]:
+    created = create_database_engine(url="sqlite+pysqlite:///:memory:")
+    upgrade_database(engine=created)
+    try:
+        yield created
+    finally:
+        created.dispose()
 
 
 def _image_bytes(
@@ -311,3 +325,142 @@ def test_build_analysis_request_rejects_an_empty_prompt() -> None:
 
 def test_analyze_image_sync_wraps_the_async_function() -> None:
     assert analyze_image_sync(_image_bytes()).width == 100
+
+
+def test_the_content_hash_is_the_same_for_bytes_a_path_and_an_open_image(
+    tmp_path: Path,
+) -> None:
+    data = _image_bytes()
+    path = tmp_path / "image.png"
+    path.write_bytes(data)
+    opened = Image.open(path)
+
+    expected = image_content_hash(data)
+    assert image_content_hash(path) == expected
+    assert image_content_hash(opened) == expected
+    assert image_content_hash(_solid_bytes((0, 0, 0, 255))) != expected
+
+
+def test_vision_analysis_is_cached_by_content_hash(engine: Engine) -> None:
+    provider = FakeVisionProvider({"description": "cached", "alt_text": "cached"})
+    cache = ImageAnalysisCache(engine)
+    data = _image_bytes()
+
+    first = _run(analyze_image(data, provider=provider, cache=cache))
+    second = _run(analyze_image(data, provider=provider, cache=cache))
+
+    assert first == second
+    assert second.description == "cached"
+    assert len(provider.requests) == 1
+
+
+def test_a_cached_analysis_survives_a_new_cache_instance(engine: Engine) -> None:
+    data = _image_bytes()
+    first_provider = FakeVisionProvider(
+        {"description": "from the first call", "alt_text": "first"},
+    )
+    _run(
+        analyze_image(
+            data,
+            provider=first_provider,
+            cache=ImageAnalysisCache(engine),
+        )
+    )
+
+    second_provider = FakeVisionProvider(
+        {"description": "from the second call", "alt_text": "second"},
+    )
+    analysis = _run(
+        analyze_image(
+            data,
+            provider=second_provider,
+            cache=ImageAnalysisCache(engine),
+        )
+    )
+
+    assert second_provider.requests == []
+    assert analysis.description == "from the first call"
+    assert analysis.alt_text == "first"
+
+
+def test_changed_image_content_is_not_served_from_the_cache(engine: Engine) -> None:
+    provider = FakeVisionProvider({"description": "seen", "alt_text": "seen"})
+    cache = ImageAnalysisCache(engine)
+
+    _run(analyze_image(_image_bytes(), provider=provider, cache=cache))
+    _run(
+        analyze_image(
+            _solid_bytes((1, 2, 3, 255)),
+            provider=provider,
+            cache=cache,
+        )
+    )
+
+    assert len(provider.requests) == 2
+
+
+def test_no_cache_bypasses_lookup_and_store(engine: Engine) -> None:
+    provider = FakeVisionProvider({"description": "fresh", "alt_text": "fresh"})
+    cache = ImageAnalysisCache(engine)
+    data = _image_bytes()
+
+    _run(analyze_image(data, provider=provider, cache=cache))
+    _run(analyze_image(data, provider=provider, cache=cache, no_cache=True))
+    _run(analyze_image(data, provider=provider, cache=cache, no_cache=True))
+
+    assert len(provider.requests) == 3
+
+
+def test_a_cache_hit_still_recomputes_offline_fields(engine: Engine) -> None:
+    provider = FakeVisionProvider({"description": "cached", "alt_text": "cached"})
+    cache = ImageAnalysisCache(engine)
+    data = _image_bytes()
+
+    _run(analyze_image(data, provider=provider, cache=cache, color_count=1))
+    analysis = _run(
+        analyze_image(data, provider=provider, cache=cache, color_count=2)
+    )
+
+    assert len(provider.requests) == 1
+    assert analysis.colors == ["#ff0000", "#0000ff"]
+
+
+def test_the_analyzer_class_reuses_the_analysis_cache(engine: Engine) -> None:
+    provider = FakeVisionProvider({"description": "reused", "alt_text": "reused"})
+    analyzer = ImageAnalyzer(provider, cache=ImageAnalysisCache(engine))
+    data = _image_bytes()
+
+    first = _run(analyzer(data))
+    second = _run(analyzer(data))
+
+    assert first == second
+    assert analyzer.cache is not None
+    assert len(provider.requests) == 1
+
+
+def test_a_different_prompt_does_not_reuse_the_cached_analysis(
+    engine: Engine,
+) -> None:
+    provider = FakeVisionProvider({"description": "seen", "alt_text": "seen"})
+    cache = ImageAnalysisCache(engine)
+    data = _image_bytes()
+
+    _run(analyze_image(data, provider=provider, cache=cache, prompt="first"))
+    _run(analyze_image(data, provider=provider, cache=cache, prompt="second"))
+
+    assert len(provider.requests) == 2
+
+
+def test_a_cache_hit_records_a_zero_cost_event(engine: Engine) -> None:
+    provider = FakeVisionProvider({"description": "seen", "alt_text": "seen"})
+    cache = ImageAnalysisCache(engine)
+    data = _image_bytes()
+
+    _run(analyze_image(data, provider=provider, cache=cache))
+    _run(analyze_image(data, provider=provider, cache=cache))
+
+    assert cache.cache is not None
+    events = cache.cache.cost.events()
+    assert len(events) == 1
+    assert events[0].amount_usd == 0.0
+    assert events[0].metadata["cache"] == "hit"

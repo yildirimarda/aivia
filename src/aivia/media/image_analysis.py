@@ -17,18 +17,24 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import inspect
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from PIL import Image, ImageOps
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import Engine
 
+from aivia.core.asset_cache import AssetCache, AssetCacheKey
 from aivia.core.errors import ValidationError
-from aivia.core.models.asset import AssetAnalysis, FaceRegion
+from aivia.core.models.asset import Asset, AssetAnalysis, AssetKind, FaceRegion
+from aivia.core.models.base import canonical_json
+from aivia.llm.cache import provider_name
 from aivia.llm.structured import StructuredOutputHelper, StructuredOutputResult
 from aivia.media.image_utils import ImageSource, open_image
 from aivia.providers.protocols.llm import (
@@ -47,6 +53,8 @@ __all__ = [
     "DEFAULT_COLOR_COUNT",
     "DEFAULT_VISION_PROMPT",
     "ImageAnalysis",
+    "ImageAnalysisCache",
+    "ImageAnalysisCacheKey",
     "ImageAnalysisResult",
     "ImageAnalyzer",
     "VisionAnalysis",
@@ -75,6 +83,7 @@ __all__ = [
     "generate_description",
     "get_image_dimensions",
     "image_colors",
+    "image_content_hash",
     "image_dimensions",
     "make_alt_text",
     "palette",
@@ -623,6 +632,203 @@ def _image_bytes(source: VisionSource) -> bytes:
     return Path(source).read_bytes()
 
 
+def image_content_hash(source: VisionSource) -> str:
+    """Return a stable SHA-256 hash of the displayed pixels in *source*.
+
+    The image is decoded and re-encoded as PNG before hashing, so the same
+    picture has the same hash whether the caller passes bytes, a path or an
+    open :class:`PIL.Image.Image`.
+    """
+    image = _as_image(source)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return hashlib.sha256(buffer.getvalue()).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class ImageAnalysisCacheKey:
+    """Everything that makes two vision analyses the same paid call.
+
+    ``content_hash`` identifies the pixels. The prompt, model, role and extra
+    parameters are included because they change what a vision model returns.
+    """
+
+    content_hash: str
+    prompt: str = ""
+    model: str = ""
+    role: str = ""
+    parameters: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "content_hash", self.content_hash.strip().lower())
+        object.__setattr__(self, "prompt", self.prompt.strip())
+        object.__setattr__(self, "model", self.model.strip())
+        object.__setattr__(self, "role", self.role.strip())
+        object.__setattr__(self, "parameters", dict(self.parameters or {}))
+
+    @property
+    def digest(self) -> str:
+        """The stable SHA-256 digest used as the in-memory cache key."""
+        payload = {
+            "content_hash": self.content_hash,
+            "prompt": self.prompt,
+            "model": self.model,
+            "role": self.role,
+            "parameters": dict(self.parameters),
+        }
+        encoded = canonical_json(payload).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @property
+    def cache_key(self) -> str:
+        """Alias for :attr:`digest`."""
+        return self.digest
+
+    def asset_key(self) -> AssetCacheKey:
+        """Return the key used when the cache is backed by an asset cache."""
+        parameters = dict(self.parameters)
+        parameters["content_hash"] = self.content_hash
+        parameters["role"] = self.role
+        return AssetCacheKey(
+            provider="",
+            model=self.model,
+            prompt=self.prompt,
+            parameters=parameters,
+            reference_hashes=(f"image:{self.content_hash}",),
+        )
+
+
+class ImageAnalysisCache:
+    """Cache vision analysis results by image content and call settings.
+
+    The cache always keeps results in memory. When an SQLAlchemy
+    :class:`~sqlalchemy.Engine` or an
+    :class:`~aivia.core.asset_cache.AssetCache` is supplied, results are also
+    written to the ``asset_cache`` table, so a new cache instance on the same
+    database can answer without another paid vision call. A hit records a
+    zero-amount cost event when persistence is configured.
+    """
+
+    def __init__(
+        self,
+        engine: Engine | None = None,
+        *,
+        cache: AssetCache | None = None,
+        no_cache: bool = False,
+    ) -> None:
+        if engine is not None and cache is not None:
+            raise TypeError("pass either an engine or a cache, not both")
+        if cache is not None and not isinstance(cache, AssetCache):
+            raise TypeError("cache must be an AssetCache")
+        if cache is None and engine is not None:
+            cache = AssetCache(engine)
+        if cache is not None and no_cache:
+            cache.no_cache = True
+        self._cache = cache
+        self._memory: dict[str, ImageAnalysis] = {}
+        self.no_cache = bool(no_cache)
+
+    @property
+    def cache(self) -> AssetCache | None:
+        """The persistent asset cache, when one was configured."""
+        return self._cache
+
+    @property
+    def persistent(self) -> bool:
+        """Whether results are written through to the asset cache."""
+        return self._cache is not None
+
+    def key(
+        self,
+        source: VisionSource,
+        *,
+        prompt: str = DEFAULT_VISION_PROMPT,
+        model: str | None = None,
+        role: str = "vision_qa",
+        alt_text_length: int = DEFAULT_ALT_TEXT_LENGTH,
+        parameters: Mapping[str, Any] | None = None,
+    ) -> ImageAnalysisCacheKey:
+        """Return the cache key for analyzing *source*."""
+        values = dict(parameters or {})
+        values.setdefault("alt_text_length", alt_text_length)
+        return ImageAnalysisCacheKey(
+            content_hash=image_content_hash(source),
+            prompt=prompt,
+            model=model or "",
+            role=role,
+            parameters=values,
+        )
+
+    def lookup(
+        self,
+        key: ImageAnalysisCacheKey,
+        *,
+        run_id: str = "",
+        record_hit: bool = True,
+    ) -> ImageAnalysis | None:
+        """Return a cached analysis for *key*, or ``None`` on a miss."""
+        if not isinstance(key, ImageAnalysisCacheKey):
+            raise TypeError("key must be an ImageAnalysisCacheKey")
+        if self.no_cache:
+            return None
+        if self._cache is None:
+            return self._memory.get(key.digest)
+        asset = self._cache.lookup(
+            key.asset_key(),
+            run_id=run_id,
+            operation=ANALYSIS_OPERATION,
+            record_hit=record_hit,
+        )
+        if asset is None:
+            return None
+        analysis = ImageAnalysis.from_asset_analysis(
+            asset.analysis,
+            alt_text=asset.alt_text,
+        )
+        self._memory[key.digest] = analysis
+        return analysis
+
+    def store(
+        self,
+        key: ImageAnalysisCacheKey,
+        analysis: ImageAnalysis,
+        *,
+        provider: str = "",
+        model: str | None = None,
+        run_id: str = "",
+    ) -> ImageAnalysis:
+        """Cache *analysis* under *key* and return the stored result."""
+        if not isinstance(key, ImageAnalysisCacheKey):
+            raise TypeError("key must be an ImageAnalysisCacheKey")
+        if not isinstance(analysis, ImageAnalysis):
+            raise TypeError("analysis must be an ImageAnalysis")
+        if self.no_cache:
+            return analysis
+        self._memory[key.digest] = analysis
+        if self._cache is None:
+            return analysis
+        asset = Asset(
+            kind=AssetKind.IMAGE,
+            label="image-analysis",
+            provider=provider,
+            model=model or key.model,
+            prompt=key.prompt,
+            content_hash=key.content_hash,
+            analysis=analysis.to_asset_analysis(),
+            alt_text=analysis.alt_text,
+            run_id=run_id,
+        )
+        stored = self._cache.store(asset, key=key.asset_key())
+        return ImageAnalysis.from_asset_analysis(
+            stored.analysis,
+            alt_text=stored.alt_text,
+        )
+
+    def clear(self) -> None:
+        """Drop the in-memory results without touching the persistent cache."""
+        self._memory.clear()
+
+
 def build_analysis_request(
     source: VisionSource,
     *,
@@ -804,6 +1010,8 @@ async def analyze_image(
     operation: str = ANALYSIS_OPERATION,
     metadata: Mapping[str, Any] | None = None,
     include_colors: bool = True,
+    cache: ImageAnalysisCache | None = None,
+    no_cache: bool = False,
     vision: Any | None = None,
     vision_provider: Any | None = None,
     vision_model: str | None = None,
@@ -815,6 +1023,9 @@ async def analyze_image(
     :func:`analyze_image_offline`; the function is async so adding a vision
     call never changes the caller's shape. A vision failure propagates rather
     than being silently reported as an image with no content.
+
+    When *cache* is supplied, an unchanged image with the same prompt, model,
+    role and alt text length is answered from the cache without a vision call.
     """
     offline = analyze_image_offline(
         source,
@@ -830,6 +1041,28 @@ async def analyze_image(
             analyzer = analyzer or vision
         else:
             provider = provider or vision
+    if analyzer is None and helper is None and provider is None:
+        return offline
+    if cache is not None and not isinstance(cache, ImageAnalysisCache):
+        raise TypeError("cache must be an ImageAnalysisCache")
+
+    cache_key: ImageAnalysisCacheKey | None = None
+    if cache is not None and not no_cache:
+        cache_key = cache.key(
+            source,
+            prompt=prompt,
+            model=model,
+            role=role,
+            alt_text_length=alt_text_length,
+        )
+        cached = cache.lookup(cache_key, run_id=run_id)
+        if cached is not None:
+            return _merge(
+                offline,
+                _vision_payload(cached),
+                alt_text_length=alt_text_length,
+            )
+
     if analyzer is not None:
         vision = await _call_vision_analyzer(analyzer, source)
     elif helper is not None:
@@ -843,7 +1076,9 @@ async def analyze_image(
             operation=operation,
             metadata=dict(metadata or {}),
         )
-    elif provider is not None:
+    else:
+        if provider is None:
+            raise TypeError("a vision provider is required")
         vision = await _call_vision_helper(
             StructuredOutputHelper(provider, VisionAnalysisOutput),
             source,
@@ -854,9 +1089,16 @@ async def analyze_image(
             operation=operation,
             metadata=dict(metadata or {}),
         )
-    else:
-        return offline
-    return _merge(offline, vision, alt_text_length=alt_text_length)
+    result = _merge(offline, vision, alt_text_length=alt_text_length)
+    if cache is not None and cache_key is not None:
+        cache.store(
+            cache_key,
+            result,
+            provider=provider_name(provider or getattr(helper, "provider", None)),
+            model=model or "",
+            run_id=run_id,
+        )
+    return result
 
 
 analyze_image_async = analyze_image
@@ -969,6 +1211,8 @@ class ImageAnalyzer:
         color_count: int = DEFAULT_COLOR_COUNT,
         alt_text_length: int = DEFAULT_ALT_TEXT_LENGTH,
         operation: str = ANALYSIS_OPERATION,
+        cache: ImageAnalysisCache | None = None,
+        no_cache: bool = False,
     ) -> None:
         self._provider = provider
         self._helper = helper
@@ -979,6 +1223,8 @@ class ImageAnalyzer:
         self._color_count = _validate_color_count(color_count)
         self._alt_text_length = alt_text_length
         self._operation = operation
+        self._cache = cache
+        self._no_cache = no_cache
 
     @property
     def provider(self) -> Any | None:
@@ -994,6 +1240,11 @@ class ImageAnalyzer:
     def color_count(self) -> int:
         """The default palette size."""
         return self._color_count
+
+    @property
+    def cache(self) -> ImageAnalysisCache | None:
+        """The analysis cache used for vision calls, if any."""
+        return self._cache
 
     @property
     def has_vision(self) -> bool:
@@ -1039,6 +1290,8 @@ class ImageAnalyzer:
             run_id=run_id,
             operation=self._operation,
             metadata=metadata,
+            cache=self._cache,
+            no_cache=self._no_cache,
         )
 
     async def __call__(self, source: VisionSource) -> ImageAnalysis:
