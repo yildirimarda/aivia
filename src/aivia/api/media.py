@@ -29,7 +29,14 @@ from pydantic import (
 from sqlalchemy import Connection, Engine
 
 from aivia.core.config import JobsConfig
-from aivia.core.db import JobRepository, create_database_engine, upgrade_database
+from aivia.core.db import (
+    JobRepository,
+    create_database_engine,
+    upgrade_database,
+)
+from aivia.core.db import (
+    database_path as default_database_path,
+)
 from aivia.core.errors import QuotaError
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, JobState
@@ -389,6 +396,20 @@ class MediaJobRunner:
         self._jobs = jobs
         self._worker_id = worker_id
 
+    def pending_job_ids(self) -> list[str]:
+        """Return the ids of media jobs left waiting by a previous process."""
+        engine = self._engine()
+        return [
+            job.id
+            for job in JobRepository(engine).list(state=JobState.PENDING.value)
+            if job.kind.startswith("media.")
+        ]
+
+    async def recover_pending(self) -> None:
+        """Run every pending media job so a restart cannot strand one."""
+        for job_id in self.pending_job_ids():
+            await self.run(job_id)
+
     async def run(self, job_id: str) -> None:
         """Claim and execute *job_id*, recording its result or failure."""
         engine = self._engine()
@@ -499,6 +520,21 @@ def register_media_routes(
         return JobQueue(target, config=jobs)
 
     runner = MediaJobRunner(database, build_toolkit, jobs=jobs)
+
+    def database_exists() -> bool:
+        existing = getattr(app.state, "engine", None)
+        if isinstance(existing, Engine):
+            return True
+        if database_path is not None:
+            return Path(database_path).expanduser().exists()
+        return default_database_path(data_dir, environ=environ).exists()
+
+    async def recover_pending_media_jobs() -> None:
+        """Run media jobs a previous API process left waiting."""
+        if database_exists():
+            await runner.recover_pending()
+
+    app.router.add_event_handler("startup", recover_pending_media_jobs)
 
     def submit(
         submission: MediaJobSubmission, kind_override: str | None = None

@@ -372,6 +372,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Probe or accept a duration hint for remote audio before the speech to text budget check (tests/media/test_stt_service.py)
 - [ ] Persist measured speech format, sample rate and channels on the asset so cache hits rebuild the exact audio (tests/media/test_tts_service.py)
 - [ ] Include CLI batch defaults and referenced input file contents in the content fingerprint so changed inputs invalidate a resumed row (tests/cli/test_media_batch_cli.py)
+- [ ] Recover media API jobs left running by a crashed API process so a restart cannot leave them stuck (tests/api/test_media_api.py)
 
 ## Milestone 9: Composition and rendering
 
