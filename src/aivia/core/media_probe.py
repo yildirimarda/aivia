@@ -48,7 +48,6 @@ from aivia.core.config.media import DEFAULT_MEDIA_MAX_BYTES as DEFAULT_MAX_BYTES
 from aivia.core.config.media import DEFAULT_MEDIA_MAX_PIXELS as DEFAULT_MAX_PIXELS
 from aivia.core.errors import ValidationError
 from aivia.core.http import HttpClient
-from aivia.providers.protocols.base import validate_http_url
 
 __all__ = [
     "DEFAULT_FFPROBE_TIMEOUT_SECONDS",
@@ -1184,6 +1183,8 @@ class MediaDownloader:
         The destination is only created after every check passes, so a rejected
         download never leaves a partially trusted file behind.
         """
+        from aivia.providers.protocols.base import validate_http_url
+
         target = validate_http_url(url, field="download url")
         active = limits or self.limits
         response = await self.http.get(
