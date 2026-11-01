@@ -369,7 +369,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Normalize differing audio sample rates and channel layouts before crossfading so mixed clips keep sound (tests/media/test_video_utils.py)
 - [x] Normalize differing pixel formats before crossfading so xfade inputs always match (tests/media/test_video_utils.py)
 - [x] Probe ffmpeg in local text to speech health when the default output needs conversion (tests/providers/tts/test_local.py)
-- [ ] Probe or accept a duration hint for remote audio before the speech to text budget check (tests/media/test_stt_service.py)
+- [x] Probe or accept a duration hint for remote audio before the speech to text budget check (tests/media/test_stt_service.py)
 - [ ] Persist measured speech format, sample rate and channels on the asset so cache hits rebuild the exact audio (tests/media/test_tts_service.py)
 - [ ] Include CLI batch defaults and referenced input file contents in the content fingerprint so changed inputs invalidate a resumed row (tests/cli/test_media_batch_cli.py)
 - [ ] Recover media API jobs left running by a crashed API process so a restart cannot leave them stuck (tests/api/test_media_api.py)
@@ -378,6 +378,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Claim async job recovery atomically so two processes cannot resubmit the same crashed job (tests/providers/media/test_async_job.py)
 - [ ] Cap animated frame count and total decoded pixels in media probe validation (tests/core/test_media_probe.py)
 - [ ] Guard a remote first frame download with the shared SSRF policy before a Veo call (tests/providers/video/test_replicate_veo_frames.py)
+- [ ] Refuse a speech to text call with an unknown duration when a budget is configured (tests/media/test_stt_service.py)
 
 ## Milestone 9: Composition and rendering
 
