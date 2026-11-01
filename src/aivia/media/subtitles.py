@@ -1477,7 +1477,8 @@ def _karaoke_text(
 ) -> str:
     words = cue.words
     if not words:
-        return escape_ass_text(cue.text)
+        color = ass_color(style.primary_color)
+        return f"{{\\1c{color}}}{escape_ass_text(cue.text)}"
     start_cs = _centiseconds(cue.start_seconds)
     cursor = start_cs
     parts: list[str] = []
