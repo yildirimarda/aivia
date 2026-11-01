@@ -326,7 +326,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a batch CLI that only parses CSV or YAML, maps flags onto the batch runner and resumes completed entries by manifest (tests/cli/test_media_batch_cli.py)
 - [x] Add named presets with CLI flags overriding preset values and list and show commands (tests/core/test_presets.py)
 - [x] Expose a MediaToolkit Python API for image, video, speech, transcription, music and edit returning results with cost (tests/test_media_toolkit.py)
-- [ ] Expose toolkit HTTP routes with job submission, status and result download (tests/api/test_media_api.py)
+- [x] Expose toolkit HTTP routes with job submission, status and result download (tests/api/test_media_api.py)
 - [ ] Add a per clip budget policy that returns a cheaper hint or raises before submit when nothing cheaper exists (tests/core/test_media_budget.py)
 - [ ] Add a media service facade that CLI, API and stages all use, emitting a metrics file (tests/media/test_media_facade.py)
 - [ ] Run the shared contract suite across every real media adapter offline (tests/contracts/test_media_providers.py)
