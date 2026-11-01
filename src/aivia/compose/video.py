@@ -30,6 +30,11 @@ from .errors import RenderError
 from .ffmpeg_cmd import FFmpegCommand, build_ffmpeg_command
 from .keyframes import AnimatedProperty
 from .motion import tracks_for_layer
+from .output_profiles import (
+    OutputProfile,
+    apply_output_profile,
+    resolve_output_profile,
+)
 from .render import PillowStillRenderer
 from .schema import Composition, Layer, LayerType
 
@@ -351,16 +356,41 @@ class VideoRenderer:
             dir=destination.parent,
         )
         try:
-            value = _prepare_text_layers(value, Path(text_directory.name))
             options = dict(command_options)
             options.pop("executable", None)
+            output_profile = options.pop("output_profile", None)
+            config = options.pop("config", options.pop("video", None))
+            profile_name = options.pop("profile", None)
+            platform = options.pop("platform", None)
+            if output_profile is not None or config is not None:
+                resolved = (
+                    output_profile
+                    if isinstance(output_profile, OutputProfile)
+                    else (
+                        OutputProfile.from_mapping(output_profile)
+                        if output_profile is not None
+                        else resolve_output_profile(
+                            config,
+                            platform=platform,
+                            profile=profile_name,
+                        )
+                    )
+                )
+                value = apply_output_profile(value, resolved)
+                options.setdefault("video_codec", resolved.codec)
+                options.setdefault("audio_codec", resolved.audio_codec)
+                options.setdefault("loudness_lufs", resolved.loudness_lufs)
+                if resolved.bitrate is not None:
+                    options.setdefault("bitrate", resolved.bitrate)
+                if resolved.audio_bitrate is not None:
+                    options.setdefault("audio_bitrate", resolved.audio_bitrate)
+            value = _prepare_text_layers(value, Path(text_directory.name))
             subtitles = options.pop("subtitles", None)
             subtitle_file = options.pop(
                 "subtitle_file",
                 options.pop("subtitle_path", None),
             )
             safe_area = options.pop("safe_area", None)
-            platform = options.pop("platform", None)
             subtitle_preset = options.pop("subtitle_preset", None)
             highlight = options.pop("highlight", True)
             track = subtitle_for(value, subtitles)

@@ -408,7 +408,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Generate procedural overlays such as confetti, sparkles, snow and bokeh deterministically by seed without external assets (slow, tests/compose/test_overlays.py)
 - [x] Implement cut, crossfade and slide transitions with sampled frame checks (slow, tests/compose/test_transitions.py)
 - [x] Mix audio tracks with volume, offsets, fades and ducking to the configured loudness and burn subtitles inside the safe area (slow, tests/compose/test_audio_subs.py)
-- [ ] Drive resolution, fps, codec, bitrate, loudness and duration from config with platform and profile overrides (slow, tests/compose/test_output_profiles.py)
+- [x] Drive resolution, fps, codec, bitrate, loudness and duration from config with platform and profile overrides (slow, tests/compose/test_output_profiles.py)
 - [ ] Produce optimized GIF and animated WebP outputs respecting loop flags and size caps (slow, tests/compose/test_anim_outputs.py)
 - [ ] Render seamless loop outputs whose first and last frames are similar enough (slow, tests/compose/test_loop_output.py)
 - [ ] Produce audio only outputs with correct codec, duration and ID3 metadata (tests/compose/test_audio_output.py)
@@ -446,6 +446,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate subtitle cue spans against the composition duration so a cue cannot outlive the video (tests/compose/test_validation.py)
 - [ ] Convert an SRT or VTT subtitle file referenced by a composition to ASS before burning (tests/compose/test_audio_subs.py)
 - [ ] Validate composition safe area margins leave a visible area before subtitles are burned (tests/compose/test_validation.py)
+- [ ] Reject an output container whose extension cannot carry the configured codec before invoking ffmpeg (tests/compose/test_output_profiles.py)
+- [ ] Warn when an output profile changes the aspect ratio of a composition with absolute pixel layer geometry (tests/compose/test_output_profiles.py)
 
 ## Milestone 10: Research engine
 

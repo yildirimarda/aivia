@@ -48,6 +48,8 @@ from aivia.core.config.schedule import (
     profile_names,
 )
 from aivia.core.config.video import (
+    DEFAULT_AUDIO_CODEC,
+    DEFAULT_VIDEO_CODEC,
     DurationRangeConfig,
     DurationRangeOverrideConfig,
     PlatformVideoConfig,
@@ -68,6 +70,8 @@ from aivia.core.errors import ConfigError
 __all__ = [
     "CORE_SECTIONS",
     "CORE_SECTION_KEYS",
+    "DEFAULT_AUDIO_CODEC",
+    "DEFAULT_VIDEO_CODEC",
     "AccessibilityConfig",
     "ApiConfig",
     "BrandKitConfig",

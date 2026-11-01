@@ -197,11 +197,33 @@ def test_unknown_platform_and_profile_report_their_available_names() -> None:
     assert "available: long, short" in str(profile_error.value)
 
 
+def test_codec_and_bitrate_defaults_are_configurable_with_aliases() -> None:
+    default = VideoConfig.from_mapping({})
+    configured = VideoConfig.from_mapping(
+        {
+            "video_codec": "libvpx-vp9",
+            "video_bitrate": 5000,
+            "audio_codec": "opus",
+            "audio_bitrate_kbps": 128,
+        }
+    )
+
+    assert default.codec == "libx264"
+    assert default.bitrate is None
+    assert default.audio_codec == "aac"
+    assert default.audio_bitrate is None
+    assert configured.codec == "libvpx-vp9"
+    assert configured.bitrate == 5000
+    assert configured.audio_codec == "opus"
+    assert configured.audio_bitrate == 128
+    assert configured.bitrate_kbps == 5000
+
+
 def test_override_models_reject_unknown_keys_with_the_full_path() -> None:
     with pytest.raises(ConfigError) as caught:
-        VideoConfig.from_mapping({"platforms": {"youtube": {"bitrate": 8}}})
+        VideoConfig.from_mapping({"platforms": {"youtube": {"unknown_option": 8}}})
 
-    assert "platforms.youtube.bitrate" in str(caught.value)
+    assert "platforms.youtube.unknown_option" in str(caught.value)
 
 
 def test_partial_override_duration_is_validated() -> None:
