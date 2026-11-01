@@ -34,6 +34,7 @@ from aivia.core.db import create_database_engine, upgrade_database
 from aivia.core.models.asset import Asset
 from aivia.core.paths import resolve_config_file, resolve_paths
 from aivia.core.router import Router
+from aivia.media.accessibility import write_accessibility_sidecars
 from aivia.media.image_edit_service import ImageEditOutcome, ImageEditService
 from aivia.media.image_service import ImageOutcome, ImageService
 from aivia.media.music_service import MusicOutcome, MusicService
@@ -392,6 +393,7 @@ class MediaToolkit:
         no_cache: bool = False,
         record_cost: bool = True,
         record_sidecar: bool = True,
+        accessibility: Any = None,
         ffmpeg_executable: str = "ffmpeg",
         ffmpeg_runner: Any = None,
         ffmpeg_timeout_seconds: float | None = None,
@@ -428,6 +430,7 @@ class MediaToolkit:
         self._no_cache = bool(no_cache)
         self._record_cost = bool(record_cost)
         self._record_sidecar = bool(record_sidecar)
+        self._accessibility = accessibility
         self._ffmpeg_executable = ffmpeg_executable
         self._ffmpeg_runner = ffmpeg_runner
         self._ffmpeg_timeout = ffmpeg_timeout_seconds
@@ -524,6 +527,8 @@ class MediaToolkit:
                 budget = budget_config
         if safety is None:
             safety = getattr(root, "safety", None)
+        if "accessibility" not in values:
+            values["accessibility"] = getattr(root, "accessibility", None)
 
         toolkit = cls(
             router,
@@ -689,6 +694,55 @@ class MediaToolkit:
         )
         return values
 
+    def _write_accessibility(
+        self,
+        kind: str,
+        request: Any,
+        outcome: Any,
+    ) -> None:
+        if self._accessibility is None:
+            return
+        metadata = getattr(request, "metadata", None) or {}
+        alt_text = metadata.get("alt_text") or metadata.get("alt")
+        subtitle = metadata.get("subtitle")
+        words = metadata.get("words")
+        transcript = metadata.get("transcript")
+        text = metadata.get("text")
+        language = getattr(request, "language", "") or ""
+        if kind == "speech":
+            text = text or getattr(request, "text", None)
+            words = words or getattr(
+                getattr(outcome, "response", None),
+                "word_timestamps",
+                None,
+            )
+            alt_text = alt_text or getattr(request, "text", None)
+        elif kind == "video":
+            alt_text = alt_text or getattr(request, "prompt", None)
+            text = text or getattr(request, "prompt", None)
+        elif kind == "music":
+            alt_text = (
+                alt_text or metadata.get("title") or getattr(request, "prompt", None)
+            )
+            text = text or getattr(request, "lyrics", None)
+        elif kind == "sfx":
+            alt_text = alt_text or getattr(request, "prompt", None)
+        for asset in getattr(outcome, "assets", ()) or ():
+            path = _local_path(asset.path) if asset.path else None
+            if path is None:
+                continue
+            write_accessibility_sidecars(
+                path,
+                self._accessibility,
+                alt_text=alt_text,
+                subtitle=subtitle,
+                words=words,
+                transcript=transcript,
+                text=text,
+                language=language,
+                duration_seconds=asset.analysis.duration_seconds,
+            )
+
     async def image(
         self,
         request: ImageRequest | str | Mapping[str, Any] | None = None,
@@ -733,6 +787,7 @@ class MediaToolkit:
         outcome = await service.generate(
             video_request, token=active_token, **call_values
         )
+        self._write_accessibility("video", video_request, outcome)
         return MediaResult("video", outcome)
 
     async def speech(
@@ -761,6 +816,7 @@ class MediaToolkit:
         outcome = await service.synthesize(
             speech_request, token=active_token, **call_values
         )
+        self._write_accessibility("speech", speech_request, outcome)
         return MediaResult("speech", outcome)
 
     async def transcribe(
@@ -833,6 +889,7 @@ class MediaToolkit:
         outcome = await service.generate(
             music_request, token=active_token, **call_values
         )
+        self._write_accessibility("music", music_request, outcome)
         return MediaResult("music", outcome)
 
     async def sfx(
@@ -854,6 +911,7 @@ class MediaToolkit:
             token if token is not None else service.screen(sfx_request.prompt)
         )
         outcome = await service.generate(sfx_request, token=active_token, **call_values)
+        self._write_accessibility("sfx", sfx_request, outcome)
         return MediaResult("sfx", outcome)
 
     async def edit(
