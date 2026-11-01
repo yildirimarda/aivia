@@ -365,6 +365,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Declare every option each media adapter accepts in supported_options so adaptation cannot reject a value the adapter handles (tests/providers/test_supported_options.py)
 - [ ] Cap animated image frame count and total decoded pixels in image utilities (tests/media/test_image_utils.py)
 - [ ] Include the analysis provider in the vision cache key so two providers serving one model do not share results (tests/media/test_image_analysis.py)
+- [ ] Download an HTTP first frame before a Veo call instead of forwarding it as a GCS URI (tests/providers/video/test_replicate_veo_frames.py)
 
 ## Milestone 9: Composition and rendering
 

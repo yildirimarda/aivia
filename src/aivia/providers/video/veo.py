@@ -5,6 +5,9 @@ submitted to ``models/{model}:predictLongRunning`` and returns an operation
 name. The operation is polled until ``done`` is true, after which the finished
 clip URLs live under the operation response.
 
+A first frame is sent as the instance ``image``, either inline base64 bytes or
+a URI when the frame already lives in storage.
+
 The adapter authenticates with an API key supplied either directly or through a
 credential reference resolved by :class:`~aivia.core.secrets.SecretsLoader`.
 Model ids and the API root come from configuration; neither is hard-coded. The
@@ -16,6 +19,7 @@ same prompt unchanged.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
@@ -45,8 +49,9 @@ from aivia.providers.media import (
     AsyncJobStatus,
     AsyncMediaJobHelper,
 )
-from aivia.providers.protocols.media import VideoFormat
+from aivia.providers.protocols.media import MediaInput, VideoFormat
 from aivia.providers.protocols.video import (
+    CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
     CAPABILITY_VIDEO_INPUT,
     VideoRequest,
@@ -98,7 +103,7 @@ VEO_API_URL = DEFAULT_BASE_URL
 
 _DEFAULT_METADATA = ProviderMeta(
     name="veo",
-    capabilities=[CAPABILITY_VIDEO_GEN],
+    capabilities=[CAPABILITY_VIDEO_GEN, CAPABILITY_VIDEO_FIRST_FRAME],
 )
 
 _PREDICT_SUFFIX = ":predictLongRunning"
@@ -388,6 +393,25 @@ def _raise_job_failure(body: Mapping[str, Any], provider: str) -> None:
     raise InvalidRequestError(text, details=details)
 
 
+def _frame_image(media: MediaInput) -> dict[str, str]:
+    if media.media_type is not None and not media.media_type.startswith("image/"):
+        raise InvalidRequestError(
+            "veo video first_frame must be an image",
+            details={"field": "first_frame", "media_type": media.media_type},
+        )
+    if media.data is not None:
+        return {
+            "bytesBase64Encoded": base64.b64encode(media.data).decode("ascii"),
+            "mimeType": media.media_type or "image/png",
+        }
+    if media.url is not None:
+        return {"gcsUri": media.url}
+    raise InvalidRequestError(
+        "veo video first_frame needs inline data or a URL",
+        details={"field": "first_frame"},
+    )
+
+
 def _build_payload(request: VideoRequest) -> dict[str, Any]:
     parameters: dict[str, Any] = {"sampleCount": request.count}
     if request.aspect_ratio is not None:
@@ -404,7 +428,10 @@ def _build_payload(request: VideoRequest) -> dict[str, Any]:
         parameters["resolution"] = (
             "1080p" if max(request.width, request.height) >= 1080 else "720p"
         )
-    return {"instances": [{"prompt": request.prompt}], "parameters": parameters}
+    instance: dict[str, Any] = {"prompt": request.prompt}
+    if request.first_frame is not None:
+        instance["image"] = _frame_image(request.first_frame)
+    return {"instances": [instance], "parameters": parameters}
 
 
 def _url_value(value: Any) -> str:
@@ -833,11 +860,21 @@ class VeoVideoProvider(Provider):
             raise TypeError("request must be a VideoRequest")
 
         model = self._resolve_model(request)
-        if request.first_frame is not None or request.last_frame is not None:
-            field = "first_frame" if request.first_frame is not None else "last_frame"
+        if request.first_frame is not None and not self.supports(
+            CAPABILITY_VIDEO_FIRST_FRAME
+        ):
             raise InvalidRequestError(
-                "veo video provider does not support reference frames",
-                details={"provider": self.name, "field": field},
+                "veo video provider does not declare first frame support",
+                details={
+                    "provider": self.name,
+                    "field": "first_frame",
+                    "required_capability": CAPABILITY_VIDEO_FIRST_FRAME,
+                },
+            )
+        if request.last_frame is not None:
+            raise InvalidRequestError(
+                "veo video provider does not support a last frame",
+                details={"provider": self.name, "field": "last_frame"},
             )
         if request.source_video is not None and not self.supports(
             CAPABILITY_VIDEO_INPUT
