@@ -37,6 +37,7 @@ from aivia.core.router import Router
 from aivia.media.image_edit_service import ImageEditOutcome, ImageEditService
 from aivia.media.image_service import ImageOutcome, ImageService
 from aivia.media.music_service import MusicOutcome, MusicService
+from aivia.media.sfx_service import SFXOutcome, SFXService
 from aivia.media.stt_service import STTOutcome, STTService
 from aivia.media.tts_service import SpeechOutcome, SpeechService
 from aivia.media.video_service import VideoOutcome, VideoService
@@ -47,6 +48,7 @@ from aivia.providers.protocols.image_edit import (
 )
 from aivia.providers.protocols.media import MediaInput
 from aivia.providers.protocols.music import MusicRequest
+from aivia.providers.protocols.sfx import SFXRequest
 from aivia.providers.protocols.stt import STTRequest
 from aivia.providers.protocols.tts import TTSRequest
 from aivia.providers.protocols.video import VideoRequest
@@ -66,6 +68,7 @@ MediaOutcome = (
     | SpeechOutcome
     | STTOutcome
     | MusicOutcome
+    | SFXOutcome
     | ImageEditOutcome
 )
 
@@ -437,6 +440,7 @@ class MediaToolkit:
         self._speech_service: SpeechService | None = None
         self._stt_service: STTService | None = None
         self._music_service: MusicService | None = None
+        self._sfx_service: SFXService | None = None
         self._edit_service: ImageEditService | None = None
 
     @classmethod
@@ -583,6 +587,13 @@ class MediaToolkit:
         return self._music_service
 
     @property
+    def sfx_service(self) -> SFXService:
+        """The lazily built sound effect service."""
+        if self._sfx_service is None:
+            self._sfx_service = SFXService(self._router, **self._sfx_values())
+        return self._sfx_service
+
+    @property
     def edit_service(self) -> ImageEditService:
         """The lazily built image edit service."""
         if self._edit_service is None:
@@ -662,6 +673,18 @@ class MediaToolkit:
                 "ffprobe_executable": self._ffprobe_executable,
                 "ffprobe_runner": self._ffprobe_runner,
                 "ffprobe_timeout_seconds": self._ffprobe_timeout,
+            }
+        )
+        return values
+
+    def _sfx_values(self) -> dict[str, Any]:
+        values = self._base_values("sfx")
+        values.update(
+            {
+                "limits": self._limits,
+                "downloader": self._downloader,
+                "transport": self._transport,
+                "no_cache": self._no_cache,
             }
         )
         return values
@@ -812,6 +835,27 @@ class MediaToolkit:
         )
         return MediaResult("music", outcome)
 
+    async def sfx(
+        self,
+        request: SFXRequest | str | Mapping[str, Any] | None = None,
+        *,
+        prompt: str | None = None,
+        token: Any = None,
+        **options: Any,
+    ) -> MediaResult:
+        """Generate a sound effect and return it with its cost."""
+        request_values, call_values = _split_options(options)
+        values = _request_values(
+            request, request_values, prompt_field="prompt", prompt=prompt
+        )
+        sfx_request = SFXRequest(**values)
+        service = self.sfx_service
+        active_token = (
+            token if token is not None else service.screen(sfx_request.prompt)
+        )
+        outcome = await service.generate(sfx_request, token=active_token, **call_values)
+        return MediaResult("sfx", outcome)
+
     async def edit(
         self,
         request: ImageEditRequest | str | Path | bytes | MediaInput | None = None,
@@ -901,6 +945,14 @@ class MediaToolkit:
         """Blocking alias for :meth:`edit`."""
         return asyncio.run(self.edit(request, **options))
 
+    def sfx_sync(
+        self,
+        request: SFXRequest | str | Mapping[str, Any] | None = None,
+        **options: Any,
+    ) -> MediaResult:
+        """Blocking alias for :meth:`sfx`."""
+        return asyncio.run(self.sfx(request, **options))
+
     generate_image = image
     generate_video = video
     generate_speech = speech
@@ -910,6 +962,7 @@ class MediaToolkit:
     transcription = transcribe
     stt = transcribe
     generate_music = music
+    generate_sfx = sfx
     edit_image = edit
     image_edit = edit
 
@@ -919,7 +972,7 @@ class MediaToolkit:
         request: Any = None,
         **options: Any,
     ) -> MediaResult:
-        """Dispatch one call by image, video, speech, transcription, music or edit."""
+        """Dispatch by image, video, speech, transcription, music, sfx or edit."""
         key = kind.strip().lower()
         methods: dict[str, Callable[..., Any]] = {
             "image": self.image,
@@ -930,6 +983,7 @@ class MediaToolkit:
             "transcribe": self.transcribe,
             "stt": self.transcribe,
             "music": self.music,
+            "sfx": self.sfx,
             "edit": self.edit,
         }
         method = methods.get(key)

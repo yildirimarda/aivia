@@ -136,6 +136,7 @@ class StageContext:
         default_factory=lambda: logging.getLogger("aivia.stages")
     )
     run: Run | None = None
+    _media: Any = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.run_dir = Path(self.run_dir).expanduser()
@@ -149,6 +150,45 @@ class StageContext:
     def cost_tracker(self) -> CostTracker | None:
         """Alias for :attr:`cost`."""
         return self.cost
+
+    @property
+    def media(self) -> Any:
+        """The media facade shared by this stage, built on first use.
+
+        The facade reuses the context router, cost tracker and storage and
+        writes its metrics document into the run directory, so a stage never
+        constructs providers or a separate ledger.
+        """
+        if self._media is None:
+            from aivia.media.facade import MEDIA_METRICS_FILENAME, MediaServiceFacade
+
+            if self.router is None:
+                raise ValueError("a stage context needs a router to build media")
+            config = self.config
+            budget = (
+                config.get("budget")
+                if isinstance(config, Mapping)
+                else getattr(config, "budget", None)
+            )
+            safety = (
+                config.get("safety")
+                if isinstance(config, Mapping)
+                else getattr(config, "safety", None)
+            )
+            self._media = MediaServiceFacade(
+                self.router,
+                tracker=self.cost,
+                storage=self.storage,
+                budget=budget,
+                safety=safety,
+                metrics_path=self.run_dir / MEDIA_METRICS_FILENAME,
+            )
+        return self._media
+
+    @property
+    def media_facade(self) -> Any:
+        """Alias for :attr:`media`."""
+        return self.media
 
 
 class Stage:
