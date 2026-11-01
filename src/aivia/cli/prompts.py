@@ -130,6 +130,7 @@ def _selections(args: argparse.Namespace) -> dict[str, PromptVersionSource]:
         config_file=args.config,
         environment=args.environment,
         profile=args.profile,
+        preset=args.preset,
         set_values=args.set_values,
     )
     section = resolved.values.get("prompts")

@@ -278,6 +278,7 @@ def _resolve_database(
         config_file=args.config,
         environment=args.environment,
         profile=args.profile,
+        preset=args.preset,
         set_values=args.set_values,
     )
     database = getattr(config, "database", None)
@@ -342,6 +343,7 @@ def _resolve_budget(args: argparse.Namespace) -> BudgetConfig:
         config_file=args.config,
         environment=args.environment,
         profile=args.profile,
+        preset=args.preset,
         set_values=args.set_values,
     )
     budget = getattr(config, "budget", None)

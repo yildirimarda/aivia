@@ -12,6 +12,7 @@ import yaml
 from aivia.core.config.masking import mask_secrets
 from aivia.core.config.resolve import (
     DEFAULT_ORIGIN,
+    PRESET_ORIGIN_PREFIX,
     PROFILE_ORIGIN_PREFIX,
     USER_ORIGIN,
     Layer,
@@ -23,6 +24,7 @@ from aivia.core.config.resolve import (
 
 __all__ = [
     "DEFAULT_ORIGIN",
+    "PRESET_ORIGIN_PREFIX",
     "PROFILE_ORIGIN_PREFIX",
     "USER_ORIGIN",
     "Layer",
@@ -44,6 +46,8 @@ def dump_config(
     lines: list[str] = []
     if resolved.profile is not None:
         lines.append(f"# profile: {resolved.profile}")
+    if resolved.preset is not None:
+        lines.append(f"# preset: {resolved.preset}")
     body = yaml.safe_dump(
         mask_secrets(resolved.values),
         sort_keys=False,

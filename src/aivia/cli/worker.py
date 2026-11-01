@@ -152,6 +152,7 @@ def _resolution_options(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "config_file": getattr(args, "config", None),
         "environment": getattr(args, "environment", None),
+        "preset": getattr(args, "preset", None),
         "set_values": getattr(args, "set_values", None),
     }
 
@@ -283,6 +284,7 @@ def _resolve(args: argparse.Namespace) -> tuple[object, Path, JobsConfig]:
         config_file=getattr(args, "config", None),
         environment=getattr(args, "environment", None),
         profile=getattr(args, "profile", None),
+        preset=getattr(args, "preset", None),
         set_values=getattr(args, "set_values", None),
     )
     if getattr(args, "dry_run", False):

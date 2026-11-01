@@ -268,6 +268,7 @@ def _resolve_plan(
         config_file=args.config,
         environment=args.environment,
         profile=args.profile,
+        preset=args.preset,
         set_values=args.set_values,
     )
     config = resolved.to_app_config()
@@ -570,6 +571,7 @@ def run_show(args: argparse.Namespace) -> int:
             config_file=args.config,
             environment=args.environment,
             profile=args.profile,
+            preset=args.preset,
             set_values=args.set_values,
         )
     except ConfigError as exc:

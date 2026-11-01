@@ -113,6 +113,7 @@ def _resolve_database(
         config_file=args.config,
         environment=args.environment,
         profile=args.profile,
+        preset=args.preset,
         set_values=args.set_values,
     )
     database = getattr(config, "database", None)

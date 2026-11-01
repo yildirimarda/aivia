@@ -20,6 +20,8 @@ GLOBAL_FLAGS = [
     "staging",
     "--profile",
     "short",
+    "--preset",
+    "short",
     "--set",
     "pipeline.timezone=UTC",
     "--set",
@@ -54,6 +56,7 @@ def expected_options() -> GlobalOptions:
         config="/tmp/aivia-config.yaml",
         environment="staging",
         profile="short",
+        preset="short",
         set_values=("pipeline.timezone=UTC", "video.fps=24"),
         estimate=True,
         dry_run=True,
@@ -78,6 +81,7 @@ def test_global_flags_before_the_command_reach_the_handler(
     assert args.config == "/tmp/aivia-config.yaml"
     assert args.environment == "staging"
     assert args.profile == "short"
+    assert args.preset == "short"
     assert args.set_values == ["pipeline.timezone=UTC", "video.fps=24"]
     assert args.estimate is True
     assert args.dry_run is True
@@ -111,6 +115,7 @@ def test_global_flags_default_to_off() -> None:
     assert args.config is None
     assert args.environment is None
     assert args.profile is None
+    assert args.preset is None
     assert args.set_values is None
     assert args.estimate is False
     assert args.dry_run is False
@@ -143,6 +148,7 @@ def test_global_options_expose_resolution_keywords() -> None:
         "config_file": "/tmp/aivia-config.yaml",
         "environment": "staging",
         "profile": "short",
+        "preset": "short",
         "set_values": ["pipeline.timezone=UTC", "video.fps=24"],
     }
 
