@@ -28,10 +28,17 @@ from pathlib import Path
 
 from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
 
+from aivia.core.config.media import DEFAULT_MEDIA_MAX_BYTES as DEFAULT_MAX_IMAGE_BYTES
+from aivia.core.config.media import (
+    DEFAULT_MEDIA_MAX_PIXELS as DEFAULT_MAX_IMAGE_PIXELS,
+)
 from aivia.core.errors import ValidationError
+from aivia.core.media_probe import image_dimensions
 
 __all__ = [
     "DEFAULT_BLUR_RADIUS",
+    "DEFAULT_MAX_IMAGE_BYTES",
+    "DEFAULT_MAX_IMAGE_PIXELS",
     "ImageFit",
     "ImageFormat",
     "ImageSource",
@@ -50,6 +57,45 @@ type ImageSource = str | Path | bytes
 
 DEFAULT_BLUR_RADIUS = 24.0
 """Default Gaussian blur radius, in pixels, for padded backgrounds."""
+
+_HEADER_BYTES = 64 * 1024
+"""Bytes read from a file to learn an image's declared dimensions."""
+
+
+def _validate_limit(value: int, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(f"{label} must be an integer")
+    if value < 1:
+        raise ValidationError(f"{label} must be a positive integer")
+    return value
+
+
+def _check_byte_cap(size: int, max_bytes: int) -> None:
+    if size > max_bytes:
+        raise ValidationError(
+            f"image is {size} bytes, above the {max_bytes} byte cap",
+            details={"size_bytes": size, "limit": max_bytes},
+        )
+
+
+def _check_pixel_cap(width: int, height: int, max_pixels: int) -> None:
+    if width <= 0 or height <= 0:
+        raise ValidationError(
+            "image dimensions must be positive",
+            details={"width": width, "height": height},
+        )
+    pixels = width * height
+    if pixels > max_pixels:
+        raise ValidationError(
+            f"image declares {pixels} pixels, above the "
+            f"{max_pixels} pixel decompression bomb guard",
+            details={
+                "width": width,
+                "height": height,
+                "pixels": pixels,
+                "limit": max_pixels,
+            },
+        )
 
 
 class ImageFormat(StrEnum):
@@ -186,20 +232,46 @@ def _prepare_for_format(
     return image.copy()
 
 
-def open_image(source: ImageSource) -> Image.Image:
+def open_image(
+    source: ImageSource,
+    *,
+    max_bytes: int = DEFAULT_MAX_IMAGE_BYTES,
+    max_pixels: int = DEFAULT_MAX_IMAGE_PIXELS,
+) -> Image.Image:
     """Open an image path or encoded bytes and return a detached copy.
 
     The file handle is closed before returning, so callers may delete or move
-    the source immediately. Invalid data raises :class:`ValidationError`.
+    the source immediately. Oversized payloads and images whose header
+    declares more than ``max_pixels`` are rejected from their headers before
+    any pixel data is decoded. Invalid data raises :class:`ValidationError`.
     """
+    byte_limit = _validate_limit(max_bytes, "max_bytes")
+    pixel_limit = _validate_limit(max_pixels, "max_pixels")
     try:
         if isinstance(source, bytes):
+            _check_byte_cap(len(source), byte_limit)
+            declared = image_dimensions(source)
+            if declared is not None:
+                _check_pixel_cap(*declared, pixel_limit)
             with Image.open(BytesIO(source)) as opened:
+                _check_pixel_cap(*opened.size, pixel_limit)
                 opened.load()
                 return opened.copy()
-        with Image.open(Path(source)) as opened:
+        path = Path(source)
+        _check_byte_cap(path.stat().st_size, byte_limit)
+        with path.open("rb") as handle:
+            declared = image_dimensions(handle.read(_HEADER_BYTES))
+        if declared is not None:
+            _check_pixel_cap(*declared, pixel_limit)
+        with Image.open(path) as opened:
+            _check_pixel_cap(*opened.size, pixel_limit)
             opened.load()
             return opened.copy()
+    except Image.DecompressionBombError as exc:
+        raise ValidationError(
+            f"image exceeds the {pixel_limit} pixel decompression bomb guard",
+            details={"limit": pixel_limit},
+        ) from exc
     except (OSError, ValueError, UnidentifiedImageError) as exc:
         raise ValidationError("could not open image data") from exc
 

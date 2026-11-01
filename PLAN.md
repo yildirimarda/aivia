@@ -335,7 +335,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Emit alt text and SRT and VTT sidecars for every audio and video output when accessibility output is enabled (tests/media/test_accessibility.py)
 - [x] Make async media job idempotency keys unique across processes so a repeated key cannot submit twice (tests/providers/media/test_async_job.py)
 - [x] Apply the media adaptation layer to every image, video, music and speech provider request before submission (tests/media/test_adapt_integration.py)
-- [ ] Reject oversized or decompression-bomb images in image utilities before decoding (tests/media/test_image_utils.py)
+- [x] Reject oversized or decompression-bomb images in image utilities before decoding (tests/media/test_image_utils.py)
 - [ ] Cache vision image analysis by content hash so re-analyzing an unchanged image makes no paid call (tests/media/test_image_analysis.py)
 - [ ] Record the analysis provider and model on the result so provenance survives storage (tests/media/test_image_analysis.py)
 - [ ] Add first frame input to the Replicate and Veo video providers behind the video first frame capability (tests/providers/video/test_replicate_veo_frames.py)
@@ -363,6 +363,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Resume an async media job left pending by a crash before the remote id is stored so a repeated key can recover it (tests/providers/media/test_async_job.py)
 - [ ] Key the media cache on the adapted request so a snapped size or clamped count is fully reused on a repeat (tests/media/test_adapt_cache.py)
 - [ ] Declare every option each media adapter accepts in supported_options so adaptation cannot reject a value the adapter handles (tests/providers/test_supported_options.py)
+- [ ] Cap animated image frame count and total decoded pixels in image utilities (tests/media/test_image_utils.py)
 
 ## Milestone 9: Composition and rendering
 
