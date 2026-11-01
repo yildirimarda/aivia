@@ -404,7 +404,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Build the FFmpeg filtergraph as a pure function producing an argument list tested without executing ffmpeg (tests/compose/test_ffmpeg_cmd.py)
 - [x] Render multi layer video with timing, scaling and overlay, verified by ffprobe (slow, tests/compose/test_render_video.py)
 - [x] Implement keyframed motion in video including Ken Burns and parallax with sampled frame checks (slow, tests/compose/test_motion.py)
-- [ ] Render text in video with entrance and exit animations sampled at start, middle and end (slow, tests/compose/test_text_video.py)
+- [x] Render text in video with entrance and exit animations sampled at start, middle and end (slow, tests/compose/test_text_video.py)
 - [ ] Generate procedural overlays such as confetti, sparkles, snow and bokeh deterministically by seed without external assets (slow, tests/compose/test_overlays.py)
 - [ ] Implement cut, crossfade and slide transitions with sampled frame checks (slow, tests/compose/test_transitions.py)
 - [ ] Mix audio tracks with volume, offsets, fades and ducking to the configured loudness and burn subtitles inside the safe area (slow, tests/compose/test_audio_subs.py)
