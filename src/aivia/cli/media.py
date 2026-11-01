@@ -1466,7 +1466,7 @@ _BATCH_FINGERPRINT_FIELDS = frozenset(
     destination
     for destination, _ in _BATCH_FIELDS.values()
     if destination not in {"database", "timeout"}
-)
+) | {"output_dir"}
 _BATCH_INPUT_FILE_FIELDS = ("prompt_file", "lyrics_file", "audio_file")
 
 
