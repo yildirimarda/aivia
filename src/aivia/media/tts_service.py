@@ -44,6 +44,7 @@ from aivia.core.models.run import ToolchainFingerprint
 from aivia.core.pricing import ResolvedPrice
 from aivia.core.router import Router, RouteSelection
 from aivia.core.sidecar import SIDECAR_SUFFIX, build_cost_sidecar, write_cost_sidecar
+from aivia.media.accessibility import write_accessibility_sidecars
 from aivia.media.audio_utils import (
     AudioProcessing,
     AudioSettings,
@@ -174,9 +175,34 @@ class SpeechOutcome:
     price: ResolvedPrice | None = None
     selection: RouteSelection | None = None
     sidecars: tuple[Path, ...] = ()
+    accessibility_sidecars: tuple[Any, ...] = ()
     cache_hit: bool = False
     processed: bool = False
     failures: tuple[Mapping[str, Any], ...] = ()
+
+    @property
+    def accessibility(self) -> Any:
+        """The first accessibility sidecar result, or ``None``."""
+        return self.accessibility_sidecars[0] if self.accessibility_sidecars else None
+
+    @property
+    def accessibility_sidecar(self) -> Any:
+        """Alias for :attr:`accessibility`."""
+        return self.accessibility
+
+    @property
+    def accessibility_paths(self) -> tuple[Path, ...]:
+        """Every written accessibility sidecar path."""
+        return tuple(
+            path
+            for result in self.accessibility_sidecars
+            for path in getattr(result, "paths", ())
+        )
+
+    @property
+    def all_sidecars(self) -> tuple[Path, ...]:
+        """Cost and accessibility sidecar paths together."""
+        return (*self.sidecars, *self.accessibility_paths)
 
     @property
     def event(self) -> CostEvent | None:
@@ -400,6 +426,8 @@ class SpeechService:
         key_prefix: str | None = None,
         record_cost: bool = True,
         record_sidecar: bool = True,
+        accessibility: Any = None,
+        accessibility_config: Any = None,
         no_cache: bool = False,
         process: bool = True,
         ffmpeg_executable: str = "ffmpeg",
@@ -494,6 +522,9 @@ class SpeechService:
         self._key_prefix = key_prefix
         self._record_cost = bool(record_cost)
         self._record_sidecar = bool(record_sidecar)
+        self._accessibility = (
+            accessibility if accessibility is not None else accessibility_config
+        )
         self._no_cache = bool(no_cache)
         self._process = bool(process)
         self._ffmpeg_executable = ffmpeg_executable
@@ -897,6 +928,11 @@ class SpeechService:
                 stored=stored,
             )
 
+        accessibility = self._write_accessibility_sidecars(
+            asset,
+            request,
+            response,
+        )
         outcome = SpeechOutcome(
             request=request,
             response=response,
@@ -908,6 +944,7 @@ class SpeechService:
             price=resolved,
             selection=selection,
             sidecars=sidecars,
+            accessibility_sidecars=accessibility,
             cache_hit=False,
             processed=processed,
         )
@@ -1028,6 +1065,11 @@ class SpeechService:
                 storage=storage,
                 stored=None,
             )
+        accessibility = self._write_accessibility_sidecars(
+            asset,
+            request,
+            response,
+        )
         outcome = SpeechOutcome(
             request=request,
             response=response,
@@ -1035,6 +1077,7 @@ class SpeechService:
             assets=(asset,),
             events=(event,),
             sidecars=sidecars,
+            accessibility_sidecars=accessibility,
             cache_hit=True,
         )
         return outcome
@@ -1055,6 +1098,33 @@ class SpeechService:
             except KeyError:
                 return None
         return None
+
+    def _write_accessibility_sidecars(
+        self,
+        asset: Asset,
+        request: TTSRequest,
+        response: TTSResponse,
+    ) -> tuple[Any, ...]:
+        if self._accessibility is None or not asset.path:
+            return ()
+        path = _file_path(asset.path)
+        if path is None:
+            return ()
+        metadata = request.metadata or {}
+        result = write_accessibility_sidecars(
+            path,
+            self._accessibility,
+            alt_text=metadata.get("alt_text") or metadata.get("alt") or request.text,
+            subtitle=metadata.get("subtitle"),
+            words=response.word_timestamps or metadata.get("words"),
+            transcript=metadata.get("transcript"),
+            text=request.text,
+            language=request.language or "",
+            duration_seconds=(
+                response.duration_seconds or asset.analysis.duration_seconds
+            ),
+        )
+        return (result,) if result else ()
 
     async def _write_sidecars(
         self,

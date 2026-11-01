@@ -358,6 +358,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Apply the per clip budget policy before media submits and record the chosen cheaper hint (tests/media/test_media_clip_budget.py)
 - [ ] Add voice clone create and delete to the ElevenLabs adapter behind a capability flag (tests/providers/tts/test_elevenlabs_clone.py)
 - [ ] Delete the vendor voice when its local clone record is removed and keep the record when deletion fails (tests/media/test_voice_clone.py)
+- [ ] Store accessibility sidecars through the storage provider so remote audio and video outputs get them too (tests/media/test_accessibility.py)
 
 ## Milestone 9: Composition and rendering
 
