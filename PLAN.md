@@ -368,6 +368,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Download an HTTP first frame before a Veo call instead of forwarding it as a GCS URI (tests/providers/video/test_replicate_veo_frames.py)
 - [ ] Normalize differing audio sample rates and channel layouts before crossfading so mixed clips keep sound (tests/media/test_video_utils.py)
 - [ ] Normalize differing pixel formats before crossfading so xfade inputs always match (tests/media/test_video_utils.py)
+- [ ] Probe ffmpeg in local text to speech health when the default output needs conversion (tests/providers/tts/test_local.py)
 
 ## Milestone 9: Composition and rendering
 

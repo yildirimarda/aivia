@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from aivia.providers.tts import (
 )
 
 WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 20
+MP3 = b"ID3\x04\x00\x00\x00\x00\x00\x00converted"
 
 
 def test_metadata_and_registration_describe_the_providers() -> None:
@@ -116,6 +118,170 @@ def test_a_custom_command_reads_stdin_and_writes_an_output_file() -> None:
     assert response.metadata["characters"] == len("spoken text")
 
 
+def test_an_injected_converter_transcodes_to_the_requested_container() -> None:
+    calls: list[tuple[AudioFormat, AudioFormat, int]] = []
+
+    def converter(
+        audio: bytes,
+        source: AudioFormat,
+        target: AudioFormat,
+        sample_rate: int,
+    ) -> bytes:
+        assert audio == WAV
+        calls.append((source, target, sample_rate))
+        return MP3
+
+    provider = LocalTTSProvider(
+        synthesizer=lambda *args: WAV,
+        converter=converter,
+    )
+
+    response = asyncio.run(
+        provider.synthesize(
+            TTSRequest(text="spoken", voice="default", format=AudioFormat.MP3)
+        )
+    )
+
+    assert calls == [(AudioFormat.WAV, AudioFormat.MP3, 22050)]
+    assert response.audio == MP3
+    assert response.format is AudioFormat.MP3
+
+
+def test_an_injected_encoder_transcodes_to_the_requested_container() -> None:
+    calls: list[tuple[AudioFormat, int]] = []
+
+    def encoder(audio: bytes, target: AudioFormat, sample_rate: int) -> bytes:
+        assert audio == WAV
+        calls.append((target, sample_rate))
+        return b"OggS\x00\x00converted"
+
+    provider = LocalTTSProvider(
+        synthesizer=lambda *args: WAV,
+        encoder=encoder,
+    )
+
+    response = asyncio.run(
+        provider.synthesize(
+            TTSRequest(
+                text="spoken",
+                voice="default",
+                format=AudioFormat.OGG,
+                sample_rate=16000,
+            )
+        )
+    )
+
+    assert calls == [(AudioFormat.OGG, 16000)]
+    assert response.format is AudioFormat.OGG
+
+
+def test_a_matching_container_is_not_converted() -> None:
+    def converter(*args: object) -> bytes:
+        raise AssertionError("a matching container must not be converted")
+
+    provider = LocalTTSProvider(
+        synthesizer=lambda *args: WAV,
+        converter=converter,
+    )
+
+    response = asyncio.run(
+        provider.synthesize(
+            TTSRequest(text="spoken", voice="default", format=AudioFormat.WAV)
+        )
+    )
+
+    assert response.audio == WAV
+    assert response.format is AudioFormat.WAV
+
+
+def test_raw_pcm_output_matching_the_request_is_not_converted() -> None:
+    raw = b"\x00\x01" * 16
+    provider = LocalTTSProvider(synthesizer=lambda *args: raw)
+
+    response = asyncio.run(
+        provider.synthesize(
+            TTSRequest(text="spoken", voice="default", format=AudioFormat.PCM)
+        )
+    )
+
+    assert response.audio == raw
+    assert response.format is AudioFormat.PCM
+
+
+def test_a_conversion_without_ffmpeg_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("aivia.providers.tts.local.shutil.which", lambda _: None)
+    provider = LocalTTSProvider(synthesizer=lambda *args: WAV)
+
+    with pytest.raises(ValidationError, match="ffmpeg"):
+        asyncio.run(
+            provider.synthesize(
+                TTSRequest(text="spoken", voice="default", format=AudioFormat.MP3)
+            )
+        )
+
+
+def test_a_conversion_runs_ffmpeg_with_the_target_codec() -> None:
+    calls: list[list[str]] = []
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[bytes]:
+        calls.append(argv)
+        Path(argv[-1]).write_bytes(MP3)
+        return subprocess.CompletedProcess(argv, 0, stdout=b"", stderr=b"")
+
+    provider = LocalTTSProvider(
+        synthesizer=lambda *args: WAV,
+        ffmpeg_runner=runner,
+    )
+
+    response = asyncio.run(
+        provider.synthesize(
+            TTSRequest(
+                text="spoken",
+                voice="default",
+                format=AudioFormat.MP3,
+                sample_rate=16000,
+            )
+        )
+    )
+
+    assert response.audio == MP3
+    assert response.format is AudioFormat.MP3
+    argv = calls[0]
+    assert argv[argv.index("-c:a") + 1] == "libmp3lame"
+    assert argv[argv.index("-ar") + 1] == "16000"
+    assert any(part.endswith("source.wav") for part in argv)
+
+
+def test_a_failing_ffmpeg_conversion_is_a_validation_error() -> None:
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(argv, 1, stdout=b"", stderr=b"boom")
+
+    provider = LocalTTSProvider(
+        synthesizer=lambda *args: WAV,
+        ffmpeg_runner=runner,
+    )
+
+    with pytest.raises(ValidationError, match="conversion failed"):
+        asyncio.run(
+            provider.synthesize(
+                TTSRequest(text="spoken", voice="default", format=AudioFormat.MP3)
+            )
+        )
+
+
+def test_an_unrecognised_source_is_rejected_as_an_unsupported_conversion() -> None:
+    provider = LocalTTSProvider(synthesizer=lambda *args: b"not audio")
+
+    with pytest.raises(InvalidRequestError, match="does not support converting"):
+        asyncio.run(
+            provider.synthesize(
+                TTSRequest(text="spoken", voice="default", format=AudioFormat.MP3)
+            )
+        )
+
+
 def test_piper_without_a_model_is_rejected() -> None:
     provider = LocalTTSProvider()
 
@@ -162,6 +328,14 @@ def test_an_unknown_backend_and_bad_command_are_rejected() -> None:
         LocalTTSProvider(command=[])
     with pytest.raises(TypeError, match="command"):
         LocalTTSProvider(command=123)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="encoder"):
+        LocalTTSProvider(encoder=object())  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="converter"):
+        LocalTTSProvider(converter=object())  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="ffmpeg_runner"):
+        LocalTTSProvider(ffmpeg_runner=object())  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="ffmpeg_executable"):
+        LocalTTSProvider(ffmpeg_executable=" ")
 
 
 def test_command_placeholders_are_expanded_without_a_shell() -> None:
