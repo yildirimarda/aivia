@@ -48,7 +48,11 @@ from aivia.media.accessibility import (
     store_accessibility_sidecars,
     write_accessibility_sidecars,
 )
-from aivia.media.adaptation import adapt_for_provider
+from aivia.media.adaptation import (
+    adapt_for_cache,
+    adapt_for_provider,
+    cache_request_variants,
+)
 from aivia.media.audio_utils import (
     AudioProcessing,
     AudioSettings,
@@ -71,7 +75,11 @@ from aivia.media.screening import (
 )
 from aivia.media.voices import prepare_speech_request
 from aivia.providers.base import Provider
-from aivia.providers.media.adapt import AdaptationResult, AdaptationWarning
+from aivia.providers.media.adapt import (
+    AdaptationError,
+    AdaptationResult,
+    AdaptationWarning,
+)
 from aivia.providers.media.dto import MediaKind
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.storage import (
@@ -653,17 +661,60 @@ class SpeechService:
             return self._require_screened(token, text)
         return self.screen(text)
 
+    def _adapted_cache_request(
+        self,
+        request: TTSRequest,
+        provider: Provider | None,
+    ) -> TTSRequest:
+        if provider is None:
+            return request
+        try:
+            return cast(
+                TTSRequest,
+                adapt_for_cache(
+                    request,
+                    provider,
+                    MediaKind.SPEECH,
+                    prepare=lambda item, selected: prepare_speech_request(
+                        item,
+                        provider=selected,
+                    ),
+                ),
+            )
+        except AdaptationError:
+            return request
+
     def cache_key(
         self,
         request: TTSRequest,
         settings: AudioSettings | Mapping[str, Any] | None = None,
+        *,
+        provider: Provider | None = None,
     ) -> AssetCacheKey:
-        """Return the cache key for one speech request."""
+        """Return the cache key for one speech request.
+
+        The key is built from the text the provider would actually synthesize,
+        so a truncated prompt is reused on a repeat.
+        """
         if not isinstance(request, TTSRequest):
             raise TypeError("request must be a TTSRequest")
         active = AudioSettings.from_value(
             settings if settings is not None else self._settings
         )
+        if provider is not None:
+            request = self._adapted_cache_request(request, provider)
+        else:
+            variants = cache_request_variants(
+                request,
+                self._router,
+                MediaKind.SPEECH,
+                prepare=lambda item, selected: prepare_speech_request(
+                    item,
+                    provider=selected,
+                ),
+            )
+            if variants:
+                request = cast(TTSRequest, variants[0])
         return speech_cache_key(request, active)
 
     def _measure_duration(
@@ -795,6 +846,16 @@ class SpeechService:
         if use_cache:
             cached = await self._cached_outcome(
                 request,
+                cache_request_variants(
+                    request,
+                    self._router,
+                    MediaKind.SPEECH,
+                    prepare=lambda item, selected: prepare_speech_request(
+                        item,
+                        provider=selected,
+                    ),
+                )
+                or (request,),
                 settings=active_settings,
                 run_id=run_id,
                 operation=operation_name,
@@ -838,6 +899,7 @@ class SpeechService:
             raise RuntimeError("router completed a speech call without a selection")
         provider_name = response.provider or selection.name
         model_name = response.model or request.model or ""
+        key_request = self._adapted_cache_request(request, selection.provider)
 
         if should_process:
             payload, output_format, processed = self._process_audio(
@@ -944,7 +1006,7 @@ class SpeechService:
             cost_links=cost_links,
         )
         if use_cache and self._cache is not None:
-            key_for_asset = self.cache_key(request, active_settings)
+            key_for_asset = speech_cache_key(key_request, active_settings)
             asset = self._cache.store(asset, key=key_for_asset)
         sidecars: tuple[Path, ...] = ()
         if write_sidecar:
@@ -1048,6 +1110,7 @@ class SpeechService:
     async def _cached_outcome(
         self,
         request: TTSRequest,
+        requests: Iterable[TTSRequest],
         *,
         settings: AudioSettings,
         run_id: str,
@@ -1058,15 +1121,27 @@ class SpeechService:
         cache = self._cache
         if cache is None:
             return None
-        key = self.cache_key(request, settings)
-        entry = cache.entry(key)
-        if entry is None:
+        key: AssetCacheKey | None = None
+        asset: Asset | None = None
+        payload: bytes | None = None
+        for candidate in requests:
+            candidate_key = speech_cache_key(candidate, settings)
+            entry = cache.entry(candidate_key)
+            if entry is None:
+                continue
+            candidate_asset = cache.assets.get(entry.asset_id)
+            if candidate_asset is None or candidate_asset.kind is not AssetKind.VOICE:
+                continue
+            candidate_payload = await self._cached_payload(candidate_asset, storage)
+            if candidate_payload is None:
+                continue
+            key = candidate_key
+            asset = candidate_asset
+            payload = candidate_payload
+            break
+        else:
             return None
-        asset = cache.assets.get(entry.asset_id)
-        if asset is None or asset.kind is not AssetKind.VOICE:
-            return None
-        payload = await self._cached_payload(asset, storage)
-        if payload is None:
+        if key is None or asset is None or payload is None:  # pragma: no cover
             return None
         fmt = _payload_format(payload, request.format)
         duration = asset.analysis.duration_seconds
