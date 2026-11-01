@@ -36,6 +36,7 @@ from pydantic import (
 
 from .motion import Motion
 from .text_animation import TextAnimation
+from .transitions import Transition
 
 __all__ = [
     "COMPOSITION_SCHEMA_VERSION",
@@ -87,6 +88,7 @@ __all__ = [
     "TextStyle",
     "TextWeight",
     "TrackRole",
+    "Transition",
     "VerticalAlign",
     "VideoLayer",
     "parse_layer",
@@ -1179,6 +1181,26 @@ class Layer(_SchemaModel):
             "out_animation",
         ),
     )
+    transition: Transition | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "transition",
+            "transition_in",
+            "enter_transition",
+            "in_transition",
+        ),
+    )
+
+    @field_validator("transition", mode="before")
+    @classmethod
+    def _validate_transition(cls, value: Any) -> Any:
+        if value is None or value is False:
+            return None
+        if isinstance(value, Transition):
+            return value
+        if isinstance(value, (str, bool, Mapping)):
+            return Transition.model_validate(value)
+        return value
 
     @model_validator(mode="before")
     @classmethod
