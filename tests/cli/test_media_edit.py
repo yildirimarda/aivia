@@ -146,8 +146,12 @@ def test_background_removal_uses_the_local_provider_and_writes_alpha_png(
     with Image.open(destination) as edited:
         assert edited.mode == "RGBA"
         assert edited.size == (32, 24)
-        assert edited.getpixel((0, 0))[3] == 0
-        assert edited.getpixel((16, 12))[3] == 255
+        corner = edited.getpixel((0, 0))
+        center = edited.getpixel((16, 12))
+        assert isinstance(corner, tuple)
+        assert isinstance(center, tuple)
+        assert corner[3] == 0
+        assert center[3] == 255
 
 
 def test_upscale_doubles_the_source_dimensions(
