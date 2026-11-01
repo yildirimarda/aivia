@@ -17,6 +17,7 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
+from aivia.compose.keyframes import Easing
 from aivia.compose.schema import Composition, Layer
 from aivia.core.errors import ValidationError
 
@@ -47,6 +48,7 @@ _KEYFRAME_TIME_KEYS = (
     "start",
 )
 _KEYFRAME_VALUE_KEYS = ("value", "v", "to", "target")
+_KEYFRAME_EASING_KEYS = ("easing", "ease", "timing", "curve")
 
 _KEYFRAME_RANGES: dict[str, tuple[float | None, float | None]] = {
     "alpha": (0.0, 1.0),
@@ -334,6 +336,30 @@ def _normalise_property(prop: str) -> str:
     return prop.strip().lower().replace("-", "_").replace(" ", "_")
 
 
+def _check_keyframe_easing(
+    path: str,
+    frame: Any,
+    issues: CompositionIssues,
+) -> None:
+    if not isinstance(frame, Mapping):
+        return
+    for key in _KEYFRAME_EASING_KEYS:
+        if key not in frame:
+            continue
+        raw = frame[key]
+        try:
+            Easing(raw)
+        except (TypeError, ValueError):
+            issues.append(
+                CompositionIssue(
+                    path=f"{path}.{key}",
+                    message=f"unknown keyframe easing {raw!r}",
+                    code="keyframe_easing",
+                )
+            )
+        return
+
+
 def _check_keyframe_value(
     path: str,
     prop: str,
@@ -485,6 +511,7 @@ def _check_keyframe_track(
             )
             continue
         _check_keyframe_value(f"{frame_path}.value", prop, value, issues)
+        _check_keyframe_easing(frame_path, frame, issues)
 
 
 def _check_keyframes(composition: Composition, issues: CompositionIssues) -> None:
