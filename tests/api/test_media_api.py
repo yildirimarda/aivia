@@ -385,6 +385,60 @@ def test_api_startup_runs_pending_media_jobs(
     assert stored_second.state is JobState.SUCCEEDED
 
 
+def test_api_startup_recovers_a_media_job_left_running_by_a_crashed_process(
+    engine: Engine,
+    toolkit: MediaToolkit,
+    provider: MockProvider,
+) -> None:
+    queue = JobQueue(engine)
+    job = queue.enqueue(
+        Job(
+            kind="media.image",
+            payload={
+                "kind": "image",
+                "request": {"prompt": "A stranded lighthouse"},
+            },
+        )
+    )
+    claimed = queue.claim("api-media", job_id=job.id)
+    assert claimed is not None
+    assert claimed.state is JobState.RUNNING
+
+    app = create_app(ApiConfig(require_auth=False), engine, environ={}, toolkit=toolkit)
+
+    with TestClient(app) as client:
+        status = client.get(f"/api/v1/media/jobs/{job.id}").json()
+
+    assert status["status"] == "succeeded"
+    assert len(provider.calls) == 1
+    stored = JobQueue(engine).get(job.id)
+    assert stored is not None
+    assert stored.state is JobState.SUCCEEDED
+    assert stored.attempts == 2
+
+
+def test_api_startup_leaves_running_jobs_of_other_kinds_for_the_worker(
+    engine: Engine,
+    toolkit: MediaToolkit,
+    provider: MockProvider,
+) -> None:
+    queue = JobQueue(engine)
+    job = queue.enqueue(Job(kind="run", payload={"prompt": "Not a media job"}))
+    claimed = queue.claim("worker-1", job_id=job.id)
+    assert claimed is not None
+
+    app = create_app(ApiConfig(require_auth=False), engine, environ={}, toolkit=toolkit)
+
+    with TestClient(app):
+        pass
+
+    stored = JobQueue(engine).get(job.id)
+    assert stored is not None
+    assert stored.state is JobState.RUNNING
+    assert stored.claimed_by == "worker-1"
+    assert not provider.calls
+
+
 def test_api_startup_leaves_other_pending_jobs_for_the_worker(
     engine: Engine,
     toolkit: MediaToolkit,

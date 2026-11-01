@@ -38,7 +38,12 @@ from aivia.core.db import (
     database_path as default_database_path,
 )
 from aivia.core.errors import QuotaError
-from aivia.core.jobs import JobQueue
+from aivia.core.jobs import (
+    STALE_HEARTBEAT_CODE,
+    JobNotClaimedError,
+    JobNotFoundError,
+    JobQueue,
+)
 from aivia.core.models import Job, JobState
 from aivia.media.facade import MEDIA_METRICS_FILENAME, MediaServiceFacade
 from aivia.media.toolkit import MediaResult, MediaToolkit
@@ -405,8 +410,46 @@ class MediaJobRunner:
             if job.kind.startswith("media.")
         ]
 
+    def running_job_ids(self) -> list[str]:
+        """Return the ids of media jobs left claimed by a previous process."""
+        engine = self._engine()
+        return [
+            job.id
+            for job in JobRepository(engine).list(state=JobState.RUNNING.value)
+            if job.kind.startswith("media.")
+        ]
+
+    def recover_running(self) -> list[str]:
+        """Release claims a dead API process left on media jobs.
+
+        Only the API runs media jobs, so a running media job at startup cannot
+        belong to a live worker. Its claim is failed as retryable, which returns
+        it to ``pending`` (or dead-letters it once its attempts are exhausted)
+        so :meth:`recover_pending` can execute it in this process.
+        """
+        engine = self._engine()
+        queue = JobQueue(engine, config=self._jobs)
+        recovered: list[str] = []
+        for job_id in self.running_job_ids():
+            job = queue.get(job_id)
+            if job is None or not job.claimed_by:
+                continue
+            try:
+                queue.fail(
+                    job_id,
+                    job.claimed_by,
+                    error_code=STALE_HEARTBEAT_CODE,
+                    error_message="API process stopped before finishing the job",
+                    retryable=True,
+                )
+            except (JobNotFoundError, JobNotClaimedError):
+                continue
+            recovered.append(job_id)
+        return recovered
+
     async def recover_pending(self) -> None:
-        """Run every pending media job so a restart cannot strand one."""
+        """Run every media job a restart left waiting or claimed."""
+        self.recover_running()
         for job_id in self.pending_job_ids():
             await self.run(job_id)
 
@@ -530,7 +573,7 @@ def register_media_routes(
         return default_database_path(data_dir, environ=environ).exists()
 
     async def recover_pending_media_jobs() -> None:
-        """Run media jobs a previous API process left waiting."""
+        """Run media jobs a previous API process left waiting or claimed."""
         if database_exists():
             await runner.recover_pending()
 
