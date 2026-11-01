@@ -9,10 +9,10 @@ The schema is versioned. :data:`CURRENT_COMPOSITION_SCHEMA_VERSION` is the
 version written by this release; readers keep the stored version so a later
 migration can upgrade older documents instead of guessing.
 
-Layer, audio track and effect objects carry a small common envelope now. The
-concrete layer kinds and their type-specific fields are added by later items;
-extra fields are therefore preserved rather than rejected on those nested
-objects, while an unknown top-level composition field is an error.
+Audio track and effect objects carry a small common envelope. Layers share the
+same envelope and add a concrete class per kind with the fields that kind needs.
+Unknown fields are rejected on a concrete layer while the generic :class:`Layer`
+envelope keeps them for forward compatibility.
 """
 
 from __future__ import annotations
@@ -21,13 +21,14 @@ import math
 import re
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, Literal, Self, cast
 
 from pydantic import (
     AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
+    TypeAdapter,
     field_validator,
     model_validator,
 )
@@ -35,6 +36,7 @@ from pydantic import (
 __all__ = [
     "COMPOSITION_SCHEMA_VERSION",
     "CURRENT_COMPOSITION_SCHEMA_VERSION",
+    "AnyLayer",
     "AudioTrack",
     "AudioTrackConfig",
     "AudioTrackRole",
@@ -50,11 +52,23 @@ __all__ = [
     "Effect",
     "EffectConfig",
     "EffectSpec",
+    "FitMode",
+    "ImageLayer",
     "Layer",
+    "LayerAdapter",
     "LayerConfig",
     "LayerSpec",
     "LayerType",
+    "LayerUnion",
+    "LogoLayer",
+    "ShapeLayer",
+    "ShapeType",
+    "StickerLayer",
+    "TextAlign",
+    "TextLayer",
     "TrackRole",
+    "VideoLayer",
+    "parse_layer",
 ]
 
 CURRENT_COMPOSITION_SCHEMA_VERSION = 1
@@ -75,6 +89,74 @@ class LayerType(StrEnum):
     SHAPE = "shape"
     STICKER = "sticker"
     LOGO = "logo"
+
+
+class FitMode(StrEnum):
+    """How a media layer fits its source into the layer rectangle."""
+
+    COVER = "cover"
+    CONTAIN = "contain"
+    STRETCH = "stretch"
+    NONE = "none"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> FitMode | None:
+        if not isinstance(value, str):
+            return None
+        aliases = {
+            "crop": cls.COVER,
+            "fill": cls.STRETCH,
+            "scale": cls.STRETCH,
+            "original": cls.NONE,
+            "actual": cls.NONE,
+        }
+        return aliases.get(value.strip().lower())
+
+
+class ShapeType(StrEnum):
+    """The primitive shapes a shape layer can draw."""
+
+    RECTANGLE = "rectangle"
+    ROUNDED_RECTANGLE = "rounded_rectangle"
+    CIRCLE = "circle"
+    LINE = "line"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> ShapeType | None:
+        if not isinstance(value, str):
+            return None
+        key = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "rect": cls.RECTANGLE,
+            "square": cls.RECTANGLE,
+            "rounded_rect": cls.ROUNDED_RECTANGLE,
+            "round_rect": cls.ROUNDED_RECTANGLE,
+            "round_rectangle": cls.ROUNDED_RECTANGLE,
+            "ellipse": cls.CIRCLE,
+            "oval": cls.CIRCLE,
+            "line_segment": cls.LINE,
+        }
+        return aliases.get(key)
+
+
+class TextAlign(StrEnum):
+    """Horizontal alignment of a text layer."""
+
+    LEFT = "left"
+    CENTER = "center"
+    RIGHT = "right"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> TextAlign | None:
+        if not isinstance(value, str):
+            return None
+        aliases = {
+            "start": cls.LEFT,
+            "centre": cls.CENTER,
+            "middle": cls.CENTER,
+            "end": cls.RIGHT,
+        }
+        return aliases.get(value.strip().lower())
 
 
 class AudioTrackRole(StrEnum):
@@ -337,6 +419,271 @@ class Layer(_SchemaModel):
 LayerSpec = Layer
 LayerConfig = Layer
 BaseLayer = Layer
+
+
+class _AssetLayer(Layer):
+    """Shared source validation for layers backed by a stored asset."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        validate_assignment=True,
+    )
+
+    source: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices(
+            "source",
+            "path",
+            "file",
+            "asset",
+            "asset_id",
+        ),
+    )
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def _validate_source(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            raise ValueError("source must be a string")
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("source must not be empty")
+        return stripped
+
+
+class ImageLayer(_AssetLayer):
+    """A still image placed on the canvas."""
+
+    type: Literal[LayerType.IMAGE] = Field(
+        default=LayerType.IMAGE,
+        validation_alias=AliasChoices("type", "kind", "layer_type"),
+    )
+    fit: FitMode = Field(
+        default=FitMode.COVER,
+        validation_alias=AliasChoices("fit", "fit_mode", "mode"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_string_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"type": LayerType.IMAGE, "source": data}
+        return data
+
+
+class VideoLayer(_AssetLayer):
+    """A video clip placed on the canvas."""
+
+    type: Literal[LayerType.VIDEO] = Field(
+        default=LayerType.VIDEO,
+        validation_alias=AliasChoices("type", "kind", "layer_type"),
+    )
+    fit: FitMode = Field(
+        default=FitMode.COVER,
+        validation_alias=AliasChoices("fit", "fit_mode", "mode"),
+    )
+    trim_start_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices(
+            "trim_start_seconds", "trim_start", "source_start", "clip_start"
+        ),
+    )
+    trim_end_seconds: float | None = Field(
+        default=None,
+        ge=0.0,
+        validation_alias=AliasChoices(
+            "trim_end_seconds", "trim_end", "source_end", "clip_end"
+        ),
+    )
+    loop: bool = Field(default=False, validation_alias=AliasChoices("loop", "looped"))
+    muted: bool = Field(default=False, validation_alias=AliasChoices("muted", "mute"))
+    playback_rate: float = Field(
+        default=1.0,
+        gt=0.0,
+        validation_alias=AliasChoices("playback_rate", "speed", "rate"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_string_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"type": LayerType.VIDEO, "source": data}
+        return data
+
+    @field_validator("trim_start_seconds", "trim_end_seconds", mode="before")
+    @classmethod
+    def _validate_trim(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return _finite(value, "trim time")
+
+    @field_validator("playback_rate", mode="before")
+    @classmethod
+    def _validate_playback_rate(cls, value: Any) -> Any:
+        return _finite(value, "playback_rate")
+
+    @model_validator(mode="after")
+    def _validate_trim_window(self) -> Self:
+        if (
+            self.trim_end_seconds is not None
+            and self.trim_end_seconds <= self.trim_start_seconds
+        ):
+            raise ValueError("trim_end_seconds must be greater than trim_start_seconds")
+        return self
+
+
+class TextLayer(Layer):
+    """A text run drawn on the canvas."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        validate_assignment=True,
+    )
+
+    type: Literal[LayerType.TEXT] = Field(
+        default=LayerType.TEXT,
+        validation_alias=AliasChoices("type", "kind", "layer_type"),
+    )
+    text: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices("text", "content", "value"),
+    )
+    font_family: str = Field(
+        default="",
+        validation_alias=AliasChoices("font_family", "font", "family"),
+    )
+    font_size: float = Field(
+        default=48.0,
+        gt=0.0,
+        validation_alias=AliasChoices("font_size", "size", "font_size_px"),
+    )
+    color: str = Field(
+        default="#ffffff",
+        validation_alias=AliasChoices("color", "fill", "text_color"),
+    )
+    align: TextAlign = Field(
+        default=TextAlign.LEFT,
+        validation_alias=AliasChoices("align", "text_align", "alignment"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_string_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"type": LayerType.TEXT, "text": data}
+        return data
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _validate_text(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            raise ValueError("text must be a string")
+        if not value.strip():
+            raise ValueError("text must not be empty")
+        return value
+
+    @field_validator("font_family", "color", mode="before")
+    @classmethod
+    def _strip_text_field(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            raise ValueError("value must be a string")
+        return value.strip()
+
+    @field_validator("font_size", mode="before")
+    @classmethod
+    def _validate_font_size(cls, value: Any) -> Any:
+        return _finite(value, "font_size")
+
+
+class ShapeLayer(Layer):
+    """A primitive shape drawn on the canvas."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        validate_assignment=True,
+    )
+
+    type: Literal[LayerType.SHAPE] = Field(
+        default=LayerType.SHAPE,
+        validation_alias=AliasChoices("type", "kind", "layer_type"),
+    )
+    shape: ShapeType = Field(
+        validation_alias=AliasChoices("shape", "shape_type", "form"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_string_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"type": LayerType.SHAPE, "shape": data}
+        return data
+
+
+class StickerLayer(_AssetLayer):
+    """A decorative sticker placed on the canvas."""
+
+    type: Literal[LayerType.STICKER] = Field(
+        default=LayerType.STICKER,
+        validation_alias=AliasChoices("type", "kind", "layer_type"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_string_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"type": LayerType.STICKER, "source": data}
+        return data
+
+
+class LogoLayer(_AssetLayer):
+    """A brand logo placed on the canvas."""
+
+    type: Literal[LayerType.LOGO] = Field(
+        default=LayerType.LOGO,
+        validation_alias=AliasChoices("type", "kind", "layer_type"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_string_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"type": LayerType.LOGO, "source": data}
+        return data
+
+
+AnyLayer = ImageLayer | VideoLayer | TextLayer | ShapeLayer | StickerLayer | LogoLayer
+"""Any concrete layer, discriminated by its ``type`` field."""
+
+LayerUnion = AnyLayer
+"""Alias for :data:`AnyLayer`."""
+
+LayerAdapter: TypeAdapter[AnyLayer] = TypeAdapter(AnyLayer)
+"""A reusable pydantic adapter that parses a mapping into a concrete layer."""
+
+
+class _LayerTypeGuard(BaseModel):
+    """Require an explicit layer type before the concrete union is tried."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    type: LayerType = Field(
+        validation_alias=AliasChoices("type", "kind", "layer_type"),
+    )
+
+
+def parse_layer(data: Any) -> AnyLayer:
+    """Parse *data* into the concrete layer class named by its type."""
+    if isinstance(data, Layer):
+        if data.__class__ is Layer:
+            data = data.model_dump()
+        else:
+            return cast(AnyLayer, data)
+    _LayerTypeGuard.model_validate(data)
+    return LayerAdapter.validate_python(data)
 
 
 class AudioTrack(_SchemaModel):

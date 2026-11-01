@@ -426,6 +426,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add an end to end test where mock assets become an mp4, a gif and a web card that pass output validation (slow, tests/e2e/test_assets_to_output.py)
 - [ ] Shape mixed left to right and right to left text correctly with per language direction defaults (tests/compose/test_bidi.py)
 - [ ] Upgrade older composition schema versions before validation and reject newer ones with a clear error (tests/compose/test_migrations.py)
+- [ ] Parse composition layers into their concrete classes so type specific fields are validated (tests/compose/test_validation.py)
 
 ## Milestone 10: Research engine
 
