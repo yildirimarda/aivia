@@ -1410,7 +1410,7 @@ def apply_branding_to_video(
             ffprobe_runner=ffprobe_runner,
             timeout_seconds=timeout_seconds,
         )
-        return watermark_video(
+        branded = watermark_video(
             joined,
             destination,
             mark,
@@ -1421,6 +1421,13 @@ def apply_branding_to_video(
             ffmpeg_executable=ffmpeg_executable,
             ffmpeg_runner=ffmpeg_runner,
             timeout_seconds=timeout_seconds,
+        )
+        return BrandedVideoResult(
+            output=branded.output,
+            intro=intro_path,
+            outro=outro_path,
+            watermarked=branded.watermarked,
+            sources=tuple(clips),
         )
 
 

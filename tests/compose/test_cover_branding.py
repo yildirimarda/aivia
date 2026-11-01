@@ -404,6 +404,9 @@ def test_apply_branding_to_video_joins_then_watermarks(
     assert calls == ["join", "watermark"]
     assert result.watermarked is True
     assert result.output.read_bytes() == b"branded"
+    assert result.sources == (tmp_path / "intro.mp4", video)
+    assert result.intro == tmp_path / "intro.mp4"
+    assert result.outro is None
 
 
 def test_invalid_branding_values_are_rejected() -> None:
