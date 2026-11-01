@@ -427,6 +427,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Shape mixed left to right and right to left text correctly with per language direction defaults (tests/compose/test_bidi.py)
 - [ ] Upgrade older composition schema versions before validation and reject newer ones with a clear error (tests/compose/test_migrations.py)
 - [ ] Parse composition layers into their concrete classes so type specific fields are validated (tests/compose/test_validation.py)
+- [ ] Write composition files atomically so an interrupted save cannot leave a truncated document (tests/compose/test_io.py)
 
 ## Milestone 10: Research engine
 
