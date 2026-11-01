@@ -181,6 +181,13 @@ from aivia.providers.protocols.video import (
     VideoResponse,
     VideoResult,
 )
+from aivia.providers.protocols.voice_clone import (
+    CAPABILITY_VOICE_CLONE,
+    CAPABILITY_VOICE_CLONING,
+    VoiceCloneProvider,
+    VoiceCloneRequest,
+    VoiceCloneResponse,
+)
 
 __all__ = [
     "CAPABILITY_CHARACTER_TRAINER",
@@ -211,6 +218,8 @@ __all__ = [
     "CAPABILITY_VIDEO_NATIVE_AUDIO",
     "CAPABILITY_VIDEO_TO_VIDEO",
     "CAPABILITY_VIDEO_V2V",
+    "CAPABILITY_VOICE_CLONE",
+    "CAPABILITY_VOICE_CLONING",
     "AudioFormat",
     "CapabilityProvider",
     "CharacterTrainer",
@@ -312,6 +321,9 @@ __all__ = [
     "VideoRequest",
     "VideoResponse",
     "VideoResult",
+    "VoiceCloneProvider",
+    "VoiceCloneRequest",
+    "VoiceCloneResponse",
     "WordTimestamp",
     "ensure_utc",
     "normalize_domain",

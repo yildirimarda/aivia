@@ -6,6 +6,13 @@ provider registry. Each adapter resolves logical voice aliases through
 through :class:`~aivia.providers.tts.cost.TTSCostCalculator`.
 """
 
+from aivia.providers.protocols.voice_clone import (
+    CAPABILITY_VOICE_CLONE,
+    CAPABILITY_VOICE_CLONING,
+    VoiceCloneProvider,
+    VoiceCloneRequest,
+    VoiceCloneResponse,
+)
 from aivia.providers.tts.azure import (
     AZURE_TTS_API_VERSION,
     Azure,
@@ -73,6 +80,8 @@ from aivia.providers.tts.voice import VoiceMap, VoiceMapping
 
 __all__ = [
     "AZURE_TTS_API_VERSION",
+    "CAPABILITY_VOICE_CLONE",
+    "CAPABILITY_VOICE_CLONING",
     "CHARACTER_UNIT",
     "DEFAULT_SAMPLE_RATE",
     "ELEVENLABS_BASE_URL",
@@ -121,6 +130,9 @@ __all__ = [
     "TTSCost",
     "TTSCostCalculator",
     "TTSPrice",
+    "VoiceCloneProvider",
+    "VoiceCloneRequest",
+    "VoiceCloneResponse",
     "VoiceMap",
     "VoiceMapping",
     "phoneme_ssml",
