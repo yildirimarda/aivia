@@ -389,7 +389,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 <!-- goal: one declarative composition rendered deterministically by one renderer, with no AI at render time -->
 
 - [x] Define the composition schema with canvas, duration, fps, layers, audio tracks, effects and a schema version (tests/compose/test_schema.py)
-- [ ] Add layer types for image, video, text, shape, sticker and logo with validation (tests/compose/test_layers.py)
+- [x] Add layer types for image, video, text, shape, sticker and logo with validation (tests/compose/test_layers.py)
 - [ ] Validate compositions for unique ids, timings inside the duration, existing assets, sorted keyframes and value ranges, returning all errors (tests/compose/test_validation.py)
 - [ ] Support loading and saving compositions as YAML and JSON plus a JSON schema export (tests/compose/test_io.py)
 - [ ] Implement keyframes and easing functions for position, scale, rotation and opacity (tests/compose/test_keyframes.py)
