@@ -28,8 +28,10 @@ from aivia.providers.video.flags import supports_video_input
 
 __all__ = [
     "CAPABILITY_VIDEO_INPUT",
+    "SOURCE_VIDEO_MEDIA_PREFIX",
     "VIDEO_TO_VIDEO_SKIP_REASON",
     "VideoToVideoNotSupportedError",
+    "ensure_source_video_media_type",
     "ensure_video_to_video_support",
     "filter_providers_for_video_to_video",
     "is_video_to_video",
@@ -39,6 +41,9 @@ __all__ = [
     "supports_video_to_video",
     "video_to_video_skip_reason",
 ]
+
+SOURCE_VIDEO_MEDIA_PREFIX = "video/"
+"""The media type prefix a source clip must declare."""
 
 VIDEO_TO_VIDEO_SKIP_REASON = (
     "no configured provider declares video_input support; video-to-video is skipped"
@@ -91,12 +96,36 @@ def is_video_to_video(request: VideoRequest) -> bool:
     return request.source_video is not None
 
 
+def ensure_source_video_media_type(request: VideoRequest) -> None:
+    """Raise when *request* carries a source clip that is not a video.
+
+    A missing media type is accepted because it may still be a clip; an
+    explicit non-video type is rejected before any provider is called so a
+    still image or an audio track cannot be submitted as a source video.
+    """
+    if not isinstance(request, VideoRequest):
+        raise TypeError("request must be a VideoRequest")
+    source = request.source_video
+    if source is None or source.media_type is None:
+        return
+    if source.media_type.startswith(SOURCE_VIDEO_MEDIA_PREFIX):
+        return
+    raise InvalidRequestError(
+        "source video must be a video media type",
+        details={
+            "field": "source_video",
+            "media_type": source.media_type,
+        },
+    )
+
+
 def required_video_to_video_capabilities(
     request: VideoRequest,
 ) -> tuple[str, ...]:
     """Return the capabilities *request* needs to transform its source clip."""
     if not is_video_to_video(request):
         return ()
+    ensure_source_video_media_type(request)
     return (CAPABILITY_VIDEO_INPUT,)
 
 
@@ -115,6 +144,7 @@ def filter_providers_for_video_to_video(
     candidates = tuple(providers)
     if not is_video_to_video(request):
         return candidates
+    ensure_source_video_media_type(request)
     return tuple(
         provider for provider in candidates if supports_video_to_video(provider)
     )
@@ -134,6 +164,8 @@ def video_to_video_skip_reason(
         raise TypeError("request must be a VideoRequest or None")
     if request is not None and not is_video_to_video(request):
         return None
+    if request is not None:
+        ensure_source_video_media_type(request)
     if any(supports_video_to_video(provider) for provider in providers):
         return None
     return VIDEO_TO_VIDEO_SKIP_REASON
@@ -154,6 +186,7 @@ def ensure_video_to_video_support(
     """Raise when *request* carries a source clip *source* cannot accept."""
     if not is_video_to_video(request):
         return
+    ensure_source_video_media_type(request)
     if supports_video_to_video(source):
         return
     raise VideoToVideoNotSupportedError(_metadata(source).name or "provider")

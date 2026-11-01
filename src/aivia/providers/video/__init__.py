@@ -90,8 +90,10 @@ from aivia.providers.video.replicate import (
     ReplicateVideoProvider,
 )
 from aivia.providers.video.v2v import (
+    SOURCE_VIDEO_MEDIA_PREFIX,
     VIDEO_TO_VIDEO_SKIP_REASON,
     VideoToVideoNotSupportedError,
+    ensure_source_video_media_type,
     ensure_video_to_video_support,
     filter_providers_for_video_to_video,
     is_video_to_video,
@@ -143,6 +145,7 @@ __all__ = [
     "REPLICATE_VIDEO_BASE_URL",
     "REPLICATE_VIDEO_DEFAULT_BASE_URL",
     "SECOND_UNIT",
+    "SOURCE_VIDEO_MEDIA_PREFIX",
     "VEO_API_URL",
     "VEO_DEFAULT_BASE_URL",
     "VIDEO_OPERATION",
@@ -178,6 +181,7 @@ __all__ = [
     "apply_audio_policy",
     "declared_video_flags",
     "enforce_audio_policy",
+    "ensure_source_video_media_type",
     "ensure_video_flags",
     "ensure_video_support",
     "ensure_video_to_video_support",

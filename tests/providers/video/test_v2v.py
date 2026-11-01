@@ -66,9 +66,13 @@ class FakeVideoProvider(Provider):
         )
 
 
-def _request(*, source: bool = True) -> VideoRequest:
+def _request(
+    *,
+    source: bool = True,
+    media_type: str | None = "video/mp4",
+) -> VideoRequest:
     source_video = (
-        MediaInput(url=_SOURCE_URL, media_type="video/mp4") if source else None
+        MediaInput(url=_SOURCE_URL, media_type=media_type) if source else None
     )
     return VideoRequest(prompt="restyle the clip", source_video=source_video)
 
@@ -249,3 +253,46 @@ def test_fal_rejects_a_source_video_instead_of_dropping_it() -> None:
 
     assert caught.value.details["field"] == "source_video"
     assert caught.value.details["required_capability"] == CAPABILITY_VIDEO_INPUT
+
+
+def test_a_source_video_with_a_non_video_media_type_is_rejected() -> None:
+    capable = FakeVideoProvider(
+        "with-video-input",
+        [CAPABILITY_VIDEO_GEN, CAPABILITY_VIDEO_INPUT],
+    )
+
+    with pytest.raises(InvalidRequestError) as caught:
+        prepare_video_to_video_request(
+            capable,
+            _request(media_type="image/png"),
+        )
+
+    assert caught.value.details["field"] == "source_video"
+    assert caught.value.details["media_type"] == "image/png"
+
+
+def test_a_source_video_without_a_media_type_is_still_a_clip() -> None:
+    capable = FakeVideoProvider(
+        "with-video-input",
+        [CAPABILITY_VIDEO_GEN, CAPABILITY_VIDEO_INPUT],
+    )
+    request = _request(media_type=None)
+
+    assert prepare_video_to_video_request(capable, request) is request
+
+
+def test_fal_rejects_a_non_video_source_before_any_call() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("the source video must be rejected before any call")
+
+    provider = FalVideoProvider(
+        api_key="test-key",
+        default_model="fal-ai/kling-video/v1.6/pro/text-to-video",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(InvalidRequestError) as caught:
+        asyncio.run(provider.generate(_request(media_type="image/png")))
+
+    assert caught.value.details["field"] == "source_video"
+    assert caught.value.details["media_type"] == "image/png"

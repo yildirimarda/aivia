@@ -60,6 +60,7 @@ from aivia.providers.protocols.video import (
     VideoResult,
 )
 from aivia.providers.registry import register_provider
+from aivia.providers.video.v2v import ensure_source_video_media_type
 
 __all__ = [
     "DEFAULT_API_VERSION",
@@ -864,6 +865,7 @@ class VeoVideoProvider(Provider):
         if not isinstance(request, VideoRequest):
             raise TypeError("request must be a VideoRequest")
 
+        ensure_source_video_media_type(request)
         model = self._resolve_model(request)
         if request.first_frame is not None and not self.supports(
             CAPABILITY_VIDEO_FIRST_FRAME

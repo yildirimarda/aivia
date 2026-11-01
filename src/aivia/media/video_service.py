@@ -91,6 +91,7 @@ from aivia.providers.protocols.video import (
     VideoResponse,
     VideoResult,
 )
+from aivia.providers.video.v2v import ensure_source_video_media_type
 
 __all__ = [
     "VIDEO_OPERATION",
@@ -812,6 +813,7 @@ class VideoService:
         """
         if not isinstance(request, VideoRequest):
             raise TypeError("request must be a VideoRequest")
+        ensure_source_video_media_type(request)
         supplied_tokens = [
             value
             for value in (token, screening_token, screen_token)
