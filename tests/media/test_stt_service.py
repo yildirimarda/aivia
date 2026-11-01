@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+import httpx
 import pytest
 from sqlalchemy import Engine
 
@@ -218,6 +219,22 @@ def _path(asset_path: str) -> Path:
     return Path(unquote(parsed.path))
 
 
+def _remote_transport(
+    payload: bytes,
+    downloads: list[str] | None = None,
+) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if downloads is not None:
+            downloads.append(str(request.url))
+        return httpx.Response(
+            200,
+            content=payload,
+            headers={"content-type": "audio/wav"},
+        )
+
+    return httpx.MockTransport(handler)
+
+
 def test_a_transcript_is_stored_priced_and_writes_a_cost_sidecar(
     tracker: CostTracker,
     storage: LocalStorageProvider,
@@ -377,6 +394,127 @@ def test_a_duration_hint_avoids_a_probe_and_allows_the_call(
     )
 
     assert len(provider.calls) == 1
+    assert outcome.amount_usd == pytest.approx(PRICE * DURATION / 60.0)
+
+
+def test_a_duration_hint_for_remote_audio_avoids_downloading_it(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeSTTProvider(price=PRICE)
+    downloads: list[str] = []
+    service = _service(
+        provider,
+        tracker,
+        storage,
+        durations=(DURATION,),
+        transport=_remote_transport(wav_bytes(), downloads),
+    )
+    url = "https://cdn.example.com/audio/clip.wav"
+
+    outcome = _run(
+        service.generate(
+            STTRequest(audio_url=url),
+            remaining_budget=PRICE * DURATION / 60.0,
+            duration_seconds=DURATION,
+        )
+    )
+
+    assert downloads == []
+    assert len(provider.calls) == 1
+    assert outcome.amount_usd == pytest.approx(PRICE * DURATION / 60.0)
+
+
+def test_a_metadata_duration_hint_for_remote_audio_guards_the_budget(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeSTTProvider(price=PRICE)
+    downloads: list[str] = []
+    service = _service(
+        provider,
+        tracker,
+        storage,
+        durations=(DURATION,),
+        transport=_remote_transport(wav_bytes(), downloads),
+    )
+
+    with pytest.raises(ProviderExhaustedError) as caught:
+        _run(
+            service.generate(
+                STTRequest(
+                    audio_url="https://cdn.example.com/audio/clip.wav",
+                    metadata={"duration_seconds": DURATION},
+                ),
+                remaining_budget=PRICE * DURATION / 60.0 / 2.0,
+            )
+        )
+
+    assert downloads == []
+    assert provider.calls == []
+    assert caught.value.details["skipped"] == [
+        {"provider": "acme-stt", "reason": "budget_exceeded"}
+    ]
+
+
+def test_remote_audio_is_probed_before_the_budget_check(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeSTTProvider(price=PRICE)
+    downloads: list[str] = []
+    service = _service(
+        provider,
+        tracker,
+        storage,
+        durations=(DURATION,),
+        transport=_remote_transport(wav_bytes(), downloads),
+    )
+    url = "https://cdn.example.com/audio/clip.wav"
+
+    with pytest.raises(ProviderExhaustedError) as caught:
+        _run(
+            service.generate(
+                STTRequest(audio_url=url),
+                remaining_budget=PRICE * DURATION / 60.0 / 2.0,
+            )
+        )
+
+    assert downloads == [url]
+    assert provider.calls == []
+    assert caught.value.details["skipped"] == [
+        {"provider": "acme-stt", "reason": "budget_exceeded"}
+    ]
+    assert tracker.count() == 0
+
+
+def test_remote_audio_is_probed_and_allowed_when_the_budget_covers_it(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeSTTProvider(price=PRICE)
+    downloads: list[str] = []
+    service = _service(
+        provider,
+        tracker,
+        storage,
+        durations=(DURATION,),
+        transport=_remote_transport(wav_bytes(), downloads),
+    )
+    url = "https://cdn.example.com/audio/clip.wav"
+
+    outcome = _run(
+        service.generate(
+            STTRequest(audio_url=url),
+            remaining_budget=PRICE * DURATION / 60.0,
+        )
+    )
+
+    assert downloads == [url]
+    assert len(provider.calls) == 1
+    event = outcome.event
+    assert event is not None
+    assert event.units == pytest.approx(DURATION / 60.0)
     assert outcome.amount_usd == pytest.approx(PRICE * DURATION / 60.0)
 
 

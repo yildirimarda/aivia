@@ -596,9 +596,7 @@ class MediaToolkit:
     def stt_service(self) -> STTService:
         """The lazily built speech to text service."""
         if self._stt_service is None:
-            self._stt_service = STTService(
-                self._router, **self._base_values("transcription")
-            )
+            self._stt_service = STTService(self._router, **self._stt_values())
         return self._stt_service
 
     @property
@@ -680,6 +678,23 @@ class MediaToolkit:
                 "ffmpeg_executable": self._ffmpeg_executable,
                 "ffmpeg_runner": self._ffmpeg_runner,
                 "ffmpeg_timeout_seconds": self._ffmpeg_timeout,
+                "ffprobe_executable": self._ffprobe_executable,
+                "ffprobe_runner": self._ffprobe_runner,
+                "ffprobe_timeout_seconds": self._ffprobe_timeout,
+            }
+        )
+        return values
+
+    def _stt_values(self) -> dict[str, Any]:
+        values = self._base_values("transcription")
+        values.update(
+            {
+                "cache": self._cache,
+                "limits": self._limits,
+                "downloader": self._downloader,
+                "http": self._http,
+                "transport": self._transport,
+                "no_cache": self._no_cache,
                 "ffprobe_executable": self._ffprobe_executable,
                 "ffprobe_runner": self._ffprobe_runner,
                 "ffprobe_timeout_seconds": self._ffprobe_timeout,

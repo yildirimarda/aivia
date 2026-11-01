@@ -15,7 +15,9 @@ The cache key is derived from the audio bytes (or the audio URL) plus the
 transcription options, so the same recording is never paid for twice even when
 the caller passes a different filename. The budget and the cost both use the
 audio duration in minutes; a duration hint in the request metadata avoids a
-probe, otherwise inline audio is measured with ffprobe before the call.
+probe, otherwise the audio is measured before the call. Inline audio is probed
+with ffprobe directly while remote audio is downloaded and probed first, so a
+URL cannot bypass the duration based budget check.
 """
 
 from __future__ import annotations
@@ -29,13 +31,16 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlsplit
 
+import httpx
 from sqlalchemy import Engine
 
 from aivia.core.asset_cache import AssetCache, AssetCacheKey
 from aivia.core.budget import BudgetGuard
 from aivia.core.config.budget import BudgetConfig
+from aivia.core.config.media import DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS
 from aivia.core.cost import CostTracker
 from aivia.core.errors import ValidationError
+from aivia.core.media_probe import MediaDownloader, MediaLimits
 from aivia.core.models.asset import Asset, AssetCostLink, AssetKind
 from aivia.core.models.base import canonical_json
 from aivia.core.models.cost import CostEvent
@@ -248,6 +253,10 @@ class STTService:
         storage: StorageProvider | None = None,
         budget: BudgetLike = None,
         safety: Any = None,
+        limits: MediaLimits | None = None,
+        downloader: MediaDownloader | None = None,
+        http: Any = None,
+        transport: httpx.AsyncBaseTransport | None = None,
         pricing_overrides: Mapping[str, float] | None = None,
         pricing_version: str = "",
         operation: str = STT_OPERATION,
@@ -272,6 +281,14 @@ class STTService:
             budget, (BudgetGuard, BudgetConfig, Mapping)
         ):
             raise TypeError("budget must be a BudgetGuard, BudgetConfig or mapping")
+        if limits is not None and not isinstance(limits, MediaLimits):
+            raise TypeError("limits must be a MediaLimits")
+        if downloader is not None and not isinstance(downloader, MediaDownloader):
+            raise TypeError("downloader must be a MediaDownloader")
+        if downloader is not None and (http is not None or transport is not None):
+            raise TypeError(
+                "pass either a downloader or http/transport options, not both"
+            )
         if key_prefix is not None:
             if not isinstance(key_prefix, str) or not key_prefix.strip():
                 raise ValueError("key_prefix must be a non-empty string")
@@ -307,6 +324,10 @@ class STTService:
             else budget
         )
         self._safety = safety
+        self._limits = limits
+        self._downloader = downloader
+        self._http = http
+        self._transport = transport
         self._operation = operation.strip()
         self._toolchain = toolchain
         self._key_prefix = key_prefix
@@ -422,7 +443,7 @@ class STTService:
             budget = self._budget.remaining(run_id, operation=operation_name)
         estimate_seconds = _duration_hint(request, duration_seconds)
         if estimate_seconds is None and budget is not None:
-            estimate_seconds = self._probe_duration(request)
+            estimate_seconds = await self._probe_duration(request)
         budget_minutes = max(0.0, estimate_seconds or 0.0) / 60.0
 
         async def run(provider: Provider) -> STTResponse:
@@ -574,19 +595,55 @@ class STTService:
         self._last_outcome = outcome
         return outcome
 
-    def _probe_duration(self, request: STTRequest) -> float | None:
-        if request.audio is None:
-            return None
-        timeout = self._ffprobe_timeout if self._ffprobe_timeout is not None else 10.0
-        try:
-            return measure_audio_duration(
-                request.audio,
-                ffprobe_executable=self._ffprobe_executable,
-                ffprobe_runner=self._ffprobe_runner,
-                timeout_seconds=timeout,
+    def _downloader_for(self) -> MediaDownloader:
+        if self._downloader is None:
+            timeout = (
+                self._ffprobe_timeout
+                if self._ffprobe_timeout is not None
+                else DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS
             )
-        except (ValidationError, ValueError, TypeError):
+            self._downloader = MediaDownloader(
+                http=self._http,
+                transport=self._transport,
+                limits=self._limits,
+                ffprobe_executable=self._ffprobe_executable,
+                ffprobe_timeout_seconds=timeout,
+                ffprobe_runner=self._ffprobe_runner,
+            )
+        return self._downloader
+
+    async def _probe_duration(self, request: STTRequest) -> float | None:
+        if request.audio is not None:
+            timeout = (
+                self._ffprobe_timeout
+                if self._ffprobe_timeout is not None
+                else DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS
+            )
+            try:
+                return measure_audio_duration(
+                    request.audio,
+                    ffprobe_executable=self._ffprobe_executable,
+                    ffprobe_runner=self._ffprobe_runner,
+                    timeout_seconds=timeout,
+                )
+            except (ValidationError, ValueError, TypeError):
+                return None
+        if request.audio_url is None:
             return None
+        try:
+            probe = await self._downloader_for().download(
+                request.audio_url,
+                timeout_seconds=request.timeout_seconds,
+            )
+        except (ValidationError, ValueError, TypeError, httpx.HTTPError):
+            return None
+        duration = probe.duration_seconds
+        if duration is None:
+            return None
+        value = float(duration)
+        if not math.isfinite(value) or value < 0:
+            return None
+        return value
 
     async def _cached_outcome(
         self,

@@ -378,6 +378,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Claim async job recovery atomically so two processes cannot resubmit the same crashed job (tests/providers/media/test_async_job.py)
 - [ ] Cap animated frame count and total decoded pixels in media probe validation (tests/core/test_media_probe.py)
 - [ ] Guard a remote first frame download with the shared SSRF policy before a Veo call (tests/providers/video/test_replicate_veo_frames.py)
+- [ ] Refuse a speech to text call with an unknown duration when a budget is configured (tests/media/test_stt_service.py)
 
 ## Milestone 9: Composition and rendering
 
