@@ -533,6 +533,12 @@ from aivia.media.video_utils import (
     trim,
     trim_video,
 )
+from aivia.media.voice_clone import (
+    ConsentInput,
+    VoiceCloneRequest,
+    VoiceCloneService,
+    normalize_consent,
+)
 from aivia.media.voices import (
     DEFAULT_ALPHABET,
     LanguageVoice,
@@ -661,6 +667,7 @@ __all__ = [
     "BatchRunResult",
     "BatchRunner",
     "BatchStatus",
+    "ConsentInput",
     "ContentScreener",
     "DuckingReport",
     "DuckingSettings",
@@ -806,6 +813,8 @@ __all__ = [
     "VisionAnalyzer",
     "Voice",
     "VoiceCatalog",
+    "VoiceCloneRequest",
+    "VoiceCloneService",
     "VoiceEntry",
     "VoiceList",
     "VoiceMapping",
@@ -960,6 +969,7 @@ __all__ = [
     "music_library",
     "music_service_from_config",
     "normalize_audio",
+    "normalize_consent",
     "normalize_loudness",
     "normalize_pronunciation",
     "open_image",

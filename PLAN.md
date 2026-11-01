@@ -331,7 +331,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a media service facade that CLI, API and stages all use, emitting a metrics file (tests/media/test_media_facade.py)
 - [x] Run the shared contract suite across every real media adapter offline (tests/contracts/test_media_providers.py)
 - [x] Add an end to end media slice test where a second identical run costs nothing and totals match (tests/e2e/test_media_slice.py)
-- [ ] Add voice cloning create, list and delete requiring explicit consent and storing provider voice id, consent metadata and owner (tests/media/test_voice_clone.py)
+- [x] Add voice cloning create, list and delete requiring explicit consent and storing provider voice id, consent metadata and owner (tests/media/test_voice_clone.py)
 - [ ] Emit alt text and SRT and VTT sidecars for every audio and video output when accessibility output is enabled (tests/media/test_accessibility.py)
 - [ ] Make async media job idempotency keys unique across processes so a repeated key cannot submit twice (tests/providers/media/test_async_job.py)
 - [ ] Apply the media adaptation layer to every image, video, music and speech provider request before submission (tests/media/test_adapt_integration.py)
@@ -356,6 +356,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Recover pending media API jobs on API startup so a restart cannot strand a submitted job (tests/api/test_media_api.py)
 - [ ] Make the default worker skip media API jobs so it cannot claim and dead-letter them (tests/cli/test_worker.py)
 - [ ] Apply the per clip budget policy before media submits and record the chosen cheaper hint (tests/media/test_media_clip_budget.py)
+- [ ] Add voice clone create and delete to the ElevenLabs adapter behind a capability flag (tests/providers/tts/test_elevenlabs_clone.py)
+- [ ] Delete the vendor voice when its local clone record is removed and keep the record when deletion fails (tests/media/test_voice_clone.py)
 
 ## Milestone 9: Composition and rendering
 

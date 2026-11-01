@@ -13,6 +13,7 @@ from aivia.core.db.tables import core as _core_tables  # noqa: F401
 from aivia.core.db.tables import embeddings as _embedding_tables  # noqa: F401
 from aivia.core.db.tables import llm as _llm_tables  # noqa: F401
 from aivia.core.db.tables import orders as _order_tables  # noqa: F401
+from aivia.core.db.tables import voice as _voice_tables  # noqa: F401
 
 config = context.config
 target_metadata = metadata

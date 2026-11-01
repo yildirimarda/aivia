@@ -83,6 +83,12 @@ from aivia.core.db.tables.orders import (
     posts,
     web_card_hits,
 )
+from aivia.core.db.tables.voice import (
+    VOICE_CLONE_OWNER_INDEX_NAME,
+    VOICE_CLONE_PROVIDER_INDEX_NAME,
+    VOICE_CLONE_PROVIDER_VOICE_INDEX_NAME,
+    voice_clones,
+)
 
 __all__ = [
     "ASSET_CACHE_ASSET_INDEX_NAME",
@@ -132,6 +138,9 @@ __all__ = [
     "TEMPLATE_CREATED_AT_INDEX_NAME",
     "TEMPLATE_KIND_INDEX_NAME",
     "TEMPLATE_NAME_INDEX_NAME",
+    "VOICE_CLONE_OWNER_INDEX_NAME",
+    "VOICE_CLONE_PROVIDER_INDEX_NAME",
+    "VOICE_CLONE_PROVIDER_VOICE_INDEX_NAME",
     "WEB_CARD_HIT_CREATED_AT_INDEX_NAME",
     "WEB_CARD_HIT_DAY_INDEX_NAME",
     "WEB_CARD_HIT_ORDER_INDEX_NAME",
@@ -155,5 +164,6 @@ __all__ = [
     "stage_runs",
     "style_specs",
     "templates",
+    "voice_clones",
     "web_card_hits",
 ]

@@ -53,6 +53,7 @@ from aivia.core.db.tables import (
     stage_runs,
     style_specs,
     templates,
+    voice_clones,
     web_card_hits,
 )
 from aivia.core.ids import (
@@ -65,6 +66,7 @@ from aivia.core.ids import (
     new_plan_id,
     new_post_id,
     new_run_id,
+    new_voice_clone_id,
     ulid,
 )
 from aivia.core.models import (
@@ -82,6 +84,7 @@ from aivia.core.models import (
     Run,
     StageResult,
     UnknownFieldWarning,
+    VoiceClone,
     utcnow,
 )
 
@@ -109,6 +112,7 @@ __all__ = [
     "StyleSpecRepository",
     "TableRepository",
     "TemplateRepository",
+    "VoiceCloneRepository",
     "WebCardHitRepository",
     "repository_for",
 ]
@@ -615,6 +619,23 @@ class PostMetricRepository(TableRepository):
     id_factory = _prefixed("metric")
 
 
+class VoiceCloneRepository(ModelRepository[VoiceClone]):
+    """Persist the provider voice ids registered for an owner."""
+
+    table = voice_clones
+    model = VoiceClone
+    id_factory = new_voice_clone_id
+
+    def delete(self, *key: Any) -> VoiceClone | None:
+        """Delete the record with *key* and return it, or ``None`` when absent."""
+        existing = self.get(*key)
+        if existing is None:
+            return None
+        with self.engine.begin() as connection:
+            connection.execute(delete(self.table).where(self._key_condition(key)))
+        return existing
+
+
 class WebCardHitRepository(TableRepository):
     """Persist anonymous views of a delivered web card."""
 
@@ -644,6 +665,7 @@ REPOSITORIES: Mapping[str, type[Repository[Any]]] = {
         DeliveryRepository,
         PostRepository,
         PostMetricRepository,
+        VoiceCloneRepository,
         WebCardHitRepository,
     )
 }
