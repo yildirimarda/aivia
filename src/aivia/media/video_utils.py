@@ -1216,9 +1216,7 @@ def make_seamless_loop(
         audio_label: str | None = None
         if audio:
             parts.append(
-                "[0:a]asplit=2[af][ar];"
-                "[ar]areverse[arr];"
-                "[af][arr]concat=n=2:v=0:a=1[a]"
+                "[0:a]asplit=2[af][ar];[ar]areverse[arr];[af][arr]concat=n=2:v=0:a=1[a]"
             )
             audio_label = "a"
         if post_filters:
