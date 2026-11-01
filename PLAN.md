@@ -349,7 +349,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Drop audio with a recorded warning when a retimed or looped clip has no track (tests/media/test_video_utils.py)
 - [x] Probe the configured local text to speech executable and model in health so a missing binary fails early (tests/providers/tts/test_local.py)
 - [x] Convert local text to speech output to the requested container with ffmpeg and reject unsupported conversions (tests/providers/tts/test_local.py)
-- [ ] Implement the speech to text service with audio hash caching, duration based budget and cost plus a transcript sidecar (tests/media/test_stt_service.py)
+- [x] Implement the speech to text service with audio hash caching, duration based budget and cost plus a transcript sidecar (tests/media/test_stt_service.py)
 - [ ] Include the selected provider license in the music cache key so a rights change cannot serve stale clearance (tests/media/test_music_service.py)
 - [ ] Persist measured music format, sample rate and channels on the asset so cache hits rebuild the exact track (tests/media/test_music_service.py)
 - [ ] Invalidate a resumed batch item when its row content changes by storing a content fingerprint (tests/cli/test_media_batch_cli.py)
@@ -369,6 +369,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Normalize differing audio sample rates and channel layouts before crossfading so mixed clips keep sound (tests/media/test_video_utils.py)
 - [ ] Normalize differing pixel formats before crossfading so xfade inputs always match (tests/media/test_video_utils.py)
 - [ ] Probe ffmpeg in local text to speech health when the default output needs conversion (tests/providers/tts/test_local.py)
+- [ ] Probe or accept a duration hint for remote audio before the speech to text budget check (tests/media/test_stt_service.py)
 
 ## Milestone 9: Composition and rendering
 
