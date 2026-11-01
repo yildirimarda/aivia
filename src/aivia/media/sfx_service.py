@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -37,7 +37,10 @@ from aivia.core.models.run import ToolchainFingerprint
 from aivia.core.pricing import PricingResolver, ResolvedPrice
 from aivia.core.router import Router, RouteSelection
 from aivia.core.sidecar import write_cost_sidecar
-from aivia.media.accessibility import write_accessibility_sidecars
+from aivia.media.accessibility import (
+    store_accessibility_sidecars,
+    write_accessibility_sidecars,
+)
 from aivia.media.screening import (
     DEFAULT_PROMPT_KIND,
     ScreeningToken,
@@ -259,33 +262,50 @@ class SFXService:
         )
         self._last_outcome: SFXOutcome | None = None
 
-    def _write_accessibility_sidecars(
+    async def _write_accessibility_sidecars(
         self,
         assets: list[Asset],
         request: SFXRequest,
+        *,
+        storage: StorageProvider | None,
+        stored_objects: Sequence[StorageObject | None],
     ) -> tuple[Any, ...]:
         if self._accessibility is None:
             return ()
         metadata = request.metadata or {}
         written: list[Any] = []
-        for asset in assets:
+        for index, asset in enumerate(assets):
             if not asset.path:
                 continue
-            path = _file_path(asset.path)
-            if path is None:
-                continue
-            result = write_accessibility_sidecars(
-                path,
-                self._accessibility,
-                alt_text=(
+            values: dict[str, Any] = {
+                "alt_text": (
                     metadata.get("alt_text") or metadata.get("alt") or request.prompt
                 ),
-                subtitle=metadata.get("subtitle"),
-                words=metadata.get("words"),
-                transcript=metadata.get("transcript"),
-                text=metadata.get("text") or request.prompt,
-                duration_seconds=asset.analysis.duration_seconds,
-            )
+                "subtitle": metadata.get("subtitle"),
+                "words": metadata.get("words"),
+                "transcript": metadata.get("transcript"),
+                "text": metadata.get("text") or request.prompt,
+                "duration_seconds": asset.analysis.duration_seconds,
+            }
+            path = _file_path(asset.path)
+            result: Any
+            if path is not None:
+                result = write_accessibility_sidecars(
+                    path,
+                    self._accessibility,
+                    **values,
+                )
+            else:
+                if storage is None:
+                    continue
+                stored = stored_objects[index] if index < len(stored_objects) else None
+                result = await store_accessibility_sidecars(
+                    asset.path,
+                    storage,
+                    self._accessibility,
+                    key=stored.key if stored is not None else None,
+                    **values,
+                )
             if result:
                 written.append(result)
         return tuple(written)
@@ -517,7 +537,12 @@ class SFXService:
                     )
             sidecars = tuple(written)
 
-        accessibility = self._write_accessibility_sidecars(assets, request)
+        accessibility = await self._write_accessibility_sidecars(
+            assets,
+            request,
+            storage=active_storage,
+            stored_objects=[stored for _, stored in materialised],
+        )
         outcome = SFXOutcome(
             request=request,
             response=response,

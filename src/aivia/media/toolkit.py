@@ -34,7 +34,10 @@ from aivia.core.db import create_database_engine, upgrade_database
 from aivia.core.models.asset import Asset
 from aivia.core.paths import resolve_config_file, resolve_paths
 from aivia.core.router import Router
-from aivia.media.accessibility import write_accessibility_sidecars
+from aivia.media.accessibility import (
+    store_accessibility_sidecars,
+    write_accessibility_sidecars,
+)
 from aivia.media.image_edit_service import ImageEditOutcome, ImageEditService
 from aivia.media.image_service import ImageOutcome, ImageService
 from aivia.media.music_service import MusicOutcome, MusicService
@@ -710,7 +713,7 @@ class MediaToolkit:
         )
         return values
 
-    def _write_accessibility(
+    async def _write_accessibility(
         self,
         kind: str,
         request: Any,
@@ -743,20 +746,36 @@ class MediaToolkit:
             text = text or getattr(request, "lyrics", None)
         elif kind == "sfx":
             alt_text = alt_text or getattr(request, "prompt", None)
-        for asset in getattr(outcome, "assets", ()) or ():
-            path = _local_path(asset.path) if asset.path else None
-            if path is None:
+        stored_objects = getattr(outcome, "storage_objects", ()) or ()
+        for index, asset in enumerate(getattr(outcome, "assets", ()) or ()):
+            if not asset.path:
                 continue
-            write_accessibility_sidecars(
-                path,
+            values = {
+                "alt_text": alt_text,
+                "subtitle": subtitle,
+                "words": words,
+                "transcript": transcript,
+                "text": text,
+                "language": language,
+                "duration_seconds": asset.analysis.duration_seconds,
+            }
+            path = _local_path(asset.path)
+            if path is not None:
+                write_accessibility_sidecars(
+                    path,
+                    self._accessibility,
+                    **values,
+                )
+                continue
+            if self._storage is None:
+                continue
+            stored = stored_objects[index] if index < len(stored_objects) else None
+            await store_accessibility_sidecars(
+                asset.path,
+                self._storage,
                 self._accessibility,
-                alt_text=alt_text,
-                subtitle=subtitle,
-                words=words,
-                transcript=transcript,
-                text=text,
-                language=language,
-                duration_seconds=asset.analysis.duration_seconds,
+                key=getattr(stored, "key", None),
+                **values,
             )
 
     async def image(
@@ -803,7 +822,7 @@ class MediaToolkit:
         outcome = await service.generate(
             video_request, token=active_token, **call_values
         )
-        self._write_accessibility("video", video_request, outcome)
+        await self._write_accessibility("video", video_request, outcome)
         return MediaResult("video", outcome)
 
     async def speech(
@@ -832,7 +851,7 @@ class MediaToolkit:
         outcome = await service.synthesize(
             speech_request, token=active_token, **call_values
         )
-        self._write_accessibility("speech", speech_request, outcome)
+        await self._write_accessibility("speech", speech_request, outcome)
         return MediaResult("speech", outcome)
 
     async def transcribe(
@@ -905,7 +924,7 @@ class MediaToolkit:
         outcome = await service.generate(
             music_request, token=active_token, **call_values
         )
-        self._write_accessibility("music", music_request, outcome)
+        await self._write_accessibility("music", music_request, outcome)
         return MediaResult("music", outcome)
 
     async def sfx(
@@ -927,7 +946,7 @@ class MediaToolkit:
             token if token is not None else service.screen(sfx_request.prompt)
         )
         outcome = await service.generate(sfx_request, token=active_token, **call_values)
-        self._write_accessibility("sfx", sfx_request, outcome)
+        await self._write_accessibility("sfx", sfx_request, outcome)
         return MediaResult("sfx", outcome)
 
     async def edit(

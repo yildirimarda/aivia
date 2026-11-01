@@ -358,7 +358,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Apply the per clip budget policy before media submits and record the chosen cheaper hint (tests/media/test_media_clip_budget.py)
 - [x] Add voice clone create and delete to the ElevenLabs adapter behind a capability flag (tests/providers/tts/test_elevenlabs_clone.py)
 - [x] Delete the vendor voice when its local clone record is removed and keep the record when deletion fails (tests/media/test_voice_clone.py)
-- [ ] Store accessibility sidecars through the storage provider so remote audio and video outputs get them too (tests/media/test_accessibility.py)
+- [x] Store accessibility sidecars through the storage provider so remote audio and video outputs get them too (tests/media/test_accessibility.py)
 - [ ] Wait for an in-flight async submission when a repeated key races it so the caller never receives a job without a remote id (tests/providers/media/test_async_job.py)
 - [ ] Resume an async media job left pending by a crash before the remote id is stored so a repeated key can recover it (tests/providers/media/test_async_job.py)
 - [ ] Key the media cache on the adapted request so a snapped size or clamped count is fully reused on a repeat (tests/media/test_adapt_cache.py)
@@ -374,6 +374,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Include CLI batch defaults and referenced input file contents in the content fingerprint so changed inputs invalidate a resumed row (tests/cli/test_media_batch_cli.py)
 - [ ] Recover media API jobs left running by a crashed API process so a restart cannot leave them stuck (tests/api/test_media_api.py)
 - [ ] Refuse to remove a clone record when configured providers do not cover its vendor so no vendor voice is orphaned (tests/media/test_voice_clone.py)
+- [ ] Store sound effect cost sidecars through the storage provider so remote outputs get them too (tests/media/test_sfx_service.py)
 
 ## Milestone 9: Composition and rendering
 
