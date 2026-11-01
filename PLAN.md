@@ -396,7 +396,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the renderer interface and a Pillow still renderer for canvas, background and image layers with golden image tests and no AI or network imports (tests/compose/test_render_still.py)
 - [x] Add shape layers for rectangles, rounded rectangles, circles and lines with fill, stroke and gradient (tests/compose/test_shapes.py)
 - [x] Add text layers with full typography control, wrapping and shrink to fit with ellipsis (tests/compose/test_text.py)
-- [ ] Add a font manager resolving bundled families with per language fallback chains, treating system fallback as an error when bundled fonts are required (tests/compose/test_fonts.py)
+- [x] Add a font manager resolving bundled families with per language fallback chains, treating system fallback as an error when bundled fonts are required (tests/compose/test_fonts.py)
 - [ ] Add sticker and logo layers with nine anchors, margins and an optional drop shadow (tests/compose/test_stickers.py)
 - [ ] Add masks, blend modes and basic filters to image layers with numeric difference tests (tests/compose/test_blend_filters.py)
 - [ ] Add smart text placement that finds low detail regions and optionally avoids faces with a vision check (tests/compose/test_placement.py)
