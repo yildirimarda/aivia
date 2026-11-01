@@ -54,6 +54,16 @@ OPENAI_BASE_URL = DEFAULT_BASE_URL
 _DEFAULT_METADATA = ProviderMeta(
     name="openai-tts",
     capabilities=[CAPABILITY_TTS],
+    supported_options={
+        CAPABILITY_TTS: [
+            "text",
+            "model",
+            "format",
+            "sample_rate",
+            "speed",
+            "instructions",
+        ]
+    },
     pricing={
         CAPABILITY_TTS: ProviderPrice(amount_usd=0.000015, unit="character"),
     },

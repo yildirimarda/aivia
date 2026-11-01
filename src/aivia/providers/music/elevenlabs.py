@@ -76,6 +76,14 @@ _DEFAULT_METADATA = ProviderMeta(
             "ogg",
             "opus",
             "pcm",
+            "prompt",
+            "lyrics",
+            "duration",
+            "model",
+            "sample_rate",
+            "seed",
+            "count",
+            "format",
         ]
     },
     license=AssetLicense(

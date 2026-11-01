@@ -78,6 +78,19 @@ OPENAI_BASE_URL = DEFAULT_BASE_URL
 _DEFAULT_METADATA = ProviderMeta(
     name="openai-image",
     capabilities=[CAPABILITY_IMAGE_GEN],
+    supported_options={
+        CAPABILITY_IMAGE_GEN: [
+            "prompt",
+            "size",
+            "aspect_ratio",
+            "format",
+            "quality",
+            "style",
+            "seed",
+            "count",
+            "model",
+        ]
+    },
 )
 
 _RESPONSE_FORMATS = frozenset({"b64_json", "url"})

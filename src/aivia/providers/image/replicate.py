@@ -76,6 +76,20 @@ REPLICATE_BASE_URL = DEFAULT_BASE_URL
 _DEFAULT_METADATA = ProviderMeta(
     name="replicate",
     capabilities=[CAPABILITY_IMAGE_GEN],
+    supported_options={
+        CAPABILITY_IMAGE_GEN: [
+            "prompt",
+            "negative_prompt",
+            "size",
+            "aspect_ratio",
+            "format",
+            "quality",
+            "style",
+            "seed",
+            "count",
+            "model",
+        ]
+    },
 )
 
 _CONTENT_POLICY_MARKERS = (

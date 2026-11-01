@@ -93,6 +93,18 @@ GOOGLE_IMAGEN_API_URL = DEFAULT_BASE_URL
 _DEFAULT_METADATA = ProviderMeta(
     name="google-image",
     capabilities=[CAPABILITY_IMAGE_GEN],
+    supported_options={
+        CAPABILITY_IMAGE_GEN: [
+            "prompt",
+            "negative_prompt",
+            "size",
+            "aspect_ratio",
+            "format",
+            "seed",
+            "count",
+            "model",
+        ]
+    },
 )
 
 _IMAGEN_SUFFIX = ":predict"

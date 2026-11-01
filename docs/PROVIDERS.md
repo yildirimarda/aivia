@@ -243,46 +243,46 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | - | - |
 | `aggregator-image-edit` | - | - |
 | `anthropic` | - | - |
-| `azure` | `tts` | `pronunciation` |
-| `azure-tts` | `tts` | `pronunciation` |
-| `azure_speech` | `tts` | `pronunciation` |
+| `azure` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `speed` |
+| `azure-tts` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `speed` |
+| `azure_speech` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `speed` |
 | `brave` | - | - |
-| `elevenlabs` | - | - |
-| `elevenlabs-music` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm` |
-| `elevenlabs-music-gen` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm` |
-| `elevenlabs-tts` | - | - |
-| `elevenlabs_music` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm` |
-| `elevenlabs_tts` | - | - |
+| `elevenlabs` | `tts` | `text`, `model`, `language`, `format`, `sample_rate`, `speed`, `word_timestamps` |
+| `elevenlabs-music` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm`, `prompt`, `lyrics`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
+| `elevenlabs-music-gen` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm`, `prompt`, `lyrics`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
+| `elevenlabs-tts` | `tts` | `text`, `model`, `language`, `format`, `sample_rate`, `speed`, `word_timestamps` |
+| `elevenlabs_music` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm`, `prompt`, `lyrics`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
+| `elevenlabs_tts` | `tts` | `text`, `model`, `language`, `format`, `sample_rate`, `speed`, `word_timestamps` |
 | `exa` | - | - |
-| `fal` | - | - |
-| `fal-video` | - | - |
-| `fal_video` | - | - |
+| `fal` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `quality`, `style`, `seed`, `count`, `model` |
+| `fal-video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `fps`, `seed`, `duration`, `count`, `model`, `generate_audio`, `audio_prompt` |
+| `fal_video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `fps`, `seed`, `duration`, `count`, `model`, `generate_audio`, `audio_prompt` |
 | `faster-whisper` | - | - |
 | `faster_whisper` | - | - |
 | `gemini` | - | - |
-| `google` | - | - |
-| `google-image` | - | - |
-| `google-speech` | `tts` | `pronunciation` |
-| `google-tts` | `tts` | `pronunciation` |
-| `google-veo` | - | - |
-| `google_image` | - | - |
-| `google_tts` | `tts` | `pronunciation` |
-| `google_veo` | - | - |
+| `google` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `seed`, `count`, `model` |
+| `google-image` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `seed`, `count`, `model` |
+| `google-speech` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `sample_rate`, `speed` |
+| `google-tts` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `sample_rate`, `speed` |
+| `google-veo` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
+| `google_image` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `seed`, `count`, `model` |
+| `google_tts` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `sample_rate`, `speed` |
+| `google_veo` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
 | `http` | - | - |
-| `kokoro` | - | - |
-| `kokoro-tts` | - | - |
+| `kokoro` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
+| `kokoro-tts` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
 | `llm_native` | - | - |
 | `llm_search` | - | - |
 | `local` | - | - |
 | `local-background-removal` | - | - |
 | `local-embeddings` | - | - |
-| `local-music` | `music_gen` | `vocals`, `instrumental`, `wav`, `pcm`, `mp3`, `ogg`, `opus`, `flac` |
-| `local-music-stub` | `music_gen` | `vocals`, `instrumental`, `wav`, `pcm`, `mp3`, `ogg`, `opus`, `flac` |
+| `local-music` | `music_gen` | `vocals`, `instrumental`, `wav`, `pcm`, `mp3`, `ogg`, `opus`, `flac`, `prompt`, `lyrics`, `duration`, `sample_rate`, `seed`, `count`, `format` |
+| `local-music-stub` | `music_gen` | `vocals`, `instrumental`, `wav`, `pcm`, `mp3`, `ogg`, `opus`, `flac`, `prompt`, `lyrics`, `duration`, `sample_rate`, `seed`, `count`, `format` |
 | `local-rembg` | - | - |
 | `local-stt` | - | - |
-| `local-tts` | - | - |
+| `local-tts` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
 | `local-whisper` | - | - |
-| `local_music` | `music_gen` | `vocals`, `instrumental`, `wav`, `pcm`, `mp3`, `ogg`, `opus`, `flac` |
+| `local_music` | `music_gen` | `vocals`, `instrumental`, `wav`, `pcm`, `mp3`, `ogg`, `opus`, `flac`, `prompt`, `lyrics`, `duration`, `sample_rate`, `seed`, `count`, `format` |
 | `local_stt` | - | - |
 | `mock` | - | - |
 | `mock-character-trainer` | - | - |
@@ -305,19 +305,19 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-video` | - | - |
 | `openai` | - | - |
 | `openai-embeddings` | - | - |
-| `openai-image` | - | - |
-| `openai-speech` | - | - |
+| `openai-image` | `image_gen` | `prompt`, `size`, `aspect_ratio`, `format`, `quality`, `style`, `seed`, `count`, `model` |
+| `openai-speech` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed`, `instructions` |
 | `openai-stt` | - | - |
 | `openai-transcription` | - | - |
-| `openai-tts` | - | - |
+| `openai-tts` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed`, `instructions` |
 | `openai-whisper` | - | - |
 | `openai_compatible` | - | - |
-| `openai_image` | - | - |
-| `openai_speech` | - | - |
+| `openai_image` | `image_gen` | `prompt`, `size`, `aspect_ratio`, `format`, `quality`, `style`, `seed`, `count`, `model` |
+| `openai_speech` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed`, `instructions` |
 | `openai_stt` | - | - |
 | `pexels` | - | - |
-| `piper` | - | - |
-| `piper-tts` | - | - |
+| `piper` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
+| `piper-tts` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
 | `pixabay` | - | - |
 | `rembg` | - | - |
 | `remote-background-removal` | - | - |
@@ -327,18 +327,18 @@ This matrix is generated from the metadata every registered provider declares. C
 | `remote-upscale` | - | - |
 | `remote_image_ops` | - | - |
 | `remote_ops` | - | - |
-| `replicate` | - | - |
-| `replicate-video` | - | - |
-| `replicate_video` | - | - |
+| `replicate` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `quality`, `style`, `seed`, `count`, `model` |
+| `replicate-video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `fps`, `seed`, `duration`, `count`, `model`, `generate_audio`, `audio_prompt` |
+| `replicate_video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `fps`, `seed`, `duration`, `count`, `model`, `generate_audio`, `audio_prompt` |
 | `s3` | - | - |
 | `serpapi` | - | - |
-| `stable-audio` | `music_gen` | `instrumental`, `mp3`, `wav` |
-| `stable_audio` | `music_gen` | `instrumental`, `mp3`, `wav` |
-| `stableaudio` | `music_gen` | `instrumental`, `mp3`, `wav` |
+| `stable-audio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
+| `stable_audio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
+| `stableaudio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
 | `tavily` | - | - |
-| `veo` | - | - |
-| `veo-video` | - | - |
-| `veo_video` | - | - |
+| `veo` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
+| `veo-video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
+| `veo_video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
 | `voyage` | - | - |
 | `whisper` | - | - |
 | `whisper-api` | - | - |

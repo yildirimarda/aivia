@@ -87,6 +87,23 @@ _DEFAULT_METADATA = ProviderMeta(
         CAPABILITY_VIDEO_FIRST_FRAME,
         CAPABILITY_VIDEO_NATIVE_AUDIO,
     ],
+    supported_options={
+        CAPABILITY_VIDEO_GEN: [
+            "prompt",
+            "negative_prompt",
+            "first_frame",
+            "size",
+            "aspect_ratio",
+            "format",
+            "fps",
+            "seed",
+            "duration",
+            "count",
+            "model",
+            "generate_audio",
+            "audio_prompt",
+        ]
+    },
 )
 
 _CONTENT_POLICY_MARKERS = (
