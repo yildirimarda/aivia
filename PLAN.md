@@ -337,7 +337,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Apply the media adaptation layer to every image, video, music and speech provider request before submission (tests/media/test_adapt_integration.py)
 - [x] Reject oversized or decompression-bomb images in image utilities before decoding (tests/media/test_image_utils.py)
 - [x] Cache vision image analysis by content hash so re-analyzing an unchanged image makes no paid call (tests/media/test_image_analysis.py)
-- [ ] Record the analysis provider and model on the result so provenance survives storage (tests/media/test_image_analysis.py)
+- [x] Record the analysis provider and model on the result so provenance survives storage (tests/media/test_image_analysis.py)
 - [ ] Add first frame input to the Replicate and Veo video providers behind the video first frame capability (tests/providers/video/test_replicate_veo_frames.py)
 - [ ] Skip splitting video requests that pin a first or last frame and record why (tests/providers/video/test_adapt.py)
 - [ ] Persist validated video fps, format and audio presence on the asset so cache hits rebuild the exact result (tests/media/test_video_metadata.py)
@@ -364,6 +364,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Key the media cache on the adapted request so a snapped size or clamped count is fully reused on a repeat (tests/media/test_adapt_cache.py)
 - [ ] Declare every option each media adapter accepts in supported_options so adaptation cannot reject a value the adapter handles (tests/providers/test_supported_options.py)
 - [ ] Cap animated image frame count and total decoded pixels in image utilities (tests/media/test_image_utils.py)
+- [ ] Include the analysis provider in the vision cache key so two providers serving one model do not share results (tests/media/test_image_analysis.py)
 
 ## Milestone 9: Composition and rendering
 
