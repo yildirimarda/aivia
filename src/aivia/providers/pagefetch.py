@@ -26,12 +26,10 @@ model.
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import math
 import re
-import socket
 import time
-from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -53,6 +51,13 @@ from aivia.core.errors import (
 )
 from aivia.core.http import error_for_response
 from aivia.core.models.provider import ProviderMeta, ProviderPrice
+from aivia.core.ssrf import (
+    ResolveHost,
+    host_is_allowed,
+    is_blocked_ip,
+    normalise_allowed_hosts,
+    validate_ssrf_target,
+)
 from aivia.providers.base import Provider
 from aivia.providers.protocols.page_fetch import (
     CAPABILITY_PAGE_FETCH,
@@ -108,20 +113,6 @@ _DEFAULT_METADATA = ProviderMeta(
 )
 
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
-_BLOCKED_HOSTNAMES = frozenset(
-    {
-        "localhost",
-        "localhost.localdomain",
-        "ip6-localhost",
-        "ip6-loopback",
-        "metadata",
-        "metadata.google.internal",
-        "instance-data",
-        "host.docker.internal",
-        "gateway.docker.internal",
-    }
-)
-_BLOCKED_HOST_SUFFIXES = (".localhost", ".local", ".internal", ".home.arpa")
 _SKIP_CONTENT_TAGS = frozenset(
     {
         "applet",
@@ -255,8 +246,6 @@ _VOID_TAGS = frozenset(
         "wbr",
     }
 )
-
-ResolveHost = Callable[[str, int], Sequence[str] | Awaitable[Sequence[str]]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -635,94 +624,6 @@ readability_extract = extract_readable
 """Alias for :func:`extract_readable`."""
 
 
-def _literal_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
-    candidate = host.strip().strip("[]")
-    try:
-        return ipaddress.ip_address(candidate)
-    except ValueError:
-        pass
-    lowered = candidate.lower()
-    try:
-        if lowered.startswith("0x"):
-            return ipaddress.ip_address(int(lowered, 16))
-        if lowered.isdigit():
-            return ipaddress.ip_address(int(lowered, 10))
-    except (ValueError, OverflowError):
-        return None
-    return None
-
-
-def is_blocked_ip(value: str | ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    """Return whether *value* is an address a page fetch must never contact."""
-    address = _literal_ip(value) if isinstance(value, str) else value
-    if address is None:
-        return False
-    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
-        address = address.ipv4_mapped
-    if (
-        address.is_unspecified
-        or address.is_loopback
-        or address.is_link_local
-        or address.is_multicast
-        or address.is_private
-        or address.is_reserved
-    ):
-        return True
-    return not address.is_global
-
-
-def _normalise_allowed_host(value: str) -> str:
-    if not isinstance(value, str):
-        raise TypeError("allowed host must be a string")
-    text = value.strip().lower().rstrip(".")
-    if not text:
-        raise ConfigError("allowed host must be non-empty")
-    if "://" in text:
-        host = urlsplit(text).hostname
-        if not host:
-            raise ConfigError(f"allowed host must name a host: {value!r}")
-        text = host.lower().rstrip(".")
-    text = text.strip("[]")
-    if text.startswith("*."):
-        text = text[2:]
-    if not text or any(character.isspace() for character in text):
-        raise ConfigError(f"allowed host must be a bare host name: {value!r}")
-    return text
-
-
-def _normalise_allowed_hosts(
-    allowed_hosts: Iterable[str] | None,
-) -> tuple[str, ...]:
-    hosts: list[str] = []
-    seen: set[str] = set()
-    for entry in allowed_hosts or ():
-        host = _normalise_allowed_host(entry)
-        if host in seen:
-            raise ConfigError(f"duplicate allowed host: {host}")
-        seen.add(host)
-        hosts.append(host)
-    return tuple(hosts)
-
-
-def host_is_allowed(host: str, allowed_hosts: Sequence[str]) -> bool:
-    """Return whether *host* matches the allowlist, including subdomains.
-
-    An empty allowlist allows every host; the SSRF guard still applies.
-    """
-    if not allowed_hosts:
-        return True
-    candidate = host.strip().lower().rstrip(".")
-    for entry in allowed_hosts:
-        normalised = entry.strip().lower().rstrip(".").strip("[]")
-        if normalised.startswith("*."):
-            normalised = normalised[2:]
-        if candidate == normalised:
-            return True
-        if not _literal_ip(normalised) and candidate.endswith(f".{normalised}"):
-            return True
-    return False
-
-
 def _mime_type(value: str | None) -> str | None:
     if value is None:
         return None
@@ -782,17 +683,6 @@ def _decode(raw: bytes, charset: str | None) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def _resolve_port(url: str) -> int:
-    parsed = urlsplit(url)
-    try:
-        return parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
-    except ValueError as exc:
-        raise InvalidRequestError(
-            f"page URL has an invalid port: {url!r}",
-            details={"url": url},
-        ) from exc
-
-
 class HttpPageFetchProvider(Provider):
     """A page fetch provider backed by plain HTTP with readability extraction.
 
@@ -834,7 +724,7 @@ class HttpPageFetchProvider(Provider):
         if allowed_hosts is not None and allowlist is not None:
             raise TypeError("pass either allowed_hosts or allowlist, not both")
         hosts = allowed_hosts if allowed_hosts is not None else allowlist
-        self._allowed_hosts = _normalise_allowed_hosts(hosts)
+        self._allowed_hosts = normalise_allowed_hosts(hosts)
         self._max_bytes = _positive_int(max_bytes, "max_bytes")
         self._max_characters = _positive_int(max_characters, "max_characters")
         self._timeout_seconds = _positive_float(timeout_seconds, "timeout_seconds")
@@ -896,68 +786,14 @@ class HttpPageFetchProvider(Provider):
             headers["user-agent"] = request.user_agent
         return headers
 
-    async def _resolve(self, host: str, port: int) -> Sequence[str]:
-        if self._resolver is not None:
-            resolved = self._resolver(host, port)
-            if isinstance(resolved, Awaitable):
-                return await resolved
-            return resolved
-        if self._transport is not None:
-            return ()
-        try:
-            infos = await asyncio.to_thread(
-                socket.getaddrinfo,
-                host,
-                port,
-                socket.AF_UNSPEC,
-                socket.SOCK_STREAM,
-            )
-        except socket.gaierror as exc:
-            raise RetryableError(
-                "page host could not be resolved",
-                details={"host": host, "error": type(exc).__name__},
-            ) from exc
-        addresses: list[str] = []
-        for info in infos:
-            address = str(info[4][0])
-            if address not in addresses:
-                addresses.append(address)
-        return addresses
-
     async def _validate_target(self, url: str) -> None:
-        parsed = urlsplit(url)
-        host = parsed.hostname
-        if host is None:
-            raise InvalidRequestError(
-                f"page URL must name a host: {url!r}",
-                details={"url": url},
-            )
-        if not host_is_allowed(host, self._allowed_hosts):
-            raise InvalidRequestError(
-                f"host is not in the page fetch allowlist: {host}",
-                details={"url": url, "host": host},
-            )
-        literal = _literal_ip(host)
-        if literal is not None:
-            if is_blocked_ip(literal):
-                raise InvalidRequestError(
-                    f"page URL points at a blocked address: {host}",
-                    details={"url": url, "host": host},
-                )
-            return
-        lowered = host.lower().rstrip(".")
-        if lowered in _BLOCKED_HOSTNAMES or lowered.endswith(_BLOCKED_HOST_SUFFIXES):
-            raise InvalidRequestError(
-                f"page URL points at a blocked host: {host}",
-                details={"url": url, "host": host},
-            )
-        addresses = await self._resolve(host, _resolve_port(url))
-        for address in addresses:
-            if is_blocked_ip(address):
-                raise InvalidRequestError(
-                    f"page host resolves to a blocked address: {host}",
-                    details={"url": url, "host": host, "address": address},
-                )
+        await validate_ssrf_target(
+            url,
+            resolver=self._resolver,
+            allowed_hosts=self._allowed_hosts,
+            skip_dns=self._transport is not None,
+            label="page",
+        )
 
     async def _read_limited(
         self,
