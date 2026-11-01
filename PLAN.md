@@ -375,7 +375,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Recover media API jobs left running by a crashed API process so a restart cannot leave them stuck (tests/api/test_media_api.py)
 - [x] Refuse to remove a clone record when configured providers do not cover its vendor so no vendor voice is orphaned (tests/media/test_voice_clone.py)
 - [x] Store sound effect cost sidecars through the storage provider so remote outputs get them too (tests/media/test_sfx_service.py)
-- [ ] Claim async job recovery atomically so two processes cannot resubmit the same crashed job (tests/providers/media/test_async_job.py)
+- [x] Claim async job recovery atomically so two processes cannot resubmit the same crashed job (tests/providers/media/test_async_job.py)
 - [ ] Cap animated frame count and total decoded pixels in media probe validation (tests/core/test_media_probe.py)
 - [ ] Guard a remote first frame download with the shared SSRF policy before a Veo call (tests/providers/video/test_replicate_veo_frames.py)
 - [ ] Refuse a speech to text call with an unknown duration when a budget is configured (tests/media/test_stt_service.py)
