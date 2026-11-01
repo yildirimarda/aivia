@@ -817,6 +817,47 @@ def _normalize_video_filter(
     return ",".join(filters)
 
 
+_AUDIO_CHANNEL_LAYOUTS = {
+    1: "mono",
+    2: "stereo",
+    3: "2.1",
+    4: "4.0",
+    5: "5.0",
+    6: "5.1",
+    7: "6.1",
+    8: "7.1",
+}
+
+
+def _audio_geometry(info: FFprobeInfo) -> tuple[int | None, int | None]:
+    stream = info.audio_streams[0] if info.audio_streams else None
+    if stream is None:
+        return None, None
+    sample_rate = (
+        stream.sample_rate if stream.sample_rate and stream.sample_rate > 0 else None
+    )
+    channels = stream.channels if stream.channels and stream.channels > 0 else None
+    return sample_rate, channels
+
+
+def _normalize_audio_filter(
+    geometry: tuple[int | None, int | None],
+    target: tuple[int | None, int | None],
+) -> str:
+    sample_rate, channels = geometry
+    target_rate, target_channels = target
+    filters: list[str] = []
+    if target_rate is not None and (sample_rate is None or sample_rate != target_rate):
+        filters.append(f"aresample={target_rate}")
+    if target_channels is not None and (
+        channels is None or channels != target_channels
+    ):
+        layout = _AUDIO_CHANNEL_LAYOUTS.get(target_channels)
+        if layout is not None:
+            filters.append(f"aformat=channel_layouts={layout}")
+    return ",".join(filters)
+
+
 def _crossfade_graph(
     durations: Sequence[float],
     crossfade: float,
@@ -826,6 +867,7 @@ def _crossfade_graph(
     quality: int,
     post_filters: Sequence[str],
     input_filters: Sequence[str] | None = None,
+    audio_input_filters: Sequence[str] | None = None,
 ) -> list[str]:
     parts: list[str] = []
     normalizers = list(input_filters or [])
@@ -835,7 +877,16 @@ def _crossfade_graph(
         if normalizer:
             parts.append(f"[{index}:v]{normalizer}[vn{index}]")
     video_label = "vn0" if normalizers[0] else "0:v"
-    audio_label: str | None = "0:a" if with_audio else None
+    audio_normalizers = list(audio_input_filters or []) if with_audio else []
+    if len(audio_normalizers) < len(durations):
+        audio_normalizers.extend([""] * (len(durations) - len(audio_normalizers)))
+    if with_audio:
+        for index, normalizer in enumerate(audio_normalizers):
+            if normalizer:
+                parts.append(f"[{index}:a]{normalizer}[an{index}]")
+    audio_label: str | None = None
+    if with_audio:
+        audio_label = "an0" if audio_normalizers[0] else "0:a"
     offset = 0.0
     for index in range(1, len(durations)):
         offset += durations[index - 1] - crossfade
@@ -849,8 +900,10 @@ def _crossfade_graph(
         video_label = next_video
         if audio_label is not None:
             next_audio = f"a{index}"
+            source_audio = f"an{index}" if audio_normalizers[index] else f"{index}:a"
             parts.append(
-                f"[{audio_label}][{index}:a]acrossfade=d={crossfade:.6f}[{next_audio}]"
+                f"[{audio_label}][{source_audio}]"
+                f"acrossfade=d={crossfade:.6f}[{next_audio}]"
             )
             audio_label = next_audio
     if post_filters:
@@ -885,7 +938,9 @@ def concatenate_videos(
     to be shorter than every clip and builds an ``xfade`` chain. Clips whose
     dimensions or frame rate differ from the first clip that reports them are
     scaled, padded and resampled to that canonical geometry so ``xfade`` gets
-    matching inputs. Audio is kept when every clip has an audio track.
+    matching inputs. Audio is kept when every clip has an audio track; clips
+    whose sample rate or channel layout differ from the first clip that reports
+    them are resampled and remapped so ``acrossfade`` gets matching inputs.
     """
     path = Path(destination)
     fmt = (
@@ -1007,6 +1062,22 @@ def concatenate_videos(
             input_filters = [
                 _normalize_video_filter(geometry, target) for geometry in geometries
             ]
+        audio_geometries = [_audio_geometry(info) for info in infos]
+        target_audio_rate = next(
+            (rate for rate, _ in audio_geometries if rate is not None),
+            None,
+        )
+        target_audio_channels = next(
+            (channels for _, channels in audio_geometries if channels is not None),
+            None,
+        )
+        audio_input_filters: list[str] = []
+        if target_audio_rate is not None or target_audio_channels is not None:
+            target_audio = (target_audio_rate, target_audio_channels)
+            audio_input_filters = [
+                _normalize_audio_filter(geometry, target_audio)
+                for geometry in audio_geometries
+            ]
         graph = _crossfade_graph(
             durations,
             crossfade,
@@ -1015,6 +1086,7 @@ def concatenate_videos(
             quality=attempt.quality,
             post_filters=post_filters,
             input_filters=input_filters,
+            audio_input_filters=audio_input_filters,
         )
 
         def build_crossfade(temporary: Path) -> list[str]:

@@ -62,6 +62,8 @@ def probe_json(
     width: int = 1280,
     height: int = 720,
     frame_rate: str = "30/1",
+    sample_rate: int = 48000,
+    channels: int = 2,
 ) -> str:
     streams: list[dict[str, Any]] = [
         {
@@ -81,8 +83,8 @@ def probe_json(
                 "codec_type": "audio",
                 "codec_name": "aac",
                 "duration": f"{duration:.3f}",
-                "sample_rate": "48000",
-                "channels": 2,
+                "sample_rate": str(sample_rate),
+                "channels": channels,
             }
         )
     return json.dumps(
@@ -104,6 +106,8 @@ def probe_runner(
     audio: bool | Sequence[bool] = True,
     dimensions: Sequence[tuple[int, int]] | None = None,
     frame_rates: Sequence[str] | None = None,
+    sample_rates: Sequence[int] | None = None,
+    channels: Sequence[int] | None = None,
     calls: list[list[str]] | None = None,
 ) -> Callable[[Sequence[str]], subprocess.CompletedProcess[str]]:
     remaining = iter(durations)
@@ -119,6 +123,12 @@ def probe_runner(
         list(frame_rates) if frame_rates is not None else ["30/1"] * len(durations)
     )
     rate_iter = iter(rate_values)
+    sample_rate_values = (
+        list(sample_rates) if sample_rates is not None else [48000] * len(durations)
+    )
+    sample_rate_iter = iter(sample_rate_values)
+    channel_values = list(channels) if channels is not None else [2] * len(durations)
+    channel_iter = iter(channel_values)
 
     def run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
         if calls is not None:
@@ -133,6 +143,8 @@ def probe_runner(
                 width=width,
                 height=height,
                 frame_rate=next(rate_iter),
+                sample_rate=next(sample_rate_iter),
+                channels=next(channel_iter),
             ),
             stderr="",
         )
@@ -371,6 +383,55 @@ def test_concatenate_crossfade_normalizes_mixed_dimensions_and_frame_rates(
         "[v1][vn2]xfade=transition=fade:duration=1.000000:offset=8.000000[v2]"
     ) in graph
     assert "[0:v]scale" not in graph
+
+
+def test_concatenate_crossfade_normalizes_mixed_audio_sample_rates_and_channels(
+    tmp_path: Path,
+) -> None:
+    first = source_file(tmp_path, "first.mp4")
+    second = source_file(tmp_path, "second.mp4")
+    third = source_file(tmp_path, "third.mp4")
+    calls: list[list[str]] = []
+
+    concatenate_videos(
+        [first, second, third],
+        tmp_path / "mixed-audio.mp4",
+        crossfade_seconds=1.0,
+        ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner(
+            [4.0, 6.0, 8.0],
+            sample_rates=[48000, 44100, 48000],
+            channels=[2, 1, 6],
+        ),
+    )
+
+    graph = filter_graph(calls[0])
+    assert "[1:a]aresample=48000,aformat=channel_layouts=stereo[an1]" in graph
+    assert "[2:a]aformat=channel_layouts=stereo[an2]" in graph
+    assert "[0:a][an1]acrossfade=d=1.000000[a1]" in graph
+    assert "[a1][an2]acrossfade=d=1.000000[a2]" in graph
+    assert "[0:a]aresample" not in graph
+
+
+def test_concatenate_crossfade_skips_audio_normalization_for_matching_layouts(
+    tmp_path: Path,
+) -> None:
+    first = source_file(tmp_path, "first.mp4")
+    second = source_file(tmp_path, "second.mp4")
+    calls: list[list[str]] = []
+
+    concatenate_videos(
+        [first, second],
+        tmp_path / "matched-audio.mp4",
+        crossfade_seconds=1.0,
+        ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner([4.0, 6.0]),
+    )
+
+    graph = filter_graph(calls[0])
+    assert "aresample" not in graph
+    assert "aformat" not in graph
+    assert "[0:a][1:a]acrossfade=d=1.000000[a1]" in graph
 
 
 def test_concatenate_crossfade_skips_normalization_for_matching_geometry(
