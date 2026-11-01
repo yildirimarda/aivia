@@ -25,6 +25,7 @@ from aivia.core.config.media import (
 )
 from aivia.core.errors import ValidationError
 
+from .audio_subs import subtitle_for, write_subtitle_document
 from .errors import RenderError
 from .ffmpeg_cmd import FFmpegCommand, build_ffmpeg_command
 from .keyframes import AnimatedProperty
@@ -311,6 +312,12 @@ class VideoRenderer:
                     "actual": rate,
                 },
             )
+        if any(track.enabled for track in composition.audio_tracks) and not (
+            probe.audio_streams
+        ):
+            raise VideoRenderError(
+                "the rendered video has no audio stream for its audio tracks"
+            )
 
     def render(
         self,
@@ -347,6 +354,32 @@ class VideoRenderer:
             value = _prepare_text_layers(value, Path(text_directory.name))
             options = dict(command_options)
             options.pop("executable", None)
+            subtitles = options.pop("subtitles", None)
+            subtitle_file = options.pop(
+                "subtitle_file",
+                options.pop("subtitle_path", None),
+            )
+            safe_area = options.pop("safe_area", None)
+            platform = options.pop("platform", None)
+            subtitle_preset = options.pop("subtitle_preset", None)
+            highlight = options.pop("highlight", True)
+            track = subtitle_for(value, subtitles)
+            if subtitle_file is None and track is not None:
+                subtitle_file = Path(text_directory.name) / f"{destination.stem}.ass"
+                write_subtitle_document(
+                    track,
+                    subtitle_file,
+                    width=value.canvas.width,
+                    height=value.canvas.height,
+                    safe_area=(
+                        value.safe_area if safe_area is None else safe_area
+                    ),
+                    platform=platform or value.platform or None,
+                    preset=subtitle_preset,
+                    highlight=highlight,
+                )
+            if subtitle_file is not None:
+                options["subtitle_file"] = subtitle_file
             command = build_ffmpeg_command(
                 value,
                 temporary,

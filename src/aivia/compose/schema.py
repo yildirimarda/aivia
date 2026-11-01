@@ -34,7 +34,10 @@ from pydantic import (
     model_validator,
 )
 
+from aivia.core.platforms import SafeArea
+
 from .motion import Motion
+from .subtitles import SubtitleTrack
 from .text_animation import TextAnimation
 from .transitions import Transition
 
@@ -2302,6 +2305,86 @@ class Composition(_SchemaModel):
         validation_alias=AliasChoices("audio_tracks", "tracks", "audio"),
     )
     effects: list[Effect] = Field(default_factory=list)
+    subtitles: SubtitleTrack | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "subtitles",
+            "subtitle",
+            "subtitle_track",
+            "captions",
+            "caption",
+        ),
+    )
+    subtitle_file: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "subtitle_file",
+            "subtitle_path",
+            "captions_file",
+            "captions_path",
+        ),
+    )
+    platform: str = Field(
+        default="",
+        validation_alias=AliasChoices("platform", "target_platform"),
+    )
+    safe_area: SafeArea | None = Field(
+        default=None,
+        validation_alias=AliasChoices("safe_area", "safe_areas", "margins"),
+    )
+    loudness_lufs: float | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "loudness_lufs",
+            "target_lufs",
+            "target_loudness",
+        ),
+    )
+
+    @field_validator("subtitles", mode="before")
+    @classmethod
+    def _coerce_subtitles(cls, value: Any) -> Any:
+        if value is None or isinstance(value, SubtitleTrack):
+            return value
+        if isinstance(value, BaseModel):
+            return value.model_dump()
+        if isinstance(value, Mapping):
+            if {"cues", "words", "style", "language"} & set(value):
+                return value
+            return {"cues": [value]}
+        if isinstance(value, (list, tuple)):
+            if not value:
+                return None
+            if all(
+                isinstance(item, Mapping)
+                and ({"cues", "words"} & set(item))
+                for item in value
+            ):
+                cues = [
+                    cue
+                    for item in value
+                    for cue in item.get("cues", [])
+                ]
+                words = [
+                    word
+                    for item in value
+                    for word in item.get("words", [])
+                ]
+                return {"cues": cues, "words": words}
+            return {"cues": list(value)}
+        raise ValueError("subtitles must be a subtitle track, cues or mappings")
+
+    @field_validator("subtitle_file", "platform", mode="before")
+    @classmethod
+    def _strip_subtitle_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("loudness_lufs", mode="before")
+    @classmethod
+    def _validate_loudness(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return _finite(value, "loudness_lufs")
 
     @field_validator("id", mode="before")
     @classmethod
@@ -2357,6 +2440,21 @@ class Composition(_SchemaModel):
     def audio(self) -> list[AudioTrack]:
         """Alias for :attr:`audio_tracks`."""
         return self.audio_tracks
+
+    @property
+    def subtitle(self) -> SubtitleTrack | None:
+        """Alias for :attr:`subtitles`."""
+        return self.subtitles
+
+    @property
+    def subtitle_track(self) -> SubtitleTrack | None:
+        """Alias for :attr:`subtitles`."""
+        return self.subtitles
+
+    @property
+    def captions(self) -> SubtitleTrack | None:
+        """Alias for :attr:`subtitles`."""
+        return self.subtitles
 
     @property
     def frame_count(self) -> int:

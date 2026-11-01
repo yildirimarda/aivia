@@ -1174,6 +1174,8 @@ def _track_filters(
     track: AudioTrack,
     index: int,
     settings: AudioMixSettings,
+    *,
+    input_offset: int = 0,
 ) -> str:
     filters: list[str] = []
     duration = track.duration_seconds
@@ -1208,7 +1210,7 @@ def _track_filters(
         filters.append(f"adelay={milliseconds}:all=1")
     if not filters:
         filters.append("anull")
-    return f"[{index}:a]{','.join(filters)}[a{index}]"
+    return f"[{index + input_offset}:a]{','.join(filters)}[a{index}]"
 
 
 def _bus(parts: list[str], labels: Sequence[str], name: str) -> str:
@@ -1226,12 +1228,15 @@ def _bus(parts: list[str], labels: Sequence[str], name: str) -> str:
 def build_mix_filtergraph(
     tracks: Sequence[AudioTrack | Mapping[str, Any] | AudioSource],
     settings: AudioMixSettings | Mapping[str, Any] | None = None,
+    *,
+    input_offset: int = 0,
 ) -> str:
     """Build the deterministic ffmpeg filtergraph for a list of tracks.
 
     Inputs are addressed in the same order as *tracks*. Voice tracks are mixed
     into a sidechain bus that drives ``sidechaincompress`` on the music bed;
-    the voice bus is then mixed back in unchanged.
+    the voice bus is then mixed back in unchanged. *input_offset* shifts the
+    input indices when the audio inputs follow other streams in one command.
     """
     active = AudioMixSettings.from_value(settings)
     values = [AudioTrack.from_value(track) for track in tracks]
@@ -1246,7 +1251,9 @@ def build_mix_filtergraph(
     voices: list[str] = []
     backgrounds: list[str] = []
     for index, track in enumerate(values):
-        parts.append(_track_filters(track, index, active))
+        parts.append(
+            _track_filters(track, index, active, input_offset=input_offset)
+        )
         label = f"a{index}"
         labels.append(label)
         if track.voice:

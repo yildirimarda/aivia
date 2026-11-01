@@ -443,6 +443,9 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate procedural overlay effect parameters during composition validation so bad effects fail before rendering (tests/compose/test_validation.py)
 - [ ] Apply procedural overlay effects to video renders so confetti, sparkles, snow and bokeh animate in the output (slow, tests/compose/test_video_overlays.py)
 - [ ] Validate transition durations stay inside each layer window and report every violation (tests/compose/test_validation.py)
+- [ ] Validate subtitle cue spans against the composition duration so a cue cannot outlive the video (tests/compose/test_validation.py)
+- [ ] Convert an SRT or VTT subtitle file referenced by a composition to ASS before burning (tests/compose/test_audio_subs.py)
+- [ ] Validate composition safe area margins leave a visible area before subtitles are burned (tests/compose/test_validation.py)
 
 ## Milestone 10: Research engine
 

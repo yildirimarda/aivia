@@ -22,6 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .audio_subs import (
+    audio_mix_settings,
+    build_audio_filtergraph,
+    subtitle_filter,
+)
 from .errors import RenderError
 from .fonts import font_manager
 from .keyframes import KeyframeTrack
@@ -712,24 +717,81 @@ def _background_input(composition: Composition) -> FFmpegInput:
     return FFmpegInput(source=source, options=("-f", "lavfi"))
 
 
+def _audio_inputs(composition: Composition) -> list[FFmpegInput]:
+    inputs: list[FFmpegInput] = []
+    for track in composition.audio_tracks:
+        if not track.enabled:
+            continue
+        options = ("-stream_loop", "-1") if track.loop else ()
+        inputs.append(
+            FFmpegInput(
+                source=track.source,
+                options=options,
+                layer_id=track.id,
+            )
+        )
+    return inputs
+
+
+def _subtitle_path(
+    composition: Composition,
+    subtitle_file: str | Path | None,
+) -> str | None:
+    if subtitle_file is not None:
+        path = str(subtitle_file).strip()
+        return path or None
+    return composition.subtitle_file.strip() or None
+
+
 def build_ffmpeg_filtergraph(
     composition: Composition | Mapping[str, Any],
+    *,
+    subtitle_file: str | Path | None = None,
+    include_audio: bool = True,
+    audio_settings: Any | None = None,
+    loudness_lufs: float | None = None,
+    normalize_loudness: bool | None = None,
+    ducking: Any | None = None,
 ) -> str:
     """Return the pure ``filter_complex`` graph for *composition*.
 
     Input zero is always the generated background. Each supported layer adds
-    one input and one overlay node, in ``z_index`` order.
+    one input and one overlay node, in ``z_index`` order. Enabled audio tracks
+    add their mix graph after the video nodes, and a written ASS file adds the
+    ``ass`` filter that burns subtitles over the final frame.
     """
     value = _composition(composition)
+    layers = _active_layers(value)
     parts = [
         f"color=c={_ffmpeg_color(value.canvas.background)}:"
         f"s={value.canvas.width}x{value.canvas.height}:"
         f"r={value.fps}:d={_seconds(value.duration_seconds)}[base0]"
     ]
-    for index, layer in enumerate(_active_layers(value)):
+    for index, layer in enumerate(layers):
         node, overlay = _layer_filters(layer, value, index)
         parts.extend((node, overlay))
-    parts.append(f"[base{len(_active_layers(value))}]null[vout]")
+    video_label = f"base{len(layers)}"
+    path = _subtitle_path(value, subtitle_file)
+    if value.subtitles is not None and path is None:
+        raise FFmpegCommandError(
+            "subtitles need a written ASS file; pass subtitle_file"
+        )
+    if path is not None:
+        parts.append(f"[{video_label}]{subtitle_filter(path)}[vout]")
+    else:
+        parts.append(f"[{video_label}]null[vout]")
+
+    if include_audio and any(track.enabled for track in value.audio_tracks):
+        audio_graph = build_audio_filtergraph(
+            value,
+            settings=audio_settings,
+            input_offset=1 + len(layers),
+            loudness_lufs=loudness_lufs,
+            normalize_loudness=normalize_loudness,
+            ducking=ducking,
+        )
+        if audio_graph:
+            parts.append(audio_graph)
     return ";".join(parts)
 
 
@@ -757,17 +819,27 @@ def build_ffmpeg_command(
     pixel_format: str = DEFAULT_PIXEL_FORMAT,
     movflags: str | None = "+faststart",
     overwrite: bool = True,
+    subtitle_file: str | Path | None = None,
+    include_audio: bool = True,
+    audio_settings: Any | None = None,
+    loudness_lufs: float | None = None,
+    normalize_loudness: bool | None = None,
+    ducking: Any | None = None,
 ) -> FFmpegCommand:
     """Build an ffmpeg argv for *composition* without executing anything.
 
     ``output`` is only stringified; it does not have to exist and its parent
     directory is never created or inspected. The returned value is a list of
-    arguments that also carries the generated filtergraph and inputs.
+    arguments that also carries the generated filtergraph and inputs. Audio
+    tracks are mixed in the same command and a *subtitle_file* is burned with
+    the ``ass`` filter; the builder never writes that file itself.
     """
     if not isinstance(executable, str) or not executable.strip():
         raise FFmpegCommandError("executable must be a non-empty string")
     if not isinstance(video_codec, str) or not video_codec.strip():
         raise FFmpegCommandError("video_codec must be a non-empty string")
+    if not isinstance(audio_codec, str) or not audio_codec.strip():
+        raise FFmpegCommandError("audio_codec must be a non-empty string")
     if isinstance(crf, bool) or not isinstance(crf, int):
         raise FFmpegCommandError("crf must be an integer")
     if crf < 0:
@@ -781,14 +853,36 @@ def build_ffmpeg_command(
 
     value = _composition(composition)
     inputs = _command_inputs(value)
-    graph = build_ffmpeg_filtergraph(value)
+    audio = _audio_inputs(value) if include_audio else []
+    settings = None
+    if audio:
+        if audio_settings is None:
+            settings = audio_mix_settings(
+                value,
+                loudness_lufs=loudness_lufs,
+                normalize_loudness=normalize_loudness,
+                ducking=ducking,
+            )
+        else:
+            from aivia.media.audio_mix import AudioMixSettings
+
+            settings = AudioMixSettings.from_value(audio_settings)
+    graph = build_ffmpeg_filtergraph(
+        value,
+        subtitle_file=subtitle_file,
+        include_audio=bool(audio),
+        audio_settings=settings,
+        loudness_lufs=loudness_lufs,
+        normalize_loudness=normalize_loudness,
+        ducking=ducking,
+    )
     background = _background_input(value)
 
     argv: list[str] = [executable.strip(), "-hide_banner", "-loglevel", "error"]
     if overwrite:
         argv.append("-y")
     argv.extend(background.argv())
-    for item in inputs:
+    for item in (*inputs, *audio):
         argv.extend(item.argv())
     argv.extend(
         [
@@ -808,9 +902,15 @@ def build_ffmpeg_command(
             str(crf),
             "-pix_fmt",
             pixel_format.strip(),
-            "-an",
         ]
     )
+    if audio:
+        argv.extend(["-map", "[out]", "-c:a", audio_codec.strip()])
+        if settings is not None:
+            argv.extend(["-ar", str(settings.sample_rate)])
+            argv.extend(["-ac", str(settings.channels)])
+    else:
+        argv.append("-an")
     if movflags:
         argv.extend(["-movflags", movflags])
     argv.append(str(output))
@@ -818,7 +918,7 @@ def build_ffmpeg_command(
         argv,
         filtergraph=graph,
         output=str(output),
-        inputs=(background, *inputs),
+        inputs=(background, *inputs, *audio),
     )
 
 
@@ -831,14 +931,20 @@ def build_ffmpeg_args(
     return build_ffmpeg_command(composition, output, **options).argv
 
 
-def build_filtergraph(composition: Composition | Mapping[str, Any]) -> str:
+def build_filtergraph(
+    composition: Composition | Mapping[str, Any],
+    **options: Any,
+) -> str:
     """Alias for :func:`build_ffmpeg_filtergraph`."""
-    return build_ffmpeg_filtergraph(composition)
+    return build_ffmpeg_filtergraph(composition, **options)
 
 
-def ffmpeg_filtergraph(composition: Composition | Mapping[str, Any]) -> str:
+def ffmpeg_filtergraph(
+    composition: Composition | Mapping[str, Any],
+    **options: Any,
+) -> str:
     """Alias for :func:`build_ffmpeg_filtergraph`."""
-    return build_ffmpeg_filtergraph(composition)
+    return build_ffmpeg_filtergraph(composition, **options)
 
 
 def ffmpeg_args(
