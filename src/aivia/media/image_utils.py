@@ -28,6 +28,12 @@ from pathlib import Path
 
 from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
 
+from aivia.core.config.media import (
+    DEFAULT_MEDIA_MAX_ANIMATED_FRAMES as DEFAULT_MAX_IMAGE_FRAMES,
+)
+from aivia.core.config.media import (
+    DEFAULT_MEDIA_MAX_ANIMATED_PIXELS as DEFAULT_MAX_IMAGE_TOTAL_PIXELS,
+)
 from aivia.core.config.media import DEFAULT_MEDIA_MAX_BYTES as DEFAULT_MAX_IMAGE_BYTES
 from aivia.core.config.media import (
     DEFAULT_MEDIA_MAX_PIXELS as DEFAULT_MAX_IMAGE_PIXELS,
@@ -38,7 +44,9 @@ from aivia.core.media_probe import image_dimensions
 __all__ = [
     "DEFAULT_BLUR_RADIUS",
     "DEFAULT_MAX_IMAGE_BYTES",
+    "DEFAULT_MAX_IMAGE_FRAMES",
     "DEFAULT_MAX_IMAGE_PIXELS",
+    "DEFAULT_MAX_IMAGE_TOTAL_PIXELS",
     "ImageFit",
     "ImageFormat",
     "ImageSource",
@@ -96,6 +104,55 @@ def _check_pixel_cap(width: int, height: int, max_pixels: int) -> None:
                 "limit": max_pixels,
             },
         )
+
+
+def _frame_count(image: Image.Image) -> int:
+    frames = getattr(image, "n_frames", 1)
+    if isinstance(frames, bool) or not isinstance(frames, int) or frames < 1:
+        return 1
+    return frames
+
+
+def _check_frame_cap(frames: int, max_frames: int) -> None:
+    if frames > max_frames:
+        raise ValidationError(
+            f"image has {frames} frames, above the {max_frames} frame cap",
+            details={"frames": frames, "limit": max_frames},
+        )
+
+
+def _check_total_pixel_cap(
+    width: int,
+    height: int,
+    frames: int,
+    max_total_pixels: int,
+) -> None:
+    pixels = width * height * frames
+    if pixels > max_total_pixels:
+        raise ValidationError(
+            f"image decodes {pixels} pixels across {frames} frames, above the "
+            f"{max_total_pixels} total decoded pixel cap",
+            details={
+                "width": width,
+                "height": height,
+                "frames": frames,
+                "pixels": pixels,
+                "limit": max_total_pixels,
+            },
+        )
+
+
+def _check_opened_image(
+    image: Image.Image,
+    *,
+    max_pixels: int,
+    max_frames: int,
+    max_total_pixels: int,
+) -> None:
+    _check_pixel_cap(*image.size, max_pixels)
+    frames = _frame_count(image)
+    _check_frame_cap(frames, max_frames)
+    _check_total_pixel_cap(*image.size, frames, max_total_pixels)
 
 
 class ImageFormat(StrEnum):
@@ -237,16 +294,24 @@ def open_image(
     *,
     max_bytes: int = DEFAULT_MAX_IMAGE_BYTES,
     max_pixels: int = DEFAULT_MAX_IMAGE_PIXELS,
+    max_frames: int = DEFAULT_MAX_IMAGE_FRAMES,
+    max_total_pixels: int = DEFAULT_MAX_IMAGE_TOTAL_PIXELS,
 ) -> Image.Image:
     """Open an image path or encoded bytes and return a detached copy.
 
     The file handle is closed before returning, so callers may delete or move
     the source immediately. Oversized payloads and images whose header
     declares more than ``max_pixels`` are rejected from their headers before
-    any pixel data is decoded. Invalid data raises :class:`ValidationError`.
+    any pixel data is decoded. Animated images are also rejected when they
+    contain more than ``max_frames`` frames or decode more than
+    ``max_total_pixels`` pixels across all frames, so a small frame count
+    cannot hide an unbounded total. Invalid data raises
+    :class:`ValidationError`.
     """
     byte_limit = _validate_limit(max_bytes, "max_bytes")
     pixel_limit = _validate_limit(max_pixels, "max_pixels")
+    frame_limit = _validate_limit(max_frames, "max_frames")
+    total_pixel_limit = _validate_limit(max_total_pixels, "max_total_pixels")
     try:
         if isinstance(source, bytes):
             _check_byte_cap(len(source), byte_limit)
@@ -254,7 +319,12 @@ def open_image(
             if declared is not None:
                 _check_pixel_cap(*declared, pixel_limit)
             with Image.open(BytesIO(source)) as opened:
-                _check_pixel_cap(*opened.size, pixel_limit)
+                _check_opened_image(
+                    opened,
+                    max_pixels=pixel_limit,
+                    max_frames=frame_limit,
+                    max_total_pixels=total_pixel_limit,
+                )
                 opened.load()
                 return opened.copy()
         path = Path(source)
@@ -264,7 +334,12 @@ def open_image(
         if declared is not None:
             _check_pixel_cap(*declared, pixel_limit)
         with Image.open(path) as opened:
-            _check_pixel_cap(*opened.size, pixel_limit)
+            _check_opened_image(
+                opened,
+                max_pixels=pixel_limit,
+                max_frames=frame_limit,
+                max_total_pixels=total_pixel_limit,
+            )
             opened.load()
             return opened.copy()
     except Image.DecompressionBombError as exc:
