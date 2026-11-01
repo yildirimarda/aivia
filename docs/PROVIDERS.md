@@ -24,8 +24,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `elevenlabs_tts` | `tts` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
 | `fal` | `image_gen` | 60/min | - | - | unknown |
-| `fal-video` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
-| `fal_video` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
+| `fal-video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
+| `fal_video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `faster-whisper` | `stt` | 60/min | - | - | unknown |
 | `faster_whisper` | `stt` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
@@ -33,10 +33,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `google-image` | `image_gen` | 60/min | - | - | unknown |
 | `google-speech` | `tts` | 60/min | - | - | unknown |
 | `google-tts` | `tts` | 60/min | - | - | unknown |
-| `google-veo` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
+| `google-veo` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `google_image` | `image_gen` | 60/min | - | - | unknown |
 | `google_tts` | `tts` | 60/min | - | - | unknown |
-| `google_veo` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
+| `google_veo` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `http` | `page_fetch` | 60/min | - | - | unknown |
 | `kokoro` | `tts` | 60/min | - | - | unknown |
 | `kokoro-tts` | `tts` | 60/min | - | - | unknown |
@@ -97,17 +97,17 @@ This matrix is generated from the metadata every registered provider declares. C
 | `remote_image_ops` | `image_edit` | 60/min | - | - | unknown |
 | `remote_ops` | `image_edit` | 60/min | - | - | unknown |
 | `replicate` | `image_gen` | 60/min | - | - | unknown |
-| `replicate-video` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
-| `replicate_video` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
+| `replicate-video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
+| `replicate_video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
 | `stable-audio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `stable_audio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `stableaudio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `tavily` | `search` | 60/min | - | - | unknown |
-| `veo` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
-| `veo-video` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
-| `veo_video` | `video_gen`, `video_first_frame` | 60/min | - | - | unknown |
+| `veo` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
+| `veo-video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
+| `veo_video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `voyage` | `embeddings` | 60/min | - | - | unknown |
 | `whisper` | `stt` | 60/min | - | - | unknown |
 | `whisper-api` | `stt` | 60/min | - | - | unknown |

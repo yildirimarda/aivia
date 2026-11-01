@@ -54,6 +54,7 @@ from aivia.providers.protocols.video import (
     CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
     CAPABILITY_VIDEO_INPUT,
+    CAPABILITY_VIDEO_NATIVE_AUDIO,
     VideoRequest,
     VideoResponse,
     VideoResult,
@@ -103,7 +104,11 @@ VEO_API_URL = DEFAULT_BASE_URL
 
 _DEFAULT_METADATA = ProviderMeta(
     name="veo",
-    capabilities=[CAPABILITY_VIDEO_GEN, CAPABILITY_VIDEO_FIRST_FRAME],
+    capabilities=[
+        CAPABILITY_VIDEO_GEN,
+        CAPABILITY_VIDEO_FIRST_FRAME,
+        CAPABILITY_VIDEO_NATIVE_AUDIO,
+    ],
 )
 
 _PREDICT_SUFFIX = ":predictLongRunning"

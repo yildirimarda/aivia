@@ -22,6 +22,7 @@ from aivia.providers import build_provider, provider_registry
 from aivia.providers.protocols import (
     CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
+    CAPABILITY_VIDEO_NATIVE_AUDIO,
     VideoRequest,
 )
 from aivia.providers.protocols.media import VideoFormat
@@ -199,9 +200,11 @@ def test_replicate_video_metadata_and_registration() -> None:
     assert provider.capabilities == (
         CAPABILITY_VIDEO_GEN,
         CAPABILITY_VIDEO_FIRST_FRAME,
+        CAPABILITY_VIDEO_NATIVE_AUDIO,
     )
     assert provider.supports(CAPABILITY_VIDEO_GEN)
     assert provider.supports(CAPABILITY_VIDEO_FIRST_FRAME)
+    assert provider.supports(CAPABILITY_VIDEO_NATIVE_AUDIO)
     assert provider.base_url == REPLICATE_DEFAULT_BASE_URL
     assert provider.api_url == REPLICATE_DEFAULT_BASE_URL
     assert provider.default_model == REPLICATE_MODEL
@@ -402,9 +405,11 @@ def test_veo_metadata_and_registration() -> None:
     assert provider.capabilities == (
         CAPABILITY_VIDEO_GEN,
         CAPABILITY_VIDEO_FIRST_FRAME,
+        CAPABILITY_VIDEO_NATIVE_AUDIO,
     )
     assert provider.supports(CAPABILITY_VIDEO_GEN)
     assert provider.supports(CAPABILITY_VIDEO_FIRST_FRAME)
+    assert provider.supports(CAPABILITY_VIDEO_NATIVE_AUDIO)
     assert provider.base_url == DEFAULT_BASE_URL
     assert provider.api_url == DEFAULT_BASE_URL
     assert provider.api_version == DEFAULT_API_VERSION

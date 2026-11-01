@@ -342,7 +342,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Skip splitting video requests that pin a first or last frame and record why (tests/providers/video/test_adapt.py)
 - [x] Persist validated video fps, format and audio presence on the asset so cache hits rebuild the exact result (tests/media/test_video_metadata.py)
 - [x] Add a video cost calculator resolving per second, per clip, tier and audio prices into linked cost events (tests/providers/video/test_cost.py)
-- [ ] Declare native audio support on video providers that forward generate_audio and regenerate the capability matrix (tests/providers/video/test_audio_capability.py)
+- [x] Declare native audio support on video providers that forward generate_audio and regenerate the capability matrix (tests/providers/video/test_audio_capability.py)
 - [ ] Apply the video audio policy before storing a clip and record when returned audio was stripped (tests/media/test_video_audio.py)
 - [ ] Reject a source video whose media type is not video before any video-to-video provider call (tests/providers/video/test_v2v.py)
 - [ ] Normalize differing clip dimensions and frame rates before crossfading so mixed sources join cleanly (tests/media/test_video_utils.py)
