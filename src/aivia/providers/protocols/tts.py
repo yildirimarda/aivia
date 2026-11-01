@@ -17,12 +17,24 @@ from pydantic import Field, field_validator, model_validator
 
 from aivia.providers.protocols.audio import AudioFormat, WordTimestamp
 from aivia.providers.protocols.base import CapabilityProvider, ProtocolModel
+from aivia.providers.protocols.voice_clone import (
+    CAPABILITY_VOICE_CLONE,
+    CAPABILITY_VOICE_CLONING,
+    VoiceCloneProvider,
+    VoiceCloneRequest,
+    VoiceCloneResponse,
+)
 
 __all__ = [
     "CAPABILITY_TTS",
+    "CAPABILITY_VOICE_CLONE",
+    "CAPABILITY_VOICE_CLONING",
     "TTSProvider",
     "TTSRequest",
     "TTSResponse",
+    "VoiceCloneProvider",
+    "VoiceCloneRequest",
+    "VoiceCloneResponse",
 ]
 
 CAPABILITY_TTS = "tts"

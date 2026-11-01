@@ -9,6 +9,7 @@ before the request is built; the adapter never hard-codes a voice id.
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Mapping
 from typing import Any
@@ -17,11 +18,17 @@ import httpx
 
 from aivia.core.config.http import HttpClientConfig
 from aivia.core.errors import InvalidRequestError, ValidationError
+from aivia.core.http import raise_for_status
 from aivia.core.models.provider import ProviderMeta, ProviderPrice
 from aivia.core.secrets import SecretsLoader
 from aivia.providers.base import Provider
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.tts import CAPABILITY_TTS, TTSRequest, TTSResponse
+from aivia.providers.protocols.voice_clone import (
+    CAPABILITY_VOICE_CLONE,
+    VoiceCloneRequest,
+    VoiceCloneResponse,
+)
 from aivia.providers.registry import register_provider
 from aivia.providers.tts.common import (
     as_mapping,
@@ -36,6 +43,7 @@ from aivia.providers.tts.common import (
 from aivia.providers.tts.voice import VoiceMap
 
 __all__ = [
+    "CAPABILITY_VOICE_CLONE",
     "DEFAULT_BASE_URL",
     "ELEVENLABS_BASE_URL",
     "ELEVENLABS_DEFAULT_BASE_URL",
@@ -43,6 +51,8 @@ __all__ = [
     "ElevenLabsProvider",
     "ElevenLabsTTS",
     "ElevenLabsTTSProvider",
+    "VoiceCloneRequest",
+    "VoiceCloneResponse",
 ]
 
 DEFAULT_BASE_URL = "https://api.elevenlabs.io"
@@ -141,6 +151,118 @@ def _alignment(body: Mapping[str, Any], text: str) -> list[Any]:
     )
 
 
+_AUDIO_EXTENSIONS = {
+    "audio/flac": "flac",
+    "audio/m4a": "m4a",
+    "audio/mp3": "mp3",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/ogg": "ogg",
+    "audio/opus": "opus",
+    "audio/wav": "wav",
+    "audio/webm": "webm",
+    "audio/x-m4a": "m4a",
+    "audio/x-wav": "wav",
+}
+
+
+def _voice_clone_enabled(*values: bool | None) -> bool:
+    selected = [value for value in values if value is not None]
+    for value in selected:
+        if not isinstance(value, bool):
+            raise TypeError("voice cloning flags must be booleans or None")
+    return any(selected)
+
+
+def _with_voice_clone_capability(
+    metadata: ProviderMeta | Mapping[str, Any] | None,
+    requested: bool,
+) -> tuple[ProviderMeta | Mapping[str, Any] | None, bool]:
+    if metadata is None:
+        base: ProviderMeta | None = None
+    elif isinstance(metadata, ProviderMeta):
+        base = metadata
+    else:
+        base = ProviderMeta.model_validate(metadata)
+    declared = base is not None and base.supports(CAPABILITY_VOICE_CLONE)
+    enabled = requested or declared
+    if not enabled:
+        return metadata, False
+    if base is None:
+        base = ProviderMeta()
+    if not declared:
+        base = base.model_copy(
+            update={"capabilities": [*base.capabilities, CAPABILITY_VOICE_CLONE]}
+        )
+    return base, True
+
+
+def _clone_request_data(
+    request: VoiceCloneRequest | Mapping[str, Any] | str | None,
+    samples: Any,
+    values: Mapping[str, Any],
+) -> dict[str, Any]:
+    if request is None:
+        data: dict[str, Any] = {}
+    elif isinstance(request, VoiceCloneRequest):
+        data = request.model_dump(mode="python")
+    elif isinstance(request, Mapping):
+        data = dict(request)
+    elif isinstance(request, str):
+        data = {"name": request}
+    else:
+        raise TypeError(
+            "request must be a VoiceCloneRequest, mapping, string or None"
+        )
+    if samples is not None and not any(
+        key in data for key in ("samples", "files", "audio", "audio_samples")
+    ):
+        data["samples"] = samples
+    data.update(values)
+    return data
+
+
+def _audio_filename(index: int, media_type: str | None) -> str:
+    extension = _AUDIO_EXTENSIONS.get((media_type or "").lower(), "wav")
+    return f"sample-{index + 1}.{extension}"
+
+
+def _clone_identifier(
+    value: Any,
+    provider_voice_id: str | None,
+    values: dict[str, Any],
+) -> str:
+    if value is None:
+        value = (
+            provider_voice_id
+            or values.pop("id", None)
+            or values.pop("voice", None)
+            or values.pop("clone_id", None)
+        )
+    if isinstance(value, str):
+        text = value.strip()
+    elif isinstance(value, Mapping):
+        text = ""
+        for key in ("voice_id", "provider_voice_id", "id", "clone_id", "voice"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                text = candidate.strip()
+                break
+    else:
+        text = ""
+        for key in ("voice_id", "provider_voice_id", "id", "clone_id", "voice"):
+            candidate = getattr(value, key, None)
+            if isinstance(candidate, str) and candidate.strip():
+                text = candidate.strip()
+                break
+    if not text:
+        raise InvalidRequestError(
+            "ElevenLabs voice deletion needs a provider voice id",
+            details={"provider": "elevenlabs-tts", "field": "voice_id"},
+        )
+    return text
+
+
 class ElevenLabsTTSProvider(Provider):
     """A text to speech provider backed by the ElevenLabs API.
 
@@ -165,13 +287,29 @@ class ElevenLabsTTSProvider(Provider):
         model: str | None = None,
         voice_map: Mapping[str, str] | VoiceMap | None = None,
         default_voice: str | None = None,
+        voice_clone: bool | None = None,
+        voice_cloning: bool | None = None,
+        enable_voice_clone: bool | None = None,
+        enable_voice_cloning: bool | None = None,
+        allow_voice_cloning: bool | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         name: str | None = None,
         health_timeout_seconds: float | None = None,
         close_timeout_seconds: float | None = None,
         http_config: HttpClientConfig | None = None,
     ) -> None:
+        metadata, self._voice_clone_enabled = _with_voice_clone_capability(
+            type(self).default_metadata,
+            _voice_clone_enabled(
+                voice_clone,
+                voice_cloning,
+                enable_voice_clone,
+                enable_voice_cloning,
+                allow_voice_cloning,
+            ),
+        )
         super().__init__(
+            metadata=metadata,
             name=name,
             health_timeout_seconds=health_timeout_seconds,
             close_timeout_seconds=close_timeout_seconds,
@@ -234,6 +372,171 @@ class ElevenLabsTTSProvider(Provider):
             "content-type": "application/json",
             "accept": "application/json" if timestamps else "audio/mpeg",
         }
+
+    @property
+    def voice_clone_enabled(self) -> bool:
+        """Whether this instance declares the ``voice_clone`` capability."""
+        return self._voice_clone_enabled
+
+    @property
+    def voice_cloning_enabled(self) -> bool:
+        """Alias for :attr:`voice_clone_enabled`."""
+        return self._voice_clone_enabled
+
+    @property
+    def voice_clone(self) -> bool:
+        """Alias for :attr:`voice_clone_enabled`."""
+        return self._voice_clone_enabled
+
+    @property
+    def voice_cloning(self) -> bool:
+        """Alias for :attr:`voice_clone_enabled`."""
+        return self._voice_clone_enabled
+
+    @property
+    def supports_voice_clone(self) -> bool:
+        """Alias for :attr:`voice_clone_enabled`."""
+        return self._voice_clone_enabled
+
+    @property
+    def supports_voice_cloning(self) -> bool:
+        """Alias for :attr:`voice_clone_enabled`."""
+        return self._voice_clone_enabled
+
+    def _require_voice_clone(self) -> None:
+        if not self.supports(CAPABILITY_VOICE_CLONE):
+            raise InvalidRequestError(
+                "ElevenLabs voice cloning is not enabled",
+                details={
+                    "provider": self.name,
+                    "required_capability": CAPABILITY_VOICE_CLONE,
+                },
+            )
+
+    def _voice_headers(self) -> dict[str, str]:
+        return {
+            "xi-api-key": self._api_key,
+            "accept": "application/json",
+        }
+
+    def clone_endpoint(self) -> str:
+        """The endpoint that creates a cloned voice."""
+        return f"{self._base_url}/v1/voices/add"
+
+    def voice_endpoint(self, voice_id: str) -> str:
+        """The endpoint for one provider voice."""
+        return f"{self._base_url}/v1/voices/{voice_id}"
+
+    async def create_voice(
+        self,
+        request: VoiceCloneRequest | Mapping[str, Any] | str | None = None,
+        samples: Any = None,
+        **values: Any,
+    ) -> VoiceCloneResponse:
+        """Create a cloned voice and return its provider voice id."""
+        self._require_voice_clone()
+        clone = VoiceCloneRequest.model_validate(
+            _clone_request_data(request, samples, values)
+        )
+        if not clone.samples:
+            raise InvalidRequestError(
+                "ElevenLabs voice cloning needs at least one audio sample",
+                details={"provider": self.name, "field": "samples"},
+            )
+        files: list[tuple[str, tuple[str, bytes, str]]] = []
+        for index, sample in enumerate(clone.samples):
+            if sample.data is None:
+                if sample.url is None:
+                    raise ValidationError(
+                        "ElevenLabs voice cloning needs inline audio or a URL",
+                        details={"provider": self.name, "index": index},
+                    )
+                downloaded = await self.http.get(
+                    sample.url,
+                    headers=self._voice_headers(),
+                    timeout=clone.timeout_seconds,
+                    raise_for_status=True,
+                )
+                audio = downloaded.content
+                media_type = (
+                    sample.media_type
+                    or as_text(downloaded.headers.get("content-type"))
+                    or "application/octet-stream"
+                )
+            else:
+                audio = sample.data
+                media_type = sample.media_type or "application/octet-stream"
+            if not audio:
+                raise ValidationError(
+                    "ElevenLabs voice cloning received an empty audio sample",
+                    details={"provider": self.name, "index": index},
+                )
+            filename = sample.filename or _audio_filename(index, media_type)
+            files.append(("files", (filename, audio, media_type)))
+        form: dict[str, Any] = {"name": clone.name}
+        if clone.description:
+            form["description"] = clone.description
+        if clone.labels:
+            form["labels"] = json.dumps(clone.labels, sort_keys=True)
+        response = await self.http.post(
+            self.clone_endpoint(),
+            headers=self._voice_headers(),
+            data=form,
+            files=files,
+            timeout=clone.timeout_seconds,
+            raise_for_status=True,
+        )
+        body = as_mapping(response.json())
+        if body is None:
+            raise ValidationError(
+                "ElevenLabs returned a non-JSON voice clone response",
+                details={"provider": self.name},
+            )
+        voice_id = as_text(body.get("voice_id")) or as_text(body.get("id"))
+        if not voice_id:
+            raise ValidationError(
+                "ElevenLabs returned no voice id for the clone",
+                details={"provider": self.name},
+            )
+        return VoiceCloneResponse(
+            voice_id=voice_id,
+            provider=self.name,
+            name=clone.name,
+            owner=clone.owner,
+            language=clone.language,
+            consent=clone.consent,
+            request_id=response.headers.get("x-request-id") or None,
+            metadata=clone.metadata,
+        )
+
+    async def delete_voice(
+        self,
+        voice_id: Any = None,
+        *,
+        provider_voice_id: str | None = None,
+        timeout_seconds: float | None = None,
+        **values: Any,
+    ) -> bool:
+        """Delete a provider voice and report whether it existed."""
+        self._require_voice_clone()
+        identifier = _clone_identifier(voice_id, provider_voice_id, values)
+        response = await self.http.delete(
+            self.voice_endpoint(identifier),
+            headers=self._voice_headers(),
+            timeout=timeout_seconds,
+            raise_for_status=False,
+        )
+        if response.status_code == 404:
+            return False
+        await raise_for_status(response)
+        return True
+
+    clone_voice = create_voice
+    create_clone = create_voice
+    create_voice_clone = create_voice
+    delete_clone = delete_voice
+    delete_voice_clone = delete_voice
+    remove_voice = delete_voice
 
     async def synthesize(self, request: TTSRequest) -> TTSResponse:
         """Synthesize *request* through ElevenLabs and return its audio."""
