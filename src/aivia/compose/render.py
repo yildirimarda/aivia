@@ -23,8 +23,10 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from PIL import (
     Image,
+    ImageChops,
     ImageColor,
     ImageDraw,
+    ImageEnhance,
     ImageFilter,
     ImageFont,
     ImageOps,
@@ -43,17 +45,25 @@ from .fonts import FontManager
 from .keyframes import AnimatedProperty, keyframes_for_layer
 from .schema import (
     Anchor,
+    BlendMode,
     Composition,
+    FilterType,
     FitMode,
     Gradient,
+    ImageMask,
     Layer,
     LayerType,
+    MaskMode,
     ShapeType,
     TextAlign,
     TextOverflow,
     TextStyle,
     TextWeight,
     VerticalAlign,
+    normalise_filters,
+)
+from .schema import (
+    ImageFilter as ImageFilterSpec,
 )
 
 __all__ = [
@@ -407,6 +417,7 @@ def _composite(
     image: Image.Image,
     x: int,
     y: int,
+    blend_mode: BlendMode = BlendMode.NORMAL,
 ) -> None:
     left = max(0, x)
     top = max(0, y)
@@ -415,7 +426,11 @@ def _composite(
     if right <= left or bottom <= top:
         return
     crop = (left - x, top - y, right - x, bottom - y)
-    canvas.alpha_composite(image.crop(crop), dest=(left, top))
+    layer = image.crop(crop)
+    if blend_mode is not BlendMode.NORMAL:
+        base = canvas.crop((left, top, right, bottom))
+        layer = _blend_images(base, layer, blend_mode)
+    canvas.alpha_composite(layer, dest=(left, top))
 
 
 def _opacity(image: Image.Image, value: float) -> Image.Image:
@@ -424,6 +439,177 @@ def _opacity(image: Image.Image, value: float) -> Image.Image:
     if value <= 0.0:
         return image.copy().convert("RGBA").point(lambda _: 0)
     alpha = image.getchannel("A").point(lambda channel: round(channel * value))
+    result = image.copy()
+    result.putalpha(alpha)
+    return result
+
+
+def _blend_mode(layer: Layer) -> BlendMode:
+    raw = _layer_value(layer, "blend_mode", "blend", "blending")
+    if raw is None:
+        return BlendMode.NORMAL
+    if isinstance(raw, BlendMode):
+        return raw
+    try:
+        return BlendMode(raw)
+    except (TypeError, ValueError) as exc:
+        raise RenderError(f"unsupported blend mode {raw!r}") from exc
+
+
+def _blend_images(
+    base: Image.Image,
+    top: Image.Image,
+    mode: BlendMode,
+) -> Image.Image:
+    base_rgb = base.convert("RGB")
+    top_rgb = top.convert("RGB")
+    operations: dict[BlendMode, Callable[[Image.Image, Image.Image], Image.Image]] = {
+        BlendMode.MULTIPLY: ImageChops.multiply,
+        BlendMode.SCREEN: ImageChops.screen,
+        BlendMode.OVERLAY: ImageChops.overlay,
+        BlendMode.ADD: ImageChops.add,
+        BlendMode.SUBTRACT: ImageChops.subtract,
+        BlendMode.DARKEN: ImageChops.darker,
+        BlendMode.LIGHTEN: ImageChops.lighter,
+        BlendMode.DIFFERENCE: ImageChops.difference,
+        BlendMode.HARD_LIGHT: ImageChops.hard_light,
+        BlendMode.SOFT_LIGHT: ImageChops.soft_light,
+    }
+    operation = operations.get(mode)
+    if operation is None:
+        raise RenderError(f"unsupported blend mode {mode.value!r}")
+    result = operation(base_rgb, top_rgb).convert("RGBA")
+    result.putalpha(top.getchannel("A"))
+    return result
+
+
+def _filters_for_layer(layer: Layer) -> list[ImageFilterSpec]:
+    raw = _layer_value(layer, "filters", "filter", "image_filters")
+    if raw is None:
+        return []
+    specs: list[ImageFilterSpec] = []
+    for item in normalise_filters(raw):
+        if isinstance(item, ImageFilterSpec):
+            specs.append(item)
+            continue
+        try:
+            specs.append(ImageFilterSpec.model_validate(item))
+        except ValueError as exc:
+            raise RenderError("invalid image filter") from exc
+    return specs
+
+
+def _preserve_alpha(image: Image.Image, rgb: Image.Image) -> Image.Image:
+    result = rgb.convert("RGBA")
+    result.putalpha(image.getchannel("A"))
+    return result
+
+
+def _apply_filter(image: Image.Image, spec: ImageFilterSpec) -> Image.Image:
+    amount = spec.amount
+    radius = amount if spec.radius is None else spec.radius
+    if spec.type is FilterType.BLUR:
+        return _preserve_alpha(
+            image,
+            image.convert("RGB").filter(ImageFilter.GaussianBlur(radius)),
+        )
+    if spec.type is FilterType.BOX_BLUR:
+        if radius <= 0.0:
+            return image
+        return _preserve_alpha(
+            image,
+            image.convert("RGB").filter(ImageFilter.BoxBlur(round(radius))),
+        )
+    if spec.type in (FilterType.SHARPEN, FilterType.UNSHARP_MASK):
+        percent = max(0, round(amount * 150))
+        return _preserve_alpha(
+            image,
+            image.convert("RGB").filter(
+                ImageFilter.UnsharpMask(
+                    radius=max(0.1, radius),
+                    percent=percent,
+                )
+            ),
+        )
+    if spec.type is FilterType.BRIGHTNESS:
+        return ImageEnhance.Brightness(image).enhance(amount)
+    if spec.type is FilterType.CONTRAST:
+        return ImageEnhance.Contrast(image).enhance(amount)
+    if spec.type is FilterType.SATURATION:
+        return ImageEnhance.Color(image).enhance(amount)
+    if spec.type is FilterType.GRAYSCALE:
+        return _preserve_alpha(image, ImageOps.grayscale(image.convert("RGB")))
+    if spec.type is FilterType.INVERT:
+        return _preserve_alpha(image, ImageOps.invert(image.convert("RGB")))
+    if spec.type is FilterType.AUTOCONTRAST:
+        return _preserve_alpha(image, ImageOps.autocontrast(image.convert("RGB")))
+    raise RenderError(f"unsupported image filter {spec.type.value!r}")
+
+
+def _apply_filters(
+    image: Image.Image,
+    specs: list[ImageFilterSpec],
+) -> Image.Image:
+    result = image
+    for spec in specs:
+        result = _apply_filter(result, spec)
+    return result
+
+
+def _mask_for_layer(layer: Layer) -> ImageMask | None:
+    raw = _layer_value(layer, "mask", "image_mask")
+    if raw is None:
+        return None
+    if isinstance(raw, ImageMask):
+        return raw
+    if isinstance(raw, str):
+        raw = {"source": raw}
+    try:
+        return ImageMask.model_validate(raw)
+    except ValueError as exc:
+        raise RenderError("invalid image mask") from exc
+
+
+def _mask_channel(
+    mask: Image.Image,
+    size: tuple[int, int],
+    spec: ImageMask,
+) -> Image.Image:
+    channel = mask.getchannel("A") if spec.mode is MaskMode.ALPHA else mask.convert("L")
+    if channel.size != size:
+        if spec.fit is FitMode.STRETCH:
+            channel = channel.resize(size, Image.Resampling.LANCZOS)
+        elif spec.fit is FitMode.COVER:
+            channel = ImageOps.fit(channel, size, method=Image.Resampling.LANCZOS)
+        else:
+            fitted = (
+                ImageOps.contain(channel, size, method=Image.Resampling.LANCZOS)
+                if spec.fit is FitMode.CONTAIN
+                else channel
+            )
+            padded = Image.new("L", size, 0)
+            padded.paste(
+                fitted,
+                (
+                    (size[0] - fitted.width) // 2,
+                    (size[1] - fitted.height) // 2,
+                ),
+            )
+            channel = padded
+    if spec.invert:
+        channel = ImageOps.invert(channel)
+    if spec.feather > 0.0:
+        channel = channel.filter(ImageFilter.GaussianBlur(spec.feather))
+    return channel
+
+
+def _apply_mask(
+    image: Image.Image,
+    spec: ImageMask,
+    mask: Image.Image,
+) -> Image.Image:
+    channel = _mask_channel(mask, image.size, spec)
+    alpha = ImageChops.multiply(image.getchannel("A"), channel)
     result = image.copy()
     result.putalpha(alpha)
     return result
@@ -1018,11 +1204,22 @@ class PillowStillRenderer:
             y += (fitted.height - rotated.height) // 2
             fitted = rotated
 
+        fitted = _apply_filters(fitted, _filters_for_layer(layer))
+        mask_spec = _mask_for_layer(layer)
+        if mask_spec is not None:
+            fitted = _apply_mask(fitted, mask_spec, self._open(mask_spec.source))
+
         opacity = _sample(layer, AnimatedProperty.OPACITY, time_seconds)
         value = layer.opacity if opacity is None else float(opacity)
         if value <= 0.0:
             return
-        _composite(canvas, _opacity(fitted, min(1.0, value)), x, y)
+        _composite(
+            canvas,
+            _opacity(fitted, min(1.0, value)),
+            x,
+            y,
+            _blend_mode(layer),
+        )
 
     def _draw_overlay_layer(
         self,
