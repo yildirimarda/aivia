@@ -57,7 +57,10 @@ from aivia.core.models.run import ToolchainFingerprint
 from aivia.core.pricing import ResolvedPrice
 from aivia.core.router import Router, RouteSelection
 from aivia.core.sidecar import SIDECAR_SUFFIX, build_cost_sidecar, write_cost_sidecar
-from aivia.media.accessibility import write_accessibility_sidecars
+from aivia.media.accessibility import (
+    store_accessibility_sidecars,
+    write_accessibility_sidecars,
+)
 from aivia.media.adaptation import adapt_for_provider
 from aivia.media.screening import (
     DEFAULT_PROMPT_KIND,
@@ -1339,7 +1342,12 @@ class MusicService:
                 stored_objects=stored_objects,
             )
 
-        accessibility = self._write_accessibility_sidecars(assets, request)
+        accessibility = await self._write_accessibility_sidecars(
+            assets,
+            request,
+            storage=active_storage,
+            stored_objects=stored_objects,
+        )
         outcome = MusicOutcome(
             request=request,
             response=response,
@@ -1592,7 +1600,12 @@ class MusicService:
                 storage=storage,
                 stored_objects=[None] * len(assets),
             )
-        accessibility = self._write_accessibility_sidecars(assets, request)
+        accessibility = await self._write_accessibility_sidecars(
+            assets,
+            request,
+            storage=storage,
+            stored_objects=[None] * len(assets),
+        )
         return MusicOutcome(
             request=request,
             response=response,
@@ -1624,37 +1637,54 @@ class MusicService:
                 return None
         return None
 
-    def _write_accessibility_sidecars(
+    async def _write_accessibility_sidecars(
         self,
         assets: Sequence[Asset],
         request: MusicRequest,
+        *,
+        storage: StorageProvider | None,
+        stored_objects: Sequence[StorageObject | None],
     ) -> tuple[Any, ...]:
         if self._accessibility is None:
             return ()
         metadata = request.metadata or {}
         written: list[Any] = []
-        for asset in assets:
+        for index, asset in enumerate(assets):
             if not asset.path:
                 continue
-            path = _file_path(asset.path)
-            if path is None:
-                continue
-            result = write_accessibility_sidecars(
-                path,
-                self._accessibility,
-                alt_text=(
+            values: dict[str, Any] = {
+                "alt_text": (
                     metadata.get("alt_text")
                     or metadata.get("alt")
                     or metadata.get("title")
                     or asset.label
                     or request.prompt
                 ),
-                subtitle=metadata.get("subtitle"),
-                words=metadata.get("words"),
-                transcript=metadata.get("transcript"),
-                text=metadata.get("text") or request.lyrics or request.prompt,
-                duration_seconds=asset.analysis.duration_seconds,
-            )
+                "subtitle": metadata.get("subtitle"),
+                "words": metadata.get("words"),
+                "transcript": metadata.get("transcript"),
+                "text": metadata.get("text") or request.lyrics or request.prompt,
+                "duration_seconds": asset.analysis.duration_seconds,
+            }
+            path = _file_path(asset.path)
+            result: Any
+            if path is not None:
+                result = write_accessibility_sidecars(
+                    path,
+                    self._accessibility,
+                    **values,
+                )
+            else:
+                if storage is None:
+                    continue
+                stored = stored_objects[index] if index < len(stored_objects) else None
+                result = await store_accessibility_sidecars(
+                    asset.path,
+                    storage,
+                    self._accessibility,
+                    key=stored.key if stored is not None else None,
+                    **values,
+                )
             if result:
                 written.append(result)
         return tuple(written)

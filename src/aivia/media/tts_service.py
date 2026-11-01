@@ -44,7 +44,10 @@ from aivia.core.models.run import ToolchainFingerprint
 from aivia.core.pricing import ResolvedPrice
 from aivia.core.router import Router, RouteSelection
 from aivia.core.sidecar import SIDECAR_SUFFIX, build_cost_sidecar, write_cost_sidecar
-from aivia.media.accessibility import write_accessibility_sidecars
+from aivia.media.accessibility import (
+    store_accessibility_sidecars,
+    write_accessibility_sidecars,
+)
 from aivia.media.adaptation import adapt_for_provider
 from aivia.media.audio_utils import (
     AudioProcessing,
@@ -953,10 +956,12 @@ class SpeechService:
                 stored=stored,
             )
 
-        accessibility = self._write_accessibility_sidecars(
+        accessibility = await self._write_accessibility_sidecars(
             asset,
             request,
             response,
+            storage=active_storage,
+            stored=stored,
         )
         outcome = SpeechOutcome(
             request=request,
@@ -1091,10 +1096,12 @@ class SpeechService:
                 storage=storage,
                 stored=None,
             )
-        accessibility = self._write_accessibility_sidecars(
+        accessibility = await self._write_accessibility_sidecars(
             asset,
             request,
             response,
+            storage=storage,
+            stored=None,
         )
         outcome = SpeechOutcome(
             request=request,
@@ -1125,30 +1132,46 @@ class SpeechService:
                 return None
         return None
 
-    def _write_accessibility_sidecars(
+    async def _write_accessibility_sidecars(
         self,
         asset: Asset,
         request: TTSRequest,
         response: TTSResponse,
+        *,
+        storage: StorageProvider | None,
+        stored: StorageObject | None,
     ) -> tuple[Any, ...]:
         if self._accessibility is None or not asset.path:
             return ()
-        path = _file_path(asset.path)
-        if path is None:
-            return ()
         metadata = request.metadata or {}
-        result = write_accessibility_sidecars(
-            path,
-            self._accessibility,
-            alt_text=metadata.get("alt_text") or metadata.get("alt") or request.text,
-            subtitle=metadata.get("subtitle"),
-            words=response.word_timestamps or metadata.get("words"),
-            transcript=metadata.get("transcript"),
-            text=request.text,
-            language=request.language or "",
-            duration_seconds=(
+        values: dict[str, Any] = {
+            "alt_text": metadata.get("alt_text") or metadata.get("alt") or request.text,
+            "subtitle": metadata.get("subtitle"),
+            "words": response.word_timestamps or metadata.get("words"),
+            "transcript": metadata.get("transcript"),
+            "text": request.text,
+            "language": request.language or "",
+            "duration_seconds": (
                 response.duration_seconds or asset.analysis.duration_seconds
             ),
+        }
+        path = _file_path(asset.path)
+        result: Any
+        if path is not None:
+            result = write_accessibility_sidecars(
+                path,
+                self._accessibility,
+                **values,
+            )
+            return (result,) if result else ()
+        if storage is None:
+            return ()
+        result = await store_accessibility_sidecars(
+            asset.path,
+            storage,
+            self._accessibility,
+            key=stored.key if stored is not None else None,
+            **values,
         )
         return (result,) if result else ()
 

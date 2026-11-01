@@ -13,6 +13,11 @@ cost event. Whether a file is written is decided only by the
 :class:`~aivia.core.config.sections.AccessibilityConfig` flags and by whether
 there is content to write.
 
+A remote output cannot receive local files, so
+:func:`store_accessibility_sidecars` uploads the same three payloads through a
+storage provider under the output key plus each suffix. The content rules are
+identical; only the destination changes.
+
 Timed words are the preferred subtitle source because they keep the provider's
 own timing. A plain text fallback distributes the duration by word length when
 the caller knows the media duration, so a service can emit subtitles even when
@@ -26,12 +31,18 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from aivia.core.config.sections import AccessibilityConfig
 from aivia.media.subtitles import (
     Subtitle,
     SubtitleCue,
     SubtitleWord,
+)
+from aivia.providers.protocols.storage import (
+    StorageObject,
+    StorageProvider,
+    StoragePutRequest,
 )
 
 __all__ = [
@@ -51,11 +62,14 @@ __all__ = [
     "AccessibilitySidecarPaths",
     "AccessibilitySidecarWriter",
     "AccessibilitySidecars",
+    "AccessibilityStoredSidecars",
     "AccessibilityWriter",
+    "StoredAccessibilitySidecars",
     "accessibility_paths",
     "accessibility_sidecar_path",
     "accessibility_sidecar_paths",
     "accessibility_sidecars",
+    "accessibility_storage_key",
     "alt_path",
     "alt_text_path",
     "alt_text_sidecar_path",
@@ -65,6 +79,9 @@ __all__ = [
     "emit_accessibility_sidecars",
     "srt_path",
     "srt_sidecar_path",
+    "store_accessibility",
+    "store_accessibility_sidecars",
+    "stored_accessibility_sidecars",
     "subtitle_paths",
     "subtitle_sidecar_paths",
     "subtitle_srt_path",
@@ -245,6 +262,141 @@ AccessibilityFiles = AccessibilitySidecars
 
 AccessibilityArtifacts = AccessibilitySidecars
 """Alias for :class:`AccessibilitySidecars`."""
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class AccessibilityStoredSidecars:
+    """The accessibility files stored for one remote output.
+
+    This is the storage-provider counterpart of :class:`AccessibilitySidecars`.
+    Each field holds the :class:`~aivia.providers.protocols.storage.StorageObject`
+    returned by the provider, or ``None`` when that kind of sidecar was disabled
+    or had no content. :attr:`keys` and :attr:`paths` contain the stored keys in
+    a stable alt-text, SRT, VTT order.
+    """
+
+    output: str
+    alt_text: StorageObject | None = None
+    srt: StorageObject | None = None
+    vtt: StorageObject | None = None
+
+    @property
+    def objects(self) -> tuple[StorageObject, ...]:
+        """Every stored sidecar object in alt-text, SRT, VTT order."""
+        return tuple(
+            obj for obj in (self.alt_text, self.srt, self.vtt) if obj is not None
+        )
+
+    @property
+    def storage_objects(self) -> tuple[StorageObject, ...]:
+        """Alias for :attr:`objects`."""
+        return self.objects
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        """Every stored sidecar key in alt-text, SRT, VTT order."""
+        return tuple(obj.key for obj in self.objects)
+
+    @property
+    def paths(self) -> tuple[str, ...]:
+        """Alias for :attr:`keys`."""
+        return self.keys
+
+    @property
+    def written(self) -> tuple[str, ...]:
+        """Alias for :attr:`keys`."""
+        return self.keys
+
+    @property
+    def alt(self) -> StorageObject | None:
+        """Alias for :attr:`alt_text`."""
+        return self.alt_text
+
+    @property
+    def alt_text_path(self) -> str | None:
+        """The stored alt-text key, when written."""
+        return self.alt_text.key if self.alt_text is not None else None
+
+    @property
+    def srt_path(self) -> str | None:
+        """The stored SRT key, when written."""
+        return self.srt.key if self.srt is not None else None
+
+    @property
+    def vtt_path(self) -> str | None:
+        """The stored VTT key, when written."""
+        return self.vtt.key if self.vtt is not None else None
+
+    @property
+    def subtitle_paths(self) -> tuple[str, ...]:
+        """The stored subtitle keys in SRT, VTT order."""
+        return tuple(obj.key for obj in (self.srt, self.vtt) if obj is not None)
+
+    @property
+    def subtitles(self) -> tuple[str, ...]:
+        """Alias for :attr:`subtitle_paths`."""
+        return self.subtitle_paths
+
+    @property
+    def sidecar_paths(self) -> tuple[str, ...]:
+        """Alias for :attr:`keys`."""
+        return self.keys
+
+    @property
+    def all_paths(self) -> tuple[str, ...]:
+        """Alias for :attr:`keys`."""
+        return self.keys
+
+    @property
+    def enabled(self) -> bool:
+        """Whether any accessibility sidecar was stored."""
+        return bool(self.objects)
+
+    def __bool__(self) -> bool:
+        return self.enabled
+
+    def __iter__(self) -> Iterator[StorageObject]:
+        return iter(self.objects)
+
+    def __len__(self) -> int:
+        return len(self.objects)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, AccessibilityStoredSidecars):
+            return (
+                self.output,
+                self.alt_text,
+                self.srt,
+                self.vtt,
+            ) == (
+                other.output,
+                other.alt_text,
+                other.srt,
+                other.vtt,
+            )
+        if isinstance(other, (tuple, list)):
+            return self.keys == tuple(other)
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self.output, self.alt_text, self.srt, self.vtt))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable summary of the stored files."""
+        return {
+            "output": self.output,
+            "alt_text": self.alt_text.key if self.alt_text is not None else None,
+            "srt": self.srt.key if self.srt is not None else None,
+            "vtt": self.vtt.key if self.vtt is not None else None,
+            "keys": list(self.keys),
+        }
+
+
+StoredAccessibilitySidecars = AccessibilityStoredSidecars
+"""Alias for :class:`AccessibilityStoredSidecars`."""
+
+stored_accessibility_sidecars = AccessibilityStoredSidecars
+"""Alias for :class:`AccessibilityStoredSidecars`."""
 
 
 def _output_path(output: str | Path) -> Path:
@@ -522,6 +674,98 @@ def write_vtt(
     return _write_text(vtt_path(output), track.to_vtt())
 
 
+@dataclass(frozen=True, slots=True)
+class _RenderedAccessibility:
+    output: Path
+    alt_text: str | None = None
+    srt: str | None = None
+    vtt: str | None = None
+
+
+def _render_accessibility(
+    output: str | Path,
+    config: Any,
+    values: Mapping[str, Any],
+) -> _RenderedAccessibility:
+    selected_config = next(
+        (
+            value
+            for value in (
+                values.get("accessibility"),
+                values.get("accessibility_config"),
+                config,
+            )
+            if value is not None
+        ),
+        None,
+    )
+    selected = _config(selected_config)
+    enabled = values.get("enabled")
+    active = selected.enabled if enabled is None else bool(enabled)
+    result = _RenderedAccessibility(output=_output_path(output))
+    if not active:
+        return result
+
+    duration_seconds = values.get("duration_seconds")
+    total = _positive_duration(
+        duration_seconds if duration_seconds is not None else values.get("duration")
+    )
+    write_alt = values.get("write_alt_text")
+    alt_enabled = selected.alt_text if write_alt is None else bool(write_alt)
+    write_subtitle_flag = values.get("write_subtitles")
+    subtitle_enabled = (
+        selected.subtitles if write_subtitle_flag is None else bool(write_subtitle_flag)
+    )
+    subtitle = values.get("subtitle")
+    subtitle_source = (
+        subtitle
+        if subtitle is not None
+        else (values.get("track") or values.get("cues"))
+    )
+    track = _subtitle_from_sources(
+        subtitle=subtitle_source,
+        subtitles=values.get("subtitles"),
+        words=values.get("words"),
+        transcript=values.get("transcript"),
+        text=values.get("text"),
+        language=values.get("language") or "",
+        duration=total,
+        style=values.get("style"),
+    )
+
+    alt_value = next(
+        (
+            value
+            for value in (
+                values.get("alt_text"),
+                values.get("alt"),
+                values.get("description"),
+            )
+            if value is not None
+        ),
+        None,
+    )
+    if alt_value is None and track is not None:
+        alt_value = track.text
+
+    alt_content: str | None = None
+    if alt_enabled and isinstance(alt_value, str) and alt_value.strip():
+        alt_content = alt_value.strip() + "\n"
+
+    srt_content: str | None = None
+    vtt_content: str | None = None
+    if subtitle_enabled and track is not None and track.cues:
+        srt_content = track.to_srt()
+        vtt_content = track.to_vtt()
+
+    return _RenderedAccessibility(
+        output=result.output,
+        alt_text=alt_content,
+        srt=srt_content,
+        vtt=vtt_content,
+    )
+
+
 def write_accessibility_sidecars(
     output: str | Path,
     config: Any = None,
@@ -562,60 +806,145 @@ def write_accessibility_sidecars(
     known). Alt text falls back to *description*, then to the subtitle text, so
     an audio-only output still gets a useful description.
     """
-    selected_config = next(
-        (
-            value
-            for value in (accessibility, accessibility_config, config)
-            if value is not None
-        ),
-        None,
+    rendered = _render_accessibility(
+        output,
+        config,
+        {
+            "accessibility": accessibility,
+            "accessibility_config": accessibility_config,
+            "alt_text": alt_text,
+            "alt": alt,
+            "description": description,
+            "subtitle": subtitle,
+            "subtitles": subtitles,
+            "track": track,
+            "cues": cues,
+            "words": words,
+            "transcript": transcript,
+            "text": text,
+            "language": language,
+            "duration_seconds": duration_seconds,
+            "duration": duration,
+            "style": style,
+            "enabled": enabled,
+            "write_alt_text": write_alt_text,
+            "write_subtitles": write_subtitles,
+        },
     )
-    selected = _config(selected_config)
-    active = selected.enabled if enabled is None else bool(enabled)
-    result = AccessibilitySidecars(output=_output_path(output))
-    if not active:
-        return result
-
-    total = _positive_duration(
-        duration_seconds if duration_seconds is not None else duration
-    )
-    alt_enabled = selected.alt_text if write_alt_text is None else bool(write_alt_text)
-    subtitle_enabled = (
-        selected.subtitles if write_subtitles is None else bool(write_subtitles)
-    )
-    subtitle_source = subtitle if subtitle is not None else (track or cues)
-    track = _subtitle_from_sources(
-        subtitle=subtitle_source,
-        subtitles=subtitles,
-        words=words,
-        transcript=transcript,
-        text=text,
-        language=language,
-        duration=total,
-        style=style,
-    )
-
-    alt_value = next(
-        (value for value in (alt_text, alt, description) if value is not None),
-        None,
-    )
-    if alt_value is None and track is not None:
-        alt_value = track.text
     written_alt: Path | None = None
-    if alt_enabled and isinstance(alt_value, str) and alt_value.strip():
-        written_alt = _write_alt_text_file(output, alt_value)
+    if rendered.alt_text is not None:
+        written_alt = _write_text(alt_text_path(rendered.output), rendered.alt_text)
 
     written_srt: Path | None = None
     written_vtt: Path | None = None
-    if subtitle_enabled and track is not None and track.cues:
-        written_srt, written_vtt = write_subtitle_sidecars(output, track)
+    if rendered.srt is not None and rendered.vtt is not None:
+        written_srt = _write_text(srt_path(rendered.output), rendered.srt)
+        written_vtt = _write_text(vtt_path(rendered.output), rendered.vtt)
 
     return AccessibilitySidecars(
-        output=result.output,
+        output=rendered.output,
         alt_text=written_alt,
         srt=written_srt,
         vtt=written_vtt,
     )
+
+
+def accessibility_storage_key(
+    output: str | Path,
+    *,
+    key: str | None = None,
+) -> str:
+    """Return the storage key an output's sidecars are stored under.
+
+    An explicit *key* wins. A plain output name is used unchanged. A ``file``
+    URL becomes its file name and an HTTP URL becomes its decoded path, so a
+    sidecar key never contains a scheme, host or query string.
+    """
+    if key is not None:
+        text = key.strip()
+        if not text:
+            raise ValueError("storage key must be non-empty")
+        return text
+    if isinstance(output, Path):
+        if not output.name:
+            raise ValueError("output must name a file")
+        return output.name
+    text = str(output).strip()
+    if not text:
+        raise ValueError("output must not be empty")
+    parsed = urlsplit(text)
+    if parsed.scheme.lower() == "file":
+        return Path(unquote(parsed.path)).name
+    if parsed.scheme.lower() in {"http", "https"}:
+        path = unquote(parsed.path).lstrip("/")
+        return path or text
+    return text
+
+
+async def store_accessibility_sidecars(
+    output: str | Path,
+    storage: StorageProvider,
+    config: Any = None,
+    *,
+    key: str | None = None,
+    **values: Any,
+) -> AccessibilityStoredSidecars:
+    """Store alt text, SRT and VTT sidecars through *storage*.
+
+    This is the remote counterpart of :func:`write_accessibility_sidecars`. The
+    content rules are identical; only the destination changes. Each sidecar is
+    stored under the output key plus its usual suffix, so a remote
+    ``clip.mp4`` gets ``clip.mp4.alt.txt``, ``clip.mp4.srt`` and
+    ``clip.mp4.vtt`` as sibling objects. Re-running the same output overwrites
+    its sidecars instead of failing on an existing key.
+    """
+    if not isinstance(storage, StorageProvider):
+        raise TypeError("storage must be a StorageProvider")
+    rendered = _render_accessibility(output, config, values)
+    base_key = accessibility_storage_key(output, key=key)
+    stored_alt: StorageObject | None = None
+    stored_srt: StorageObject | None = None
+    stored_vtt: StorageObject | None = None
+    if rendered.alt_text is not None:
+        stored_alt = await storage.put(
+            StoragePutRequest(
+                data=rendered.alt_text.encode("utf-8"),
+                key=f"{base_key}{ALT_TEXT_SUFFIX}",
+                content_type="text/plain; charset=utf-8",
+                overwrite=True,
+                metadata={"kind": "accessibility", "sidecar": "alt_text"},
+            )
+        )
+    if rendered.srt is not None:
+        stored_srt = await storage.put(
+            StoragePutRequest(
+                data=rendered.srt.encode("utf-8"),
+                key=f"{base_key}{SRT_SUFFIX}",
+                content_type="application/x-subrip; charset=utf-8",
+                overwrite=True,
+                metadata={"kind": "accessibility", "sidecar": "srt"},
+            )
+        )
+    if rendered.vtt is not None:
+        stored_vtt = await storage.put(
+            StoragePutRequest(
+                data=rendered.vtt.encode("utf-8"),
+                key=f"{base_key}{VTT_SUFFIX}",
+                content_type="text/vtt; charset=utf-8",
+                overwrite=True,
+                metadata={"kind": "accessibility", "sidecar": "vtt"},
+            )
+        )
+    return AccessibilityStoredSidecars(
+        output=str(output),
+        alt_text=stored_alt,
+        srt=stored_srt,
+        vtt=stored_vtt,
+    )
+
+
+store_accessibility = store_accessibility_sidecars
+"""Alias for :func:`store_accessibility_sidecars`."""
 
 
 emit_accessibility_sidecars = write_accessibility_sidecars

@@ -374,6 +374,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Include CLI batch defaults and referenced input file contents in the content fingerprint so changed inputs invalidate a resumed row (tests/cli/test_media_batch_cli.py)
 - [ ] Recover media API jobs left running by a crashed API process so a restart cannot leave them stuck (tests/api/test_media_api.py)
 - [ ] Refuse to remove a clone record when configured providers do not cover its vendor so no vendor voice is orphaned (tests/media/test_voice_clone.py)
+- [ ] Store sound effect cost sidecars through the storage provider so remote outputs get them too (tests/media/test_sfx_service.py)
 
 ## Milestone 9: Composition and rendering
 
