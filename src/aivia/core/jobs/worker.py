@@ -19,7 +19,7 @@ import asyncio
 import inspect
 import math
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -82,6 +82,22 @@ def _multiplier(value: object) -> float:
     if not math.isfinite(number) or number < 1.0:
         raise ValueError("backoff_multiplier must be at least one")
     return number
+
+
+def _kind_prefixes(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise ValueError("exclude_kind_prefixes must be a sequence of names")
+    prefixes: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError("exclude_kind_prefixes must contain strings")
+        text = item.strip()
+        if not text:
+            raise ValueError("exclude_kind_prefixes must not contain empty names")
+        prefixes.append(text)
+    return tuple(prefixes)
 
 
 def _error_code(error: BaseException) -> str:
@@ -163,6 +179,7 @@ class Worker:
         worker_id: str | None = None,
         config: JobsConfig | Mapping[str, Any] | None = None,
         kind: str | None = None,
+        exclude_kind_prefixes: Sequence[str] | None = None,
         heartbeat_seconds: float | None = None,
         poll_seconds: float | None = None,
         stale_after_seconds: float | None = None,
@@ -193,6 +210,7 @@ class Worker:
         self.handler = handler
         self.worker_id = (worker_id or f"worker-{time.time_ns():x}").strip()
         self.kind = kind.strip() if kind is not None else None
+        self.exclude_kind_prefixes = _kind_prefixes(exclude_kind_prefixes)
         self.heartbeat_seconds = _positive(
             settings.heartbeat_seconds
             if heartbeat_seconds is None
@@ -320,16 +338,29 @@ class Worker:
         """
         current = now if now is not None else self._clock()
         self.recover_stale(now=current)
-        job = self.queue.claim(self.worker_id, kind=self.kind, now=current)
+        job = self.queue.claim(
+            self.worker_id,
+            kind=self.kind,
+            exclude_kind_prefixes=self.exclude_kind_prefixes,
+            now=current,
+        )
         if job is None:
             return None
         return await self._execute(job)
 
-    async def run(self, *, max_jobs: int | None = None) -> int:
+    async def run(
+        self,
+        *,
+        max_jobs: int | None = None,
+        stop_when_idle: bool = False,
+    ) -> int:
         """Claim and run jobs until stopped or *max_jobs* is reached.
 
         A graceful stop lets the current handler finish; it only prevents new
-        claims. Returns the number of jobs this call processed.
+        claims. With *stop_when_idle*, return as soon as no claimable job is
+        due instead of polling, which is what ``worker --once`` needs when the
+        only pending jobs are ones this worker skips. Returns the number of
+        jobs this call processed.
         """
         if max_jobs is not None and (
             isinstance(max_jobs, bool) or not isinstance(max_jobs, int) or max_jobs < 0
@@ -341,6 +372,8 @@ class Worker:
                 break
             outcome = await self.run_once()
             if outcome is None:
+                if stop_when_idle:
+                    break
                 await self._sleep(self.poll_seconds)
                 continue
             processed += 1

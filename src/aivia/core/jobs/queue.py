@@ -21,12 +21,12 @@ CLI, the API and tests without importing any worker module.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Connection, Engine, func, or_, select, update
+from sqlalchemy import Connection, Engine, func, not_, or_, select, update
 
 from aivia.core.config.ops import JobsConfig
 from aivia.core.db.repos import JobRepository
@@ -116,6 +116,22 @@ def _coerce_kind(value: object) -> str | None:
     if not text:
         raise ValueError("kind must be a non-empty name")
     return text
+
+
+def _coerce_kind_prefixes(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise ValueError("exclude_kind_prefixes must be a sequence of names")
+    prefixes: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError("exclude_kind_prefixes must contain strings")
+        text = item.strip()
+        if not text:
+            raise ValueError("exclude_kind_prefixes must not contain empty names")
+        prefixes.append(text)
+    return tuple(prefixes)
 
 
 def _coerce_delay(value: object) -> float:
@@ -295,18 +311,22 @@ class JobQueue:
         *,
         job_id: str | None = None,
         kind: str | None = None,
+        exclude_kind_prefixes: Sequence[str] | None = None,
         now: datetime | None = None,
     ) -> Job | None:
         """Claim the next due job, or the named job, for *worker_id*.
 
         Returns ``None`` when no job is due or the named job is not claimable.
-        The update runs under the write lock, so concurrent callers see
-        different pending rows and never claim the same job twice.
+        ``exclude_kind_prefixes`` skips jobs whose kind starts with any of the
+        given prefixes, so a worker that cannot execute a job family never
+        claims it. The update runs under the write lock, so concurrent callers
+        see different pending rows and never claim the same job twice.
         """
         worker = _coerce_worker(worker_id)
         current = _as_utc(now)
         wanted = None if job_id is None else _coerce_job_id(job_id)
         wanted_kind = _coerce_kind(kind)
+        excluded = _coerce_kind_prefixes(exclude_kind_prefixes)
 
         conditions = [
             jobs.c.state == JobState.PENDING.value,
@@ -317,6 +337,10 @@ class JobQueue:
             conditions.append(jobs.c.id == wanted)
         if wanted_kind is not None:
             conditions.append(jobs.c.kind == wanted_kind)
+        if excluded:
+            conditions.append(
+                not_(or_(*(jobs.c.kind.startswith(prefix) for prefix in excluded)))
+            )
 
         candidate = (
             select(jobs.c.id)

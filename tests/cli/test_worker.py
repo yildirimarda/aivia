@@ -258,6 +258,88 @@ def test_worker_fails_an_unsupported_job_kind_without_stopping(
         engine.dispose()
 
 
+def test_worker_skips_media_api_jobs_and_runs_the_next_run_job(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "aivia.cli.run.build_stages",
+        lambda recipe: [Write() for _stage in recipe.stages],
+    )
+    engine = create_database_engine(database)
+    try:
+        media = JobQueue(engine).enqueue(
+            Job(
+                kind="media.image",
+                payload={"kind": "image", "request": {"prompt": "A lighthouse"}},
+            )
+        )
+    finally:
+        engine.dispose()
+    run_id = enqueue_run(capsys, config, database)
+
+    code, out, err = worker_command(
+        capsys,
+        config,
+        database,
+        "--max-jobs",
+        "1",
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "processed 1 job(s)" in out
+    assert "1 succeeded" in out
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+        skipped = JobRepository(engine).get(media.id)
+        assert skipped is not None
+        assert skipped.state is JobState.PENDING
+        assert skipped.attempts == 0
+        assert skipped.claimed_by == ""
+    finally:
+        engine.dispose()
+
+
+def test_once_exits_when_only_media_api_jobs_are_pending(
+    config: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    engine = create_database_engine(database)
+    try:
+        media = JobQueue(engine).enqueue(
+            Job(
+                kind="media.image",
+                payload={"kind": "image", "request": {"prompt": "A lighthouse"}},
+            )
+        )
+    finally:
+        engine.dispose()
+
+    code, out, err = worker_command(capsys, config, database, "--once")
+
+    assert code == 0
+    assert err == ""
+    assert "processed 0 job(s)" in out
+    assert "0 failed" in out
+
+    engine = create_database_engine(database)
+    try:
+        skipped = JobRepository(engine).get(media.id)
+        assert skipped is not None
+        assert skipped.state is JobState.PENDING
+        assert skipped.attempts == 0
+    finally:
+        engine.dispose()
+
+
 def test_worker_applies_the_profile_recorded_on_the_run(
     config: Path,
     database: Path,
