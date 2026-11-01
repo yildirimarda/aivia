@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
-from aivia.api import create_app
-from aivia.core.config import ApiConfig
+from aivia.api import MediaJobRunner, create_app
+from aivia.core.config import ApiConfig, JobsConfig
 from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.cost import CostTracker
 from aivia.core.db import JobRepository, create_database_engine, upgrade_database
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, JobState
 from aivia.core.router import Router
-from aivia.media import MediaToolkit
+from aivia.media import MediaResult, MediaToolkit
 from aivia.providers.mock import MockProvider
 from aivia.providers.storage_local import LocalStorageProvider
 
@@ -400,7 +403,11 @@ def test_api_startup_recovers_a_media_job_left_running_by_a_crashed_process(
             },
         )
     )
-    claimed = queue.claim("api-media", job_id=job.id)
+    claimed = queue.claim(
+        "api-media",
+        job_id=job.id,
+        now=datetime.now(UTC) - timedelta(minutes=10),
+    )
     assert claimed is not None
     assert claimed.state is JobState.RUNNING
 
@@ -417,6 +424,129 @@ def test_api_startup_recovers_a_media_job_left_running_by_a_crashed_process(
     assert stored.attempts == 2
 
 
+def test_api_startup_does_not_recover_a_live_media_job(
+    engine: Engine,
+    toolkit: MediaToolkit,
+    provider: MockProvider,
+) -> None:
+    queue = JobQueue(engine)
+    job = queue.enqueue(
+        Job(
+            kind="media.image",
+            payload={
+                "kind": "image",
+                "request": {"prompt": "A stranded lighthouse"},
+            },
+        )
+    )
+    claimed = queue.claim("api-media-live", job_id=job.id)
+    assert claimed is not None
+    assert claimed.state is JobState.RUNNING
+    live_heartbeat = claimed.heartbeat_at
+    assert live_heartbeat is not None
+
+    app = create_app(ApiConfig(require_auth=False), engine, environ={}, toolkit=toolkit)
+
+    with TestClient(app):
+        pass
+
+    stored = JobQueue(engine).get(job.id)
+    assert stored is not None
+    assert stored.state is JobState.RUNNING
+    assert stored.claimed_by == "api-media-live"
+    assert stored.heartbeat_at == live_heartbeat
+    assert not provider.calls
+
+
+def test_media_api_runner_uses_a_unique_worker_id_per_instance(
+    engine: Engine,
+    toolkit: MediaToolkit,
+) -> None:
+    first = MediaJobRunner(lambda: engine, lambda: toolkit)
+    second = MediaJobRunner(lambda: engine, lambda: toolkit)
+
+    assert first.worker_id.startswith("api-media-")
+    assert first.worker_id != second.worker_id
+
+
+def test_media_api_runner_heartbeats_a_running_job(
+    engine: Engine,
+    toolkit: MediaToolkit,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue = JobQueue(engine)
+    job = queue.enqueue(
+        Job(
+            kind="media.image",
+            payload={
+                "kind": "image",
+                "request": {"prompt": "A stranded lighthouse"},
+            },
+        )
+    )
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    tick = asyncio.Event()
+    original = toolkit.generate
+
+    async def blocking_generate(
+        kind: str,
+        request: Any = None,
+        **options: Any,
+    ) -> MediaResult:
+        entered.set()
+        await release.wait()
+        return await original(kind, request, **options)
+
+    monkeypatch.setattr(toolkit, "generate", blocking_generate)
+
+    class Clock:
+        def __init__(self) -> None:
+            self.now = datetime.now(UTC)
+
+        def __call__(self) -> datetime:
+            return self.now
+
+    clock = Clock()
+
+    async def sleep(seconds: float) -> None:
+        await tick.wait()
+        tick.clear()
+
+    runner = MediaJobRunner(
+        lambda: engine,
+        lambda: toolkit,
+        jobs=JobsConfig(heartbeat_seconds=1, stale_after_seconds=60),
+        clock=clock,
+        sleep=sleep,
+    )
+
+    async def main() -> None:
+        task = asyncio.create_task(runner.run(job.id))
+        await entered.wait()
+        before = queue.get(job.id)
+        assert before is not None
+        assert before.heartbeat_at is not None
+        clock.now += timedelta(seconds=5)
+        tick.set()
+        for _ in range(100):
+            after = queue.get(job.id)
+            if after is not None and after.heartbeat_at == clock.now:
+                break
+            await asyncio.sleep(0)
+        else:
+            raise AssertionError("runner did not refresh the heartbeat")
+        release.set()
+        await task
+
+    asyncio.run(main())
+
+    stored = queue.get(job.id)
+    assert stored is not None
+    assert stored.state is JobState.SUCCEEDED
+    assert stored.attempts == 1
+
+
 def test_api_startup_leaves_running_jobs_of_other_kinds_for_the_worker(
     engine: Engine,
     toolkit: MediaToolkit,
@@ -424,7 +554,11 @@ def test_api_startup_leaves_running_jobs_of_other_kinds_for_the_worker(
 ) -> None:
     queue = JobQueue(engine)
     job = queue.enqueue(Job(kind="run", payload={"prompt": "Not a media job"}))
-    claimed = queue.claim("worker-1", job_id=job.id)
+    claimed = queue.claim(
+        "worker-1",
+        job_id=job.id,
+        now=datetime.now(UTC) - timedelta(minutes=10),
+    )
     assert claimed is not None
 
     app = create_app(ApiConfig(require_auth=False), engine, environ={}, toolkit=toolkit)
