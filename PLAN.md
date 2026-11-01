@@ -400,7 +400,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add sticker and logo layers with nine anchors, margins and an optional drop shadow (tests/compose/test_stickers.py)
 - [x] Add masks, blend modes and basic filters to image layers with numeric difference tests (tests/compose/test_blend_filters.py)
 - [x] Add smart text placement that finds low detail regions and optionally avoids faces with a vision check (tests/compose/test_placement.py)
-- [ ] Add a contrast utility that chooses light or dark text and adds outline, shadow or a backing box below the configured contrast (tests/compose/test_contrast.py)
+- [x] Add a contrast utility that chooses light or dark text and adds outline, shadow or a backing box below the configured contrast (tests/compose/test_contrast.py)
 - [ ] Build the FFmpeg filtergraph as a pure function producing an argument list tested without executing ffmpeg (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Render multi layer video with timing, scaling and overlay, verified by ffprobe (slow, tests/compose/test_render_video.py)
 - [ ] Implement keyframed motion in video including Ken Burns and parallax with sampled frame checks (slow, tests/compose/test_motion.py)
@@ -435,6 +435,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Resolve text layer defaults from render config instead of hardcoded family and size (tests/compose/test_text.py)
 - [ ] Validate mask asset references in compositions so missing masks fail before rendering (tests/compose/test_validation.py)
 - [ ] Scale vision face rectangles to canvas coordinates when a background image is fitted (tests/compose/test_placement.py)
+- [ ] Apply the contrast utility to text and subtitle layers from render config so low contrast backgrounds get a treatment (tests/compose/test_contrast.py)
 
 ## Milestone 10: Research engine
 
