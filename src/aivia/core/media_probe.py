@@ -182,6 +182,7 @@ class FFprobeStream:
     channels: int | None = None
     frame_rate: str | None = None
     pixel_format: str | None = None
+    tags: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,6 +194,7 @@ class FFprobeInfo:
     duration_seconds: float | None
     size_bytes: int | None
     streams: tuple[FFprobeStream, ...]
+    tags: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def video_streams(self) -> tuple[FFprobeStream, ...]:
@@ -724,6 +726,20 @@ def _as_text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _parse_tags(value: Any) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        return {}
+    tags: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not isinstance(item, str):
+            continue
+        name = key.strip().lower()
+        text = item.strip()
+        if name and text:
+            tags[name] = text
+    return tags
+
+
 def _parse_stream(raw: Mapping[str, Any], index: int) -> FFprobeStream:
     reported = _as_int(raw.get("index"))
     return FFprobeStream(
@@ -737,6 +753,7 @@ def _parse_stream(raw: Mapping[str, Any], index: int) -> FFprobeStream:
         channels=_as_int(raw.get("channels")),
         frame_rate=_as_text(raw.get("avg_frame_rate")) or None,
         pixel_format=_as_text(raw.get("pix_fmt")) or None,
+        tags=_parse_tags(raw.get("tags")),
     )
 
 
@@ -847,6 +864,7 @@ def run_ffprobe(
         duration_seconds=duration,
         size_bytes=_as_int(format_data.get("size")),
         streams=streams,
+        tags=_parse_tags(format_data.get("tags")),
     )
 
 

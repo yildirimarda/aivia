@@ -411,7 +411,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Drive resolution, fps, codec, bitrate, loudness and duration from config with platform and profile overrides (slow, tests/compose/test_output_profiles.py)
 - [x] Produce optimized GIF and animated WebP outputs respecting loop flags and size caps (slow, tests/compose/test_anim_outputs.py)
 - [x] Render seamless loop outputs whose first and last frames are similar enough (slow, tests/compose/test_loop_output.py)
-- [ ] Produce audio only outputs with correct codec, duration and ID3 metadata (tests/compose/test_audio_output.py)
+- [x] Produce audio only outputs with correct codec, duration and ID3 metadata (tests/compose/test_audio_output.py)
 - [ ] Produce a self contained web card with embedded background, CSS text animation, an explicit play button, optional expiry and a view hit hook (tests/compose/test_web_card.py)
 - [ ] Generate cover or thumbnail frames and apply watermark, intro and outro from the branding block (tests/compose/test_cover_branding.py)
 - [ ] Validate outputs against platform data for duration, resolution, size, audio presence and loudness with per type messages (tests/compose/test_output_validation.py)
