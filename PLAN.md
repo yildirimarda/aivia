@@ -372,7 +372,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Probe or accept a duration hint for remote audio before the speech to text budget check (tests/media/test_stt_service.py)
 - [x] Persist measured speech format, sample rate and channels on the asset so cache hits rebuild the exact audio (tests/media/test_tts_service.py)
 - [x] Include CLI batch defaults and referenced input file contents in the content fingerprint so changed inputs invalidate a resumed row (tests/cli/test_media_batch_cli.py)
-- [ ] Recover media API jobs left running by a crashed API process so a restart cannot leave them stuck (tests/api/test_media_api.py)
+- [x] Recover media API jobs left running by a crashed API process so a restart cannot leave them stuck (tests/api/test_media_api.py)
 - [ ] Refuse to remove a clone record when configured providers do not cover its vendor so no vendor voice is orphaned (tests/media/test_voice_clone.py)
 - [ ] Store sound effect cost sidecars through the storage provider so remote outputs get them too (tests/media/test_sfx_service.py)
 - [ ] Claim async job recovery atomically so two processes cannot resubmit the same crashed job (tests/providers/media/test_async_job.py)
