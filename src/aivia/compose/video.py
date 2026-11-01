@@ -371,9 +371,7 @@ class VideoRenderer:
                     subtitle_file,
                     width=value.canvas.width,
                     height=value.canvas.height,
-                    safe_area=(
-                        value.safe_area if safe_area is None else safe_area
-                    ),
+                    safe_area=(value.safe_area if safe_area is None else safe_area),
                     platform=platform or value.platform or None,
                     preset=subtitle_preset,
                     highlight=highlight,

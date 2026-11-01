@@ -2356,20 +2356,11 @@ class Composition(_SchemaModel):
             if not value:
                 return None
             if all(
-                isinstance(item, Mapping)
-                and ({"cues", "words"} & set(item))
+                isinstance(item, Mapping) and ({"cues", "words"} & set(item))
                 for item in value
             ):
-                cues = [
-                    cue
-                    for item in value
-                    for cue in item.get("cues", [])
-                ]
-                words = [
-                    word
-                    for item in value
-                    for word in item.get("words", [])
-                ]
+                cues = [cue for item in value for cue in item.get("cues", [])]
+                words = [word for item in value for word in item.get("words", [])]
                 return {"cues": cues, "words": words}
             return {"cues": list(value)}
         raise ValueError("subtitles must be a subtitle track, cues or mappings")

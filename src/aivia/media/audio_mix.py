@@ -1251,9 +1251,7 @@ def build_mix_filtergraph(
     voices: list[str] = []
     backgrounds: list[str] = []
     for index, track in enumerate(values):
-        parts.append(
-            _track_filters(track, index, active, input_offset=input_offset)
-        )
+        parts.append(_track_filters(track, index, active, input_offset=input_offset))
         label = f"a{index}"
         labels.append(label)
         if track.voice:
