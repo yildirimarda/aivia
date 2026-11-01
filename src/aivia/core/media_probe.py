@@ -172,6 +172,7 @@ class FFprobeStream:
     sample_rate: int | None = None
     channels: int | None = None
     frame_rate: str | None = None
+    pixel_format: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -593,6 +594,7 @@ def _parse_stream(raw: Mapping[str, Any], index: int) -> FFprobeStream:
         sample_rate=_as_int(raw.get("sample_rate")),
         channels=_as_int(raw.get("channels")),
         frame_rate=_as_text(raw.get("avg_frame_rate")) or None,
+        pixel_format=_as_text(raw.get("pix_fmt")) or None,
     )
 
 

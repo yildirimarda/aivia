@@ -64,6 +64,7 @@ def probe_json(
     frame_rate: str = "30/1",
     sample_rate: int = 48000,
     channels: int = 2,
+    pixel_format: str = "yuv420p",
 ) -> str:
     streams: list[dict[str, Any]] = [
         {
@@ -74,6 +75,7 @@ def probe_json(
             "height": height,
             "duration": f"{duration:.3f}",
             "avg_frame_rate": frame_rate,
+            "pix_fmt": pixel_format,
         }
     ]
     if audio:
@@ -108,6 +110,7 @@ def probe_runner(
     frame_rates: Sequence[str] | None = None,
     sample_rates: Sequence[int] | None = None,
     channels: Sequence[int] | None = None,
+    pixel_formats: Sequence[str] | None = None,
     calls: list[list[str]] | None = None,
 ) -> Callable[[Sequence[str]], subprocess.CompletedProcess[str]]:
     remaining = iter(durations)
@@ -129,6 +132,12 @@ def probe_runner(
     sample_rate_iter = iter(sample_rate_values)
     channel_values = list(channels) if channels is not None else [2] * len(durations)
     channel_iter = iter(channel_values)
+    pixel_format_values = (
+        list(pixel_formats)
+        if pixel_formats is not None
+        else ["yuv420p"] * len(durations)
+    )
+    pixel_format_iter = iter(pixel_format_values)
 
     def run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
         if calls is not None:
@@ -145,6 +154,7 @@ def probe_runner(
                 frame_rate=next(rate_iter),
                 sample_rate=next(sample_rate_iter),
                 channels=next(channel_iter),
+                pixel_format=next(pixel_format_iter),
             ),
             stderr="",
         )
@@ -452,6 +462,110 @@ def test_concatenate_crossfade_skips_normalization_for_matching_geometry(
     graph = filter_graph(calls[0])
     assert "scale=" not in graph
     assert "fps=" not in graph
+    assert "[0:v][1:v]xfade" in graph
+
+
+def test_concatenate_crossfade_normalizes_mixed_pixel_formats(
+    tmp_path: Path,
+) -> None:
+    first = source_file(tmp_path, "first.mp4")
+    second = source_file(tmp_path, "second.mp4")
+    third = source_file(tmp_path, "third.mp4")
+    calls: list[list[str]] = []
+
+    concatenate_videos(
+        [first, second, third],
+        tmp_path / "mixed-pixels.mp4",
+        crossfade_seconds=1.0,
+        ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner(
+            [4.0, 6.0, 8.0],
+            pixel_formats=["yuv420p", "yuv444p", "yuv420p"],
+        ),
+    )
+
+    graph = filter_graph(calls[0])
+    assert "[1:v]format=pix_fmts=yuv420p[vn1]" in graph
+    assert "[2:v]format" not in graph
+    assert (
+        "[0:v][vn1]xfade=transition=fade:duration=1.000000:offset=3.000000[v1]"
+    ) in graph
+    assert (
+        "[v1][2:v]xfade=transition=fade:duration=1.000000:offset=8.000000[v2]"
+    ) in graph
+    assert "[0:v]format" not in graph
+
+
+def test_concatenate_crossfade_normalizes_unknown_pixel_format_to_reported_one(
+    tmp_path: Path,
+) -> None:
+    first = source_file(tmp_path, "first.mp4")
+    second = source_file(tmp_path, "second.mp4")
+    calls: list[list[str]] = []
+
+    concatenate_videos(
+        [first, second],
+        tmp_path / "unknown-pixel.mp4",
+        crossfade_seconds=1.0,
+        ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner([4.0, 6.0], pixel_formats=["", "yuv422p"]),
+    )
+
+    graph = filter_graph(calls[0])
+    assert "[0:v]format=pix_fmts=yuv422p[vn0]" in graph
+    assert (
+        "[vn0][1:v]xfade=transition=fade:duration=1.000000:offset=3.000000[v1]"
+    ) in graph
+
+
+def test_concatenate_crossfade_appends_pixel_format_after_geometry_filters(
+    tmp_path: Path,
+) -> None:
+    first = source_file(tmp_path, "first.mp4")
+    second = source_file(tmp_path, "second.mp4")
+    calls: list[list[str]] = []
+
+    concatenate_videos(
+        [first, second],
+        tmp_path / "mixed-everything.mp4",
+        crossfade_seconds=1.0,
+        ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner(
+            [4.0, 6.0],
+            dimensions=[(1280, 720), (640, 480)],
+            frame_rates=["30/1", "24/1"],
+            pixel_formats=["yuv420p", "yuv444p"],
+        ),
+    )
+
+    graph = filter_graph(calls[0])
+    assert (
+        "[1:v]scale=1280:720:force_original_aspect_ratio=decrease:flags=lanczos,"
+        "pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,"
+        "fps=30.000000,format=pix_fmts=yuv420p[vn1]"
+    ) in graph
+
+
+def test_concatenate_crossfade_skips_pixel_format_normalization_when_matching(
+    tmp_path: Path,
+) -> None:
+    first = source_file(tmp_path, "first.mp4")
+    second = source_file(tmp_path, "second.mp4")
+    calls: list[list[str]] = []
+
+    concatenate_videos(
+        [first, second],
+        tmp_path / "matched-pixels.mp4",
+        crossfade_seconds=1.0,
+        ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner(
+            [4.0, 6.0],
+            pixel_formats=["yuv420p", "yuv420p"],
+        ),
+    )
+
+    graph = filter_graph(calls[0])
+    assert "format=pix_fmts" not in graph
     assert "[0:v][1:v]xfade" in graph
 
 

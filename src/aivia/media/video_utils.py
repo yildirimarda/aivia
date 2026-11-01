@@ -783,25 +783,29 @@ def _even_dimension(value: int) -> int:
 
 def _video_geometry(
     info: FFprobeInfo,
-) -> tuple[int | None, int | None, float | None]:
+) -> tuple[int | None, int | None, float | None, str | None]:
     stream = info.primary_video
     if stream is None:
-        return None, None, None
+        return None, None, None, None
     width = stream.width if stream.width and stream.width > 0 else None
     height = stream.height if stream.height and stream.height > 0 else None
     if width is None or height is None:
         width = height = None
-    return width, height, _frame_rate(stream.frame_rate)
+    return width, height, _frame_rate(stream.frame_rate), stream.pixel_format
 
 
 def _normalize_video_filter(
-    geometry: tuple[int | None, int | None, float | None],
-    target: tuple[int, int, float | None],
+    geometry: tuple[int | None, int | None, float | None, str | None],
+    target: tuple[int | None, int | None, float | None, str | None],
 ) -> str:
-    width, height, frame_rate = geometry
-    target_width, target_height, target_rate = target
+    width, height, frame_rate, pixel_format = geometry
+    target_width, target_height, target_rate, target_pixel_format = target
     filters: list[str] = []
-    if width != target_width or height != target_height:
+    if (
+        target_width is not None
+        and target_height is not None
+        and (width != target_width or height != target_height)
+    ):
         filters.extend(
             [
                 f"scale={target_width}:{target_height}:"
@@ -814,6 +818,8 @@ def _normalize_video_filter(
         frame_rate is None or abs(frame_rate - target_rate) > 1e-3
     ):
         filters.append(f"fps={target_rate:.6f}")
+    if target_pixel_format is not None and pixel_format != target_pixel_format:
+        filters.append(f"format=pix_fmts={target_pixel_format}")
     return ",".join(filters)
 
 
@@ -938,9 +944,11 @@ def concatenate_videos(
     to be shorter than every clip and builds an ``xfade`` chain. Clips whose
     dimensions or frame rate differ from the first clip that reports them are
     scaled, padded and resampled to that canonical geometry so ``xfade`` gets
-    matching inputs. Audio is kept when every clip has an audio track; clips
-    whose sample rate or channel layout differ from the first clip that reports
-    them are resampled and remapped so ``acrossfade`` gets matching inputs.
+    matching inputs. Clips whose pixel format differs from the first clip that
+    reports one are converted so every ``xfade`` input matches. Audio is kept
+    when every clip has an audio track; clips whose sample rate or channel
+    layout differ from the first clip that reports them are resampled and
+    remapped so ``acrossfade`` gets matching inputs.
     """
     path = Path(destination)
     fmt = (
@@ -1043,21 +1051,34 @@ def concatenate_videos(
         target_width, target_height = next(
             (
                 (width, height)
-                for width, height, _ in geometries
+                for width, height, _, _ in geometries
                 if width is not None and height is not None
             ),
             (None, None),
         )
         target_rate = next(
-            (rate for _, _, rate in geometries if rate is not None),
+            (rate for _, _, rate, _ in geometries if rate is not None),
+            None,
+        )
+        target_pixel_format = next(
+            (
+                pixel_format
+                for _, _, _, pixel_format in geometries
+                if pixel_format is not None
+            ),
             None,
         )
         input_filters: list[str] = []
-        if target_width is not None and target_height is not None:
+        if (
+            (target_width is not None and target_height is not None)
+            or target_rate is not None
+            or target_pixel_format is not None
+        ):
             target = (
-                _even_dimension(target_width),
-                _even_dimension(target_height),
+                _even_dimension(target_width) if target_width is not None else None,
+                _even_dimension(target_height) if target_height is not None else None,
                 target_rate,
+                target_pixel_format,
             )
             input_filters = [
                 _normalize_video_filter(geometry, target) for geometry in geometries
