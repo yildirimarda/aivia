@@ -34,6 +34,7 @@ from aivia.media.music_service import (
     MusicOutcome,
     MusicService,
     check_commercial_license,
+    music_cache_key,
     require_commercial_license,
 )
 from aivia.media.screening import screen_prompt
@@ -333,6 +334,41 @@ def test_an_identical_request_is_served_from_cache_without_a_provider_call(
     )
     assert entry is not None
     assert entry.hit_count == 1
+
+
+def test_the_provider_license_takes_part_in_the_cache_key() -> None:
+    request = MusicRequest(prompt=PROMPT, duration_seconds=2.0)
+
+    commercial = music_cache_key(request, license=COMMERCIAL)
+    non_commercial = music_cache_key(request, license=NON_COMMERCIAL)
+
+    assert commercial == music_cache_key(request, license=COMMERCIAL)
+    assert commercial != non_commercial
+
+
+def test_a_provider_rights_change_does_not_serve_a_stale_clearance(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeMusicProvider(license=COMMERCIAL)
+    service = _service(provider, tracker, storage)
+    request = MusicRequest(prompt=PROMPT, duration_seconds=2.0)
+
+    first = _run(service.generate(request, token=_token(), run_id="run-1"))
+    assert first.is_commercially_cleared is True
+    assert len(provider.calls) == 1
+
+    provider.metadata.license = NON_COMMERCIAL
+    second = _run(service.generate(request, token=_token(), run_id="run-2"))
+
+    assert len(provider.calls) == 2
+    assert second.cache_hit is False
+    assert second.asset is not None and first.asset is not None
+    assert second.asset.id != first.asset.id
+    assert second.licenses[0].commercial_use is False
+    assert second.is_commercially_cleared is False
+    with pytest.raises(MusicLicenseError):
+        second.require_for_publish()
 
 
 def test_a_non_commercial_track_blocks_publish_and_deliver(
