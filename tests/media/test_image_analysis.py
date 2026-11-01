@@ -417,9 +417,7 @@ def test_a_cache_hit_still_recomputes_offline_fields(engine: Engine) -> None:
     data = _image_bytes()
 
     _run(analyze_image(data, provider=provider, cache=cache, color_count=1))
-    analysis = _run(
-        analyze_image(data, provider=provider, cache=cache, color_count=2)
-    )
+    analysis = _run(analyze_image(data, provider=provider, cache=cache, color_count=2))
 
     assert len(provider.requests) == 1
     assert analysis.colors == ["#ff0000", "#0000ff"]
