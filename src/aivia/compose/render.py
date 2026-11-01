@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import itertools
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from io import BytesIO
@@ -43,6 +43,7 @@ from aivia.core.config.media import (
 from .errors import FontError, RenderError
 from .fonts import FontManager
 from .keyframes import AnimatedProperty, keyframes_for_layer
+from .placement import LayerPlacement, find_text_placement
 from .schema import (
     Anchor,
     BlendMode,
@@ -57,6 +58,7 @@ from .schema import (
     ShapeType,
     TextAlign,
     TextOverflow,
+    TextPlacement,
     TextStyle,
     TextWeight,
     VerticalAlign,
@@ -96,20 +98,10 @@ type ImageSource = str | Path | bytes | Image.Image
 type AssetResolver = Mapping[str, ImageSource] | Callable[[str], ImageSource]
 """How a layer source string is resolved to image data."""
 
-
-@dataclass(frozen=True, slots=True)
-class LayerPlacement:
-    """The destination rectangle of one layer on the canvas, in pixels."""
-
-    x: int
-    y: int
-    width: int
-    height: int
-
-    @property
-    def center(self) -> tuple[float, float]:
-        """The centre of the rectangle."""
-        return self.x + self.width / 2.0, self.y + self.height / 2.0
+type FaceResolver = (
+    Mapping[str, Sequence[Any]] | Callable[[Layer], Sequence[Any]]
+)
+"""Precomputed face rectangles for smart text placement, keyed by layer id."""
 
 
 @runtime_checkable
@@ -330,6 +322,49 @@ def placement_for_layer(layer: Layer, canvas: Image.Image) -> LayerPlacement:
     if placement.width < 1 or placement.height < 1:
         raise RenderError("layer width and height must be positive")
     return placement
+
+
+_PLACEMENT_FLAT_OPTIONS = {
+    "smart_placement": "mode",
+    "auto_place": "mode",
+    "placement_mode": "mode",
+    "avoid_faces": "avoid_faces",
+    "placement_padding": "padding",
+    "placement_margin": "margin",
+    "face_padding": "face_padding",
+    "face_regions": "faces",
+    "detected_faces": "faces",
+    "faces": "faces",
+}
+
+
+def _text_placement_config(layer: Layer) -> TextPlacement | None:
+    """Return the smart placement options stored on *layer*, if any."""
+    raw = _layer_value(layer, "placement", "text_placement")
+    extras = layer.model_extra or {}
+    options: dict[str, Any] = {}
+    if isinstance(raw, TextPlacement):
+        options.update(raw.model_dump())
+    elif isinstance(raw, Mapping):
+        options.update(raw)
+    elif raw is not None:
+        options.update(TextPlacement.model_validate(raw).model_dump())
+
+    found = bool(options)
+    for name, target in _PLACEMENT_FLAT_OPTIONS.items():
+        if name not in extras:
+            continue
+        value = extras[name]
+        if name in ("smart_placement", "auto_place"):
+            value = "smart" if value else "manual"
+        options.setdefault(target, value)
+        found = True
+    if not found:
+        return None
+    try:
+        return TextPlacement.model_validate(options)
+    except ValueError as exc:
+        raise RenderError("invalid text placement options") from exc
 
 
 def _check_limits(
@@ -1110,6 +1145,7 @@ class PillowStillRenderer:
         *,
         source_root: str | Path | None = None,
         fonts: FontManager | None = None,
+        faces: FaceResolver | None = None,
         max_bytes: int = DEFAULT_MEDIA_MAX_BYTES,
         max_pixels: int = DEFAULT_MEDIA_MAX_PIXELS,
         max_frames: int = DEFAULT_MEDIA_MAX_ANIMATED_FRAMES,
@@ -1118,10 +1154,26 @@ class PillowStillRenderer:
         self._assets = assets
         self._source_root = None if source_root is None else Path(source_root)
         self._fonts = fonts
+        self._faces = faces
         self._max_bytes = max_bytes
         self._max_pixels = max_pixels
         self._max_frames = max_frames
         self._max_total_pixels = max_total_pixels
+
+    def _layer_faces(self, layer: Layer, config: TextPlacement) -> list[Any]:
+        faces: list[Any] = list(config.faces)
+        if self._faces is None:
+            return faces
+        extra: Sequence[Any] | None
+        if callable(self._faces):
+            extra = self._faces(layer)
+        else:
+            extra = self._faces.get(layer.id)
+            if extra is None:
+                extra = self._faces.get("")
+        if extra is not None:
+            faces.extend(extra)
+        return faces
 
     def _resolve(self, source: str) -> ImageSource:
         if callable(self._assets):
@@ -1552,27 +1604,61 @@ class PillowStillRenderer:
             "auto_shrink",
         )
 
+        config = _text_placement_config(layer)
         placement = placement_for_layer(layer, canvas)
         manager = _default_font_manager() if self._fonts is None else self._fonts
         path = manager.resolve(family or None, weight=weight, style=style)
-        layout = layout_text(
-            raw_text,
-            max_width=placement.width,
-            max_height=placement.height,
-            font_family=family,
-            font_size=font_size,
-            font_weight=weight,
-            font_style=style,
-            line_height=line_height,
-            letter_spacing=letter_spacing,
-            wrap=wrap,
-            max_lines=max_lines,
-            shrink_to_fit=shrink,
-            min_font_size=min_font_size,
-            overflow=overflow,
-            ellipsis=ellipsis,
-            fonts=self._fonts,
-        )
+
+        def _layout(max_width: int, max_height: int) -> TextLayout:
+            return layout_text(
+                raw_text,
+                max_width=max_width,
+                max_height=max_height,
+                font_family=family,
+                font_size=font_size,
+                font_weight=weight,
+                font_style=style,
+                line_height=line_height,
+                letter_spacing=letter_spacing,
+                wrap=wrap,
+                max_lines=max_lines,
+                shrink_to_fit=shrink,
+                min_font_size=min_font_size,
+                overflow=overflow,
+                ellipsis=ellipsis,
+                fonts=self._fonts,
+            )
+
+        layout = _layout(placement.width, placement.height)
+        if config is not None and config.mode.is_smart:
+            explicit_width = _layer_value(layer, "width", "w") is not None
+            explicit_height = _layer_value(layer, "height", "h") is not None
+            box_width = (
+                placement.width
+                if explicit_width
+                else max(1, math.ceil(layout.width))
+            )
+            box_height = (
+                placement.height
+                if explicit_height
+                else max(1, math.ceil(layout.height))
+            )
+            pad = round(config.padding)
+            box_width = min(canvas.width, max(1, box_width + pad * 2))
+            box_height = min(canvas.height, max(1, box_height + pad * 2))
+            region = find_text_placement(
+                canvas,
+                (box_width, box_height),
+                faces=self._layer_faces(layer, config),
+                avoid_faces=config.avoid_faces,
+                face_padding=config.face_padding,
+                margin=config.margin,
+                step=config.step,
+            )
+            placement = LayerPlacement(
+                region.x, region.y, box_width, box_height
+            )
+            layout = _layout(placement.width, placement.height)
         font = _load_font(str(path), layout.font_size)
         text_image = Image.new(
             "RGBA", (placement.width, placement.height), (0, 0, 0, 0)
@@ -1706,8 +1792,9 @@ def render_still(
     *,
     assets: AssetResolver | None = None,
     source_root: str | Path | None = None,
+    faces: FaceResolver | None = None,
 ) -> Image.Image:
     """Render one still frame with the default Pillow renderer."""
-    return PillowStillRenderer(assets, source_root=source_root).render_still(
-        composition, time_seconds
-    )
+    return PillowStillRenderer(
+        assets, source_root=source_root, faces=faces
+    ).render_still(composition, time_seconds)

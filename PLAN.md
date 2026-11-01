@@ -434,6 +434,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Wrap composition text with the shared language-aware line break rules instead of splitting long words arbitrarily (tests/compose/test_text.py)
 - [ ] Resolve text layer defaults from render config instead of hardcoded family and size (tests/compose/test_text.py)
 - [ ] Validate mask asset references in compositions so missing masks fail before rendering (tests/compose/test_validation.py)
+- [ ] Scale vision face rectangles to canvas coordinates when a background image is fitted (tests/compose/test_placement.py)
 
 ## Milestone 10: Research engine
 
