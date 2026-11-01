@@ -388,7 +388,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: one declarative composition rendered deterministically by one renderer, with no AI at render time -->
 
-- [ ] Define the composition schema with canvas, duration, fps, layers, audio tracks, effects and a schema version (tests/compose/test_schema.py)
+- [x] Define the composition schema with canvas, duration, fps, layers, audio tracks, effects and a schema version (tests/compose/test_schema.py)
 - [ ] Add layer types for image, video, text, shape, sticker and logo with validation (tests/compose/test_layers.py)
 - [ ] Validate compositions for unique ids, timings inside the duration, existing assets, sorted keyframes and value ranges, returning all errors (tests/compose/test_validation.py)
 - [ ] Support loading and saving compositions as YAML and JSON plus a JSON schema export (tests/compose/test_io.py)
@@ -425,6 +425,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Apply per platform safe area margins to text and sticker layers and warn when manual coordinates violate them (tests/compose/test_safe_area.py)
 - [ ] Add an end to end test where mock assets become an mp4, a gif and a web card that pass output validation (slow, tests/e2e/test_assets_to_output.py)
 - [ ] Shape mixed left to right and right to left text correctly with per language direction defaults (tests/compose/test_bidi.py)
+- [ ] Upgrade older composition schema versions before validation and reject newer ones with a clear error (tests/compose/test_migrations.py)
 
 ## Milestone 10: Research engine
 
