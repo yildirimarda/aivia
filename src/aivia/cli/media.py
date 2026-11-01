@@ -1462,8 +1462,42 @@ def _batch_key(
     return str(index)
 
 
-def _batch_fingerprint(values: Mapping[str, Any], kind: str) -> str:
-    payload = {"kind": kind, "values": stable_value(dict(values))}
+_BATCH_FINGERPRINT_FIELDS = frozenset(
+    destination
+    for destination, _ in _BATCH_FIELDS.values()
+    if destination not in {"database", "timeout"}
+)
+_BATCH_INPUT_FILE_FIELDS = ("prompt_file", "lyrics_file", "audio_file")
+
+
+def _batch_file_fingerprint(value: Any) -> Any:
+    if not isinstance(value, str) or not value or value == "-":
+        return value
+    path = Path(value).expanduser()
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+                size += len(chunk)
+    except OSError:
+        return {"path": value, "missing": True}
+    return {"path": value, "sha256": digest.hexdigest(), "size_bytes": size}
+
+
+def _batch_fingerprint(args: argparse.Namespace, kind: str) -> str:
+    values: dict[str, Any] = {
+        name: getattr(args, name)
+        for name in _BATCH_FINGERPRINT_FIELDS
+        if hasattr(args, name)
+    }
+    if hasattr(args, "prompt_option"):
+        values["prompt_option"] = args.prompt_option
+    for name in _BATCH_INPUT_FILE_FIELDS:
+        if name in values:
+            values[name] = _batch_file_fingerprint(values[name])
+    payload = {"kind": kind, "values": stable_value(values)}
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
@@ -1498,7 +1532,7 @@ def _batch_items(args: argparse.Namespace) -> list[_BatchItem]:
                 index=index,
                 kind=kind,
                 args=item_args,
-                fingerprint=_batch_fingerprint(values, kind),
+                fingerprint=_batch_fingerprint(item_args, kind),
             )
         )
     return items
