@@ -410,6 +410,81 @@ def test_veo_downloads_an_http_first_frame_before_submitting() -> None:
     assert frame_index < post_index
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/frames/first.png",
+        "http://10.1.2.3/frames/first.png",
+        "http://192.168.1.1/frames/first.png",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://[::1]/frames/first.png",
+        "http://2130706433/frames/first.png",
+        "http://0x7f000001/frames/first.png",
+        "http://localhost/frames/first.png",
+        "http://metadata.google.internal/frames/first.png",
+        "http://printer.local/frames/first.png",
+    ],
+)
+def test_veo_blocks_a_remote_first_frame_at_an_internal_target(url: str) -> None:
+    requests, handler = _routes(_veo_routes())
+    provider = _veo(handler)
+
+    with pytest.raises(InvalidRequestError) as caught:
+        asyncio.run(
+            provider.generate(
+                VideoRequest(
+                    prompt="animate this still",
+                    first_frame=MediaInput(url=url, media_type="image/png"),
+                )
+            )
+        )
+
+    assert caught.value.details["url"] == url
+    assert requests == []
+
+
+def test_veo_blocks_a_first_frame_host_that_resolves_to_a_private_address() -> None:
+    requests, handler = _routes(_veo_routes())
+    provider = _veo(handler, resolver=lambda host, port: ["10.0.0.7"])
+
+    with pytest.raises(InvalidRequestError) as caught:
+        asyncio.run(
+            provider.generate(
+                VideoRequest(
+                    prompt="animate this still",
+                    first_frame=MediaInput(url=FRAME_URL, media_type="image/png"),
+                )
+            )
+        )
+
+    assert caught.value.details["address"] == "10.0.0.7"
+    assert requests == []
+
+
+def test_veo_downloads_a_first_frame_from_a_public_resolved_host() -> None:
+    calls: list[tuple[str, int]] = []
+
+    def resolver(host: str, port: int) -> list[str]:
+        calls.append((host, port))
+        return ["93.184.216.34"]
+
+    payload = _veo_payload(
+        VideoRequest(
+            prompt="animate this still",
+            first_frame=MediaInput(url=FRAME_URL, media_type="image/png"),
+        ),
+        resolver=resolver,
+    )
+
+    assert payload["instances"][0]["image"]["mimeType"] == "image/png"
+    assert calls == [("example.com", 443)]
+
+
+def test_veo_rejects_a_non_callable_resolver() -> None:
+    with pytest.raises(TypeError):
+        _veo(lambda request: httpx.Response(200, json={}), resolver="not callable")
+
+
 def test_veo_infers_a_downloaded_frame_type_from_the_response() -> None:
     requests, handler = _routes(_veo_routes())
 

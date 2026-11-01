@@ -44,6 +44,7 @@ from aivia.core.errors import (
 from aivia.core.http import error_for_response
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.secrets import SecretsLoader
+from aivia.core.ssrf import ResolveHost, validate_ssrf_target
 from aivia.providers.base import Provider
 from aivia.providers.media import (
     AsyncJob,
@@ -729,6 +730,7 @@ class VeoVideoProvider(Provider):
         poll_interval_seconds: float = 1.0,
         engine: Engine | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        resolver: ResolveHost | None = None,
         clock: Callable[[], float] | None = None,
         sleep: Callable[[float], Awaitable[None]] | None = None,
         name: str | None = None,
@@ -748,6 +750,8 @@ class VeoVideoProvider(Provider):
             transport, httpx.AsyncBaseTransport
         ):
             raise TypeError("transport must be an httpx.AsyncBaseTransport")
+        if resolver is not None and not callable(resolver):
+            raise TypeError("resolver must be callable")
         if not isinstance(api_version, str) or not api_version.strip():
             raise ConfigError("veo api_version must be non-empty")
 
@@ -763,6 +767,8 @@ class VeoVideoProvider(Provider):
         self._api_version = api_version.strip()
         self._download_results = download_results
         self._max_download_bytes = max_download_bytes
+        self._resolver = resolver
+        self._transport = transport
         if transport is not None:
             self._http = self.create_http_client(transport=transport)
         self._helper = AsyncMediaJobHelper(
@@ -899,6 +905,12 @@ class VeoVideoProvider(Provider):
             return request
         if urlsplit(frame.url).scheme.lower() not in {"http", "https"}:
             return request
+        await validate_ssrf_target(
+            frame.url,
+            resolver=self._resolver,
+            skip_dns=self._transport is not None,
+            label="first frame",
+        )
         response = await self.http.get(frame.url, raise_for_status=True)
         try:
             declared = response.headers.get("content-length", "").strip()
