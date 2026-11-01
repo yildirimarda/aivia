@@ -359,6 +359,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add voice clone create and delete to the ElevenLabs adapter behind a capability flag (tests/providers/tts/test_elevenlabs_clone.py)
 - [ ] Delete the vendor voice when its local clone record is removed and keep the record when deletion fails (tests/media/test_voice_clone.py)
 - [ ] Store accessibility sidecars through the storage provider so remote audio and video outputs get them too (tests/media/test_accessibility.py)
+- [ ] Wait for an in-flight async submission when a repeated key races it so the caller never receives a job without a remote id (tests/providers/media/test_async_job.py)
+- [ ] Resume an async media job left pending by a crash before the remote id is stored so a repeated key can recover it (tests/providers/media/test_async_job.py)
 
 ## Milestone 9: Composition and rendering
 
