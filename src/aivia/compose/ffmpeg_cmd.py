@@ -8,8 +8,10 @@ without an external binary while leaving execution to the caller.
 Visual layers are composited over a generated colour background. Image, video,
 sticker and logo layers become inputs; their geometry, fit, opacity and time
 window become filter nodes. Text layers become transparent inputs with a
-``drawtext`` filter so they animate with the same keyframes. Audio mixing and
-transitions are deliberately left to later composition steps.
+``drawtext`` filter so they animate with the same keyframes. Layer entrance
+transitions fade or slide a layer in, and extend the outgoing layer through the
+transition window. Audio mixing is deliberately left to a later composition
+step.
 """
 
 from __future__ import annotations
@@ -37,6 +39,10 @@ from .schema import (
     LayerType,
     TextStyle,
     TextWeight,
+)
+from .transitions import (
+    layer_transition_for,
+    outgoing_transition_end,
 )
 
 __all__ = [
@@ -231,6 +237,9 @@ def _layer_end(layer: Layer, composition: Composition) -> float:
     end = layer.end
     if end is None:
         end = composition.duration_seconds
+    extended = outgoing_transition_end(layer, composition)
+    if extended is not None:
+        end = max(end, extended)
     return min(max(end, layer.start_seconds), composition.duration_seconds)
 
 
@@ -573,16 +582,32 @@ def _rotation_filters(tracks: MotionTracks, start_seconds: float) -> list[str]:
     return [f"rotate=a='({angle})*PI/180':ow=iw:oh=ih:c=none"]
 
 
+def _transition_alpha(transition: Any) -> str | None:
+    if transition is None or not transition.is_crossfade:
+        return None
+    span = transition.duration_seconds
+    if span <= 0.0:
+        return None
+    return f"clip(T/{_seconds(span)},0,1)"
+
+
 def _opacity_filters(
     layer: Layer,
     tracks: MotionTracks,
     start_seconds: float,
+    transition: Any = None,
 ) -> list[str]:
+    fade = _transition_alpha(transition)
     if tracks.opacity is not None:
         variable = f"(T+{_seconds(start_seconds)})"
         alpha = track_expression(tracks.opacity, variable=variable)
+        if fade is not None:
+            alpha = f"({alpha})*({fade})"
         return [f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({alpha})'"]
     opacity = _finite(layer.opacity, "opacity")
+    if fade is not None:
+        alpha = f"{opacity:.6f}*({fade})"
+        return [f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({alpha})'"]
     if opacity < 1.0:
         return [f"colorchannelmixer=aa={opacity:.6f}"]
     return []
@@ -630,7 +655,15 @@ def _layer_filters(
     filters.extend(_rotation_filters(tracks, layer.start_seconds))
     filters.append("setsar=1")
     filters.append("format=rgba")
-    filters.extend(_opacity_filters(layer, tracks, layer.start_seconds))
+    transition = layer_transition_for(layer)
+    filters.extend(
+        _opacity_filters(
+            layer,
+            tracks,
+            layer.start_seconds,
+            transition,
+        )
+    )
     filters.append(f"setpts=PTS-STARTPTS+{layer.start_seconds:.6f}/TB")
 
     label = f"v{index}"
@@ -647,6 +680,16 @@ def _layer_filters(
         position_x, position_y = pair_expression(tracks.position, variable="t")
         overlay_x = f"'({overlay_x})+({position_x})'"
         overlay_y = f"'({overlay_y})+({position_y})'"
+    if transition is not None and transition.is_slide:
+        span = transition.duration_seconds
+        progress = f"clip((t-{layer.start_seconds:.6f})/{_seconds(span)},0,1)"
+        offset_x, offset_y = transition.expression_offset(
+            (composition.canvas.width, composition.canvas.height)
+        )
+        if offset_x != "0":
+            overlay_x = f"'({overlay_x})+({offset_x})*(1-({progress}))'"
+        if offset_y != "0":
+            overlay_y = f"'({overlay_y})+({offset_y})*(1-({progress}))'"
     end = _layer_end(layer, composition)
     overlay_node = (
         f"[base{index}][{label}]overlay="

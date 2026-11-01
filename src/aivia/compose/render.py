@@ -68,6 +68,12 @@ from .schema import (
 from .schema import (
     ImageFilter as ImageFilterSpec,
 )
+from .transitions import (
+    compose_transition,
+    layer_transition_for,
+    outgoing_transition_end,
+    transition_progress,
+)
 
 __all__ = [
     "PILLOW_STILL_RENDERER_VERSION",
@@ -1730,6 +1736,40 @@ class PillowStillRenderer:
             return
         _composite(canvas, _opacity(text_image, min(1.0, value)), x, y)
 
+    def _draw_layer(
+        self,
+        canvas: Image.Image,
+        layer: Layer,
+        time_seconds: float,
+    ) -> None:
+        if layer.type is LayerType.IMAGE:
+            self._draw_image_layer(canvas, layer, time_seconds)
+        elif layer.type in (LayerType.STICKER, LayerType.LOGO):
+            self._draw_overlay_layer(canvas, layer, time_seconds)
+        elif layer.type is LayerType.SHAPE:
+            self._draw_shape_layer(canvas, layer, time_seconds)
+        elif layer.type is LayerType.TEXT:
+            self._draw_text_layer(canvas, layer, time_seconds)
+
+    def _active_layers(
+        self,
+        composition: Composition,
+        time_seconds: float,
+    ) -> list[Layer]:
+        active: list[Layer] = []
+        for layer in composition.layers:
+            if not layer.visible or layer.type not in self.supported_layer_types:
+                continue
+            end = layer.end if layer.end is not None else composition.duration_seconds
+            if layer.start_seconds <= time_seconds < end:
+                active.append(layer)
+                continue
+            if time_seconds >= end:
+                extended = outgoing_transition_end(layer, composition)
+                if extended is not None and time_seconds < extended:
+                    active.append(layer)
+        return sorted(active, key=lambda item: item.z_index)
+
     def render_still(
         self,
         composition: Composition,
@@ -1749,23 +1789,21 @@ class PillowStillRenderer:
             ) from exc
         canvas = Image.new("RGBA", composition.canvas.size, background)
 
-        active = [
-            layer
-            for layer in composition.layers
-            if layer.visible
-            and layer.start_seconds <= time
-            and (layer.end is None or time < layer.end)
-            and layer.type in self.supported_layer_types
-        ]
-        for layer in sorted(active, key=lambda item: item.z_index):
-            if layer.type is LayerType.IMAGE:
-                self._draw_image_layer(canvas, layer, time)
-            elif layer.type in (LayerType.STICKER, LayerType.LOGO):
-                self._draw_overlay_layer(canvas, layer, time)
-            elif layer.type is LayerType.SHAPE:
-                self._draw_shape_layer(canvas, layer, time)
-            elif layer.type is LayerType.TEXT:
-                self._draw_text_layer(canvas, layer, time)
+        for layer in self._active_layers(composition, time):
+            transition = layer_transition_for(layer)
+            if transition is not None and not transition.is_cut:
+                progress = transition_progress(layer, time, transition)
+                if progress < 1.0:
+                    layer_image = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+                    self._draw_layer(layer_image, layer, time)
+                    canvas = compose_transition(
+                        canvas,
+                        layer_image,
+                        transition,
+                        progress,
+                    )
+                    continue
+            self._draw_layer(canvas, layer, time)
         return apply_overlay_effects(canvas, composition, time)
 
     def render(

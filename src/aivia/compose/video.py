@@ -112,6 +112,10 @@ def _text_layer_data(layer: Layer) -> dict[str, Any]:
         "mask",
         "filters",
         "blend_mode",
+        "transition",
+        "transition_in",
+        "enter_transition",
+        "in_transition",
     ):
         data.pop(key, None)
     data["type"] = LayerType.TEXT.value
@@ -210,6 +214,8 @@ def _prepare_text_layers(
         keyframes = _keyframe_mapping(layer, layer.start_seconds, end)
         if keyframes:
             mapping["keyframes"] = keyframes
+        if layer.transition is not None:
+            mapping["transition"] = layer.transition.model_dump(by_alias=False)
         layers.append(mapping)
     data = composition.model_dump(by_alias=False)
     data["layers"] = layers

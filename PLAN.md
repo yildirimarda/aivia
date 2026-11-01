@@ -442,6 +442,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Honor text entrance and exit presets in the still renderer so still previews match video output (tests/compose/test_text_video.py)
 - [ ] Validate procedural overlay effect parameters during composition validation so bad effects fail before rendering (tests/compose/test_validation.py)
 - [ ] Apply procedural overlay effects to video renders so confetti, sparkles, snow and bokeh animate in the output (slow, tests/compose/test_video_overlays.py)
+- [ ] Validate transition durations stay inside each layer window and report every violation (tests/compose/test_validation.py)
 
 ## Milestone 10: Research engine
 
