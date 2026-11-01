@@ -34,6 +34,8 @@ from pydantic import (
     model_validator,
 )
 
+from .motion import Motion
+
 __all__ = [
     "COMPOSITION_SCHEMA_VERSION",
     "CURRENT_COMPOSITION_SCHEMA_VERSION",
@@ -1148,6 +1150,10 @@ class Layer(_SchemaModel):
     filters: list[ImageFilter] = Field(
         default_factory=list,
         validation_alias=AliasChoices("filters", "filter", "image_filters"),
+    )
+    motion: Motion | None = Field(
+        default=None,
+        validation_alias=AliasChoices("motion", "camera", "movement"),
     )
 
     @model_validator(mode="before")
