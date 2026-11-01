@@ -119,6 +119,22 @@ class BlockingBackend(FakeBackend):
         return await super().submit(request)
 
 
+class CrashingBackend(FakeBackend):
+    """A backend whose first submit hangs until its task is cancelled."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = asyncio.Event()
+        self.calls = 0
+
+    async def submit(self, request: Any) -> Any:
+        self.calls += 1
+        if self.calls == 1:
+            self.started.set()
+            await asyncio.Event().wait()
+        return await super().submit(request)
+
+
 @pytest.fixture
 def engine() -> Iterator[Engine]:
     created = create_database_engine(url="sqlite+pysqlite:///:memory:")
@@ -288,6 +304,40 @@ def test_a_repeated_key_waits_for_an_in_flight_submission(
     finally:
         winner_engine.dispose()
         racer_engine.dispose()
+
+
+def test_a_repeated_key_resumes_a_job_left_pending_by_a_crash(
+    engine: Engine,
+) -> None:
+    backend = CrashingBackend()
+    helper = make_helper(backend, engine=engine)
+
+    async def scenario() -> tuple[AsyncJob, AsyncJob]:
+        crashed = asyncio.create_task(
+            helper.submit({"prompt": "a wave"}, idempotency_key="crash-1")
+        )
+        await backend.started.wait()
+        crashed.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await crashed
+        pending = helper.store.find_by_idempotency_key("crash-1")
+        assert pending is not None
+        assert pending.remote_id == ""
+        assert pending.state is AsyncJobState.PENDING
+        recovered = await helper.submit({"prompt": "a wave"}, idempotency_key="crash-1")
+        return pending, recovered
+
+    pending, recovered = asyncio.run(scenario())
+
+    assert recovered.id == pending.id
+    assert recovered.remote_id == "remote-1"
+    assert recovered.state is AsyncJobState.RUNNING
+    assert backend.calls == 2
+    assert backend.submitted == [{"prompt": "a wave"}]
+    stored = helper.get(pending.id)
+    assert stored is not None
+    assert stored.remote_id == "remote-1"
+    assert stored.state is AsyncJobState.RUNNING
 
 
 def test_the_jobs_table_rejects_a_duplicate_async_idempotency_key(
