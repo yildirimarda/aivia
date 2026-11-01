@@ -1,4 +1,4 @@
-"""``aivia media generate``: generate one artifact from a prompt or file.
+"""``aivia media``: generate one artifact or edit an existing image.
 
 Every command builds the same screened, budgeted, cached and cost tracked path
 the library services use. ``--estimate`` prints the price table without a paid
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import mimetypes
 import shutil
 import sys
 from collections.abc import Mapping, Sequence
@@ -37,15 +38,18 @@ from aivia.core.dry_run import apply_dry_run
 from aivia.core.errors import AiviaError, ConfigError
 from aivia.core.estimate import Estimator, render_estimate
 from aivia.core.router import Router
+from aivia.media.image_edit_service import ImageEditService
 from aivia.media.image_service import ImageService
 from aivia.media.music_service import MusicService
 from aivia.media.sfx_service import SFXService
 from aivia.media.stt_service import STTService
 from aivia.media.tts_service import SpeechService
 from aivia.media.video_service import VideoService
+from aivia.providers import image_edit as _image_edit  # noqa: F401
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.image import ImageRequest
-from aivia.providers.protocols.media import ImageFormat, VideoFormat
+from aivia.providers.protocols.image_edit import ImageEditOperation, ImageEditRequest
+from aivia.providers.protocols.media import ImageFormat, MediaInput, VideoFormat
 from aivia.providers.protocols.music import MusicRequest
 from aivia.providers.protocols.sfx import SFXRequest
 from aivia.providers.protocols.stt import STTRequest
@@ -71,8 +75,32 @@ CAPABILITIES: dict[str, str] = {
     "transcription": "stt",
     "music": "music_gen",
     "sfx": "sfx",
+    "edit": "image_edit",
 }
 """The router capability behind each command name."""
+
+_EDIT_ALIASES: dict[str, ImageEditOperation] = {
+    "edit": ImageEditOperation.EDIT,
+    "instruction": ImageEditOperation.EDIT,
+    "instruction-edit": ImageEditOperation.EDIT,
+    "instruction_edit": ImageEditOperation.EDIT,
+    "inpaint": ImageEditOperation.INPAINT,
+    "outpaint": ImageEditOperation.OUTPAINT,
+    "outpainting": ImageEditOperation.OUTPAINT,
+    "expand": ImageEditOperation.OUTPAINT,
+    "upscale": ImageEditOperation.UPSCALE,
+    "upscaling": ImageEditOperation.UPSCALE,
+    "upscale-image": ImageEditOperation.UPSCALE,
+    "remove-background": ImageEditOperation.REMOVE_BACKGROUND,
+    "remove_background": ImageEditOperation.REMOVE_BACKGROUND,
+    "background-removal": ImageEditOperation.REMOVE_BACKGROUND,
+    "background_removal": ImageEditOperation.REMOVE_BACKGROUND,
+    "remove-bg": ImageEditOperation.REMOVE_BACKGROUND,
+    "remove_bg": ImageEditOperation.REMOVE_BACKGROUND,
+    "rembg": ImageEditOperation.REMOVE_BACKGROUND,
+    "cutout": ImageEditOperation.REMOVE_BACKGROUND,
+}
+"""Every accepted operation name for ``aivia media edit``."""
 
 _STRATEGIES = tuple(strategy.value for strategy in CapabilityStrategy)
 
@@ -320,8 +348,111 @@ def _configure_sfx(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_media_kind="sfx")
 
 
+def _configure_edit(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "operation",
+        nargs="?",
+        metavar="OPERATION_OR_IMAGE",
+        help=(
+            "edit operation (instruction, remove-background, upscale, outpaint, "
+            "inpaint) or the source image path"
+        ),
+    )
+    parser.add_argument(
+        "image",
+        nargs="?",
+        metavar="IMAGE",
+        help="source image to edit when OPERATION_OR_IMAGE names an operation",
+    )
+    parser.add_argument(
+        "--operation",
+        dest="operation_option",
+        metavar="NAME",
+        help="edit operation instead of the positional name",
+    )
+    parser.add_argument(
+        "--image",
+        "--input",
+        "--input-file",
+        "--file",
+        dest="image_option",
+        metavar="PATH",
+        help="source image to edit instead of the positional path",
+    )
+    parser.add_argument("--mask", metavar="PATH", help="mask image for an inpaint")
+    parser.add_argument(
+        "--prompt",
+        dest="prompt_option",
+        metavar="TEXT",
+        help="instruction text for an instruction edit, inpaint or outpaint",
+    )
+    parser.add_argument(
+        "--prompt-file",
+        metavar="PATH",
+        help="read the instruction from a UTF-8 file (use - for standard input)",
+    )
+    parser.add_argument(
+        "--provider",
+        action="append",
+        default=None,
+        metavar="NAME",
+        help="provider name to use; repeat to build an ordered fallback chain",
+    )
+    parser.add_argument(
+        "--strategy",
+        choices=_STRATEGIES,
+        metavar="NAME",
+        help=f"provider selection strategy ({', '.join(_STRATEGIES)})",
+    )
+    parser.add_argument("--model", metavar="NAME", help="provider model id")
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=1,
+        metavar="N",
+        help="number of outputs to request (default: 1)",
+    )
+    parser.add_argument("--seed", type=int, metavar="N", help="reproducible seed")
+    parser.add_argument("--width", type=int, metavar="PX", help="target width")
+    parser.add_argument("--height", type=int, metavar="PX", help="target height")
+    parser.add_argument(
+        "--scale",
+        "--factor",
+        dest="scale",
+        type=float,
+        metavar="FACTOR",
+        help="upscale factor greater than 1 (default: 2)",
+    )
+    parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=tuple(item.value for item in ImageFormat),
+        help="image container format",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        metavar="SECONDS",
+        help="maximum time to wait for a remote edit",
+    )
+    parser.add_argument(
+        "--output",
+        metavar="PATH",
+        help="copy the first output to PATH",
+    )
+    parser.add_argument(
+        "--database",
+        "--db",
+        dest="database",
+        metavar="PATH",
+        help="database file to use instead of the one in the user data directory",
+    )
+    _configure_resolution(parser)
+    parser.set_defaults(_media_handler=_run_edit, _media_kind="edit")
+
+
 def configure(parser: argparse.ArgumentParser) -> None:
-    """Add the media group and its ``generate`` subcommands."""
+    """Add the media group with its ``generate`` and ``edit`` commands."""
     subparsers = parser.add_subparsers(dest="media_command", metavar="COMMAND")
     generate = subparsers.add_parser(
         "generate",
@@ -345,17 +476,25 @@ def configure(parser: argparse.ArgumentParser) -> None:
         )
         builder(kind)
     generate.set_defaults(_media_kind="image")
+    edit = subparsers.add_parser(
+        "edit",
+        help="Edit an image: instruction, background removal, upscale or outpaint",
+        description="Edit one image through the configured provider chain",
+    )
+    _configure_edit(edit)
     parser.set_defaults(_media_handler=run_media)
 
 
 def run_media(args: argparse.Namespace) -> int:
-    """Dispatch to the selected media kind."""
+    """Dispatch to the selected media command."""
     handler = getattr(args, "_media_handler", None)
+    if handler is not None and handler is not run_media:
+        return int(handler(args))
     kind = getattr(args, "_media_kind", None)
     if handler is None or kind not in CAPABILITIES:
         print("error: missing media command", file=sys.stderr)
         print(
-            "usage: aivia media generate {image,video,speech,transcription,music,sfx}",
+            "usage: aivia media {generate,edit}",
             file=sys.stderr,
         )
         return 2
@@ -424,6 +563,179 @@ def _audio_path(args: argparse.Namespace) -> Path:
     if not path.is_file():
         raise ConfigError(f"audio file not found: {path}")
     return path
+
+
+def _edit_operation(args: argparse.Namespace) -> tuple[ImageEditOperation, str]:
+    """Resolve the operation and the source image from the flexible arguments."""
+    explicit = getattr(args, "operation_option", None)
+    first = getattr(args, "operation", None)
+    second = getattr(args, "image", None)
+    image_option = getattr(args, "image_option", None)
+
+    first_operation = _EDIT_ALIASES.get(first.strip().lower()) if first else None
+    explicit_operation = (
+        _EDIT_ALIASES.get(explicit.strip().lower()) if explicit else None
+    )
+    if explicit and explicit_operation is None:
+        raise ConfigError(f"unknown edit operation: {explicit}")
+
+    if image_option:
+        if second is not None:
+            raise ConfigError("pass the source image once")
+        if first is not None and first_operation is None:
+            raise ConfigError("pass the source image once")
+        operation = explicit_operation or first_operation or ImageEditOperation.EDIT
+        return operation, image_option
+
+    if first_operation is not None:
+        operation = explicit_operation or first_operation
+        if second is None:
+            raise ConfigError("a source image is required")
+        return operation, second
+
+    if first is None:
+        raise ConfigError("a source image is required")
+    if second is not None:
+        raise ConfigError("pass the source image once")
+    return explicit_operation or ImageEditOperation.EDIT, first
+
+
+def _edit_image_path(path: str) -> Path:
+    selected = Path(path).expanduser()
+    if not selected.is_file():
+        raise ConfigError(f"image file not found: {selected}")
+    return selected
+
+
+def _media_input(path: Path) -> MediaInput:
+    media_type = mimetypes.guess_type(path.name)[0] or "image/png"
+    return MediaInput(
+        data=path.read_bytes(),
+        media_type=media_type,
+        filename=path.name,
+    )
+
+
+def _edit_request(
+    args: argparse.Namespace,
+    operation: ImageEditOperation,
+    image: Path,
+    prompt: str,
+) -> ImageEditRequest:
+    values: dict[str, Any] = {
+        "image": _media_input(image),
+        "operation": operation,
+        "prompt": prompt or None,
+        "model": getattr(args, "model", None),
+        "width": getattr(args, "width", None),
+        "height": getattr(args, "height", None),
+        "scale": None,
+        "seed": getattr(args, "seed", None),
+        "count": max(1, getattr(args, "count", 1)),
+        "timeout_seconds": getattr(args, "timeout", None),
+    }
+    mask = getattr(args, "mask", None)
+    if mask:
+        values["mask"] = _media_input(_edit_image_path(mask))
+    if operation is ImageEditOperation.UPSCALE:
+        values["scale"] = (
+            getattr(args, "scale", None) if getattr(args, "scale", None) else 2.0
+        )
+    output_format = getattr(args, "output_format", None)
+    if operation is ImageEditOperation.REMOVE_BACKGROUND:
+        if output_format and output_format != ImageFormat.PNG.value:
+            raise ConfigError("background removal writes a PNG with alpha")
+        values["format"] = ImageFormat.PNG
+    elif output_format:
+        values["format"] = output_format
+    return ImageEditRequest(**values)
+
+
+def _validate_edit_arguments(
+    args: argparse.Namespace,
+    operation: ImageEditOperation,
+) -> None:
+    if operation is ImageEditOperation.OUTPAINT:
+        width = getattr(args, "width", None)
+        height = getattr(args, "height", None)
+        if width is None or height is None:
+            raise ConfigError("outpaint requires both --width and --height")
+    if operation is ImageEditOperation.INPAINT and not getattr(args, "mask", None):
+        raise ConfigError("inpaint requires --mask")
+
+
+def _provider_supports_edit(provider: Any, operation: ImageEditOperation) -> bool:
+    checker = getattr(provider, "supports_operation", None)
+    if callable(checker):
+        try:
+            return bool(checker(operation))
+        except (TypeError, ValueError):
+            return False
+    operations = getattr(provider, "supported_operations", None)
+    if operations is not None:
+        return operation in operations
+    return True
+
+
+def _edit_units(args: argparse.Namespace) -> tuple[float, str]:
+    return float(max(1, getattr(args, "count", 1))), "image"
+
+
+def _print_edit_estimate(args: argparse.Namespace) -> int:
+    config = _load_config(args)
+    capability = CAPABILITIES["edit"]
+    metadata = _provider_metadata(config)
+    chain = _chain(args, capability, metadata)
+    if not chain:
+        print(f"error: no provider serves {capability}", file=sys.stderr)
+        return 1
+    units, unit_kind = _edit_units(args)
+    stage = StageConfig(
+        stage=capability,
+        options={"units": units, "unit": unit_kind},
+    )
+    recipe = FormatRecipeConfig(stages=[stage], capabilities=[capability])
+    estimate = Estimator(
+        metadata,
+        chain=chain,
+        strategy=_strategy(args),
+    ).estimate("edit", recipe)
+    print(render_estimate(estimate), end="")
+    return 0 if estimate.complete else 1
+
+
+async def _edit(
+    runtime: _Runtime,
+    args: argparse.Namespace,
+    operation: ImageEditOperation,
+    image: Path,
+) -> Any:
+    prompt = _prompt_or_empty(args)
+    service = ImageEditService(
+        runtime.router,
+        **_common_service_values(runtime, args, "edit"),
+    )
+    request = _edit_request(args, operation, image, prompt)
+    token = service.screen(prompt) if prompt else None
+    return await service.edit(request, token=token)
+
+
+def _run_edit(args: argparse.Namespace) -> int:
+    try:
+        if getattr(args, "estimate", False):
+            return _print_edit_estimate(args)
+        operation, image_value = _edit_operation(args)
+        _validate_edit_arguments(args, operation)
+        image = _edit_image_path(image_value)
+        runtime = _runtime(args, "edit", edit_operation=operation)
+        try:
+            outcome = asyncio.run(_edit(runtime, args, operation, image))
+        finally:
+            runtime.engine.dispose()
+        return _print_outcome(outcome, args, "edit")
+    except (AiviaError, ConfigError, OSError, SQLAlchemyError, ValidationError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 def _load_config(args: argparse.Namespace) -> Any:
@@ -555,7 +867,12 @@ class _Runtime:
     safety: Any
 
 
-def _runtime(args: argparse.Namespace, kind: str) -> _Runtime:
+def _runtime(
+    args: argparse.Namespace,
+    kind: str,
+    *,
+    edit_operation: ImageEditOperation | None = None,
+) -> _Runtime:
     config = _load_config(args)
     capability = CAPABILITIES[kind]
     section = _providers_config(config)
@@ -565,6 +882,14 @@ def _runtime(args: argparse.Namespace, kind: str) -> _Runtime:
             "no providers are configured; add a providers section or use --dry-run"
         )
     chain = _chain(args, capability, providers)
+    if edit_operation is not None:
+        chain = [
+            name
+            for name in chain
+            if _provider_supports_edit(providers[name], edit_operation)
+        ]
+        if not chain:
+            raise ConfigError(f"no configured provider supports {edit_operation.value}")
     if not chain:
         raise ConfigError(f"no configured provider serves {capability}")
     router = Router(

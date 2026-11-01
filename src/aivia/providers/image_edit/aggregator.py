@@ -188,6 +188,19 @@ class AggregatorImageEditProvider(FalImageProvider):
         """The configured model id for each supported operation."""
         return {operation.value: model for operation, model in self._models.items()}
 
+    @property
+    def supported_operations(self) -> tuple[ImageEditOperation, ...]:
+        """The edit operations this adapter implements."""
+        return SUPPORTED_OPERATIONS
+
+    def supports_operation(self, operation: ImageEditOperation | str) -> bool:
+        """Return whether *operation* is handled by this adapter."""
+        try:
+            selected = ImageEditOperation(operation)
+        except ValueError:
+            return False
+        return selected in SUPPORTED_OPERATIONS
+
     def model_for(self, operation: ImageEditOperation | str) -> str | None:
         """Return the configured model for *operation*, if any."""
         selected = _operation(operation)
