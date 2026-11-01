@@ -495,20 +495,17 @@ class MediaJobRunner:
         if claimed is None:
             return
         lost_claim = asyncio.Event()
+        call = asyncio.create_task(self._call_toolkit(claimed))
         heartbeat = asyncio.create_task(
-            self._heartbeat_loop(queue, claimed.id, lost_claim)
+            self._heartbeat_loop(queue, claimed.id, lost_claim, handler=call)
         )
         result: MediaResult | None = None
         error: Exception | None = None
         try:
-            kind = _job_kind(claimed)
-            payload = claimed.payload if isinstance(claimed.payload, Mapping) else {}
-            request = payload.get("request")
-            values = request if isinstance(request, Mapping) else {}
-            options = payload.get("options")
-            call_options = options if isinstance(options, Mapping) else {}
-            prepared = _prepare_request(kind, values)
-            result = await self._toolkit().generate(kind, prepared, **call_options)
+            result = await call
+        except asyncio.CancelledError:
+            if not lost_claim.is_set():
+                raise
         except Exception as exc:
             error = exc
         finally:
@@ -533,11 +530,23 @@ class MediaJobRunner:
             with suppress(JobNotFoundError, JobNotClaimedError):
                 queue.complete(claimed.id, self._worker_id, now=self._clock())
 
+    async def _call_toolkit(self, claimed: Job) -> MediaResult:
+        kind = _job_kind(claimed)
+        payload = claimed.payload if isinstance(claimed.payload, Mapping) else {}
+        request = payload.get("request")
+        values = request if isinstance(request, Mapping) else {}
+        options = payload.get("options")
+        call_options = options if isinstance(options, Mapping) else {}
+        prepared = _prepare_request(kind, values)
+        return await self._toolkit().generate(kind, prepared, **call_options)
+
     async def _heartbeat_loop(
         self,
         queue: JobQueue,
         job_id: str,
         lost_claim: asyncio.Event,
+        *,
+        handler: asyncio.Task[MediaResult] | None = None,
     ) -> None:
         while True:
             await self._sleep(self._heartbeat_seconds)
@@ -545,10 +554,12 @@ class MediaJobRunner:
                 queue.heartbeat(job_id, self._worker_id, now=self._clock())
             except (JobNotFoundError, JobNotClaimedError):
                 self._logger.warning(
-                    "lost claim on media job %s; another process recovered it",
+                    "lost claim on media job %s; cancelling the in-flight call",
                     job_id,
                 )
                 lost_claim.set()
+                if handler is not None and not handler.done():
+                    handler.cancel()
                 return
             except Exception:
                 self._logger.exception("heartbeat failed for media job %s", job_id)
