@@ -7,7 +7,8 @@ memory. This module centralises the checks every downloaded asset needs:
 
 * format sniffing from magic bytes, never from the filename or Content-Type;
 * image dimensions read from the container header before any decode;
-* byte and pixel caps, including a decompression-bomb guard;
+* byte, pixel, frame and total decoded pixel caps, including a
+  decompression-bomb guard;
 * ffprobe inspection of video and audio files for streams, dimensions and
   duration;
 * an optional destination write that happens only after validation succeeds.
@@ -37,6 +38,12 @@ from aivia.core.config.http import HttpClientConfig
 from aivia.core.config.media import (
     DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS as DEFAULT_FFPROBE_TIMEOUT_SECONDS,
 )
+from aivia.core.config.media import (
+    DEFAULT_MEDIA_MAX_ANIMATED_FRAMES as DEFAULT_MAX_FRAMES,
+)
+from aivia.core.config.media import (
+    DEFAULT_MEDIA_MAX_ANIMATED_PIXELS as DEFAULT_MAX_TOTAL_PIXELS,
+)
 from aivia.core.config.media import DEFAULT_MEDIA_MAX_BYTES as DEFAULT_MAX_BYTES
 from aivia.core.config.media import DEFAULT_MEDIA_MAX_PIXELS as DEFAULT_MAX_PIXELS
 from aivia.core.errors import ValidationError
@@ -46,7 +53,9 @@ from aivia.providers.protocols.base import validate_http_url
 __all__ = [
     "DEFAULT_FFPROBE_TIMEOUT_SECONDS",
     "DEFAULT_MAX_BYTES",
+    "DEFAULT_MAX_FRAMES",
     "DEFAULT_MAX_PIXELS",
+    "DEFAULT_MAX_TOTAL_PIXELS",
     "FFprobeInfo",
     "FFprobeStream",
     "MediaCategory",
@@ -56,6 +65,7 @@ __all__ = [
     "MediaProbe",
     "MediaSignature",
     "image_dimensions",
+    "image_frame_count",
     "run_ffprobe",
     "sniff_media",
     "validate_media",
@@ -206,8 +216,10 @@ class MediaLimits:
     """Caps and dimension bounds applied to one downloaded asset.
 
     ``max_pixels`` is the decompression-bomb guard: it is checked from the
-    image header before any decoder sees the pixels. The optional dimension and
-    duration bounds let a caller enforce what was requested, and
+    image header before any decoder sees the pixels. Animated images are also
+    rejected when they declare more than ``max_frames`` frames or would decode
+    more than ``max_total_pixels`` pixels across every frame. The optional
+    dimension and duration bounds let a caller enforce what was requested, and
     ``allowed_formats`` rejects a result whose real container is not acceptable.
     """
 
@@ -220,9 +232,11 @@ class MediaLimits:
     min_duration_seconds: float | None = None
     max_duration_seconds: float | None = None
     allowed_formats: frozenset[MediaFormat] | None = None
+    max_frames: int = DEFAULT_MAX_FRAMES
+    max_total_pixels: int = DEFAULT_MAX_TOTAL_PIXELS
 
     def __post_init__(self) -> None:
-        for label in ("max_bytes", "max_pixels"):
+        for label in ("max_bytes", "max_pixels", "max_frames", "max_total_pixels"):
             value = getattr(self, label)
             if isinstance(value, bool) or not isinstance(value, int):
                 raise TypeError(f"{label} must be an integer")
@@ -280,6 +294,7 @@ class MediaProbe:
     sha256: str
     width: int | None = None
     height: int | None = None
+    frames: int | None = None
     duration_seconds: float | None = None
     ffprobe: FFprobeInfo | None = None
     path: Path | None = None
@@ -311,6 +326,13 @@ class MediaProbe:
         if self.width is None or self.height is None:
             return None
         return self.width * self.height
+
+    @property
+    def total_pixels(self) -> int | None:
+        """The declared pixel count across every frame, when known."""
+        if self.width is None or self.height is None or self.frames is None:
+            return None
+        return self.width * self.height * self.frames
 
 
 def _signature(format: MediaFormat) -> MediaSignature:
@@ -556,6 +578,127 @@ def image_dimensions(data: bytes | bytearray | memoryview) -> tuple[int, int] | 
     return parser(payload)
 
 
+def _skip_gif_sub_blocks(data: bytes, offset: int) -> int:
+    length = len(data)
+    while offset < length:
+        size = data[offset]
+        offset += 1
+        if size == 0:
+            return offset
+        offset += size
+    return offset
+
+
+def _gif_frame_count(data: bytes) -> int:
+    if len(data) < 13:
+        return 1
+    packed = data[10]
+    offset = 13
+    if packed & 0x80:
+        offset += 3 * (1 << ((packed & 0x07) + 1))
+    frames = 0
+    length = len(data)
+    while offset < length:
+        block = data[offset]
+        if block == 0x3B:
+            break
+        if block == 0x2C:
+            frames += 1
+            if offset + 10 > length:
+                break
+            frame_packed = data[offset + 9]
+            offset += 10
+            if frame_packed & 0x80:
+                offset += 3 * (1 << ((frame_packed & 0x07) + 1))
+            if offset >= length:
+                break
+            offset += 1
+            offset = _skip_gif_sub_blocks(data, offset)
+        elif block == 0x21:
+            offset = _skip_gif_sub_blocks(data, offset + 2)
+        else:
+            break
+    return max(frames, 1)
+
+
+def _png_frame_count(data: bytes) -> int:
+    offset = 8
+    length = len(data)
+    while offset + 8 <= length:
+        size = int.from_bytes(data[offset : offset + 4], "big")
+        chunk = data[offset + 4 : offset + 8]
+        start = offset + 8
+        if chunk == b"acTL":
+            if start + 4 <= length:
+                frames = int.from_bytes(data[start : start + 4], "big")
+                return max(frames, 1)
+            return 1
+        if chunk in {b"IDAT", b"IEND"}:
+            return 1
+        offset = start + size + 4
+    return 1
+
+
+def _webp_frame_count(data: bytes) -> int:
+    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+        return 1
+    offset = 12
+    length = len(data)
+    animated = False
+    frames = 0
+    while offset + 8 <= length:
+        chunk = data[offset : offset + 4]
+        size = int.from_bytes(data[offset + 4 : offset + 8], "little")
+        start = offset + 8
+        if chunk == b"VP8X" and start < length:
+            animated = bool(data[start] & 0x02)
+        elif chunk == b"ANMF":
+            frames += 1
+        if size < 0 or start + size > length:
+            break
+        offset = start + size + (size & 1)
+    if not animated:
+        return 1
+    return max(frames, 1)
+
+
+def _avif_frame_count(data: bytes) -> int:
+    if b"avis" not in data[:64]:
+        return 1
+    marker = data.find(b"stsz")
+    if marker < 0 or marker + 16 > len(data):
+        return 1
+    frames = int.from_bytes(data[marker + 12 : marker + 16], "big")
+    return max(frames, 1)
+
+
+def image_frame_count(
+    data: bytes | bytearray | memoryview,
+) -> int:
+    """Read the declared frame count from an image header without decoding.
+
+    GIF, APNG, animated WebP and animated AVIF are understood. A static image
+    or a format that does not declare frames counts as one, so callers can
+    apply a total decoded pixel cap without a separate static path.
+    """
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise TypeError("media data must be bytes-like")
+    payload = bytes(data)
+    signature = sniff_media(payload)
+    if signature is None or signature.category is not MediaCategory.IMAGE:
+        return 1
+    counters: dict[MediaFormat, Callable[[bytes], int]] = {
+        MediaFormat.GIF: _gif_frame_count,
+        MediaFormat.PNG: _png_frame_count,
+        MediaFormat.WEBP: _webp_frame_count,
+        MediaFormat.AVIF: _avif_frame_count,
+    }
+    counter = counters.get(signature.format)
+    if counter is None:
+        return 1
+    return counter(payload)
+
+
 def _as_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
@@ -769,6 +912,35 @@ def _check_dimensions(
         )
 
 
+def _check_frame_cap(frames: int, max_frames: int) -> None:
+    if frames > max_frames:
+        raise ValidationError(
+            f"image has {frames} frames, above the {max_frames} frame cap",
+            details={"frames": frames, "limit": max_frames},
+        )
+
+
+def _check_total_pixel_cap(
+    width: int,
+    height: int,
+    frames: int,
+    max_total_pixels: int,
+) -> None:
+    pixels = width * height * frames
+    if pixels > max_total_pixels:
+        raise ValidationError(
+            f"image decodes {pixels} pixels across {frames} frames, above the "
+            f"{max_total_pixels} total decoded pixel cap",
+            details={
+                "width": width,
+                "height": height,
+                "frames": frames,
+                "pixels": pixels,
+                "limit": max_total_pixels,
+            },
+        )
+
+
 def _check_duration(duration: float | None, limits: MediaLimits) -> None:
     if duration is None:
         if (
@@ -868,6 +1040,7 @@ def validate_media(
     digest = hashlib.sha256(payload).hexdigest()
     width: int | None = None
     height: int | None = None
+    frames: int | None = None
     duration: float | None = None
     info: FFprobeInfo | None = None
     resolved_path = Path(path) if path is not None else None
@@ -888,6 +1061,9 @@ def validate_media(
             expected_height=expected_height,
             source="header",
         )
+        frames = image_frame_count(payload)
+        _check_frame_cap(frames, active.max_frames)
+        _check_total_pixel_cap(width, height, frames, active.max_total_pixels)
     else:
         temporary: Path | None = None
         target = resolved_path
@@ -944,6 +1120,7 @@ def validate_media(
         sha256=digest,
         width=width,
         height=height,
+        frames=frames,
         duration_seconds=duration,
         ffprobe=info,
         path=resolved_path,
@@ -1052,6 +1229,7 @@ class MediaDownloader:
                 sha256=probe.sha256,
                 width=probe.width,
                 height=probe.height,
+                frames=probe.frames,
                 duration_seconds=probe.duration_seconds,
                 ffprobe=probe.ffprobe,
                 path=path,

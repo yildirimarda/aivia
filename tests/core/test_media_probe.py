@@ -8,21 +8,26 @@ import json
 import struct
 import subprocess
 from collections.abc import Sequence
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+from PIL import Image
 
 from aivia.core.errors import ValidationError
 from aivia.core.http import HttpClient
 from aivia.core.media_probe import (
+    DEFAULT_MAX_FRAMES,
+    DEFAULT_MAX_TOTAL_PIXELS,
     FFprobeInfo,
     MediaCategory,
     MediaDownloader,
     MediaFormat,
     MediaLimits,
     image_dimensions,
+    image_frame_count,
     run_ffprobe,
     sniff_media,
     validate_media,
@@ -52,6 +57,36 @@ def jpeg(width: int, height: int) -> bytes:
 
 def gif(width: int, height: int) -> bytes:
     return b"GIF89a" + struct.pack("<HH", width, height) + b"\x00\x00\x00"
+
+
+def animated_image(
+    image_format: str,
+    frames: int,
+    size: tuple[int, int] = (10, 10),
+) -> bytes:
+    images = [
+        Image.new("RGB", size, (index * 10 % 256, index * 3 % 256, 0))
+        for index in range(frames)
+    ]
+    buffer = BytesIO()
+    images[0].save(
+        buffer,
+        format=image_format,
+        save_all=True,
+        append_images=images[1:],
+        duration=20,
+        loop=0,
+    )
+    return buffer.getvalue()
+
+
+def gif_with_frames(frames: int, size: tuple[int, int] = (10, 10)) -> bytes:
+    width, height = size
+    payload = b"GIF89a" + struct.pack("<HH", width, height) + b"\x00\x00\x00"
+    descriptor = b"\x2c" + struct.pack("<HHHH", 0, 0, width, height) + b"\x00"
+    for _ in range(frames):
+        payload += descriptor + b"\x02\x02\x00\x00\x00"
+    return payload + b"\x3b"
 
 
 def webp(width: int, height: int) -> bytes:
@@ -214,6 +249,96 @@ def test_image_dimensions_are_read_without_decoding() -> None:
     assert image_dimensions(avif(646, 486)) == (646, 486)
     assert image_dimensions(mp4()) is None
     assert image_dimensions(b"not an image") is None
+
+
+def test_image_frame_count_is_read_from_the_header_without_decoding() -> None:
+    assert image_frame_count(png(10, 10)) == 1
+    assert image_frame_count(jpeg(10, 10)) == 1
+    assert image_frame_count(bmp(10, 10)) == 1
+    assert image_frame_count(tiff(10, 10)) == 1
+    assert image_frame_count(avif(10, 10)) == 1
+    assert image_frame_count(animated_image("GIF", 4)) == 4
+    assert image_frame_count(animated_image("WEBP", 4)) == 4
+    assert image_frame_count(animated_image("PNG", 4)) == 4
+
+
+def test_validate_rejects_an_animation_above_the_frame_cap() -> None:
+    payload = animated_image("GIF", 4, (10, 10))
+
+    with pytest.raises(ValidationError, match="frame cap") as caught:
+        validate_media(payload, limits=MediaLimits(max_frames=3))
+
+    assert caught.value.details == {"frames": 4, "limit": 3}
+    probe = validate_media(payload, limits=MediaLimits(max_frames=4))
+    assert probe.frames == 4
+    assert probe.total_pixels == 400
+
+
+@pytest.mark.parametrize("image_format", ["GIF", "WEBP", "PNG"])
+def test_validate_applies_the_frame_cap_to_every_animated_format(
+    image_format: str,
+) -> None:
+    payload = animated_image(image_format, 4, (10, 10))
+
+    with pytest.raises(ValidationError, match="frame cap") as caught:
+        validate_media(payload, limits=MediaLimits(max_frames=3))
+
+    assert caught.value.details == {"frames": 4, "limit": 3}
+
+
+def test_validate_rejects_an_animation_above_the_default_frame_cap() -> None:
+    payload = gif_with_frames(DEFAULT_MAX_FRAMES + 1, (2, 2))
+
+    with pytest.raises(ValidationError, match="frame cap") as caught:
+        validate_media(payload)
+
+    assert caught.value.details["frames"] == DEFAULT_MAX_FRAMES + 1
+    assert caught.value.details["limit"] == DEFAULT_MAX_FRAMES
+
+
+def test_validate_counts_total_decoded_pixels_across_every_frame() -> None:
+    payload = animated_image("GIF", 5, (20, 10))
+
+    with pytest.raises(ValidationError, match="total decoded pixel cap") as caught:
+        validate_media(
+            payload,
+            limits=MediaLimits(max_frames=10, max_total_pixels=999),
+        )
+
+    assert caught.value.details == {
+        "width": 20,
+        "height": 10,
+        "frames": 5,
+        "pixels": 1_000,
+        "limit": 999,
+    }
+    probe = validate_media(
+        payload,
+        limits=MediaLimits(max_frames=10, max_total_pixels=1_000),
+    )
+    assert probe.frames == 5
+    assert probe.total_pixels == 1_000
+
+
+def test_validate_allows_a_static_image_at_the_total_pixel_cap() -> None:
+    probe = validate_media(
+        png(100, 50),
+        limits=MediaLimits(max_total_pixels=5_000),
+    )
+
+    assert probe.frames == 1
+    assert probe.total_pixels == 5_000
+
+
+def test_validate_uses_the_default_total_decoded_pixel_cap() -> None:
+    payload = gif_with_frames(4, (8_000, 8_000))
+
+    with pytest.raises(ValidationError, match="total decoded pixel cap") as caught:
+        validate_media(payload)
+
+    assert caught.value.details["frames"] == 4
+    assert caught.value.details["limit"] == DEFAULT_MAX_TOTAL_PIXELS
+    assert caught.value.details["pixels"] == 256_000_000
 
 
 def test_validate_image_returns_dimensions_digest_and_size() -> None:
@@ -387,6 +512,12 @@ def test_ffprobe_reports_parsed_streams_and_format(tmp_path: Path) -> None:
 def test_media_limits_validate_their_bounds() -> None:
     with pytest.raises(ValueError, match="max_bytes"):
         MediaLimits(max_bytes=0)
+    with pytest.raises(ValueError, match="max_pixels"):
+        MediaLimits(max_pixels=0)
+    with pytest.raises(ValueError, match="max_frames"):
+        MediaLimits(max_frames=0)
+    with pytest.raises(ValueError, match="max_total_pixels"):
+        MediaLimits(max_total_pixels=0)
     with pytest.raises(ValueError, match="min_width"):
         MediaLimits(min_width=20, max_width=10)
     with pytest.raises(ValueError, match="duration"):
