@@ -21,6 +21,8 @@ __all__ = [
     "DEFAULT_MEDIA_ANIMATED_FRAME_RATE",
     "DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS",
     "DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS",
+    "DEFAULT_MEDIA_MAX_ANIMATED_FRAMES",
+    "DEFAULT_MEDIA_MAX_ANIMATED_PIXELS",
     "DEFAULT_MEDIA_MAX_BYTES",
     "DEFAULT_MEDIA_MAX_PIXELS",
     "DEFAULT_MEDIA_MIN_ANIMATED_FRAME_RATE",
@@ -87,6 +89,12 @@ DEFAULT_MEDIA_MAX_BYTES = 100 * 1024 * 1024
 
 DEFAULT_MEDIA_MAX_PIXELS = 100_000_000
 """Default decompression-bomb guard: pixels an image may declare."""
+
+DEFAULT_MEDIA_MAX_ANIMATED_FRAMES = 500
+"""Default cap on the number of frames an animated image may contain."""
+
+DEFAULT_MEDIA_MAX_ANIMATED_PIXELS = 250_000_000
+"""Default cap on decoded pixels summed across every animation frame."""
 
 DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS = 10.0
 """Seconds ffprobe may run before it is treated as a validation failure."""

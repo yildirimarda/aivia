@@ -11,6 +11,7 @@ from PIL import Image, PngImagePlugin
 
 from aivia.core.errors import ValidationError
 from aivia.media.image_utils import (
+    DEFAULT_MAX_IMAGE_FRAMES,
     DEFAULT_MAX_IMAGE_PIXELS,
     ImageFit,
     ImageFormat,
@@ -34,6 +35,23 @@ def declared_png(width: int, height: int) -> bytes:
 def encoded_png(size: tuple[int, int] = (100, 50)) -> bytes:
     buffer = BytesIO()
     Image.new("RGB", size, (1, 2, 3)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def animated_gif(frames: int, size: tuple[int, int] = (20, 10)) -> bytes:
+    images = [
+        Image.new("RGB", size, (index * 10 % 256, index * 3 % 256, 0))
+        for index in range(frames)
+    ]
+    buffer = BytesIO()
+    images[0].save(
+        buffer,
+        format="GIF",
+        save_all=True,
+        append_images=images[1:],
+        duration=20,
+        loop=0,
+    )
     return buffer.getvalue()
 
 
@@ -336,6 +354,73 @@ def test_open_image_honors_a_lower_pixel_limit() -> None:
 
     opened = open_image(payload, max_pixels=5_000)
     assert opened.size == (100, 50)
+
+
+def test_open_image_rejects_an_animation_above_the_frame_cap() -> None:
+    payload = animated_gif(4, (10, 10))
+
+    with pytest.raises(ValidationError, match="frame cap") as caught:
+        open_image(payload, max_frames=3)
+
+    assert caught.value.details == {"frames": 4, "limit": 3}
+    assert open_image(payload, max_frames=4).size == (10, 10)
+
+
+def test_open_image_rejects_an_animation_above_the_default_frame_cap() -> None:
+    payload = animated_gif(DEFAULT_MAX_IMAGE_FRAMES + 1, (2, 2))
+
+    with pytest.raises(ValidationError, match="frame cap") as caught:
+        open_image(payload)
+
+    assert caught.value.details["frames"] == DEFAULT_MAX_IMAGE_FRAMES + 1
+    assert caught.value.details["limit"] == DEFAULT_MAX_IMAGE_FRAMES
+
+
+def test_open_image_rejects_an_animation_above_the_frame_cap_from_a_file(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "animation.gif"
+    source_path.write_bytes(animated_gif(3, (10, 10)))
+
+    with pytest.raises(ValidationError, match="frame cap") as caught:
+        open_image(source_path, max_frames=2)
+
+    assert caught.value.details == {"frames": 3, "limit": 2}
+
+
+def test_open_image_counts_total_decoded_pixels_across_every_frame() -> None:
+    payload = animated_gif(5, (20, 10))
+
+    with pytest.raises(ValidationError, match="total decoded pixel cap") as caught:
+        open_image(payload, max_frames=10, max_total_pixels=999)
+
+    assert caught.value.details == {
+        "width": 20,
+        "height": 10,
+        "frames": 5,
+        "pixels": 1_000,
+        "limit": 999,
+    }
+    assert open_image(payload, max_frames=10, max_total_pixels=1_000).size == (
+        20,
+        10,
+    )
+
+
+def test_open_image_allows_a_static_image_at_the_total_pixel_cap() -> None:
+    payload = encoded_png((100, 50))
+
+    assert open_image(payload, max_total_pixels=5_000).size == (100, 50)
+
+
+def test_open_image_rejects_a_non_positive_frame_limit() -> None:
+    with pytest.raises(ValidationError, match="must be a positive integer"):
+        open_image(encoded_png(), max_frames=0)
+
+
+def test_open_image_rejects_a_non_positive_total_pixel_limit() -> None:
+    with pytest.raises(ValidationError, match="must be a positive integer"):
+        open_image(encoded_png(), max_total_pixels=0)
 
 
 def test_open_image_rejects_oversized_bytes_before_decoding() -> None:
