@@ -43,6 +43,7 @@ from aivia.core.config.media import (
 from .errors import FontError, RenderError
 from .fonts import FontManager
 from .keyframes import AnimatedProperty, keyframes_for_layer
+from .overlays import apply_overlay_effects
 from .placement import LayerPlacement, find_text_placement
 from .schema import (
     Anchor,
@@ -1123,7 +1124,7 @@ class PillowStillRenderer:
     optionally relative to ``source_root``. Image, shape, text, sticker and
     logo layers are drawn; other kinds are skipped until their own renderer
     support lands, so adding a layer kind cannot break an existing still
-    render.
+    render. Active procedural overlay effects are composited after the layers.
     """
 
     version = PILLOW_STILL_RENDERER_VERSION
@@ -1765,7 +1766,7 @@ class PillowStillRenderer:
                 self._draw_shape_layer(canvas, layer, time)
             elif layer.type is LayerType.TEXT:
                 self._draw_text_layer(canvas, layer, time)
-        return canvas
+        return apply_overlay_effects(canvas, composition, time)
 
     def render(
         self,

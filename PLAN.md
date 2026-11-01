@@ -440,6 +440,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Apply motion presets and scale keyframes to sticker and logo overlay layers with sampled frame checks (slow, tests/compose/test_motion.py)
 - [ ] Support independent x and y scale keyframes in video motion instead of collapsing them to one zoom (tests/compose/test_motion.py)
 - [ ] Honor text entrance and exit presets in the still renderer so still previews match video output (tests/compose/test_text_video.py)
+- [ ] Validate procedural overlay effect parameters during composition validation so bad effects fail before rendering (tests/compose/test_validation.py)
+- [ ] Apply procedural overlay effects to video renders so confetti, sparkles, snow and bokeh animate in the output (slow, tests/compose/test_video_overlays.py)
 
 ## Milestone 10: Research engine
 
