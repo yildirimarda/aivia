@@ -7,6 +7,9 @@ model id from configuration (or a request override), submits a prediction to
 ``/v1/predictions`` and drives the prediction lifecycle through
 :class:`~aivia.providers.media.async_job.AsyncMediaJobHelper`.
 
+A first frame is forwarded through the configured prediction input, which
+defaults to ``image`` because Replicate models name that input differently.
+
 The adapter owns no routing, retry or budget policy. It uses the shared HTTP
 client for transport and maps unsuccessful responses to the shared error
 taxonomy. A safety filter is reported as
@@ -17,6 +20,7 @@ provider.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
@@ -42,8 +46,9 @@ from aivia.providers.media import (
     AsyncJobStatus,
     AsyncMediaJobHelper,
 )
-from aivia.providers.protocols.media import VideoFormat
+from aivia.providers.protocols.media import MediaInput, VideoFormat
 from aivia.providers.protocols.video import (
+    CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
     CAPABILITY_VIDEO_INPUT,
     VideoRequest,
@@ -89,8 +94,11 @@ REPLICATE_VIDEO_BASE_URL = DEFAULT_BASE_URL
 
 _DEFAULT_METADATA = ProviderMeta(
     name="replicate",
-    capabilities=[CAPABILITY_VIDEO_GEN],
+    capabilities=[CAPABILITY_VIDEO_GEN, CAPABILITY_VIDEO_FIRST_FRAME],
 )
+
+DEFAULT_FIRST_FRAME_FIELD = "image"
+"""The default prediction input that receives a first frame image."""
 
 _CONTENT_POLICY_MARKERS = (
     "content policy",
@@ -340,11 +348,36 @@ def _raise_job_failure(body: Mapping[str, Any], provider: str) -> None:
     raise InvalidRequestError(text, details=details)
 
 
-def _build_input(request: VideoRequest) -> dict[str, Any]:
+def _media_url(media: MediaInput) -> str:
+    if media.url is not None:
+        return media.url
+    if media.data is None:
+        raise InvalidRequestError("replicate video frame needs inline data or a URL")
+    media_type = media.media_type or "image/png"
+    encoded = base64.b64encode(media.data).decode("ascii")
+    return f"data:{media_type};base64,{encoded}"
+
+
+def _frame_url(media: MediaInput, field: str) -> str:
+    if media.media_type is not None and not media.media_type.startswith("image/"):
+        raise InvalidRequestError(
+            f"replicate video {field} must be an image",
+            details={"field": field, "media_type": media.media_type},
+        )
+    return _media_url(media)
+
+
+def _build_input(
+    request: VideoRequest,
+    *,
+    first_frame_field: str = DEFAULT_FIRST_FRAME_FIELD,
+) -> dict[str, Any]:
     data: dict[str, Any] = {
         "prompt": request.prompt,
         "num_outputs": request.count,
     }
+    if request.first_frame is not None:
+        data[first_frame_field] = _frame_url(request.first_frame, "first_frame")
     if request.negative_prompt is not None:
         data["negative_prompt"] = request.negative_prompt
     if request.width is not None and request.height is not None:
@@ -624,6 +657,10 @@ class ReplicateVideoProvider(Provider):
         model: str | None = None,
         version: str | None = None,
         model_version: str | None = None,
+        first_frame_field: str | None = None,
+        image_field: str | None = None,
+        image_input_field: str | None = None,
+        frame_field: str | None = None,
         download_results: bool = False,
         max_download_bytes: int | None = None,
         timeout_seconds: float = 600.0,
@@ -654,6 +691,22 @@ class ReplicateVideoProvider(Provider):
         selected_version = version if version is not None else model_version
         if selected_version is not None and not isinstance(selected_version, str):
             raise TypeError("version must be a string or None")
+        selected_field = (
+            first_frame_field
+            or image_field
+            or image_input_field
+            or frame_field
+            or DEFAULT_FIRST_FRAME_FIELD
+        )
+        if not isinstance(selected_field, str):
+            raise TypeError("first_frame_field must be a string")
+        selected_field = selected_field.strip()
+        if not selected_field:
+            raise ConfigError(
+                "replicate first_frame_field must be non-empty",
+                details={"field": "first_frame_field"},
+            )
+        self._first_frame_field = selected_field
         self._default_model_name: str | None = None
         self._default_version: str = ""
         self._default_model: str | None = None
@@ -722,6 +775,11 @@ class ReplicateVideoProvider(Provider):
     def endpoint(self) -> str:
         """The prediction submission endpoint."""
         return f"{self._base_url}/predictions"
+
+    @property
+    def first_frame_field(self) -> str:
+        """The prediction input that receives a first frame image."""
+        return self._first_frame_field
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -797,11 +855,21 @@ class ReplicateVideoProvider(Provider):
 
         model_name, model_version = self._model_and_version(request.model)
         model = f"{model_name}:{model_version}"
-        if request.first_frame is not None or request.last_frame is not None:
-            field = "first_frame" if request.first_frame is not None else "last_frame"
+        if request.first_frame is not None and not self.supports(
+            CAPABILITY_VIDEO_FIRST_FRAME
+        ):
             raise InvalidRequestError(
-                "replicate video provider does not support reference frames",
-                details={"provider": self.name, "field": field},
+                "replicate video provider does not declare first frame support",
+                details={
+                    "provider": self.name,
+                    "field": "first_frame",
+                    "required_capability": CAPABILITY_VIDEO_FIRST_FRAME,
+                },
+            )
+        if request.last_frame is not None:
+            raise InvalidRequestError(
+                "replicate video provider does not support a last frame",
+                details={"provider": self.name, "field": "last_frame"},
             )
         if request.source_video is not None and not self.supports(
             CAPABILITY_VIDEO_INPUT
@@ -814,7 +882,10 @@ class ReplicateVideoProvider(Provider):
                     "required_capability": CAPABILITY_VIDEO_INPUT,
                 },
             )
-        payload = _build_input(request)
+        first_frame_field = (
+            _text(request.metadata.get("first_frame_field")) or self._first_frame_field
+        )
+        payload = _build_input(request, first_frame_field=first_frame_field)
         idempotency_key = _text(request.metadata.get("idempotency_key"))
         return await self._helper.submit(
             {"model": model, "payload": payload},

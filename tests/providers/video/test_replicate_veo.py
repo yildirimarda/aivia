@@ -19,7 +19,11 @@ from aivia.core.secrets import SecretsLoader
 from aivia.providers import ReplicateVideo as TopLevelReplicateVideo
 from aivia.providers import VeoVideo as TopLevelVeoVideo
 from aivia.providers import build_provider, provider_registry
-from aivia.providers.protocols import CAPABILITY_VIDEO_GEN, VideoRequest
+from aivia.providers.protocols import (
+    CAPABILITY_VIDEO_FIRST_FRAME,
+    CAPABILITY_VIDEO_GEN,
+    VideoRequest,
+)
 from aivia.providers.protocols.media import VideoFormat
 from aivia.providers.video import (
     REPLICATE_DEFAULT_BASE_URL,
@@ -192,8 +196,12 @@ def test_replicate_video_metadata_and_registration() -> None:
     provider = _replicate_provider(lambda request: httpx.Response(200, json={}))
 
     assert provider.name == "replicate"
-    assert provider.capabilities == (CAPABILITY_VIDEO_GEN,)
+    assert provider.capabilities == (
+        CAPABILITY_VIDEO_GEN,
+        CAPABILITY_VIDEO_FIRST_FRAME,
+    )
     assert provider.supports(CAPABILITY_VIDEO_GEN)
+    assert provider.supports(CAPABILITY_VIDEO_FIRST_FRAME)
     assert provider.base_url == REPLICATE_DEFAULT_BASE_URL
     assert provider.api_url == REPLICATE_DEFAULT_BASE_URL
     assert provider.default_model == REPLICATE_MODEL
@@ -345,7 +353,7 @@ def test_replicate_video_maps_an_error_response_to_content_policy() -> None:
     assert caught.value.details["status"] == 422
 
 
-def test_replicate_video_rejects_reference_frames() -> None:
+def test_replicate_video_rejects_a_last_frame() -> None:
     requests, handler = _routes(_replicate_routes())
     provider = _replicate_provider(handler)
     from aivia.providers.protocols.media import MediaInput
@@ -355,12 +363,12 @@ def test_replicate_video_rejects_reference_frames() -> None:
             provider.generate(
                 VideoRequest(
                     prompt="animate this",
-                    first_frame=MediaInput(url="https://example.com/frame.png"),
+                    last_frame=MediaInput(url="https://example.com/frame.png"),
                 )
             )
         )
 
-    assert caught.value.details["field"] == "first_frame"
+    assert caught.value.details["field"] == "last_frame"
     assert requests == []
 
 
@@ -391,8 +399,12 @@ def test_veo_metadata_and_registration() -> None:
     provider = _veo_provider(lambda request: httpx.Response(200, json={}))
 
     assert provider.name == "veo"
-    assert provider.capabilities == (CAPABILITY_VIDEO_GEN,)
+    assert provider.capabilities == (
+        CAPABILITY_VIDEO_GEN,
+        CAPABILITY_VIDEO_FIRST_FRAME,
+    )
     assert provider.supports(CAPABILITY_VIDEO_GEN)
+    assert provider.supports(CAPABILITY_VIDEO_FIRST_FRAME)
     assert provider.base_url == DEFAULT_BASE_URL
     assert provider.api_url == DEFAULT_BASE_URL
     assert provider.api_version == DEFAULT_API_VERSION
@@ -630,7 +642,7 @@ def test_veo_requires_a_model_id() -> None:
         asyncio.run(provider.generate(VideoRequest(prompt="a wave")))
 
 
-def test_veo_rejects_reference_frames() -> None:
+def test_veo_rejects_a_last_frame() -> None:
     requests, handler = _routes(_veo_routes())
     provider = _veo_provider(handler)
     from aivia.providers.protocols.media import MediaInput
@@ -640,12 +652,12 @@ def test_veo_rejects_reference_frames() -> None:
             provider.generate(
                 VideoRequest(
                     prompt="animate this",
-                    first_frame=MediaInput(url="https://example.com/frame.png"),
+                    last_frame=MediaInput(url="https://example.com/frame.png"),
                 )
             )
         )
 
-    assert caught.value.details["field"] == "first_frame"
+    assert caught.value.details["field"] == "last_frame"
     assert requests == []
 
 
