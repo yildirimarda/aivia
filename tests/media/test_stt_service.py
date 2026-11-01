@@ -21,7 +21,7 @@ from aivia.core.config.budget import BudgetConfig
 from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.cost import CostTracker
 from aivia.core.db import create_database_engine, upgrade_database
-from aivia.core.errors import ProviderExhaustedError
+from aivia.core.errors import BudgetError, ProviderExhaustedError
 from aivia.core.models import ProviderMeta, ProviderPrice, RateLimit
 from aivia.core.router import Router
 from aivia.media.stt_service import (
@@ -116,6 +116,15 @@ def probe_runner(durations: Sequence[float]) -> Any:
         )
 
     return runner
+
+
+def failing_probe_runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        list(argv),
+        1,
+        stdout="",
+        stderr="ffprobe rejected the media",
+    )
 
 
 class FakeSTTProvider(Provider):
@@ -535,6 +544,72 @@ def test_a_budget_guard_uses_the_configured_cap(
         _run(service.generate(STTRequest(audio=wav_bytes()), run_id="run-1"))
 
     assert provider.calls == []
+
+
+def test_a_configured_budget_refuses_a_call_with_an_unknown_duration(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeSTTProvider(price=PRICE)
+    service = STTService(
+        _router(provider),
+        tracker=tracker,
+        storage=storage,
+        budget=BudgetConfig(per_call=PRICE),
+        ffprobe_runner=failing_probe_runner,
+    )
+
+    with pytest.raises(BudgetError) as caught:
+        _run(service.generate(STTRequest(audio=wav_bytes()), run_id="run-1"))
+
+    assert provider.calls == []
+    assert tracker.count() == 0
+    assert caught.value.details["run_id"] == "run-1"
+    assert caught.value.details["operation"] == STT_OPERATION
+    assert caught.value.details["remaining_budget"] == PRICE
+
+
+def test_a_remaining_budget_refuses_a_call_with_an_unknown_duration(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeSTTProvider(price=PRICE)
+    service = STTService(
+        _router(provider),
+        tracker=tracker,
+        storage=storage,
+        ffprobe_runner=failing_probe_runner,
+    )
+
+    with pytest.raises(BudgetError) as caught:
+        _run(
+            service.generate(
+                STTRequest(audio=wav_bytes()),
+                remaining_budget=PRICE,
+            )
+        )
+
+    assert provider.calls == []
+    assert tracker.count() == 0
+    assert caught.value.details["remaining_budget"] == PRICE
+
+
+def test_an_unknown_duration_is_allowed_when_no_budget_is_configured(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeSTTProvider(price=PRICE)
+    service = STTService(
+        _router(provider),
+        tracker=tracker,
+        storage=storage,
+        ffprobe_runner=failing_probe_runner,
+    )
+
+    outcome = _run(service.generate(STTRequest(audio=wav_bytes()), run_id="run-1"))
+
+    assert len(provider.calls) == 1
+    assert outcome.amount_usd == pytest.approx(PRICE * DURATION / 60.0)
 
 
 def test_cost_falls_back_to_timing_when_the_provider_reports_no_duration(
