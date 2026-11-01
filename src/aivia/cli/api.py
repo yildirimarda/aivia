@@ -88,6 +88,7 @@ def _resolve_config(args: argparse.Namespace) -> tuple[ApiConfig, JobsConfig]:
         config_file=getattr(args, "config", None),
         environment=getattr(args, "environment", None),
         profile=getattr(args, "profile", None),
+        preset=getattr(args, "preset", None),
         set_values=getattr(args, "set_values", None),
     )
     section = getattr(config, "api", None)

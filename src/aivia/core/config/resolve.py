@@ -6,11 +6,13 @@ Layers are applied from lowest to highest precedence:
 2. the user config (``config.yaml``, or the file selected with ``--config``)
 3. the environment file (``config.<env>.yaml`` beside the user config)
 4. the selected profile's ``overrides`` mapping
-5. command line ``--set key.path=value`` flags, in the order given
+5. the selected preset's ``overrides`` mapping
+6. command line ``--set key.path=value`` flags, in the order given
 
 Later layers win. Mappings deep-merge key by key; lists and scalars replace the
 previous value. Every leaf records the layer that supplied it, so ``config
-show --origins`` can explain the result.
+show --origins`` can explain the result. A preset selected with ``--preset``
+also supplies the profile it names when no ``--profile`` was given.
 
 The environment is selected explicitly with ``--env``/``--environment`` or,
 when neither is given, from ``AIVA_ENV`` (then ``AIVA_ENVIRONMENT``) in the
@@ -50,6 +52,7 @@ __all__ = [
     "ENVIRONMENT_VARIABLES",
     "ENV_ORIGIN_PREFIX",
     "PRECEDENCE",
+    "PRESET_ORIGIN_PREFIX",
     "PROFILE_ORIGIN_PREFIX",
     "USER_ORIGIN",
     "Layer",
@@ -70,6 +73,7 @@ DEFAULT_ORIGIN = "defaults"
 USER_ORIGIN = "user"
 ENV_ORIGIN_PREFIX = "env:"
 PROFILE_ORIGIN_PREFIX = "profile:"
+PRESET_ORIGIN_PREFIX = "preset:"
 CLI_ORIGIN = "cli"
 
 ENVIRONMENT_VARIABLE = "AIVA_ENV"
@@ -80,6 +84,7 @@ PRECEDENCE = (
     USER_ORIGIN,
     f"{ENV_ORIGIN_PREFIX}<environment>",
     f"{PROFILE_ORIGIN_PREFIX}<profile>",
+    f"{PRESET_ORIGIN_PREFIX}<preset>",
     CLI_ORIGIN,
 )
 
@@ -103,6 +108,7 @@ class ResolvedConfig:
     values: dict[str, Any]
     origins: dict[str, str]
     profile: str | None = None
+    preset: str | None = None
     environment: str | None = None
     sources: tuple[Path, ...] = field(default_factory=tuple)
     origin_files: dict[str, str] = field(default_factory=dict)
@@ -422,6 +428,7 @@ def resolve_config(
     environment: str | None = None,
     env: str | None = None,
     profile: str | None = None,
+    preset: str | None = None,
     set_values: Sequence[str] | Mapping[str, Any] | str | None = None,
     set_overrides: Sequence[str] | Mapping[str, Any] | str | None = None,
     overrides: Sequence[str] | Mapping[str, Any] | str | None = None,
@@ -511,17 +518,38 @@ def resolve_config(
 
     values, origins = merge_layers(layers)
 
-    selected_profile: str | None = None
-    if profile is not None:
-        selected_profile = profile
-        profile_values = profile_overrides(values, profile)
+    from aivia.core.presets import select_preset
+
+    selected_preset = select_preset(
+        values,
+        preset,
+        use_default=preset is None,
+    )
+
+    selected_profile: str | None = (
+        profile.strip() if isinstance(profile, str) else profile
+    )
+    if not selected_profile:
+        selected_profile = None
+    if selected_profile is None and selected_preset is not None:
+        selected_profile = selected_preset.profile.strip() or None
+    if selected_profile is not None:
+        profile_values = profile_overrides(values, selected_profile)
         if profile_values:
             _merge_mapping(
                 values,
                 origins,
                 profile_values,
-                origin=f"{PROFILE_ORIGIN_PREFIX}{profile}",
+                origin=f"{PROFILE_ORIGIN_PREFIX}{selected_profile}",
             )
+
+    if selected_preset is not None and selected_preset.overrides:
+        _merge_mapping(
+            values,
+            origins,
+            selected_preset.overrides,
+            origin=f"{PRESET_ORIGIN_PREFIX}{selected_preset.name}",
+        )
 
     cli_overrides = parse_set_overrides(
         _pick_set_values(set_values, set_overrides, overrides)
@@ -543,6 +571,19 @@ def resolve_config(
             )
         if profile_source is not None:
             origin_files[f"{PROFILE_ORIGIN_PREFIX}{selected_profile}"] = profile_source
+    if selected_preset is not None:
+        preset_origin = origins.get("presets") or origins.get(
+            f"presets.{selected_preset.name}"
+        )
+        preset_source = origin_files.get(preset_origin or "")
+        if preset_source is None:
+            preset_source = origin_files.get(USER_ORIGIN) or origin_files.get(
+                DEFAULT_ORIGIN
+            )
+        if preset_source is not None:
+            origin_files[f"{PRESET_ORIGIN_PREFIX}{selected_preset.name}"] = (
+                preset_source
+            )
     if cli_overrides:
         origin_files[CLI_ORIGIN] = "<command line>"
 
@@ -550,6 +591,7 @@ def resolve_config(
         values=values,
         origins=origins,
         profile=selected_profile,
+        preset=selected_preset.name if selected_preset is not None else None,
         environment=selected_environment,
         sources=tuple(sources),
         origin_files=origin_files,

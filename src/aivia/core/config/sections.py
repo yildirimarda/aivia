@@ -445,9 +445,23 @@ class PresetsConfig(ConfigModel):
         for alias in ("items", "definitions"):
             if alias in values:
                 values.setdefault("presets", values.pop(alias))
-        if "presets" in values:
-            return values
         global_keys = {"enabled", "default"}
+        if "presets" in values:
+            nested = values.get("presets")
+            if isinstance(nested, Mapping):
+                entries = {
+                    key: value
+                    for key, value in values.items()
+                    if key not in global_keys
+                    and key not in {"presets", "items", "definitions"}
+                }
+                if entries:
+                    merged = dict(nested)
+                    merged.update(entries)
+                    values["presets"] = merged
+                    for key in entries:
+                        values.pop(key)
+            return values
         entries = {
             key: value for key, value in values.items() if key not in global_keys
         }

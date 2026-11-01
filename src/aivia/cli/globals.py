@@ -30,6 +30,7 @@ _GLOBAL_DESTINATIONS = (
     "config",
     "environment",
     "profile",
+    "preset",
     "set_values",
     "estimate",
     "dry_run",
@@ -47,6 +48,7 @@ class GlobalOptions:
     config: str | None = None
     environment: str | None = None
     profile: str | None = None
+    preset: str | None = None
     set_values: tuple[str, ...] = ()
     estimate: bool = False
     dry_run: bool = False
@@ -69,6 +71,7 @@ class GlobalOptions:
             config=_text(getattr(namespace, "config", None)),
             environment=_text(getattr(namespace, "environment", None)),
             profile=_text(getattr(namespace, "profile", None)),
+            preset=_text(getattr(namespace, "preset", None)),
             set_values=set_values,
             estimate=bool(getattr(namespace, "estimate", False)),
             dry_run=bool(getattr(namespace, "dry_run", False)),
@@ -84,6 +87,7 @@ class GlobalOptions:
             "config_file": self.config,
             "environment": self.environment,
             "profile": self.profile,
+            "preset": self.preset,
             "set_values": list(self.set_values),
         }
 
@@ -151,6 +155,13 @@ def add_global_options(
             metavar="NAME",
             default=default(None),
             help="merge the overrides of a configured profile",
+        )
+    if missing("--preset"):
+        parser.add_argument(
+            "--preset",
+            metavar="NAME",
+            default=default(None),
+            help="merge the overrides of a named preset after the profile",
         )
     if missing("--set"):
         parser.add_argument(
