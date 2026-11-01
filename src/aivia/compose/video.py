@@ -41,6 +41,8 @@ from .schema import Composition, Layer, LayerType
 if TYPE_CHECKING:
     from aivia.core.media_probe import FFprobeInfo, FFprobeRunner
 
+    from .anim_outputs import AnimatedRenderResult
+
 __all__ = [
     "VIDEO_RENDERER_VERSION",
     "FFmpegRunner",
@@ -458,8 +460,26 @@ def render_video(
     ffmpeg_runner: FFmpegRunner | None = None,
     ffprobe_runner: FFprobeRunner | None = None,
     **command_options: Any,
-) -> VideoRenderResult:
-    """Render *composition* with the default FFmpeg video renderer."""
+) -> VideoRenderResult | AnimatedRenderResult:
+    """Render *composition* to MP4, or to GIF/WebP when the suffix asks for it."""
+    if Path(output).suffix.lower() in {".gif", ".webp"}:
+        from .anim_outputs import render_animated
+
+        animated: dict[str, Any] = {}
+        for name in ("output_format", "loop", "max_bytes", "fps", "quality"):
+            if name in command_options:
+                animated[name] = command_options.pop(name)
+        return render_animated(
+            composition,
+            output,
+            ffmpeg_executable=ffmpeg_executable,
+            ffprobe_executable=ffprobe_executable,
+            ffmpeg_runner=ffmpeg_runner,
+            ffprobe_runner=ffprobe_runner,
+            timeout_seconds=timeout_seconds,
+            **animated,
+            **command_options,
+        )
     renderer = VideoRenderer(
         ffmpeg_executable=ffmpeg_executable,
         ffprobe_executable=ffprobe_executable,

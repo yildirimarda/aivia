@@ -409,7 +409,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement cut, crossfade and slide transitions with sampled frame checks (slow, tests/compose/test_transitions.py)
 - [x] Mix audio tracks with volume, offsets, fades and ducking to the configured loudness and burn subtitles inside the safe area (slow, tests/compose/test_audio_subs.py)
 - [x] Drive resolution, fps, codec, bitrate, loudness and duration from config with platform and profile overrides (slow, tests/compose/test_output_profiles.py)
-- [ ] Produce optimized GIF and animated WebP outputs respecting loop flags and size caps (slow, tests/compose/test_anim_outputs.py)
+- [x] Produce optimized GIF and animated WebP outputs respecting loop flags and size caps (slow, tests/compose/test_anim_outputs.py)
 - [ ] Render seamless loop outputs whose first and last frames are similar enough (slow, tests/compose/test_loop_output.py)
 - [ ] Produce audio only outputs with correct codec, duration and ID3 metadata (tests/compose/test_audio_output.py)
 - [ ] Produce a self contained web card with embedded background, CSS text animation, an explicit play button, optional expiry and a view hit hook (tests/compose/test_web_card.py)
@@ -448,6 +448,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate composition safe area margins leave a visible area before subtitles are burned (tests/compose/test_validation.py)
 - [ ] Reject an output container whose extension cannot carry the configured codec before invoking ffmpeg (tests/compose/test_output_profiles.py)
 - [ ] Warn when an output profile changes the aspect ratio of a composition with absolute pixel layer geometry (tests/compose/test_output_profiles.py)
+- [ ] Render shape layers in video by rasterizing them to transparent overlays with sampled frame checks (slow, tests/compose/test_shape_video.py)
 
 ## Milestone 10: Research engine
 

@@ -1,5 +1,7 @@
 """Composition schema and, later, the deterministic renderer."""
 
+from typing import TYPE_CHECKING
+
 from aivia.compose.audio_subs import (
     DEFAULT_LOUDNESS_LUFS,
     AudioSubtitleError,
@@ -346,7 +348,30 @@ from aivia.compose.video import (
     render_video,
 )
 
+if TYPE_CHECKING:
+    from aivia.compose.anim_outputs import (
+        ANIMATED_RENDERER_VERSION,
+        AnimatedOutput,
+        AnimatedOutputError,
+        AnimatedOutputFormat,
+        AnimatedRenderResult,
+        AnimatedSizeError,
+        AnimationOutput,
+        AnimationRenderResult,
+        export_animated,
+        export_animation,
+        export_gif,
+        export_webp,
+        render_animated,
+        render_animated_output,
+        render_animation,
+        render_gif,
+        render_webp,
+    )
+
+
 __all__ = [
+    "ANIMATED_RENDERER_VERSION",
     "COMPOSITION_JSON_SCHEMA_DIALECT",
     "COMPOSITION_JSON_SCHEMA_TITLE",
     "COMPOSITION_SCHEMA_VERSION",
@@ -367,8 +392,15 @@ __all__ = [
     "TRANSITION_VERSION",
     "VIDEO_RENDERER_VERSION",
     "Anchor",
+    "AnimatedOutput",
+    "AnimatedOutputError",
+    "AnimatedOutputFormat",
     "AnimatedProperty",
+    "AnimatedRenderResult",
+    "AnimatedSizeError",
     "AnimatedValue",
+    "AnimationOutput",
+    "AnimationRenderResult",
     "AnyLayer",
     "AssetCheck",
     "AssetLookup",
@@ -567,7 +599,11 @@ __all__ = [
     "entrance_animation_for_layer",
     "exit_animation",
     "exit_animation_for_layer",
+    "export_animated",
+    "export_animation",
     "export_composition_schema",
+    "export_gif",
+    "export_webp",
     "face_regions",
     "face_regions_from_analysis",
     "faces_from_analysis",
@@ -617,10 +653,15 @@ __all__ = [
     "read_composition",
     "read_composition_file",
     "relative_luminance",
+    "render_animated",
+    "render_animated_output",
+    "render_animation",
+    "render_gif",
     "render_overlay",
     "render_still",
     "render_transition",
     "render_video",
+    "render_webp",
     "resolve_contrast",
     "resolve_font",
     "resolve_output_profile",
@@ -660,3 +701,34 @@ __all__ = [
     "write_subtitle_document",
     "zoom",
 ]
+
+
+_ANIMATED_OUTPUT_EXPORTS = frozenset(
+    {
+        "ANIMATED_RENDERER_VERSION",
+        "AnimatedOutput",
+        "AnimatedOutputError",
+        "AnimatedOutputFormat",
+        "AnimatedRenderResult",
+        "AnimatedSizeError",
+        "AnimationOutput",
+        "AnimationRenderResult",
+        "export_animated",
+        "export_animation",
+        "export_gif",
+        "export_webp",
+        "render_animated",
+        "render_animated_output",
+        "render_animation",
+        "render_gif",
+        "render_webp",
+    }
+)
+
+
+def __getattr__(name: str) -> object:
+    if name in _ANIMATED_OUTPUT_EXPORTS:
+        from aivia.compose import anim_outputs
+
+        return getattr(anim_outputs, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
