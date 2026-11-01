@@ -361,7 +361,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Store accessibility sidecars through the storage provider so remote audio and video outputs get them too (tests/media/test_accessibility.py)
 - [x] Wait for an in-flight async submission when a repeated key races it so the caller never receives a job without a remote id (tests/providers/media/test_async_job.py)
 - [x] Resume an async media job left pending by a crash before the remote id is stored so a repeated key can recover it (tests/providers/media/test_async_job.py)
-- [ ] Key the media cache on the adapted request so a snapped size or clamped count is fully reused on a repeat (tests/media/test_adapt_cache.py)
+- [x] Key the media cache on the adapted request so a snapped size or clamped count is fully reused on a repeat (tests/media/test_adapt_cache.py)
 - [ ] Declare every option each media adapter accepts in supported_options so adaptation cannot reject a value the adapter handles (tests/providers/test_supported_options.py)
 - [ ] Cap animated image frame count and total decoded pixels in image utilities (tests/media/test_image_utils.py)
 - [ ] Include the analysis provider in the vision cache key so two providers serving one model do not share results (tests/media/test_image_analysis.py)

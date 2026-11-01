@@ -9,10 +9,14 @@ one place instead of repeating it in each service.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from typing import Any
 
+from aivia.core.models.base import canonical_json
+from aivia.core.router import Router
 from aivia.providers.base import Provider
 from aivia.providers.media.adapt import (
+    AdaptationError,
     AdaptationResult,
     MediaConstraints,
     adapt_request,
@@ -23,7 +27,13 @@ from aivia.providers.protocols.music import CAPABILITY_MUSIC_GEN
 from aivia.providers.protocols.tts import CAPABILITY_TTS
 from aivia.providers.protocols.video import CAPABILITY_VIDEO_GEN
 
-__all__ = ["CAPABILITIES", "adapt_for_provider", "constraints_for"]
+__all__ = [
+    "CAPABILITIES",
+    "adapt_for_cache",
+    "adapt_for_provider",
+    "cache_request_variants",
+    "constraints_for",
+]
 
 CAPABILITIES: dict[MediaKind, str] = {
     MediaKind.IMAGE: CAPABILITY_IMAGE_GEN,
@@ -83,3 +93,59 @@ def adapt_for_provider(
         request=result.request.model_copy(update={"seed": seed}),
         warnings=result.warnings,
     )
+
+
+def adapt_for_cache(
+    request: Any,
+    provider: Provider,
+    kind: MediaKind | str,
+    *,
+    prepare: Callable[[Any, Provider], Any] | None = None,
+) -> Any:
+    """Return the request *provider* would submit for *request*.
+
+    No seed is injected: the cache key must not depend on a value the service
+    generates itself, or an identical caller request could never hit.
+    """
+    candidate = prepare(request, provider) if prepare is not None else request
+    return adapt_for_provider(candidate, provider, kind).request
+
+
+def cache_request_variants(
+    request: Any,
+    router: Router,
+    kind: MediaKind | str,
+    *,
+    required: Iterable[str] = (),
+    prepare: Callable[[Any, Provider], Any] | None = None,
+) -> tuple[Any, ...]:
+    """Return every distinct request the capability chain could submit.
+
+    A cache is looked up before the router has selected a provider, so the
+    adapted request is not known yet. Each provider that can serve the request
+    contributes its own adapted request, in chain order. Providers whose
+    constraints reject the request are skipped: another provider may accept it
+    and the router would only reject it if every provider did. Duplicate
+    adapted requests are collapsed so the caller does not repeat a lookup.
+    """
+    capability = CAPABILITIES[_kind(kind)]
+    providers = router.providers
+    requirements = tuple(required)
+    variants: list[Any] = []
+    seen: set[str] = set()
+    for name in router.chain_for(capability):
+        provider = providers.get(name)
+        if provider is None or not provider.supports(capability):
+            continue
+        if any(not provider.supports(item) for item in requirements):
+            continue
+        try:
+            adapted = adapt_for_cache(request, provider, kind, prepare=prepare)
+        except AdaptationError:
+            continue
+        fingerprint = canonical_json(adapted.model_dump(mode="json"))
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        variants.append(adapted)
+    return tuple(variants)

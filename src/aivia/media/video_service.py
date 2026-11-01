@@ -61,7 +61,11 @@ from aivia.media.accessibility import (
     store_accessibility_sidecars,
     write_accessibility_sidecars,
 )
-from aivia.media.adaptation import adapt_for_provider
+from aivia.media.adaptation import (
+    adapt_for_cache,
+    adapt_for_provider,
+    cache_request_variants,
+)
 from aivia.media.screening import (
     DEFAULT_PROMPT_KIND,
     ScreeningToken,
@@ -84,7 +88,11 @@ from aivia.media.video_pricing import (
     VideoPricingEstimator,
 )
 from aivia.providers.base import Provider
-from aivia.providers.media.adapt import AdaptationResult, AdaptationWarning
+from aivia.providers.media.adapt import (
+    AdaptationError,
+    AdaptationResult,
+    AdaptationWarning,
+)
 from aivia.providers.media.dto import MediaKind
 from aivia.providers.protocols.storage import (
     StorageObject,
@@ -855,13 +863,57 @@ class VideoService:
             config=self._safety,
         )
 
-    def cache_key(self, request: VideoRequest, *, index: int = 0) -> AssetCacheKey:
-        """Return the cache key for one output of *request*."""
-        if not isinstance(request, VideoRequest):
-            raise TypeError("request must be a VideoRequest")
+    def _cache_key_for(
+        self,
+        request: VideoRequest,
+        *,
+        index: int = 0,
+    ) -> AssetCacheKey:
         if self._videos.cache is None:
             return video_cache_key(request, index=index)
         return self._videos.key(request, index=index)
+
+    def _adapted_cache_request(
+        self,
+        request: VideoRequest,
+        provider: Provider | None,
+    ) -> VideoRequest:
+        if provider is None:
+            return request
+        try:
+            return cast(
+                VideoRequest,
+                adapt_for_cache(request, provider, MediaKind.VIDEO),
+            )
+        except AdaptationError:
+            return request
+
+    def cache_key(
+        self,
+        request: VideoRequest,
+        *,
+        index: int = 0,
+        provider: Provider | None = None,
+    ) -> AssetCacheKey:
+        """Return the cache key for one output of *request*.
+
+        The key is built from the request the provider would actually submit,
+        so a clamped duration or count is reused on a repeat.
+        """
+        if not isinstance(request, VideoRequest):
+            raise TypeError("request must be a VideoRequest")
+        if provider is not None:
+            request = self._adapted_cache_request(request, provider)
+        else:
+            variants = cache_request_variants(
+                request,
+                self._router,
+                MediaKind.VIDEO,
+                required=self._required_capabilities(request),
+            )
+            if variants:
+                request = cast(VideoRequest, variants[0])
+        return self._cache_key_for(request, index=index)
 
     @staticmethod
     def _required_capabilities(request: VideoRequest) -> tuple[str, ...]:
@@ -1150,10 +1202,18 @@ class VideoService:
         active_exclude = tuple(exclude or ())
 
         failures: list[VideoFailure] = []
+        required = self._required_capabilities(request)
 
         if use_cache:
             cached = await self._cached_outcome(
                 request,
+                cache_request_variants(
+                    request,
+                    self._router,
+                    MediaKind.VIDEO,
+                    required=required,
+                )
+                or (request,),
                 run_id=run_id,
                 operation=operation_name,
                 storage=active_storage,
@@ -1196,7 +1256,6 @@ class VideoService:
                     },
                 )
 
-        required = self._required_capabilities(request)
         clip_budget_decision, routing_exclude = self._evaluate_clip_budget(
             request,
             estimator=estimator,
@@ -1480,6 +1539,7 @@ class VideoService:
             if recorded is not None
             else []
         )
+        key_request = submitted
         assets: list[Asset] = []
         stored_outcomes: list[VideoCacheOutcome] = []
         for index, (result, item) in enumerate(
@@ -1514,7 +1574,7 @@ class VideoService:
                 cost_links=list(cost_links),
             )
             if use_cache and self._videos.cache is not None:
-                key_for_asset = self.cache_key(request, index=index)
+                key_for_asset = self._cache_key_for(key_request, index=index)
                 asset = self._videos.cache.store(asset, key=key_for_asset)
             assets.append(asset)
             stored_outcomes.append(
@@ -1525,7 +1585,7 @@ class VideoService:
                     probe=probe,
                     storage_object=stored,
                     event=event,
-                    key=self.cache_key(request, index=index),
+                    key=self._cache_key_for(key_request, index=index),
                     cache_hit=False,
                     audio_stripped=item.audio_stripped,
                 )
@@ -1641,6 +1701,7 @@ class VideoService:
     async def _cached_outcome(
         self,
         request: VideoRequest,
+        requests: Iterable[VideoRequest],
         *,
         run_id: str,
         operation: str,
@@ -1651,23 +1712,34 @@ class VideoService:
         if cache.cache is None:
             return None
         hits: list[VideoCacheOutcome] = []
-        for index in range(request.count):
-            hit = await cache.lookup(
-                request,
-                index=index,
-                run_id=run_id,
-                operation=operation,
-                record_hit=False,
-                storage=storage,
-            )
-            if hit is None:
-                return None
-            hits.append(hit)
+        matched: VideoRequest | None = None
+        for candidate in requests:
+            candidate_hits: list[VideoCacheOutcome] = []
+            for index in range(candidate.count):
+                hit = await cache.lookup(
+                    candidate,
+                    index=index,
+                    run_id=run_id,
+                    operation=operation,
+                    record_hit=False,
+                    storage=storage,
+                )
+                if hit is None:
+                    break
+                candidate_hits.append(hit)
+            else:
+                hits = candidate_hits
+                matched = candidate
+                break
+        else:
+            return None
+        if matched is None:  # pragma: no cover - the loop sets it on a hit
+            return None
 
         events: list[CostEvent] = []
         recorded_hits: list[VideoCacheOutcome] = []
         for index, hit in enumerate(hits):
-            key = self.cache_key(request, index=index)
+            key = self._cache_key_for(matched, index=index)
             event = cache.cache.record_hit(
                 key,
                 hit.asset,

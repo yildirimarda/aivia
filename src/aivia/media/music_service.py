@@ -61,7 +61,11 @@ from aivia.media.accessibility import (
     store_accessibility_sidecars,
     write_accessibility_sidecars,
 )
-from aivia.media.adaptation import adapt_for_provider
+from aivia.media.adaptation import (
+    adapt_for_cache,
+    adapt_for_provider,
+    cache_request_variants,
+)
 from aivia.media.screening import (
     DEFAULT_PROMPT_KIND,
     ScreeningToken,
@@ -69,7 +73,11 @@ from aivia.media.screening import (
     screen_prompt,
 )
 from aivia.providers.base import Provider
-from aivia.providers.media.adapt import AdaptationResult, AdaptationWarning
+from aivia.providers.media.adapt import (
+    AdaptationError,
+    AdaptationResult,
+    AdaptationWarning,
+)
 from aivia.providers.media.dto import MediaKind
 from aivia.providers.music.cost import (
     MUSIC_OPERATION,
@@ -1044,7 +1052,7 @@ class MusicService:
         licenses = self._provider_licenses()
         return licenses[0] if len(licenses) == 1 else None
 
-    def cache_key(
+    def _cache_key_for(
         self,
         request: MusicRequest,
         *,
@@ -1052,10 +1060,59 @@ class MusicService:
         model: str | None = None,
         license: AssetLicense | Mapping[str, Any] | None = None,
     ) -> AssetCacheKey:
-        """Return the cache key for one output of *request*."""
-        if license is None:
-            license = self._default_cache_license()
         return music_cache_key(
+            request,
+            index=index,
+            model=model,
+            license=license,
+        )
+
+    def _adapted_cache_request(
+        self,
+        request: MusicRequest,
+        provider: Provider | None,
+    ) -> MusicRequest:
+        if provider is None:
+            return request
+        try:
+            return cast(
+                MusicRequest,
+                adapt_for_cache(request, provider, MediaKind.MUSIC),
+            )
+        except AdaptationError:
+            return request
+
+    def cache_key(
+        self,
+        request: MusicRequest,
+        *,
+        index: int = 0,
+        model: str | None = None,
+        license: AssetLicense | Mapping[str, Any] | None = None,
+        provider: Provider | None = None,
+    ) -> AssetCacheKey:
+        """Return the cache key for one output of *request*.
+
+        The key is built from the request the provider would actually submit,
+        so a clamped duration or count is reused on a repeat.
+        """
+        if not isinstance(request, MusicRequest):
+            raise TypeError("request must be a MusicRequest")
+        if provider is not None:
+            request = self._adapted_cache_request(request, provider)
+            if license is None:
+                license = provider.metadata.license
+        else:
+            variants = cache_request_variants(
+                request,
+                self._router,
+                MediaKind.MUSIC,
+            )
+            if variants:
+                request = cast(MusicRequest, variants[0])
+            if license is None:
+                license = self._default_cache_license()
+        return self._cache_key_for(
             request,
             index=index,
             model=model,
@@ -1165,7 +1222,12 @@ class MusicService:
 
         if use_cache:
             cached = await self._cached_outcome(
-                request,
+                cache_request_variants(
+                    request,
+                    self._router,
+                    MediaKind.MUSIC,
+                )
+                or (request,),
                 run_id=run_id,
                 operation=operation_name,
                 storage=active_storage,
@@ -1286,6 +1348,7 @@ class MusicService:
             )
             event = recorded
 
+        key_request = self._adapted_cache_request(request, selection.provider)
         assets: list[Asset] = []
         stored_objects: list[StorageObject | None] = []
         for index, (probe, stored, track, license) in enumerate(materialised):
@@ -1324,8 +1387,8 @@ class MusicService:
                 cost_links=cost_links,
             )
             if use_cache and self._cache is not None:
-                key_for_asset = self.cache_key(
-                    request,
+                key_for_asset = self._cache_key_for(
+                    key_request,
                     index=index,
                     license=selection.provider.metadata.license,
                 )
@@ -1500,7 +1563,7 @@ class MusicService:
 
     async def _cached_outcome(
         self,
-        request: MusicRequest,
+        requests: Iterable[MusicRequest],
         *,
         run_id: str,
         operation: str,
@@ -1513,33 +1576,40 @@ class MusicService:
         keys: list[AssetCacheKey] = []
         assets: list[Asset] = []
         payloads: list[bytes] = []
-        for license in self._provider_licenses():
-            candidate_keys = [
-                self.cache_key(request, index=index, license=license)
-                for index in range(request.count)
-            ]
-            candidate_assets: list[Asset] = []
-            for key in candidate_keys:
-                entry = cache.entry(key)
-                if entry is None:
-                    break
-                asset = cache.assets.get(entry.asset_id)
-                if asset is None or asset.kind is not AssetKind.MUSIC:
-                    break
-                candidate_assets.append(asset)
-            else:
-                candidate_payloads: list[bytes] = []
-                for asset in candidate_assets:
-                    payload = await self._cached_payload(asset, storage)
-                    if payload is None:
+        matched: MusicRequest | None = None
+        for request in requests:
+            for license in self._provider_licenses():
+                candidate_keys = [
+                    self._cache_key_for(request, index=index, license=license)
+                    for index in range(request.count)
+                ]
+                candidate_assets: list[Asset] = []
+                for key in candidate_keys:
+                    entry = cache.entry(key)
+                    if entry is None:
                         break
-                    candidate_payloads.append(payload)
+                    asset = cache.assets.get(entry.asset_id)
+                    if asset is None or asset.kind is not AssetKind.MUSIC:
+                        break
+                    candidate_assets.append(asset)
                 else:
-                    keys = candidate_keys
-                    assets = candidate_assets
-                    payloads = candidate_payloads
-                    break
+                    candidate_payloads: list[bytes] = []
+                    for asset in candidate_assets:
+                        payload = await self._cached_payload(asset, storage)
+                        if payload is None:
+                            break
+                        candidate_payloads.append(payload)
+                    else:
+                        keys = candidate_keys
+                        assets = candidate_assets
+                        payloads = candidate_payloads
+                        matched = request
+                        break
+            if matched is not None:
+                break
         else:
+            return None
+        if matched is None:  # pragma: no cover - the loop sets it on a hit
             return None
 
         events: list[CostEvent] = [

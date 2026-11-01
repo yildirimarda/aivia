@@ -48,7 +48,11 @@ from aivia.core.models.run import ToolchainFingerprint
 from aivia.core.pricing import ResolvedPrice
 from aivia.core.router import Router, RouteSelection
 from aivia.core.sidecar import SIDECAR_SUFFIX, build_cost_sidecar, write_cost_sidecar
-from aivia.media.adaptation import adapt_for_provider
+from aivia.media.adaptation import (
+    adapt_for_cache,
+    adapt_for_provider,
+    cache_request_variants,
+)
 from aivia.media.screening import (
     DEFAULT_PROMPT_KIND,
     ScreeningToken,
@@ -61,7 +65,11 @@ from aivia.providers.image.cost import (
     IMAGE_UNIT,
     ImageCostCalculator,
 )
-from aivia.providers.media.adapt import AdaptationResult, AdaptationWarning
+from aivia.providers.media.adapt import (
+    AdaptationError,
+    AdaptationResult,
+    AdaptationWarning,
+)
 from aivia.providers.media.dto import MediaKind
 from aivia.providers.protocols.image import (
     CAPABILITY_IMAGE_GEN,
@@ -553,15 +561,12 @@ class ImageService:
                 hashes.append(_sha256_text(reference.url))
         return tuple(hashes)
 
-    def cache_key(self, request: ImageRequest, *, index: int = 0) -> AssetCacheKey:
-        """Return the cache key for one output of *request*.
-
-        The key deliberately leaves the provider empty so a repeated request can
-        be answered before the router has selected a provider. The stored asset
-        still records the provider and model that actually served the call.
-        """
-        if not isinstance(request, ImageRequest):
-            raise TypeError("request must be an ImageRequest")
+    def _cache_key_for(
+        self,
+        request: ImageRequest,
+        *,
+        index: int = 0,
+    ) -> AssetCacheKey:
         if self._cache is None:
             return AssetCacheKey(
                 provider="",
@@ -577,6 +582,53 @@ class ImageService:
             parameters=self._parameters(request, index),
             reference_hashes=self._reference_hashes(request),
         )
+
+    def _adapted_cache_request(
+        self,
+        request: ImageRequest,
+        provider: Provider | None,
+    ) -> ImageRequest:
+        if provider is None:
+            return request
+        try:
+            return cast(
+                ImageRequest,
+                adapt_for_cache(request, provider, MediaKind.IMAGE),
+            )
+        except AdaptationError:
+            return request
+
+    def cache_key(
+        self,
+        request: ImageRequest,
+        *,
+        index: int = 0,
+        provider: Provider | None = None,
+    ) -> AssetCacheKey:
+        """Return the cache key for one output of *request*.
+
+        The key is built from the request the provider would actually submit,
+        so a snapped size or clamped count is reused on a repeat. The provider
+        is left empty in the key so a repeated request can be answered before
+        the router has selected a provider. The stored asset still records the
+        provider and model that actually served the call.
+        """
+        if not isinstance(request, ImageRequest):
+            raise TypeError("request must be an ImageRequest")
+        if provider is not None:
+            request = self._adapted_cache_request(request, provider)
+        else:
+            variants = cache_request_variants(
+                request,
+                self._router,
+                MediaKind.IMAGE,
+                required=(
+                    (CAPABILITY_IMAGE_INPUT,) if request.reference_images else ()
+                ),
+            )
+            if variants:
+                request = cast(ImageRequest, variants[0])
+        return self._cache_key_for(request, index=index)
 
     async def generate(
         self,
@@ -644,9 +696,16 @@ class ImageService:
         )
         write_cost = self._record_cost if record_cost is None else bool(record_cost)
 
+        required = (CAPABILITY_IMAGE_INPUT,) if request.reference_images else None
         if use_cache:
             cached = await self._cached_outcome(
-                request,
+                cache_request_variants(
+                    request,
+                    self._router,
+                    MediaKind.IMAGE,
+                    required=required or (),
+                )
+                or (request,),
                 run_id=run_id,
                 operation=operation_name,
                 storage=active_storage,
@@ -660,7 +719,6 @@ class ImageService:
         if budget is None and self._budget is not None:
             budget = self._budget.remaining(run_id, operation=operation_name)
 
-        required = (CAPABILITY_IMAGE_INPUT,) if request.reference_images else None
         base_seed = request.seed if request.seed is not None else secrets.randbits(32)
         adaptation: AdaptationResult[Any] | None = None
 
@@ -744,6 +802,7 @@ class ImageService:
             )
             event = recorded
 
+        key_request = self._adapted_cache_request(request, selection.provider)
         assets: list[Asset] = []
         for index, (probe, stored) in enumerate(materialised):
             cost_links = (
@@ -773,7 +832,7 @@ class ImageService:
                 cost_links=cost_links,
             )
             if use_cache and self._cache is not None:
-                key_for_asset = self.cache_key(request, index=index)
+                key_for_asset = self._cache_key_for(key_request, index=index)
                 asset = self._cache.store(asset, key=key_for_asset)
             assets.append(asset)
 
@@ -831,7 +890,7 @@ class ImageService:
 
     async def _cached_outcome(
         self,
-        request: ImageRequest,
+        requests: Iterable[ImageRequest],
         *,
         run_id: str,
         operation: str,
@@ -841,21 +900,35 @@ class ImageService:
         cache = self._cache
         if cache is None:
             return None
-        keys = [self.cache_key(request, index=index) for index in range(request.count)]
+        keys: list[AssetCacheKey] = []
         assets: list[Asset] = []
         payloads: list[bytes] = []
-        for key in keys:
-            entry = cache.entry(key)
-            if entry is None:
-                return None
-            asset = cache.assets.get(entry.asset_id)
-            if asset is None:
-                return None
-            payload = await self._cached_payload(asset, storage)
-            if payload is None:
-                return None
-            assets.append(asset)
-            payloads.append(payload)
+        for request in requests:
+            candidate_keys = [
+                self._cache_key_for(request, index=index)
+                for index in range(request.count)
+            ]
+            candidate_assets: list[Asset] = []
+            candidate_payloads: list[bytes] = []
+            for key in candidate_keys:
+                entry = cache.entry(key)
+                if entry is None:
+                    break
+                asset = cache.assets.get(entry.asset_id)
+                if asset is None:
+                    break
+                payload = await self._cached_payload(asset, storage)
+                if payload is None:
+                    break
+                candidate_assets.append(asset)
+                candidate_payloads.append(payload)
+            else:
+                keys = candidate_keys
+                assets = candidate_assets
+                payloads = candidate_payloads
+                break
+        else:
+            return None
 
         events: list[CostEvent] = [
             cache.record_hit(key, asset, run_id=run_id, operation=operation)
