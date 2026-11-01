@@ -449,6 +449,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Reject an output container whose extension cannot carry the configured codec before invoking ffmpeg (tests/compose/test_output_profiles.py)
 - [ ] Warn when an output profile changes the aspect ratio of a composition with absolute pixel layer geometry (tests/compose/test_output_profiles.py)
 - [ ] Render shape layers in video by rasterizing them to transparent overlays with sampled frame checks (slow, tests/compose/test_shape_video.py)
+- [ ] Normalize intro and outro clip geometry and audio before branding concatenation so mixed sources join cleanly (tests/compose/test_cover_branding.py)
 
 ## Milestone 10: Research engine
 
