@@ -2,6 +2,17 @@
 
 from typing import TYPE_CHECKING
 
+from aivia.compose.audio_outputs import (
+    AUDIO_RENDERER_VERSION,
+    AudioMetadata,
+    AudioOutputError,
+    AudioRenderer,
+    AudioRenderResult,
+    audio_output_format,
+    build_audio_command,
+    export_audio,
+    render_audio,
+)
 from aivia.compose.audio_subs import (
     DEFAULT_LOUDNESS_LUFS,
     AudioSubtitleError,
@@ -392,6 +403,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ANIMATED_RENDERER_VERSION",
+    "AUDIO_RENDERER_VERSION",
     "COMPOSITION_JSON_SCHEMA_DIALECT",
     "COMPOSITION_JSON_SCHEMA_TITLE",
     "COMPOSITION_SCHEMA_VERSION",
@@ -427,6 +439,10 @@ __all__ = [
     "AssetCheck",
     "AssetLookup",
     "AssetResolver",
+    "AudioMetadata",
+    "AudioOutputError",
+    "AudioRenderResult",
+    "AudioRenderer",
     "AudioSubtitleError",
     "AudioTrack",
     "AudioTrackConfig",
@@ -573,10 +589,12 @@ __all__ = [
     "audio_filtergraph",
     "audio_inputs",
     "audio_mix_settings",
+    "audio_output_format",
     "audio_tracks_for_mix",
     "available_fonts",
     "avoid_faces",
     "best_text_color",
+    "build_audio_command",
     "build_audio_filtergraph",
     "build_composition_schema",
     "build_ffmpeg_args",
@@ -630,6 +648,7 @@ __all__ = [
     "exit_animation_for_layer",
     "export_animated",
     "export_animation",
+    "export_audio",
     "export_composition_schema",
     "export_gif",
     "export_loop",
@@ -690,6 +709,7 @@ __all__ = [
     "render_animated",
     "render_animated_output",
     "render_animation",
+    "render_audio",
     "render_gif",
     "render_loop",
     "render_overlay",

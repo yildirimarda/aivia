@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from aivia.core.media_probe import FFprobeInfo, FFprobeRunner
 
     from .anim_outputs import AnimatedRenderResult
+    from .audio_outputs import AudioRenderResult
 
 __all__ = [
     "VIDEO_RENDERER_VERSION",
@@ -460,9 +461,10 @@ def render_video(
     ffmpeg_runner: FFmpegRunner | None = None,
     ffprobe_runner: FFprobeRunner | None = None,
     **command_options: Any,
-) -> VideoRenderResult | AnimatedRenderResult:
-    """Render *composition* to MP4, or to GIF/WebP when the suffix asks for it."""
-    if Path(output).suffix.lower() in {".gif", ".webp"}:
+) -> VideoRenderResult | AnimatedRenderResult | AudioRenderResult:
+    """Render *composition* to MP4, or to GIF/WebP/audio when the suffix asks."""
+    suffix = Path(output).suffix.lower()
+    if suffix in {".gif", ".webp"}:
         from .anim_outputs import render_animated
 
         animated: dict[str, Any] = {}
@@ -479,6 +481,40 @@ def render_video(
             timeout_seconds=timeout_seconds,
             **animated,
             **command_options,
+        )
+    if suffix in {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".oga", ".opus", ".aac"}:
+        from .audio_outputs import render_audio
+
+        allowed = {
+            "output_format",
+            "metadata",
+            "audio_codec",
+            "audio_bitrate",
+            "sample_rate",
+            "channels",
+            "normalize_loudness",
+            "ducking",
+            "audio_settings",
+            "loudness_lufs",
+            "output_profile",
+            "config",
+            "video",
+            "platform",
+            "profile",
+            "overwrite",
+        }
+        audio = {
+            name: command_options[name] for name in allowed if name in command_options
+        }
+        return render_audio(
+            composition,
+            output,
+            ffmpeg_executable=ffmpeg_executable,
+            ffprobe_executable=ffprobe_executable,
+            ffmpeg_runner=ffmpeg_runner,
+            ffprobe_runner=ffprobe_runner,
+            timeout_seconds=timeout_seconds,
+            **audio,
         )
     renderer = VideoRenderer(
         ffmpeg_executable=ffmpeg_executable,
