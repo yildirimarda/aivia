@@ -55,9 +55,7 @@ def test_a_valid_composition_has_no_issues() -> None:
         effects=[{"id": "fade", "type": "fade", "start": 0, "end": 1}],
     )
 
-    issues = validate_composition(
-        composition, assets={"bg.png", "voice.mp3"}
-    )
+    issues = validate_composition(composition, assets={"bg.png", "voice.mp3"})
 
     assert issues == []
     assert issues.ok is True
@@ -143,9 +141,7 @@ def test_missing_assets_are_reported_for_layers_and_audio_tracks() -> None:
         audio_tracks=[{"id": "voice", "source": "voice.mp3"}],
     )
 
-    issues = validate_composition(
-        composition, assets={"present.svg"}
-    )
+    issues = validate_composition(composition, assets={"present.svg"})
 
     assert _codes(issues) == ["missing_asset", "missing_asset"]
     assert [issue.path for issue in issues] == [
