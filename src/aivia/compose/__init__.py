@@ -368,6 +368,26 @@ if TYPE_CHECKING:
         render_gif,
         render_webp,
     )
+    from aivia.compose.loop_outputs import (
+        DEFAULT_LOOP_SIMILARITY_THRESHOLD,
+        LOOP_RENDERER_VERSION,
+        LoopOutput,
+        LoopOutputError,
+        LoopOutputFormat,
+        LoopRenderResult,
+        LoopSeamError,
+        LoopSizeError,
+        SeamlessLoopOutput,
+        export_loop,
+        export_seamless,
+        export_seamless_loop,
+        frame_similarity,
+        measure_loop_seam,
+        render_loop,
+        render_seamless,
+        render_seamless_loop,
+        seam_similarity,
+    )
 
 
 __all__ = [
@@ -380,12 +400,14 @@ __all__ = [
     "DEFAULT_AUDIO_CODEC",
     "DEFAULT_CRF",
     "DEFAULT_FONT_FAMILY",
+    "DEFAULT_LOOP_SIMILARITY_THRESHOLD",
     "DEFAULT_LOUDNESS_LUFS",
     "DEFAULT_PIXEL_FORMAT",
     "DEFAULT_PRESET",
     "DEFAULT_VIDEO_CODEC",
     "EASING_FUNCTIONS",
     "FONT_EXTENSIONS",
+    "LOOP_RENDERER_VERSION",
     "OVERLAY_VERSION",
     "PILLOW_STILL_RENDERER_VERSION",
     "RENDERER_VERSION",
@@ -470,6 +492,12 @@ __all__ = [
     "LayerType",
     "LayerUnion",
     "LogoLayer",
+    "LoopOutput",
+    "LoopOutputError",
+    "LoopOutputFormat",
+    "LoopRenderResult",
+    "LoopSeamError",
+    "LoopSizeError",
     "MaskMode",
     "Motion",
     "MotionError",
@@ -487,6 +515,7 @@ __all__ = [
     "PlacementRegion",
     "RenderError",
     "Renderer",
+    "SeamlessLoopOutput",
     "ShapeLayer",
     "ShapeType",
     "SlideDirection",
@@ -603,6 +632,9 @@ __all__ = [
     "export_animation",
     "export_composition_schema",
     "export_gif",
+    "export_loop",
+    "export_seamless",
+    "export_seamless_loop",
     "export_webp",
     "face_regions",
     "face_regions_from_analysis",
@@ -619,6 +651,7 @@ __all__ = [
     "font_families",
     "font_manager",
     "font_path",
+    "frame_similarity",
     "ken_burns",
     "keyframe_track",
     "keyframes_for_layer",
@@ -633,6 +666,7 @@ __all__ = [
     "low_detail_regions",
     "luminance",
     "make_readable",
+    "measure_loop_seam",
     "mix_composition_audio",
     "motion_for_layer",
     "motion_tracks",
@@ -657,7 +691,10 @@ __all__ = [
     "render_animated_output",
     "render_animation",
     "render_gif",
+    "render_loop",
     "render_overlay",
+    "render_seamless",
+    "render_seamless_loop",
     "render_still",
     "render_transition",
     "render_video",
@@ -672,6 +709,7 @@ __all__ = [
     "save_composition",
     "save_composition_file",
     "save_composition_schema",
+    "seam_similarity",
     "slide",
     "slide_transition",
     "smart_placement",
@@ -726,9 +764,37 @@ _ANIMATED_OUTPUT_EXPORTS = frozenset(
 )
 
 
+_LOOP_OUTPUT_EXPORTS = frozenset(
+    {
+        "DEFAULT_LOOP_SIMILARITY_THRESHOLD",
+        "LOOP_RENDERER_VERSION",
+        "LoopOutput",
+        "LoopOutputError",
+        "LoopOutputFormat",
+        "LoopRenderResult",
+        "LoopSeamError",
+        "LoopSizeError",
+        "SeamlessLoopOutput",
+        "export_loop",
+        "export_seamless",
+        "export_seamless_loop",
+        "frame_similarity",
+        "measure_loop_seam",
+        "render_loop",
+        "render_seamless",
+        "render_seamless_loop",
+        "seam_similarity",
+    }
+)
+
+
 def __getattr__(name: str) -> object:
     if name in _ANIMATED_OUTPUT_EXPORTS:
         from aivia.compose import anim_outputs
 
         return getattr(anim_outputs, name)
+    if name in _LOOP_OUTPUT_EXPORTS:
+        from aivia.compose import loop_outputs
+
+        return getattr(loop_outputs, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
