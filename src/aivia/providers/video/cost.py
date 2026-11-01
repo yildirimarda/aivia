@@ -146,9 +146,7 @@ def _request_for_result(
 
 
 def _units(estimate: VideoCostEstimate) -> tuple[float, str]:
-    time_priced = (
-        estimate.per_second_usd > 0.0 or estimate.audio_per_second_usd > 0.0
-    )
+    time_priced = estimate.per_second_usd > 0.0 or estimate.audio_per_second_usd > 0.0
     if time_priced:
         return estimate.billable_seconds, VIDEO_UNIT
     return float(estimate.videos), CLIP_UNIT
@@ -510,6 +508,4 @@ def video_cost_events(
         estimator=estimator,
         pricing_version=pricing_version,
     )
-    return tuple(
-        calculator.cost_event(request, **values) for request in requests
-    )
+    return tuple(calculator.cost_event(request, **values) for request in requests)
