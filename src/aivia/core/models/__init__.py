@@ -155,6 +155,7 @@ from aivia.core.models.topic import (
     Topic,
     TopicCandidate,
 )
+from aivia.core.models.voice import VoiceClone
 
 __all__ = [
     "CURRENT_MODEL_SCHEMA_VERSION",
@@ -280,6 +281,7 @@ __all__ = [
     "TopicCandidate",
     "UnknownFieldWarning",
     "VisualType",
+    "VoiceClone",
     "WritingMode",
     "WritingModeName",
     "canonical_json",

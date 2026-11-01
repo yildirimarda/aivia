@@ -40,6 +40,7 @@ from aivia.core.db.repos import (
     StyleSpecRepository,
     TableRepository,
     TemplateRepository,
+    VoiceCloneRepository,
     WebCardHitRepository,
     repository_for,
 )
@@ -92,6 +93,9 @@ from aivia.core.db.tables import (
     TEMPLATE_CREATED_AT_INDEX_NAME,
     TEMPLATE_KIND_INDEX_NAME,
     TEMPLATE_NAME_INDEX_NAME,
+    VOICE_CLONE_OWNER_INDEX_NAME,
+    VOICE_CLONE_PROVIDER_INDEX_NAME,
+    VOICE_CLONE_PROVIDER_VOICE_INDEX_NAME,
     WEB_CARD_HIT_CREATED_AT_INDEX_NAME,
     WEB_CARD_HIT_DAY_INDEX_NAME,
     WEB_CARD_HIT_ORDER_INDEX_NAME,
@@ -115,6 +119,7 @@ from aivia.core.db.tables import (
     stage_runs,
     style_specs,
     templates,
+    voice_clones,
     web_card_hits,
 )
 
@@ -171,6 +176,9 @@ __all__ = [
     "TEMPLATE_CREATED_AT_INDEX_NAME",
     "TEMPLATE_KIND_INDEX_NAME",
     "TEMPLATE_NAME_INDEX_NAME",
+    "VOICE_CLONE_OWNER_INDEX_NAME",
+    "VOICE_CLONE_PROVIDER_INDEX_NAME",
+    "VOICE_CLONE_PROVIDER_VOICE_INDEX_NAME",
     "WEB_CARD_HIT_CREATED_AT_INDEX_NAME",
     "WEB_CARD_HIT_DAY_INDEX_NAME",
     "WEB_CARD_HIT_ORDER_INDEX_NAME",
@@ -197,6 +205,7 @@ __all__ = [
     "StyleSpecRepository",
     "TableRepository",
     "TemplateRepository",
+    "VoiceCloneRepository",
     "WebCardHitRepository",
     "alembic_config",
     "asset_cache",
@@ -228,5 +237,6 @@ __all__ = [
     "style_specs",
     "templates",
     "upgrade_database",
+    "voice_clones",
     "web_card_hits",
 ]
