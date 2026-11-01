@@ -74,7 +74,12 @@ def storage(tmp_path: Path) -> LocalStorageProvider:
     return LocalStorageProvider(tmp_path / "media")
 
 
-def probe_json(duration: float) -> str:
+def probe_json(
+    duration: float,
+    *,
+    sample_rate: int = 44100,
+    channels: int = 1,
+) -> str:
     return json.dumps(
         {
             "streams": [
@@ -83,8 +88,8 @@ def probe_json(duration: float) -> str:
                     "codec_type": "audio",
                     "codec_name": "mp3",
                     "duration": f"{duration:.3f}",
-                    "sample_rate": "44100",
-                    "channels": 1,
+                    "sample_rate": str(sample_rate),
+                    "channels": channels,
                 }
             ],
             "format": {
@@ -101,6 +106,8 @@ def probe_runner(
     durations: Sequence[float],
     *,
     calls: list[list[str]] | None = None,
+    sample_rate: int = 44100,
+    channels: int = 1,
 ) -> Any:
     remaining = list(durations)
 
@@ -111,7 +118,7 @@ def probe_runner(
         return subprocess.CompletedProcess(
             list(argv),
             0,
-            stdout=probe_json(duration),
+            stdout=probe_json(duration, sample_rate=sample_rate, channels=channels),
             stderr="",
         )
 
@@ -145,6 +152,7 @@ class FakeTTSProvider(Provider):
         *,
         price: float = PRICE,
         unit: str = "character",
+        sample_rate: int = 44100,
     ) -> None:
         super().__init__(
             ProviderMeta(
@@ -157,13 +165,14 @@ class FakeTTSProvider(Provider):
             )
         )
         self.calls: list[TTSRequest] = []
+        self.sample_rate = sample_rate
 
     async def synthesize(self, request: TTSRequest) -> TTSResponse:
         self.calls.append(request)
         return TTSResponse(
             audio=MP3,
             format=AudioFormat.MP3,
-            sample_rate=44100,
+            sample_rate=self.sample_rate,
             voice=request.voice,
             model=request.model or "tts-1",
             provider=self.name,
@@ -266,6 +275,36 @@ def test_identical_text_voice_and_settings_are_served_from_cache(
     assert second.event.amount_usd == 0.0
     assert second.event.metadata["cache"] == "hit"
     assert tracker.total() == pytest.approx(spent)
+
+
+def test_measured_speech_format_sample_rate_and_channels_survive_a_cache_hit(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeTTSProvider(sample_rate=22050)
+    service = _service(provider, tracker, storage, durations=(2.75,))
+    request = TTSRequest(text=TEXT, voice=VOICE, sample_rate=48000)
+
+    first = _run(service.synthesize(request, run_id="run-1"))
+
+    assert first.asset is not None
+    assert first.asset.analysis.format == "mp3"
+    assert first.asset.analysis.sample_rate == 44100
+    assert first.asset.analysis.channels == 1
+    assert first.response.format is AudioFormat.MP3
+    assert first.response.sample_rate == 44100
+
+    second = _run(service.synthesize(request, run_id="run-2"))
+
+    assert len(provider.calls) == 1
+    assert second.cache_hit is True
+    assert second.asset is not None and first.asset is not None
+    assert second.asset.id == first.asset.id
+    assert second.asset.analysis.format == "mp3"
+    assert second.asset.analysis.sample_rate == 44100
+    assert second.asset.analysis.channels == 1
+    assert second.response.format is AudioFormat.MP3
+    assert second.response.sample_rate == 44100
 
 
 def test_text_voice_and_settings_all_take_part_in_the_cache_key(

@@ -161,6 +161,43 @@ def _payload_format(payload: bytes, fallback: AudioFormat) -> AudioFormat:
     return _audio_format(signature.format.value, fallback)
 
 
+def _measured_speech(
+    probe: MediaProbe,
+    *,
+    fallback_format: AudioFormat,
+    fallback_sample_rate: int | None = None,
+    fallback_channels: int | None = None,
+) -> tuple[AudioFormat, int | None, int | None]:
+    """Return the container, sample rate and channels measured by ffprobe."""
+    fmt = _audio_format(probe.format.value, fallback_format)
+    sample_rate = fallback_sample_rate
+    channels = fallback_channels
+    info = probe.ffprobe
+    if info is not None:
+        streams = info.audio_streams
+        if streams:
+            stream = streams[0]
+            if stream.sample_rate is not None:
+                sample_rate = stream.sample_rate
+            if stream.channels is not None:
+                channels = stream.channels
+    return fmt, sample_rate, channels
+
+
+def _stored_audio_format(
+    analysis: AssetAnalysis,
+    fallback: AudioFormat,
+) -> AudioFormat:
+    """Return the format recorded on *analysis*, or *fallback* when unknown."""
+    value = analysis.format.strip().lower()
+    if value:
+        try:
+            return AudioFormat(value)
+        except ValueError:
+            pass
+    return fallback
+
+
 def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
@@ -924,6 +961,11 @@ class SpeechService:
         duration = probe.duration_seconds
         if duration is None:
             duration = response.duration_seconds
+        measured_format, measured_sample_rate, measured_channels = _measured_speech(
+            probe,
+            fallback_format=output_format,
+            fallback_sample_rate=response.sample_rate,
+        )
 
         response_metadata = dict(response.metadata)
         response_metadata.setdefault("characters", len(request.text))
@@ -933,7 +975,8 @@ class SpeechService:
         response = response.model_copy(
             update={
                 "audio": payload,
-                "format": output_format,
+                "format": measured_format,
+                "sample_rate": measured_sample_rate,
                 "duration_seconds": duration,
                 "provider": provider_name,
                 "model": model_name,
@@ -1002,7 +1045,12 @@ class SpeechService:
             run_id=run_id,
             pinned=pinned,
             seed=request.seed,
-            analysis=AssetAnalysis(duration_seconds=duration),
+            analysis=AssetAnalysis(
+                duration_seconds=duration,
+                format=measured_format.value,
+                sample_rate=measured_sample_rate,
+                channels=measured_channels,
+            ),
             cost_links=cost_links,
         )
         if use_cache and self._cache is not None:
@@ -1143,7 +1191,15 @@ class SpeechService:
             return None
         if key is None or asset is None or payload is None:  # pragma: no cover
             return None
-        fmt = _payload_format(payload, request.format)
+        fmt = _stored_audio_format(
+            asset.analysis,
+            _payload_format(payload, request.format),
+        )
+        sample_rate = (
+            asset.analysis.sample_rate
+            if asset.analysis.sample_rate is not None
+            else request.sample_rate
+        )
         duration = asset.analysis.duration_seconds
         if duration is None:
             duration = self._measure_duration(payload, fmt=fmt)
@@ -1151,7 +1207,7 @@ class SpeechService:
         response = TTSResponse(
             audio=payload,
             format=fmt,
-            sample_rate=request.sample_rate,
+            sample_rate=sample_rate,
             duration_seconds=duration,
             voice=request.voice,
             model=asset.model,
