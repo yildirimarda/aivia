@@ -1231,9 +1231,7 @@ class VideoService:
             accessibility_sidecars=accessibility,
             cache_hit=False,
             failures=tuple(failures),
-            adaptation_warnings=(
-                adaptation.warnings if adaptation is not None else ()
-            ),
+            adaptation_warnings=(adaptation.warnings if adaptation is not None else ()),
         )
         self._remember(outcome)
         return outcome

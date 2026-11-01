@@ -799,9 +799,7 @@ class ImageService:
             selection=selection,
             sidecars=sidecars,
             cache_hit=False,
-            adaptation_warnings=(
-                adaptation.warnings if adaptation is not None else ()
-            ),
+            adaptation_warnings=(adaptation.warnings if adaptation is not None else ()),
         )
         self._last_selection = selection
         self._last_event = event

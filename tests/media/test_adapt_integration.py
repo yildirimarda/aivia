@@ -133,9 +133,7 @@ def test_image_request_is_adapted_before_the_provider_call() -> None:
         count=3,
     )
 
-    outcome = _run(
-        service.generate(request, token=service.screen(request.prompt))
-    )
+    outcome = _run(service.generate(request, token=service.screen(request.prompt)))
 
     sent = provider.calls[-1].request
     assert isinstance(sent, ImageRequest)
@@ -163,9 +161,7 @@ def test_video_request_is_adapted_before_the_provider_call() -> None:
     )
     request = VideoRequest(prompt="a storm", duration_seconds=9.0, count=3)
 
-    outcome = _run(
-        service.generate(request, token=service.screen(request.prompt))
-    )
+    outcome = _run(service.generate(request, token=service.screen(request.prompt)))
 
     sent = provider.calls[-1].request
     assert isinstance(sent, VideoRequest)
@@ -194,9 +190,7 @@ def test_music_request_is_adapted_before_the_provider_call() -> None:
         format=AudioFormat.WAV,
     )
 
-    outcome = _run(
-        service.generate(request, token=service.screen(request.prompt))
-    )
+    outcome = _run(service.generate(request, token=service.screen(request.prompt)))
 
     sent = provider.calls[-1].request
     assert isinstance(sent, MusicRequest)
@@ -222,9 +216,7 @@ def test_speech_request_is_adapted_before_the_provider_call() -> None:
         format=AudioFormat.WAV,
     )
 
-    outcome = _run(
-        service.synthesize(request, token=service.screen(request.text))
-    )
+    outcome = _run(service.synthesize(request, token=service.screen(request.text)))
 
     sent = provider.calls[-1].request
     assert isinstance(sent, TTSRequest)

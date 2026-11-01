@@ -972,9 +972,7 @@ class SpeechService:
             accessibility_sidecars=accessibility,
             cache_hit=False,
             processed=processed,
-            adaptation_warnings=(
-                adaptation.warnings if adaptation is not None else ()
-            ),
+            adaptation_warnings=(adaptation.warnings if adaptation is not None else ()),
         )
         self._remember(outcome)
         return outcome

@@ -1262,9 +1262,7 @@ class MusicService:
             cache_hit=False,
             licenses=licenses,
             attribution=attribution,
-            adaptation_warnings=(
-                adaptation.warnings if adaptation is not None else ()
-            ),
+            adaptation_warnings=(adaptation.warnings if adaptation is not None else ()),
         )
         self._remember(outcome)
         return outcome
