@@ -46,6 +46,9 @@ from aivia.providers.tts.google import (
 )
 from aivia.providers.tts.local import (
     DEFAULT_SAMPLE_RATE,
+    Converter,
+    Encoder,
+    FFmpegRunner,
     Kokoro,
     KokoroTTS,
     KokoroTTSProvider,
@@ -87,10 +90,13 @@ __all__ = [
     "AzureSpeechProvider",
     "AzureTTS",
     "AzureTTSProvider",
+    "Converter",
     "ElevenLabs",
     "ElevenLabsProvider",
     "ElevenLabsTTS",
     "ElevenLabsTTSProvider",
+    "Encoder",
+    "FFmpegRunner",
     "Google",
     "GoogleCloudTTS",
     "GoogleCloudTTSProvider",

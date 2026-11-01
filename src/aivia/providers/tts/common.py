@@ -25,6 +25,7 @@ __all__ = [
     "as_mapping",
     "as_text",
     "decode_base64_audio",
+    "detect_audio_format",
     "format_language",
     "pcm_to_wav",
     "phoneme_ssml",
@@ -128,8 +129,13 @@ def decode_base64_audio(value: str, *, provider: str) -> bytes:
     return data
 
 
-def sniff_audio_format(data: bytes, fallback: AudioFormat) -> AudioFormat:
-    """Detect a common audio container from its leading bytes."""
+def detect_audio_format(data: bytes) -> AudioFormat | None:
+    """Detect a common audio container from its leading bytes.
+
+    Raw PCM and unknown payloads return ``None`` because they carry no
+    signature; callers that know the intended encoding should use
+    :func:`sniff_audio_format` to supply a fallback.
+    """
     if data.startswith(b"RIFF") and data[8:12] == b"WAVE":
         return AudioFormat.WAV
     if data.startswith(b"OggS"):
@@ -146,7 +152,12 @@ def sniff_audio_format(data: bytes, fallback: AudioFormat) -> AudioFormat:
         return AudioFormat.MP3
     if data.startswith(b"ftyp") or data[4:8] == b"ftyp":
         return AudioFormat.M4A
-    return fallback
+    return None
+
+
+def sniff_audio_format(data: bytes, fallback: AudioFormat) -> AudioFormat:
+    """Detect a common audio container from its leading bytes."""
+    return detect_audio_format(data) or fallback
 
 
 def pcm_to_wav(

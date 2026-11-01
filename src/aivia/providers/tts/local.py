@@ -4,8 +4,11 @@ A local synthesizer runs on the machine and costs nothing, so it is the natural
 fallback when no hosted voice is configured. The adapter never uses a shell: a
 configured command is split into an argv list, text is written to stdin unless
 the command names a ``{text}`` placeholder, and the produced audio is read from
-the ``{output}`` file or stdout. Tests inject a ``synthesizer`` callable so the
-offline suite never needs Piper or Kokoro installed.
+the ``{output}`` file or stdout. When the produced container differs from the
+requested one, it is converted with ffmpeg; an unrecognised source or a missing
+encoder is rejected rather than returned under the wrong format. Tests inject a
+``synthesizer`` or ``encoder`` callable so the offline suite never needs Piper,
+Kokoro or ffmpeg installed.
 """
 
 from __future__ import annotations
@@ -26,11 +29,14 @@ from aivia.providers.base import HealthStatus, Provider, ProviderHealth
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.tts import CAPABILITY_TTS, TTSRequest, TTSResponse
 from aivia.providers.registry import register_provider
-from aivia.providers.tts.common import sniff_audio_format
+from aivia.providers.tts.common import detect_audio_format
 from aivia.providers.tts.voice import VoiceMap
 
 __all__ = [
     "DEFAULT_SAMPLE_RATE",
+    "Converter",
+    "Encoder",
+    "FFmpegRunner",
     "Kokoro",
     "KokoroTTS",
     "KokoroTTSProvider",
@@ -48,6 +54,27 @@ DEFAULT_SAMPLE_RATE = 22050
 
 Synthesizer = Callable[[str, str, str, AudioFormat, int], bytes]
 """A callable taking text, voice, model, format and sample rate."""
+
+Encoder = Callable[[bytes, AudioFormat, int], bytes]
+"""A callable taking source audio, the target format and the sample rate."""
+
+Converter = Callable[[bytes, AudioFormat, AudioFormat, int], bytes]
+"""A callable taking source audio, source format, target format and sample rate."""
+
+FFmpegRunner = Callable[[list[str]], subprocess.CompletedProcess[bytes]]
+"""A callable running an ffmpeg argv and returning its completed process."""
+
+_FFMPEG_CODECS: dict[AudioFormat, str] = {
+    AudioFormat.MP3: "libmp3lame",
+    AudioFormat.WAV: "pcm_s16le",
+    AudioFormat.OGG: "libvorbis",
+    AudioFormat.OPUS: "libopus",
+    AudioFormat.AAC: "aac",
+    AudioFormat.FLAC: "flac",
+    AudioFormat.PCM: "pcm_s16le",
+    AudioFormat.M4A: "aac",
+}
+"""The ffmpeg audio encoder used for each requested output container."""
 
 
 _DEFAULT_METADATA = ProviderMeta(
@@ -126,6 +153,10 @@ class LocalTTSProvider(Provider):
         format: AudioFormat | None = None,
         sample_rate: int | None = None,
         synthesizer: Synthesizer | None = None,
+        encoder: Encoder | None = None,
+        converter: Converter | None = None,
+        ffmpeg_executable: str = "ffmpeg",
+        ffmpeg_runner: FFmpegRunner | None = None,
         timeout_seconds: float = 60.0,
         name: str | None = None,
         health_timeout_seconds: float | None = None,
@@ -169,6 +200,18 @@ class LocalTTSProvider(Provider):
         if synthesizer is not None and not callable(synthesizer):
             raise TypeError("synthesizer must be callable or None")
         self._synthesizer = synthesizer
+        if encoder is not None and not callable(encoder):
+            raise TypeError("encoder must be callable or None")
+        self._encoder = encoder
+        if converter is not None and not callable(converter):
+            raise TypeError("converter must be callable or None")
+        self._converter = converter
+        if not isinstance(ffmpeg_executable, str) or not ffmpeg_executable.strip():
+            raise ValueError("ffmpeg_executable must be a non-empty string")
+        self._ffmpeg = ffmpeg_executable.strip()
+        if ffmpeg_runner is not None and not callable(ffmpeg_runner):
+            raise TypeError("ffmpeg_runner must be callable or None")
+        self._ffmpeg_runner = ffmpeg_runner
         if isinstance(timeout_seconds, bool) or not isinstance(
             timeout_seconds, (int, float)
         ):
@@ -211,6 +254,26 @@ class LocalTTSProvider(Provider):
     def sample_rate(self) -> int:
         """The default sample rate."""
         return self._sample_rate
+
+    @property
+    def encoder(self) -> Encoder | None:
+        """The injected container encoder, or ``None`` for ffmpeg."""
+        return self._encoder
+
+    @property
+    def converter(self) -> Converter | None:
+        """The injected converter, or ``None`` for ffmpeg."""
+        return self._converter
+
+    @property
+    def ffmpeg_executable(self) -> str:
+        """The ffmpeg binary used for container conversion."""
+        return self._ffmpeg
+
+    @property
+    def ffmpeg_runner(self) -> FFmpegRunner | None:
+        """The injected ffmpeg runner, or ``None`` for subprocess."""
+        return self._ffmpeg_runner
 
     def _missing_model(self) -> str | None:
         model = self._default_model
@@ -382,6 +445,152 @@ class LocalTTSProvider(Provider):
                 )
             return audio
 
+    def _source_format(self, audio: bytes, target: AudioFormat) -> AudioFormat:
+        detected = detect_audio_format(audio)
+        if detected is not None:
+            return detected
+        if target is AudioFormat.PCM:
+            return AudioFormat.PCM
+        if (
+            self._converter is not None
+            or self._encoder is not None
+            or self._ffmpeg_runner is not None
+        ):
+            return AudioFormat.PCM
+        raise InvalidRequestError(
+            "local text to speech does not support converting unrecognised "
+            f"audio to {target.value}",
+            details={"provider": self.name, "format": target.value},
+        )
+
+    def _convert(
+        self,
+        audio: bytes,
+        source: AudioFormat,
+        target: AudioFormat,
+        sample_rate: int,
+        *,
+        timeout_seconds: float,
+    ) -> bytes:
+        if source is target:
+            return audio
+        if target not in _FFMPEG_CODECS:
+            raise InvalidRequestError(
+                f"local text to speech does not support converting to {target.value}",
+                details={"provider": self.name, "format": target.value},
+            )
+        if self._converter is not None:
+            converted = self._converter(audio, source, target, sample_rate)
+        elif self._encoder is not None:
+            converted = self._encoder(audio, target, sample_rate)
+        else:
+            converted = self._run_ffmpeg(
+                audio,
+                source,
+                target,
+                sample_rate,
+                timeout_seconds=timeout_seconds,
+            )
+        if not converted:
+            raise ValidationError(
+                f"local text to speech conversion to {target.value} produced no audio",
+                details={"provider": self.name, "format": target.value},
+            )
+        return converted
+
+    def _run_ffmpeg(
+        self,
+        audio: bytes,
+        source: AudioFormat,
+        target: AudioFormat,
+        sample_rate: int,
+        *,
+        timeout_seconds: float,
+    ) -> bytes:
+        codec = _FFMPEG_CODECS[target]
+        if self._ffmpeg_runner is None and shutil.which(self._ffmpeg) is None:
+            raise ValidationError(
+                f"local text to speech needs ffmpeg to convert to {target.value}",
+                details={
+                    "provider": self.name,
+                    "executable": self._ffmpeg,
+                    "format": target.value,
+                },
+            )
+        with tempfile.TemporaryDirectory(prefix="aivia-local-tts-") as directory:
+            source_path = Path(directory) / f"source.{source.value}"
+            target_path = Path(directory) / f"output.{target.value}"
+            source_path.write_bytes(audio)
+            argv = [
+                self._ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-nostdin",
+                "-y",
+            ]
+            if source is AudioFormat.PCM:
+                argv.extend(["-f", "s16le", "-ar", str(sample_rate), "-ac", "1"])
+            argv.extend(["-i", str(source_path), "-vn", "-c:a", codec])
+            argv.extend(["-ar", str(sample_rate), "-ac", "1"])
+            if target is AudioFormat.PCM:
+                argv.extend(["-f", "s16le"])
+            argv.extend(
+                [
+                    "-map_metadata",
+                    "-1",
+                    "-fflags",
+                    "+bitexact",
+                    "-flags",
+                    "+bitexact",
+                    "-threads",
+                    "1",
+                    str(target_path),
+                ]
+            )
+            try:
+                if self._ffmpeg_runner is not None:
+                    completed = self._ffmpeg_runner(argv)
+                else:
+                    completed = subprocess.run(
+                        argv,
+                        capture_output=True,
+                        check=False,
+                        timeout=timeout_seconds,
+                    )
+            except FileNotFoundError as exc:
+                raise ValidationError(
+                    f"local text to speech executable not found: {argv[0]}",
+                    details={"provider": self.name, "executable": argv[0]},
+                ) from exc
+            except subprocess.TimeoutExpired as exc:
+                raise ValidationError(
+                    "local text to speech conversion timed out",
+                    details={"provider": self.name, "timeout": timeout_seconds},
+                ) from exc
+            if completed.returncode != 0:
+                message = (completed.stderr or b"").decode("utf-8", "replace").strip()
+                raise ValidationError(
+                    "local text to speech conversion failed",
+                    details={
+                        "provider": self.name,
+                        "returncode": completed.returncode,
+                        "stderr": message[:500],
+                    },
+                )
+            converted = b""
+            if target_path.is_file():
+                converted = target_path.read_bytes()
+            if not converted and completed.stdout:
+                converted = completed.stdout
+            if not converted:
+                raise ValidationError(
+                    f"local text to speech conversion to {target.value} "
+                    "produced no audio",
+                    details={"provider": self.name, "format": target.value},
+                )
+            return converted
+
     async def synthesize(self, request: TTSRequest) -> TTSResponse:
         """Synthesize *request* with the configured local backend."""
         if not isinstance(request, TTSRequest):
@@ -416,10 +625,18 @@ class LocalTTSProvider(Provider):
                 "local text to speech produced empty audio",
                 details={"provider": self.name},
             )
-        actual_format = sniff_audio_format(audio, audio_format)
+        source_format = self._source_format(audio, audio_format)
+        audio = await asyncio.to_thread(
+            self._convert,
+            audio,
+            source_format,
+            audio_format,
+            sample_rate,
+            timeout_seconds=timeout_seconds,
+        )
         return TTSResponse(
             audio=audio,
-            format=actual_format,
+            format=audio_format,
             sample_rate=sample_rate,
             voice=voice,
             model=model or self._backend,
