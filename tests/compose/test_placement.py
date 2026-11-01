@@ -112,9 +112,7 @@ def test_faces_are_avoided_when_the_option_is_on() -> None:
     face = FaceBox(x=0, y=0, width=100, height=100)
 
     avoided = find_text_placement(_blank(), (20, 20), faces=[face])
-    allowed = find_text_placement(
-        _blank(), (20, 20), faces=[face], avoid_faces=False
-    )
+    allowed = find_text_placement(_blank(), (20, 20), faces=[face], avoid_faces=False)
 
     assert avoided.x >= 100
     assert allowed.x < 100

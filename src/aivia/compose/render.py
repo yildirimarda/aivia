@@ -98,9 +98,7 @@ type ImageSource = str | Path | bytes | Image.Image
 type AssetResolver = Mapping[str, ImageSource] | Callable[[str], ImageSource]
 """How a layer source string is resolved to image data."""
 
-type FaceResolver = (
-    Mapping[str, Sequence[Any]] | Callable[[Layer], Sequence[Any]]
-)
+type FaceResolver = Mapping[str, Sequence[Any]] | Callable[[Layer], Sequence[Any]]
 """Precomputed face rectangles for smart text placement, keyed by layer id."""
 
 
@@ -1634,9 +1632,7 @@ class PillowStillRenderer:
             explicit_width = _layer_value(layer, "width", "w") is not None
             explicit_height = _layer_value(layer, "height", "h") is not None
             box_width = (
-                placement.width
-                if explicit_width
-                else max(1, math.ceil(layout.width))
+                placement.width if explicit_width else max(1, math.ceil(layout.width))
             )
             box_height = (
                 placement.height
@@ -1655,9 +1651,7 @@ class PillowStillRenderer:
                 margin=config.margin,
                 step=config.step,
             )
-            placement = LayerPlacement(
-                region.x, region.y, box_width, box_height
-            )
+            placement = LayerPlacement(region.x, region.y, box_width, box_height)
             layout = _layout(placement.width, placement.height)
         font = _load_font(str(path), layout.font_size)
         text_image = Image.new(

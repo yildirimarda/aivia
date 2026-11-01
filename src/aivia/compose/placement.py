@@ -227,9 +227,8 @@ def _face_rect(value: FaceInput) -> tuple[float, float, float, float] | None:
 def _face_list(faces: Any) -> list[tuple[float, float, float, float]]:
     if faces is None:
         return []
-    if (
-        not isinstance(faces, (Mapping, FaceBox, tuple, list))
-        and (hasattr(faces, "faces") or hasattr(faces, "face_regions"))
+    if not isinstance(faces, (Mapping, FaceBox, tuple, list)) and (
+        hasattr(faces, "faces") or hasattr(faces, "face_regions")
     ):
         faces = faces_from_analysis(faces)
     if isinstance(faces, Mapping) and not any(
@@ -240,8 +239,10 @@ def _face_list(faces: Any) -> list[tuple[float, float, float, float]]:
         faces, (list, tuple)
     ):
         faces = [faces]
-    if isinstance(faces, tuple) and len(faces) == 4 and all(
-        isinstance(item, (int, float)) for item in faces
+    if (
+        isinstance(faces, tuple)
+        and len(faces) == 4
+        and all(isinstance(item, (int, float)) for item in faces)
     ):
         faces = [faces]
     if not isinstance(faces, Sequence):
@@ -433,9 +434,7 @@ def find_low_detail_regions(
     candidates: list[tuple[tuple[float, ...], PlacementRegion]] = []
     for y in _positions(start_y, stop_y, step):
         for x in _positions(start_x, stop_x, step):
-            total = _region_sum(
-                integral, x, y, target_width, target_height
-            )
+            total = _region_sum(integral, x, y, target_width, target_height)
             mean = total / area / 255.0
             overlap = 0.0
             if scaled_faces:
@@ -445,9 +444,7 @@ def find_low_detail_regions(
             score = mean + overlap
             center_x = x + target_width / 2.0
             center_y = y + target_height / 2.0
-            distance = abs(center_x - canvas_center_x) + abs(
-                center_y - canvas_center_y
-            )
+            distance = abs(center_x - canvas_center_x) + abs(center_y - canvas_center_y)
             key = (
                 1.0 if overlap > 0.0 else 0.0,
                 round(overlap, 9),
