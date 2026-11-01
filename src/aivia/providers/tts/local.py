@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shlex
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -21,7 +22,7 @@ from pathlib import Path
 from aivia.core.config.http import HttpClientConfig
 from aivia.core.errors import ConfigError, InvalidRequestError, ValidationError
 from aivia.core.models.provider import ProviderMeta, ProviderPrice
-from aivia.providers.base import Provider
+from aivia.providers.base import HealthStatus, Provider, ProviderHealth
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.tts import CAPABILITY_TTS, TTSRequest, TTSResponse
 from aivia.providers.registry import register_provider
@@ -82,6 +83,18 @@ def _command(value: str | Sequence[str] | None) -> list[str] | None:
     if not all(isinstance(part, str) and part for part in parts):
         raise ValueError("command entries must be non-empty strings")
     return parts
+
+
+def _looks_like_model_path(value: str) -> bool:
+    """Return whether *value* names a file rather than an opaque model id."""
+    path = Path(value).expanduser()
+    return (
+        path.is_absolute()
+        or value.startswith(".")
+        or os.sep in value
+        or (os.altsep is not None and os.altsep in value)
+        or bool(path.suffix)
+    )
 
 
 class LocalTTSProvider(Provider):
@@ -198,6 +211,62 @@ class LocalTTSProvider(Provider):
     def sample_rate(self) -> int:
         """The default sample rate."""
         return self._sample_rate
+
+    def _missing_model(self) -> str | None:
+        model = self._default_model
+        if not model:
+            return None
+        if self._backend != "piper" and not _looks_like_model_path(model):
+            return None
+        if Path(model).expanduser().exists():
+            return None
+        return model
+
+    async def check_health(self) -> ProviderHealth:
+        """Probe the configured executable and model without synthesizing."""
+        details: dict[str, object] = {
+            "provider": self.name,
+            "backend": self._backend,
+        }
+        if self._synthesizer is not None:
+            return ProviderHealth(
+                status=HealthStatus.HEALTHY,
+                message="ok",
+                details={**details, "synthesizer": True},
+            )
+        try:
+            template = self._template()
+        except InvalidRequestError as exc:
+            return ProviderHealth(
+                status=HealthStatus.UNHEALTHY,
+                message=str(exc),
+                details={**details, "error": "InvalidRequestError"},
+            )
+        executable = self._executable or template[0]
+        if shutil.which(executable) is None:
+            return ProviderHealth(
+                status=HealthStatus.UNHEALTHY,
+                message=f"local text to speech executable not found: {executable}",
+                details={**details, "executable": executable},
+            )
+        missing_model = self._missing_model()
+        if missing_model is not None:
+            return ProviderHealth(
+                status=HealthStatus.UNHEALTHY,
+                message=f"local text to speech model not found: {missing_model}",
+                details={
+                    **details,
+                    "executable": executable,
+                    "model": missing_model,
+                },
+            )
+        if self._default_model:
+            details["model"] = self._default_model
+        return ProviderHealth(
+            status=HealthStatus.HEALTHY,
+            message="ok",
+            details={**details, "executable": executable},
+        )
 
     def _template(self) -> list[str]:
         if self._command is not None:
