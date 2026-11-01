@@ -10,6 +10,8 @@ adapter behaves the same way:
 * repeating a submission with the same idempotency key returns the stored job
   instead of paying for a second generation, waiting for a racing submission to
   persist its remote id rather than returning an unusable pending record;
+* a pending job whose submitter died before storing a remote id is resumed on
+  the same local record, so a repeated key recovers it instead of hanging;
 * polling is bounded by a deadline, records progress and terminal state, and
   raises :class:`AsyncJobTimeoutError` when the deadline passes;
 * cancelling is idempotent and never calls the provider twice;
@@ -27,10 +29,11 @@ import asyncio
 import hashlib
 import inspect
 import math
+import os
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, Self, runtime_checkable
@@ -109,6 +112,9 @@ _RESULT_KEYS = ("result_urls", "urls", "outputs", "results", "files", "output")
 _RESULT_URL_KEYS = ("url", "uri", "href", "download_url", "result_url")
 _REMOTE_ID_KEYS = ("job_id", "remote_id", "request_id", "id", "uuid", "requestId")
 _STATE_KEYS = ("state", "status", "job_state", "phase")
+
+_ACTIVE_SUBMISSIONS: set[str] = set()
+"""Owner tokens of submissions in flight in this process."""
 
 
 class AsyncJobState(StrEnum):
@@ -281,6 +287,19 @@ def _error_message(error: BaseException) -> str:
     return text or type(error).__name__
 
 
+def _new_submission_owner() -> str:
+    """Return a token identifying one in-flight submission in this process."""
+    return f"{os.getpid()}:{new_job_id()}"
+
+
+def _owner_pid(owner: str) -> int | None:
+    head, _, _ = owner.partition(":")
+    try:
+        return int(head)
+    except ValueError:
+        return None
+
+
 @dataclass(frozen=True, slots=True)
 class AsyncJobStatus:
     """One poll result from a provider backend.
@@ -333,11 +352,20 @@ class AsyncJob(BaseModel):
     progress: float | None = None
     error_code: str = ""
     error_message: str = ""
+    submission_owner: str = ""
+    submission_started_at: datetime | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("id", "provider", "remote_id", "idempotency_key", mode="before")
+    @field_validator(
+        "id",
+        "provider",
+        "remote_id",
+        "idempotency_key",
+        "submission_owner",
+        mode="before",
+    )
     @classmethod
     def _strip_text(cls, value: Any) -> Any:
         return _text(value)
@@ -571,6 +599,12 @@ def _job_values(job: AsyncJob, *, kind: str) -> dict[str, Any]:
         "result_urls": list(job.result_urls),
         "progress": job.progress,
         "state": job.state.value,
+        "submission_owner": job.submission_owner,
+        "submission_started_at": (
+            job.submission_started_at.isoformat()
+            if job.submission_started_at is not None
+            else None
+        ),
     }
     return {
         "kind": kind,
@@ -601,6 +635,15 @@ def _from_job(job: Job) -> AsyncJob:
     }
     raw_urls = internal.get("result_urls")
     urls = _collect_urls(raw_urls)
+    raw_started = internal.get("submission_started_at")
+    submission_started_at: datetime | None = None
+    if isinstance(raw_started, datetime):
+        submission_started_at = raw_started
+    elif isinstance(raw_started, str) and raw_started.strip():
+        try:
+            submission_started_at = datetime.fromisoformat(raw_started.strip())
+        except ValueError:
+            submission_started_at = None
     return AsyncJob(
         id=job.id,
         provider=_text(internal.get("provider") or raw_payload.get("provider")),
@@ -613,6 +656,8 @@ def _from_job(job: Job) -> AsyncJob:
         progress=_coerce_progress(internal.get("progress")),
         error_code=job.error_code,
         error_message=job.error_message,
+        submission_owner=_text(internal.get("submission_owner")),
+        submission_started_at=submission_started_at,
         created_at=job.created_at,
         updated_at=job.updated_at,
         metadata=user_metadata,
@@ -860,19 +905,22 @@ class AsyncMediaJobHelper:
         return existing
 
     async def _reuse_or_wait(
-        self, existing: AsyncJob, *, digest: str, key: str
+        self, existing: AsyncJob, *, digest: str, key: str, request: Any = None
     ) -> AsyncJob:
-        """Return *existing*, waiting while a racing submission is in flight.
+        """Return *existing*, waiting while a live submission is in flight.
 
-        Another process may have inserted the local row for *key* but not yet
-        received or persisted the provider job id. Returning that row would
-        give the caller a job it cannot poll, so wait for the remote id to
-        appear. A terminal record is returned as-is; a record that never gains
-        a remote id before the deadline raises :class:`AsyncJobTimeoutError`.
+        A pending row with no remote id whose submitter is gone was left by a
+        crash; it is resumed on the same local job id so a repeated key recovers
+        it. A live submission is still awaited, and a record that never gains a
+        remote id before the deadline raises :class:`AsyncJobTimeoutError`.
         """
         current = existing
         deadline = self._clock() + self.timeout_seconds
         while not current.remote_id and not current.terminal:
+            if self._should_resume(current):
+                return await self._resume(
+                    current, digest=digest, key=key, request=request
+                )
             remaining = deadline - self._clock()
             if remaining <= 0.0:
                 raise AsyncJobTimeoutError(
@@ -885,6 +933,94 @@ class AsyncMediaJobHelper:
             if refreshed is not None:
                 current = refreshed
         return self._reuse_existing(current, digest=digest, key=key)
+
+    def _should_resume(self, job: AsyncJob) -> bool:
+        """Whether a pending job has no live submitter and can be resubmitted."""
+        if job.remote_id or job.terminal:
+            return False
+        owner = job.submission_owner
+        if not owner:
+            return True
+        if owner in _ACTIVE_SUBMISSIONS:
+            return False
+        pid = _owner_pid(owner)
+        if pid is None or pid == os.getpid():
+            return True
+        started = job.submission_started_at
+        if started is None:
+            return True
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=UTC)
+        return (utcnow() - started).total_seconds() >= self.timeout_seconds
+
+    async def _resume(
+        self, job: AsyncJob, *, digest: str, key: str, request: Any = None
+    ) -> AsyncJob:
+        """Re-submit *job* after its submitter died before storing a remote id."""
+        current = self._reuse_existing(job, digest=digest, key=key)
+        submit_fn = self._submit_fn
+        if submit_fn is None:
+            raise InvalidRequestError("helper has no submit callable")
+        payload = request if request is not None else current.request
+        owner = _new_submission_owner()
+        started = utcnow()
+        pending = current.model_copy(
+            update={
+                "state": AsyncJobState.PENDING,
+                "submission_owner": owner,
+                "submission_started_at": started,
+                "updated_at": started,
+            }
+        )
+        _ACTIVE_SUBMISSIONS.add(owner)
+        try:
+            self._store.save(pending)
+            try:
+                response = await self._call(submit_fn, payload)
+            except Exception as exc:
+                failed = pending.model_copy(
+                    update={
+                        "state": AsyncJobState.FAILED,
+                        "error_code": _error_code(exc),
+                        "error_message": _error_message(exc),
+                        "submission_owner": "",
+                        "submission_started_at": None,
+                        "updated_at": utcnow(),
+                    }
+                )
+                self._store.save(failed)
+                raise
+            remote_id = _remote_id(response)
+            if not remote_id:
+                failed = pending.model_copy(
+                    update={
+                        "state": AsyncJobState.FAILED,
+                        "error_code": "invalid_request",
+                        "error_message": (
+                            "provider submit response did not contain a job id"
+                        ),
+                        "submission_owner": "",
+                        "submission_started_at": None,
+                        "updated_at": utcnow(),
+                    }
+                )
+                self._store.save(failed)
+                raise InvalidRequestError(
+                    "provider submit response did not contain a job id",
+                    details={"job_id": current.id, "provider": self.provider},
+                )
+            resumed = pending.model_copy(
+                update={
+                    "remote_id": remote_id,
+                    "state": AsyncJobState.RUNNING,
+                    "submission_owner": "",
+                    "submission_started_at": None,
+                    "updated_at": utcnow(),
+                }
+            )
+            return self._store.save(resumed)
+        finally:
+            _ACTIVE_SUBMISSIONS.discard(owner)
 
     async def submit(
         self,
@@ -900,7 +1036,8 @@ class AsyncMediaJobHelper:
         back as soon as the backend returns it. Reusing a key with a different
         request raises :class:`IdempotencyConflict`. A key that is already being
         submitted by another process waits for its remote id instead of
-        returning a pending job that cannot be polled.
+        returning a pending job that cannot be polled; a key whose submitter
+        died before storing a remote id resumes the stored job.
         """
         submit_fn = self._submit_fn
         if submit_fn is None:
@@ -913,9 +1050,12 @@ class AsyncMediaJobHelper:
             if key:
                 existing = self._store.find_by_idempotency_key(key)
                 if existing is not None:
-                    return await self._reuse_or_wait(existing, digest=digest, key=key)
+                    return await self._reuse_or_wait(
+                        existing, digest=digest, key=key, request=request
+                    )
 
             now = utcnow()
+            owner = _new_submission_owner()
             job = AsyncJob(
                 id=new_job_id(),
                 provider=self.provider,
@@ -923,59 +1063,88 @@ class AsyncMediaJobHelper:
                 idempotency_key=key,
                 request_digest=digest,
                 request=request_data,
+                submission_owner=owner,
+                submission_started_at=now,
                 metadata=dict(metadata or {}),
                 created_at=now,
                 updated_at=now,
             )
+            _ACTIVE_SUBMISSIONS.add(owner)
             try:
-                self._store.save(job)
-            except IntegrityError:
-                if not key:
+                try:
+                    self._store.save(job)
+                except IntegrityError:
+                    if not key:
+                        raise
+                    existing = self._store.find_by_idempotency_key(key)
+                    if existing is None:
+                        raise
+                    return await self._reuse_or_wait(
+                        existing, digest=digest, key=key, request=request
+                    )
+                try:
+                    response = await self._call(submit_fn, request)
+                except Exception as exc:
+                    failed = job.model_copy(
+                        update={
+                            "state": AsyncJobState.FAILED,
+                            "error_code": _error_code(exc),
+                            "error_message": _error_message(exc),
+                            "submission_owner": "",
+                            "submission_started_at": None,
+                            "updated_at": utcnow(),
+                        }
+                    )
+                    self._store.save(failed)
                     raise
-                existing = self._store.find_by_idempotency_key(key)
-                if existing is None:
-                    raise
-                return await self._reuse_or_wait(existing, digest=digest, key=key)
-            try:
-                response = await self._call(submit_fn, request)
-            except Exception as exc:
-                failed = job.model_copy(
+
+                remote_id = _remote_id(response)
+                if not remote_id:
+                    failed = job.model_copy(
+                        update={
+                            "state": AsyncJobState.FAILED,
+                            "error_code": "invalid_request",
+                            "error_message": (
+                                "provider submit response did not contain a job id"
+                            ),
+                            "submission_owner": "",
+                            "submission_started_at": None,
+                            "updated_at": utcnow(),
+                        }
+                    )
+                    self._store.save(failed)
+                    raise InvalidRequestError(
+                        "provider submit response did not contain a job id",
+                        details={"job_id": job.id, "provider": self.provider},
+                    )
+
+                submitted = job.model_copy(
                     update={
-                        "state": AsyncJobState.FAILED,
-                        "error_code": _error_code(exc),
-                        "error_message": _error_message(exc),
+                        "remote_id": remote_id,
+                        "state": AsyncJobState.RUNNING,
+                        "submission_owner": "",
+                        "submission_started_at": None,
                         "updated_at": utcnow(),
                     }
                 )
-                self._store.save(failed)
-                raise
+                return self._store.save(submitted)
+            finally:
+                _ACTIVE_SUBMISSIONS.discard(owner)
 
-            remote_id = _remote_id(response)
-            if not remote_id:
-                failed = job.model_copy(
-                    update={
-                        "state": AsyncJobState.FAILED,
-                        "error_code": "invalid_request",
-                        "error_message": (
-                            "provider submit response did not contain a job id"
-                        ),
-                        "updated_at": utcnow(),
-                    }
-                )
-                self._store.save(failed)
-                raise InvalidRequestError(
-                    "provider submit response did not contain a job id",
-                    details={"job_id": job.id, "provider": self.provider},
-                )
+    async def resume(self, job: AsyncJob | str) -> AsyncJob:
+        """Resume a pending job whose submitter died before storing a remote id.
 
-            submitted = job.model_copy(
-                update={
-                    "remote_id": remote_id,
-                    "state": AsyncJobState.RUNNING,
-                    "updated_at": utcnow(),
-                }
-            )
-            return self._store.save(submitted)
+        A job that already has a remote id or reached a terminal state is
+        returned unchanged.
+        """
+        current = self._resolve(job)
+        if current.remote_id or current.terminal:
+            return current
+        return await self._resume(
+            current,
+            digest=current.request_digest,
+            key=current.idempotency_key,
+        )
 
     async def poll(
         self,
