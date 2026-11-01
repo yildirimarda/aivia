@@ -25,6 +25,7 @@ from PIL import (
     Image,
     ImageColor,
     ImageDraw,
+    ImageFilter,
     ImageFont,
     ImageOps,
     UnidentifiedImageError,
@@ -41,6 +42,7 @@ from .errors import FontError, RenderError
 from .fonts import FontManager
 from .keyframes import AnimatedProperty, keyframes_for_layer
 from .schema import (
+    Anchor,
     Composition,
     FitMode,
     Gradient,
@@ -168,6 +170,121 @@ def _offset_pair(value: Any, name: str) -> tuple[float, float] | None:
     if isinstance(value, (tuple, list)) and len(value) == 2:
         return _finite(value[0], name), _finite(value[1], name)
     raise RenderError(f"{name} must be a pair of numbers")
+
+
+def _margin_pair(value: Any) -> tuple[float, float]:
+    if value is None:
+        return 0.0, 0.0
+    if isinstance(value, (tuple, list)):
+        if len(value) != 2:
+            raise RenderError("margin must be a number or a pair of numbers")
+        horizontal = _finite(value[0], "margin")
+        vertical = _finite(value[1], "margin")
+    else:
+        horizontal = vertical = _finite(value, "margin")
+    if horizontal < 0.0 or vertical < 0.0:
+        raise RenderError("margin must not be negative")
+    return horizontal, vertical
+
+
+def _anchor_value(value: Any) -> Anchor:
+    if value is None:
+        return Anchor.CENTER
+    try:
+        return Anchor(value)
+    except ValueError as exc:
+        raise RenderError(f"unsupported anchor {value!r}") from exc
+
+
+def _overlay_target_size(layer: Layer, natural: tuple[int, int]) -> tuple[int, int]:
+    width = _layer_value(layer, "width", "w")
+    height = _layer_value(layer, "height", "h")
+    raw_scale = _layer_value(layer, "scale", "zoom")
+    scale = 1.0 if raw_scale is None else _finite(raw_scale, "scale")
+    if scale <= 0.0:
+        raise RenderError("scale must be positive")
+
+    natural_width, natural_height = natural
+    if width is None and height is None:
+        target_width, target_height = natural_width, natural_height
+    elif width is None:
+        target_height = _integer(height, "overlay height")
+        if target_height < 1:
+            raise RenderError("overlay height must be positive")
+        target_width = round(target_height * natural_width / natural_height)
+    elif height is None:
+        target_width = _integer(width, "overlay width")
+        if target_width < 1:
+            raise RenderError("overlay width must be positive")
+        target_height = round(target_width * natural_height / natural_width)
+    else:
+        target_width = _integer(width, "overlay width")
+        target_height = _integer(height, "overlay height")
+        if target_width < 1 or target_height < 1:
+            raise RenderError("overlay width and height must be positive")
+
+    return (
+        max(1, round(target_width * scale)),
+        max(1, round(target_height * scale)),
+    )
+
+
+def _anchor_position(
+    canvas_size: tuple[int, int],
+    size: tuple[int, int],
+    anchor: Anchor,
+    margin: tuple[float, float],
+) -> tuple[int, int]:
+    canvas_width, canvas_height = canvas_size
+    width, height = size
+    margin_x, margin_y = margin
+    left = margin_x
+    top = margin_y
+    right = canvas_width - width - margin_x
+    bottom = canvas_height - height - margin_y
+    center_x = (canvas_width - width) / 2.0
+    center_y = (canvas_height - height) / 2.0
+    positions = {
+        Anchor.TOP_LEFT: (left, top),
+        Anchor.TOP_CENTER: (center_x, top),
+        Anchor.TOP_RIGHT: (right, top),
+        Anchor.MIDDLE_LEFT: (left, center_y),
+        Anchor.CENTER: (center_x, center_y),
+        Anchor.MIDDLE_RIGHT: (right, center_y),
+        Anchor.BOTTOM_LEFT: (left, bottom),
+        Anchor.BOTTOM_CENTER: (center_x, bottom),
+        Anchor.BOTTOM_RIGHT: (right, bottom),
+    }
+    x, y = positions[anchor]
+    return round(x), round(y)
+
+
+def _shadow_image(
+    image: Image.Image,
+    *,
+    color: Any,
+    offset: tuple[float, float],
+    blur: float,
+    opacity: float,
+) -> tuple[Image.Image, int, int] | None:
+    paint = _color(color, "shadow colour")
+    if paint is None:
+        return None
+    factor = max(0.0, min(1.0, opacity)) * (paint[3] / 255.0)
+    if factor <= 0.0:
+        return None
+    offset_x, offset_y = offset
+    pad_x = math.ceil(abs(offset_x) + blur * 3.0)
+    pad_y = math.ceil(abs(offset_y) + blur * 3.0)
+    size = (image.width + pad_x * 2, image.height + pad_y * 2)
+    alpha = image.getchannel("A").point(lambda channel: round(channel * factor))
+    shadow_alpha = Image.new("L", size, 0)
+    shadow_alpha.paste(alpha, (pad_x, pad_y))
+    shadow = Image.new("RGBA", size, (*paint[:3], 0))
+    shadow.putalpha(shadow_alpha)
+    if blur > 0.0:
+        shadow = shadow.filter(ImageFilter.GaussianBlur(blur))
+    return shadow, pad_x, pad_y
 
 
 def placement_for_layer(layer: Layer, canvas: Image.Image) -> LayerPlacement:
@@ -784,14 +901,21 @@ class PillowStillRenderer:
 
     ``assets`` maps layer source strings to local paths, encoded bytes or
     decoded images. Without a resolver, a source is treated as a local path,
-    optionally relative to ``source_root``. Image, shape and text layers are
-    drawn; other kinds are skipped until their own renderer support lands, so
-    adding a layer kind cannot break an existing still render.
+    optionally relative to ``source_root``. Image, shape, text, sticker and
+    logo layers are drawn; other kinds are skipped until their own renderer
+    support lands, so adding a layer kind cannot break an existing still
+    render.
     """
 
     version = PILLOW_STILL_RENDERER_VERSION
     supported_layer_types = frozenset(
-        {LayerType.IMAGE, LayerType.SHAPE, LayerType.TEXT}
+        {
+            LayerType.IMAGE,
+            LayerType.SHAPE,
+            LayerType.STICKER,
+            LayerType.LOGO,
+            LayerType.TEXT,
+        }
     )
 
     def __init__(
@@ -899,6 +1023,115 @@ class PillowStillRenderer:
         if value <= 0.0:
             return
         _composite(canvas, _opacity(fitted, min(1.0, value)), x, y)
+
+    def _draw_overlay_layer(
+        self,
+        canvas: Image.Image,
+        layer: Layer,
+        time_seconds: float,
+    ) -> None:
+        source = _layer_value(layer, "source", "path", "file", "asset")
+        if not isinstance(source, str) or not source.strip():
+            raise RenderError(f"{layer.type.value} layer {layer.id!r} has no source")
+        image = self._open(source.strip())
+        target = _overlay_target_size(layer, image.size)
+        raw_fit = _layer_value(layer, "fit", "fit_mode", "mode") or FitMode.CONTAIN
+        try:
+            fit = FitMode(raw_fit)
+        except ValueError as exc:
+            raise RenderError(f"unsupported fit mode {raw_fit!r}") from exc
+        fitted = _fit(image, target, fit)
+
+        scale = _sample(layer, AnimatedProperty.SCALE, time_seconds)
+        if scale is not None:
+            if isinstance(scale, tuple):
+                scale_x, scale_y = scale
+            else:
+                scale_x = scale_y = float(scale)
+            if scale_x <= 0.0 or scale_y <= 0.0:
+                return
+            fitted = _resize_to(
+                fitted,
+                (
+                    max(1, round(fitted.width * scale_x)),
+                    max(1, round(fitted.height * scale_y)),
+                ),
+            )
+
+        rotation = _sample(layer, AnimatedProperty.ROTATION, time_seconds)
+        if rotation is not None:
+            fitted = fitted.rotate(
+                float(rotation),
+                resample=Image.Resampling.BICUBIC,
+                expand=True,
+            )
+
+        anchor = _anchor_value(_layer_value(layer, "anchor", "corner", "alignment"))
+        margin = _margin_pair(_layer_value(layer, "margin", "margins", "inset"))
+        x, y = _anchor_position(canvas.size, fitted.size, anchor, margin)
+
+        position = _sample(layer, AnimatedProperty.POSITION, time_seconds)
+        if position is not None:
+            offset = _offset_pair(position, "position keyframe")
+            if offset is not None:
+                x += round(offset[0])
+                y += round(offset[1])
+
+        opacity = _sample(layer, AnimatedProperty.OPACITY, time_seconds)
+        value = layer.opacity if opacity is None else float(opacity)
+        if value <= 0.0:
+            return
+        value = min(1.0, value)
+
+        shadow = _layer_value(layer, "shadow", "drop_shadow")
+        if shadow is not None:
+            if not isinstance(shadow, bool):
+                raise RenderError("shadow must be a boolean")
+            if shadow:
+                raw_color = _layer_value(layer, "shadow_color", "shadow_colour")
+                color = "#000000" if raw_color is None else raw_color
+                raw_offset = _layer_value(layer, "shadow_offset", "shadow_position")
+                offset = (
+                    (4.0, 4.0)
+                    if raw_offset is None
+                    else _offset_pair(raw_offset, "shadow_offset")
+                )
+                if offset is None:
+                    offset = (4.0, 4.0)
+                raw_blur = _layer_value(
+                    layer,
+                    "shadow_blur",
+                    "shadow_softness",
+                    "shadow_radius",
+                )
+                blur = 0.0 if raw_blur is None else _finite(raw_blur, "shadow_blur")
+                if blur < 0.0:
+                    raise RenderError("shadow_blur must not be negative")
+                raw_opacity = _layer_value(layer, "shadow_opacity", "shadow_alpha")
+                shadow_opacity = (
+                    0.5
+                    if raw_opacity is None
+                    else _finite(raw_opacity, "shadow_opacity")
+                )
+                if shadow_opacity < 0.0 or shadow_opacity > 1.0:
+                    raise RenderError("shadow_opacity must be between 0 and 1")
+                shadowed = _shadow_image(
+                    fitted,
+                    color=color,
+                    offset=offset,
+                    blur=blur,
+                    opacity=shadow_opacity,
+                )
+                if shadowed is not None:
+                    shadow_image, pad_x, pad_y = shadowed
+                    _composite(
+                        canvas,
+                        _opacity(shadow_image, value),
+                        x - pad_x + round(offset[0]),
+                        y - pad_y + round(offset[1]),
+                    )
+
+        _composite(canvas, _opacity(fitted, value), x, y)
 
     def _draw_shape_layer(
         self,
@@ -1249,6 +1482,8 @@ class PillowStillRenderer:
         for layer in sorted(active, key=lambda item: item.z_index):
             if layer.type is LayerType.IMAGE:
                 self._draw_image_layer(canvas, layer, time)
+            elif layer.type in (LayerType.STICKER, LayerType.LOGO):
+                self._draw_overlay_layer(canvas, layer, time)
             elif layer.type is LayerType.SHAPE:
                 self._draw_shape_layer(canvas, layer, time)
             elif layer.type is LayerType.TEXT:

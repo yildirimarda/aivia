@@ -275,7 +275,7 @@ def test_hidden_and_unsupported_layers_are_skipped() -> None:
     composition = _composition(
         layers=[
             {"id": "hidden", "type": "image", "source": "red.png", "visible": False},
-            {"id": "badge", "type": "sticker", "source": "missing.png"},
+            {"id": "badge", "type": "video", "source": "missing.mp4"},
         ]
     )
 
