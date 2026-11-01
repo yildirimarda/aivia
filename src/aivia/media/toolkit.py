@@ -722,9 +722,7 @@ class MediaToolkit:
             text = text or getattr(request, "prompt", None)
         elif kind == "music":
             alt_text = (
-                alt_text
-                or metadata.get("title")
-                or getattr(request, "prompt", None)
+                alt_text or metadata.get("title") or getattr(request, "prompt", None)
             )
             text = text or getattr(request, "lyrics", None)
         elif kind == "sfx":

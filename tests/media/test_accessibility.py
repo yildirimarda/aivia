@@ -208,9 +208,7 @@ def test_config_may_be_a_root_mapping_or_a_bool(tmp_path: Path) -> None:
 
 
 def test_the_emitter_reuses_its_config_and_supports_aliases(tmp_path: Path) -> None:
-    emitter = AccessibilityEmitter(
-        AccessibilityConfig(alt_text=True, subtitles=True)
-    )
+    emitter = AccessibilityEmitter(AccessibilityConfig(alt_text=True, subtitles=True))
 
     written = emitter.emit(
         tmp_path / "voice.mp3",
@@ -321,9 +319,7 @@ def test_the_media_toolkit_writes_sidecars_for_audio_and_video_outputs(
     assert (tmp_path / "clip.mp4.alt.txt").read_text("utf-8") == (
         "A lighthouse in a storm\n"
     )
-    assert "A lighthouse in a storm" in (tmp_path / "clip.mp4.srt").read_text(
-        "utf-8"
-    )
+    assert "A lighthouse in a storm" in (tmp_path / "clip.mp4.srt").read_text("utf-8")
 
 
 def test_the_speech_service_writes_accessibility_sidecars_for_its_asset(

@@ -1361,9 +1361,7 @@ class VideoService:
                 path,
                 self._accessibility,
                 alt_text=(
-                    metadata.get("alt_text")
-                    or metadata.get("alt")
-                    or request.prompt
+                    metadata.get("alt_text") or metadata.get("alt") or request.prompt
                 ),
                 subtitle=metadata.get("subtitle"),
                 words=metadata.get("words"),
