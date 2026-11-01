@@ -34,8 +34,15 @@ from aivia.core.config.budget import BudgetConfig
 from aivia.core.cost import CostTracker
 from aivia.core.errors import (
     BudgetError,
+    ConfigError,
     ProviderExhaustedError,
     ValidationError,
+)
+from aivia.core.media_budget import (
+    CheaperHint,
+    ClipBudgetDecision,
+    ClipOption,
+    PerClipBudgetPolicy,
 )
 from aivia.core.media_probe import MediaDownloader, MediaLimits, MediaProbe
 from aivia.core.models.asset import (
@@ -95,6 +102,9 @@ from aivia.providers.video.v2v import ensure_source_video_media_type
 
 __all__ = [
     "VIDEO_OPERATION",
+    "CheaperHint",
+    "ClipBudgetDecision",
+    "PerClipBudgetPolicy",
     "VideoFailure",
     "VideoOutcome",
     "VideoService",
@@ -105,6 +115,10 @@ __all__ = [
 
 ToolchainLike = ToolchainFingerprint | Mapping[str, Any] | str | None
 BudgetLike = BudgetGuard | BudgetConfig | Mapping[str, Any] | None
+ClipBudgetLike = (
+    PerClipBudgetPolicy | BudgetConfig | Mapping[str, Any] | float | int | None
+)
+ClipCandidates = Mapping[str, float] | Iterable[Any] | None
 
 _TIME_UNITS = frozenset(
     {
@@ -139,6 +153,12 @@ def _file_path(url: str) -> Path | None:
 def _redacted_message(error: BaseException) -> str:
     text = str(error).strip()
     return text or type(error).__name__
+
+
+def _coerce_clip_budget_policy(value: Any) -> PerClipBudgetPolicy:
+    if isinstance(value, PerClipBudgetPolicy):
+        return value
+    return PerClipBudgetPolicy(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,11 +218,38 @@ class VideoOutcome:
     failures: tuple[VideoFailure, ...] = ()
     adaptation_warnings: tuple[AdaptationWarning, ...] = ()
     audio_stripped: bool = False
+    clip_budget: ClipBudgetDecision | None = None
+    cheaper_hint: CheaperHint | None = None
 
     @property
     def stripped_audio(self) -> bool:
         """Alias for :attr:`audio_stripped`."""
         return self.audio_stripped
+
+    @property
+    def budget_decision(self) -> ClipBudgetDecision | None:
+        """The per-clip budget decision applied before submit, when any."""
+        return self.clip_budget
+
+    @property
+    def clip_budget_decision(self) -> ClipBudgetDecision | None:
+        """Alias for :attr:`clip_budget`."""
+        return self.clip_budget
+
+    @property
+    def hint(self) -> CheaperHint | None:
+        """The cheaper hint chosen instead of the original option, when any."""
+        return self.cheaper_hint
+
+    @property
+    def cheaper(self) -> bool:
+        """Whether a cheaper option was chosen before submit."""
+        return self.cheaper_hint is not None
+
+    @property
+    def downgraded(self) -> bool:
+        """Whether the per-clip budget policy chose a cheaper option."""
+        return bool(self.clip_budget is not None and self.clip_budget.downgraded)
 
     @property
     def warnings(self) -> tuple[AdaptationWarning, ...]:
@@ -353,6 +400,12 @@ class VideoOutcome:
             "adaptation_warnings": [
                 warning.to_dict() for warning in self.adaptation_warnings
             ],
+            "clip_budget": (
+                self.clip_budget.to_dict() if self.clip_budget is not None else None
+            ),
+            "cheaper_hint": (
+                self.cheaper_hint.to_dict() if self.cheaper_hint is not None else None
+            ),
         }
 
 
@@ -389,6 +442,13 @@ class VideoService:
         storage: StorageProvider | None = None,
         budget: BudgetLike = None,
         budget_guard: BudgetGuard | None = None,
+        clip_budget: ClipBudgetLike = None,
+        clip_budget_policy: ClipBudgetLike = None,
+        per_clip_budget: ClipBudgetLike = None,
+        per_clip_cap: float | None = None,
+        media_budget: ClipBudgetLike = None,
+        clip_candidates: ClipCandidates = None,
+        clip_options: ClipCandidates = None,
         safety: Any = None,
         safety_config: Any = None,
         screening: Any = None,
@@ -579,6 +639,52 @@ class VideoService:
                 raise ValueError("key_prefix must be a non-empty string")
             key_prefix = key_prefix.strip().strip("/")
 
+        budget_config: BudgetConfig | None = None
+        if isinstance(budget, BudgetConfig):
+            budget_config = budget
+        elif isinstance(budget, Mapping):
+            budget_config = BudgetConfig.from_mapping(budget)
+        elif isinstance(budget_guard, BudgetGuard):
+            budget_config = budget_guard.config
+
+        supplied_clip_budgets = [
+            value
+            for value in (
+                clip_budget,
+                clip_budget_policy,
+                per_clip_budget,
+                per_clip_cap,
+                media_budget,
+            )
+            if value is not None
+        ]
+        if len(supplied_clip_budgets) > 1:
+            raise TypeError(
+                "pass only one of clip_budget, clip_budget_policy, "
+                "per_clip_budget, per_clip_cap or media_budget"
+            )
+        selected_clip_budget: Any = (
+            supplied_clip_budgets[0] if supplied_clip_budgets else None
+        )
+        if (
+            selected_clip_budget is None
+            and budget_config is not None
+            and bool(budget_config.per_video)
+        ):
+            selected_clip_budget = budget_config
+        active_clip_budget = (
+            _coerce_clip_budget_policy(selected_clip_budget)
+            if selected_clip_budget is not None
+            else None
+        )
+
+        supplied_candidates = [
+            value for value in (clip_candidates, clip_options) if value is not None
+        ]
+        if len(supplied_candidates) > 1:
+            raise TypeError("pass either clip_candidates or clip_options, not both")
+        active_clip_candidates = supplied_candidates[0] if supplied_candidates else None
+
         active_budget = budget_guard if budget_guard is not None else budget
         if isinstance(active_budget, (BudgetConfig, Mapping)):
             active_budget = BudgetGuard(active_budget, active_tracker)
@@ -605,6 +711,8 @@ class VideoService:
         self._videos = selected_video
         self._storage = storage
         self._budget = active_budget
+        self._clip_budget = active_clip_budget
+        self._clip_candidates = active_clip_candidates
         self._safety = selected_safety
         self._screener = screener
         self._limits = selected_limits or MediaLimits()
@@ -658,6 +766,21 @@ class VideoService:
     def budget(self) -> BudgetGuard | None:
         """The budget guard, when one was configured."""
         return self._budget
+
+    @property
+    def clip_budget(self) -> PerClipBudgetPolicy | None:
+        """The per-clip budget policy applied before every submit."""
+        return self._clip_budget
+
+    @property
+    def clip_budget_policy(self) -> PerClipBudgetPolicy | None:
+        """Alias for :attr:`clip_budget`."""
+        return self._clip_budget
+
+    @property
+    def per_clip_budget(self) -> PerClipBudgetPolicy | None:
+        """Alias for :attr:`clip_budget`."""
+        return self._clip_budget
 
     @property
     def limits(self) -> MediaLimits:
@@ -778,6 +901,130 @@ class VideoService:
         self._last_price = outcome.price
         self._last_failures = outcome.failures
 
+    def _provider_clip_estimate(
+        self,
+        provider: Provider,
+        request: VideoRequest,
+    ) -> float | None:
+        """Price one provider's metadata for *request*, or ``None`` if unpriced."""
+        config = self._router.config_for(CAPABILITY_VIDEO_GEN)
+        resolver = PricingResolver(config.pricing_overrides)
+        units, unit_kind = self._router_units(request)
+        try:
+            resolved = resolver.resolve(
+                provider,
+                CAPABILITY_VIDEO_GEN,
+                units,
+                unit_kind=unit_kind,
+                provider_name=provider.name,
+            )
+        except ConfigError:
+            resolved = resolver.resolve(
+                provider,
+                CAPABILITY_VIDEO_GEN,
+                float(request.count),
+                provider_name=provider.name,
+            )
+        if resolved.missing:
+            return None
+        return resolved.amount_usd
+
+    def _auto_clip_candidates(
+        self,
+        request: VideoRequest,
+        providers: Iterable[Provider],
+    ) -> list[ClipOption]:
+        """Build cheaper hints from the priced providers in the chain."""
+        options: list[ClipOption] = []
+        for provider in providers:
+            amount = self._provider_clip_estimate(provider, request)
+            if amount is None:
+                continue
+            options.append(ClipOption(provider=provider.name, estimate_usd=amount))
+        return options
+
+    def _evaluate_clip_budget(
+        self,
+        request: VideoRequest,
+        *,
+        estimator: VideoPricingEstimator | None,
+        policy: PerClipBudgetPolicy | None,
+        candidates: Any,
+        exclude: Iterable[str],
+        required: tuple[str, ...],
+    ) -> tuple[ClipBudgetDecision | None, set[str]]:
+        """Apply the per-clip cap before any provider is called."""
+        excluded = frozenset(exclude)
+        if policy is None or not policy.cap:
+            return None, set(excluded)
+        providers = tuple(
+            provider
+            for provider in self._router.candidates(
+                CAPABILITY_VIDEO_GEN,
+                required=required or None,
+            )
+            if provider.name not in excluded
+        )
+        if not providers:
+            return None, set(excluded)
+        current = providers[0]
+        amount: float | None
+        if estimator is not None:
+            amount = estimator.estimate(request).amount_usd
+        else:
+            amount = self._provider_clip_estimate(current, request)
+            if amount is None:
+                return None, set(excluded)
+        options = candidates
+        if options is None:
+            options = self._auto_clip_candidates(request, providers)
+        width, height = request.width, request.height
+        decision = policy.evaluate(
+            amount,
+            provider=current.name,
+            model=request.model or "",
+            name=current.name,
+            resolution=f"{width}x{height}" if width and height else "",
+            duration_seconds=request.duration_seconds,
+            candidates=options,
+        )
+        routing_exclude = set(excluded)
+        if decision.blocked:
+            details = {
+                "amount_usd": decision.estimate_usd,
+                "clip_budget": decision.to_dict(),
+            }
+            failure = VideoFailure(
+                provider=current.name,
+                error="budget_exceeded",
+                error_type="BudgetError",
+                message=decision.message,
+                stage="budget",
+                details=details,
+            )
+            self._last_failures = (failure,)
+            raise BudgetError(
+                decision.message,
+                details={
+                    "scope": "per_clip",
+                    "cap": decision.cap_usd,
+                    "per_clip_cap": decision.cap_usd,
+                    "amount_usd": decision.estimate_usd,
+                    "provider": current.name,
+                    "clip_budget": decision.to_dict(),
+                },
+            )
+        if decision.downgraded and decision.hint is not None:
+            hint_name = decision.hint.provider
+            available = {provider.name for provider in providers}
+            if hint_name in available:
+                routing_exclude.update(
+                    provider.name
+                    for provider in providers
+                    if provider.name != hint_name
+                )
+        return decision, routing_exclude
+
     async def generate(
         self,
         request: VideoRequest,
@@ -799,6 +1046,13 @@ class VideoService:
         pinned: bool = True,
         estimated: bool = False,
         exclude: Iterable[str] | None = None,
+        clip_budget: ClipBudgetLike = None,
+        clip_budget_policy: ClipBudgetLike = None,
+        per_clip_budget: ClipBudgetLike = None,
+        per_clip_cap: float | None = None,
+        media_budget: ClipBudgetLike = None,
+        clip_candidates: ClipCandidates = None,
+        clip_options: ClipCandidates = None,
         pricing: VideoPricing | Mapping[str, Any] | VideoPricingEstimator | None = None,
         cost_usd: float | None = None,
         cost_event: CostEvent | Mapping[str, Any] | None = None,
@@ -863,6 +1117,35 @@ class VideoService:
                     "pricing must be a VideoPricing, mapping or VideoPricingEstimator"
                 )
 
+        supplied_clip_budgets = [
+            value
+            for value in (
+                clip_budget,
+                clip_budget_policy,
+                per_clip_budget,
+                per_clip_cap,
+                media_budget,
+            )
+            if value is not None
+        ]
+        if len(supplied_clip_budgets) > 1:
+            raise TypeError(
+                "pass only one of clip_budget, clip_budget_policy, "
+                "per_clip_budget, per_clip_cap or media_budget"
+            )
+        active_clip_budget = self._clip_budget
+        if supplied_clip_budgets:
+            active_clip_budget = _coerce_clip_budget_policy(supplied_clip_budgets[0])
+        supplied_candidates = [
+            value for value in (clip_candidates, clip_options) if value is not None
+        ]
+        if len(supplied_candidates) > 1:
+            raise TypeError("pass either clip_candidates or clip_options, not both")
+        active_clip_candidates = (
+            supplied_candidates[0] if supplied_candidates else self._clip_candidates
+        )
+        active_exclude = tuple(exclude or ())
+
         failures: list[VideoFailure] = []
 
         if use_cache:
@@ -911,6 +1194,14 @@ class VideoService:
                 )
 
         required = self._required_capabilities(request)
+        clip_budget_decision, routing_exclude = self._evaluate_clip_budget(
+            request,
+            estimator=estimator,
+            policy=active_clip_budget,
+            candidates=active_clip_candidates,
+            exclude=active_exclude,
+            required=required,
+        )
         units, unit_kind = self._router_units(request)
         adaptation: AdaptationResult[Any] | None = None
 
@@ -932,7 +1223,7 @@ class VideoService:
                 remaining_budget=budget,
                 units=units,
                 unit_kind=unit_kind,
-                exclude=exclude,
+                exclude=routing_exclude or None,
             )
         except ProviderExhaustedError as error:
             recorded_providers = {item.provider for item in failures}
@@ -1074,6 +1365,10 @@ class VideoService:
                 details["request_id"] = response.request_id
             if metadata is not None:
                 details.update(metadata)
+            if clip_budget_decision is not None:
+                details["clip_budget"] = clip_budget_decision.to_dict()
+                if clip_budget_decision.hint is not None:
+                    details["cheaper_hint"] = clip_budget_decision.hint.to_dict()
             event = CostEvent(
                 provider=provider_name,
                 model=model_name,
@@ -1118,6 +1413,10 @@ class VideoService:
                 details["request_id"] = response.request_id
             if metadata is not None:
                 details.update(metadata)
+            if clip_budget_decision is not None:
+                details["clip_budget"] = clip_budget_decision.to_dict()
+                if clip_budget_decision.hint is not None:
+                    details["cheaper_hint"] = clip_budget_decision.hint.to_dict()
             event = CostEvent(
                 provider=resolved.provider,
                 model=model_name,
@@ -1263,6 +1562,10 @@ class VideoService:
             failures=tuple(failures),
             adaptation_warnings=(adaptation.warnings if adaptation is not None else ()),
             audio_stripped=audio_stripped,
+            clip_budget=clip_budget_decision,
+            cheaper_hint=(
+                clip_budget_decision.hint if clip_budget_decision is not None else None
+            ),
         )
         self._remember(outcome)
         return outcome
