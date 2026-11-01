@@ -37,6 +37,7 @@ from .keyframes import (
     keyframe_track,
     keyframes_for_layer,
 )
+from .text_animation import text_animation_tracks_for_layer
 
 __all__ = [
     "LayerMotion",
@@ -440,11 +441,12 @@ def tracks_for_layer(
         start_seconds,
         end_seconds,
     )
+    text = text_animation_tracks_for_layer(layer, start_seconds, end_seconds)
     return MotionTracks(
-        scale=declared.scale or generated.scale,
-        position=declared.position or generated.position,
+        scale=declared.scale or generated.scale or text.scale,
+        position=declared.position or generated.position or text.position,
         rotation=declared.rotation or generated.rotation,
-        opacity=declared.opacity or generated.opacity,
+        opacity=declared.opacity or generated.opacity or text.opacity,
         pan=generated.pan,
     )
 
