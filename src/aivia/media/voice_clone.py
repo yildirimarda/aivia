@@ -9,6 +9,9 @@ prove why it was allowed.
 The service owns the local registry. Creating a clone stays local, but deleting
 one also removes the provider voice first: the local record is kept when the
 vendor call fails, so a caller can retry instead of orphaning the vendor voice.
+When providers are configured but none covers the record's vendor, the delete is
+refused rather than dropping the record and orphaning a vendor voice the service
+cannot reach.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 
 from aivia.core.db import VoiceCloneRepository
 from aivia.core.errors import (
+    ConfigError,
     ContentPolicyError,
     InvalidRequestError,
     ValidationError,
@@ -34,6 +38,7 @@ from aivia.core.models.voice import VoiceClone
 
 __all__ = [
     "ConsentInput",
+    "VendorNotCoveredError",
     "VoiceCloneRequest",
     "VoiceCloneService",
     "normalize_consent",
@@ -44,6 +49,12 @@ ConsentInput = bool | Mapping[str, Any] | None
 
 _MISSING = object()
 _GRANT_KEYS = ("granted", "consent", "allowed", "approved", "voice_cloning")
+
+
+class VendorNotCoveredError(ConfigError, InvalidRequestError):
+    """No configured provider covers the vendor named by a clone record."""
+
+    code = "vendor_not_covered"
 
 
 def _strip(value: Any) -> Any:
@@ -214,9 +225,18 @@ def _lookup_provider(mapping: Mapping[str, Any], provider_name: str) -> Any:
             return provider
     if "" in mapping:
         return mapping[""]
-    if len(mapping) == 1:
-        return next(iter(mapping.values()))
     return None
+
+
+def _provider_value_configured(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, Mapping):
+        return bool(_provider_mapping(value, field="provider"))
+    routed = getattr(value, "providers", None)
+    if isinstance(routed, Mapping):
+        return bool(_provider_mapping(routed, field="provider.providers"))
+    return True
 
 
 def _resolve_provider(value: Any, provider_name: str) -> Any:
@@ -230,11 +250,12 @@ def _resolve_provider(value: Any, provider_name: str) -> Any:
         return value
     routed = getattr(value, "providers", None)
     if isinstance(routed, Mapping):
-        found = _lookup_provider(
-            _provider_mapping(routed, field="provider.providers"), provider_name
-        )
+        mapping = _provider_mapping(routed, field="provider.providers")
+        found = _lookup_provider(mapping, provider_name)
         if found is not None:
             return found
+        if mapping:
+            return None
     if callable(value):
         return value(provider_name)
     return value
@@ -383,6 +404,27 @@ class VoiceCloneService:
             return _resolve_provider(self._provider, record.provider)
         return _lookup_provider(self._providers, record.provider)
 
+    def _providers_configured(
+        self,
+        *,
+        provider: Any = None,
+        providers: Mapping[str, Any] | None = None,
+        router: Any = None,
+    ) -> bool:
+        if provider is not None:
+            return _provider_value_configured(provider)
+        if providers is not None:
+            return bool(_provider_mapping(providers, field="providers"))
+        if router is not None:
+            routed = _provider_mapping(
+                getattr(router, "providers", None), field="router.providers"
+            )
+            if routed:
+                return True
+        if self._provider is not None:
+            return _provider_value_configured(self._provider)
+        return bool(self._providers)
+
     def delete(
         self,
         clone_id: str,
@@ -403,6 +445,12 @@ class VoiceCloneService:
         raises and leaves the record available for a retry. A provider that
         reports the voice was already gone is not a failure: the record is
         removed because there is nothing left at the vendor.
+
+        When providers are configured but none covers the record's vendor, the
+        delete is refused with :class:`VendorNotCoveredError` and the record is
+        kept, because removing it would orphan a voice the service cannot
+        delete. With no providers configured at all, only the local record is
+        removed, as before.
         """
         record = self.get(clone_id, owner=owner)
         if record is None:
@@ -411,6 +459,19 @@ class VoiceCloneService:
             vendor = self._provider_for(
                 record, provider=provider, providers=providers, router=router
             )
-            if vendor is not None:
+            if vendor is None:
+                if self._providers_configured(
+                    provider=provider, providers=providers, router=router
+                ):
+                    raise VendorNotCoveredError(
+                        "no provider covers vendor "
+                        f"{record.provider!r} among the configured providers; "
+                        "refusing to orphan the vendor voice",
+                        details={
+                            "provider": record.provider,
+                            "provider_voice_id": record.provider_voice_id,
+                        },
+                    )
+            else:
                 _delete_at_vendor(vendor, record.provider_voice_id)
         return self._repository.delete(record.id)

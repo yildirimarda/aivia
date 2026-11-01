@@ -15,6 +15,7 @@ from aivia.core.errors import (
 )
 from aivia.core.models import VoiceClone
 from aivia.media.voice_clone import (
+    VendorNotCoveredError,
     VoiceCloneRequest,
     VoiceCloneService,
     normalize_consent,
@@ -347,4 +348,85 @@ def test_delete_accepts_a_provider_for_one_call(engine: Engine) -> None:
     service.delete(clone.id, provider=provider)
 
     assert provider.deleted == [VOICE_ID]
+    assert service.get(clone.id) is None
+
+
+def test_delete_refuses_when_configured_providers_do_not_cover_the_vendor(
+    engine: Engine,
+) -> None:
+    provider = FakeVoiceCloneProvider()
+    service = VoiceCloneService(engine, providers={"other-vendor": provider})
+    clone = _create(service)
+
+    with pytest.raises(VendorNotCoveredError, match="covers vendor") as caught:
+        service.delete(clone.id)
+
+    assert provider.deleted == []
+    assert caught.value.details["provider"] == PROVIDER
+    assert caught.value.details["provider_voice_id"] == VOICE_ID
+    assert service.get(clone.id) is not None
+
+
+def test_delete_matches_a_configured_provider_name_case_insensitively(
+    engine: Engine,
+) -> None:
+    provider = FakeVoiceCloneProvider()
+    service = VoiceCloneService(engine, providers={PROVIDER.upper(): provider})
+    clone = _create(service)
+
+    service.delete(clone.id)
+
+    assert provider.deleted == [VOICE_ID]
+    assert service.get(clone.id) is None
+
+
+def test_delete_refuses_per_call_providers_that_do_not_cover_the_vendor(
+    engine: Engine,
+) -> None:
+    configured = FakeVoiceCloneProvider()
+    other = FakeVoiceCloneProvider()
+    service = VoiceCloneService(engine, providers={PROVIDER: configured})
+    clone = _create(service)
+
+    with pytest.raises(VendorNotCoveredError):
+        service.delete(clone.id, providers={"other-vendor": other})
+
+    assert configured.deleted == []
+    assert other.deleted == []
+    assert service.get(clone.id) is not None
+
+
+class FakeRouter:
+    """A router that only exposes the providers it was built with."""
+
+    def __init__(self, providers: dict[str, object]) -> None:
+        self.providers = providers
+
+
+def test_delete_refuses_a_router_whose_providers_do_not_cover_the_vendor(
+    engine: Engine,
+) -> None:
+    other = FakeVoiceCloneProvider()
+    service = VoiceCloneService(engine, router=FakeRouter({"other-vendor": other}))
+    clone = _create(service)
+
+    with pytest.raises(VendorNotCoveredError):
+        service.delete(clone.id)
+
+    assert other.deleted == []
+    assert service.get(clone.id) is not None
+
+
+def test_delete_without_vendor_removal_ignores_missing_coverage(
+    engine: Engine,
+) -> None:
+    provider = FakeVoiceCloneProvider()
+    service = VoiceCloneService(engine, providers={"other-vendor": provider})
+    clone = _create(service)
+
+    deleted = service.delete(clone.id, delete_vendor=False)
+
+    assert deleted is not None
+    assert deleted.id == clone.id
+    assert provider.deleted == []
     assert service.get(clone.id) is None
