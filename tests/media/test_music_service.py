@@ -139,6 +139,8 @@ class FakeMusicProvider(Provider):
         track_metadata: dict[str, Any] | None = None,
         response_metadata: dict[str, Any] | None = None,
         duration: float = 2.0,
+        sample_rate: int = 44100,
+        channels: int = 1,
         error: BaseException | None = None,
     ) -> None:
         super().__init__(
@@ -158,6 +160,8 @@ class FakeMusicProvider(Provider):
             response_metadata if response_metadata is not None else {}
         )
         self.duration = duration
+        self.sample_rate = sample_rate
+        self.channels = channels
         self.error = error
 
     async def generate(self, request: MusicRequest) -> MusicResponse:
@@ -169,8 +173,8 @@ class FakeMusicProvider(Provider):
                 data=MP3,
                 format=AudioFormat.MP3,
                 duration_seconds=self.duration,
-                sample_rate=44100,
-                channels=1,
+                sample_rate=self.sample_rate,
+                channels=self.channels,
                 seed=None if request.seed is None else request.seed + index,
                 title=request.prompt,
                 lyrics=None if request.instrumental else request.lyrics,
@@ -334,6 +338,40 @@ def test_an_identical_request_is_served_from_cache_without_a_provider_call(
     )
     assert entry is not None
     assert entry.hit_count == 1
+
+
+def test_measured_music_format_sample_rate_and_channels_survive_a_cache_hit(
+    tracker: CostTracker,
+    storage: LocalStorageProvider,
+) -> None:
+    provider = FakeMusicProvider(sample_rate=22050, channels=2)
+    service = _service(provider, tracker, storage)
+    request = MusicRequest(prompt=PROMPT, duration_seconds=2.0, sample_rate=48000)
+
+    first = _run(service.generate(request, token=_token(), run_id="run-1"))
+
+    assert first.asset is not None
+    assert first.asset.analysis.format == "mp3"
+    assert first.asset.analysis.sample_rate == 44100
+    assert first.asset.analysis.channels == 1
+    assert first.track is not None
+    assert first.track.format is AudioFormat.MP3
+    assert first.track.sample_rate == 44100
+    assert first.track.channels == 1
+
+    second = _run(service.generate(request, token=_token(), run_id="run-2"))
+
+    assert len(provider.calls) == 1
+    assert second.cache_hit is True
+    assert second.asset is not None and first.asset is not None
+    assert second.asset.id == first.asset.id
+    assert second.asset.analysis.format == "mp3"
+    assert second.asset.analysis.sample_rate == 44100
+    assert second.asset.analysis.channels == 1
+    assert second.track is not None
+    assert second.track.format is AudioFormat.MP3
+    assert second.track.sample_rate == 44100
+    assert second.track.channels == 1
 
 
 def test_the_provider_license_takes_part_in_the_cache_key() -> None:
