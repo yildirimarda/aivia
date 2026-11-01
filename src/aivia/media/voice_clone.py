@@ -6,14 +6,17 @@ The record keeps the exact provider voice id, the owner whose voice it is and
 the consent metadata beside it, which lets later speech requests pin the id and
 prove why it was allowed.
 
-The service owns the local registry only. The provider adapter owns creating and
-deleting the voice at the vendor; this module never calls a provider, so a
-cloned voice id can be recorded once and reused offline.
+The service owns the local registry. Creating a clone stays local, but deleting
+one also removes the provider voice first: the local record is kept when the
+vendor call fails, so a caller can retry instead of orphaning the vendor voice.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import asyncio
+import inspect
+from collections.abc import Awaitable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -153,6 +156,90 @@ def _request_data(
     return data
 
 
+_DELETE_METHODS = (
+    "delete_voice",
+    "delete_clone",
+    "delete_voice_clone",
+    "remove_voice",
+)
+
+
+def _delete_method(provider: Any) -> Any:
+    for name in _DELETE_METHODS:
+        method = getattr(provider, name, None)
+        if callable(method):
+            return method
+    return None
+
+
+async def _await_value(value: Awaitable[Any]) -> Any:
+    return await value
+
+
+def _run_awaitable(value: Awaitable[Any]) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_await_value(value))
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, _await_value(value)).result()
+
+
+def _delete_at_vendor(provider: Any, voice_id: str) -> bool:
+    method = _delete_method(provider)
+    if method is None:
+        raise TypeError("voice clone provider must implement delete_voice(voice_id)")
+    result = method(voice_id)
+    if inspect.isawaitable(result):
+        result = _run_awaitable(result)
+    return bool(result)
+
+
+def _provider_mapping(value: Any, *, field: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{field} must be a mapping of provider name to provider")
+    return {str(key): provider for key, provider in value.items()}
+
+
+def _lookup_provider(mapping: Mapping[str, Any], provider_name: str) -> Any:
+    if not mapping:
+        return None
+    if provider_name in mapping:
+        return mapping[provider_name]
+    folded = provider_name.casefold()
+    for key, provider in mapping.items():
+        if key.casefold() == folded:
+            return provider
+    if "" in mapping:
+        return mapping[""]
+    if len(mapping) == 1:
+        return next(iter(mapping.values()))
+    return None
+
+
+def _resolve_provider(value: Any, provider_name: str) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, Mapping):
+        return _lookup_provider(
+            _provider_mapping(value, field="provider"), provider_name
+        )
+    if _delete_method(value) is not None:
+        return value
+    routed = getattr(value, "providers", None)
+    if isinstance(routed, Mapping):
+        found = _lookup_provider(
+            _provider_mapping(routed, field="provider.providers"), provider_name
+        )
+        if found is not None:
+            return found
+    if callable(value):
+        return value(provider_name)
+    return value
+
+
 class VoiceCloneService:
     """Create, list and delete the local index of cloned voices.
 
@@ -160,6 +247,11 @@ class VoiceCloneService:
     process is visible to the next. Every create requires explicit consent;
     list and delete accept an optional owner so a caller can scope the view to
     the person whose voice it is.
+
+    A *provider* (or a mapping of provider names to providers) may be supplied
+    so deleting a record also removes the voice at the vendor. The local record
+    is only removed after the vendor reports success; a failed vendor call
+    leaves the record in place so the caller can retry.
     """
 
     def __init__(
@@ -167,6 +259,9 @@ class VoiceCloneService:
         engine: Engine | VoiceCloneRepository | None = None,
         *,
         repository: VoiceCloneRepository | None = None,
+        provider: Any = None,
+        providers: Mapping[str, Any] | None = None,
+        router: Any = None,
     ) -> None:
         if isinstance(engine, VoiceCloneRepository):
             if repository is not None:
@@ -180,6 +275,14 @@ class VoiceCloneService:
         elif engine is not None and not isinstance(engine, Engine):
             raise TypeError("engine must be a SQLAlchemy Engine")
         self._repository = repository
+        self._provider = provider
+        self._providers = _provider_mapping(providers, field="providers")
+        if router is not None:
+            routed = getattr(router, "providers", None)
+            self._providers = {
+                **_provider_mapping(routed, field="router.providers"),
+                **self._providers,
+            }
 
     @property
     def repository(self) -> VoiceCloneRepository:
@@ -255,13 +358,59 @@ class VoiceCloneService:
             return None
         return record
 
-    def delete(self, clone_id: str, *, owner: str | None = None) -> VoiceClone | None:
+    def _provider_for(
+        self,
+        record: VoiceClone,
+        *,
+        provider: Any = None,
+        providers: Mapping[str, Any] | None = None,
+        router: Any = None,
+    ) -> Any:
+        if provider is not None:
+            return _resolve_provider(provider, record.provider)
+        if providers is not None:
+            return _lookup_provider(
+                _provider_mapping(providers, field="providers"), record.provider
+            )
+        if router is not None:
+            routed = _provider_mapping(
+                getattr(router, "providers", None), field="router.providers"
+            )
+            found = _lookup_provider(routed, record.provider)
+            if found is not None:
+                return found
+        if self._provider is not None:
+            return _resolve_provider(self._provider, record.provider)
+        return _lookup_provider(self._providers, record.provider)
+
+    def delete(
+        self,
+        clone_id: str,
+        *,
+        owner: str | None = None,
+        provider: Any = None,
+        providers: Mapping[str, Any] | None = None,
+        router: Any = None,
+        delete_vendor: bool = True,
+    ) -> VoiceClone | None:
         """Delete one clone and return it, or ``None`` when it is not found.
 
         When *owner* is supplied, a clone owned by someone else is treated as
         not found so a caller cannot remove another owner's voice.
+
+        With a provider configured, the vendor voice is deleted first. The local
+        record is only removed after that call succeeds, so a vendor failure
+        raises and leaves the record available for a retry. A provider that
+        reports the voice was already gone is not a failure: the record is
+        removed because there is nothing left at the vendor.
         """
         record = self.get(clone_id, owner=owner)
         if record is None:
             return None
+        if delete_vendor:
+            vendor = self._provider_for(
+                record, provider=provider, providers=providers, router=router
+            )
+            if vendor is not None:
+                _delete_at_vendor(vendor, record.provider_voice_id)
         return self._repository.delete(record.id)
