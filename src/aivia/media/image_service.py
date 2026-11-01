@@ -48,6 +48,7 @@ from aivia.core.models.run import ToolchainFingerprint
 from aivia.core.pricing import ResolvedPrice
 from aivia.core.router import Router, RouteSelection
 from aivia.core.sidecar import SIDECAR_SUFFIX, build_cost_sidecar, write_cost_sidecar
+from aivia.media.adaptation import adapt_for_provider
 from aivia.media.screening import (
     DEFAULT_PROMPT_KIND,
     ScreeningToken,
@@ -60,6 +61,8 @@ from aivia.providers.image.cost import (
     IMAGE_UNIT,
     ImageCostCalculator,
 )
+from aivia.providers.media.adapt import AdaptationResult, AdaptationWarning
+from aivia.providers.media.dto import MediaKind
 from aivia.providers.protocols.image import (
     CAPABILITY_IMAGE_GEN,
     CAPABILITY_IMAGE_INPUT,
@@ -151,11 +154,22 @@ class ImageOutcome:
     selection: RouteSelection | None = None
     sidecars: tuple[Path, ...] = ()
     cache_hit: bool = False
+    adaptation_warnings: tuple[AdaptationWarning, ...] = ()
 
     @property
     def event(self) -> CostEvent | None:
         """The first recorded cost event, or ``None``."""
         return self.events[0] if self.events else None
+
+    @property
+    def warnings(self) -> tuple[AdaptationWarning, ...]:
+        """Every change the adaptation layer made before submission."""
+        return self.adaptation_warnings
+
+    @property
+    def adaptation_messages(self) -> tuple[str, ...]:
+        """The human-readable adaptation warnings in order."""
+        return tuple(warning.message for warning in self.adaptation_warnings)
 
     @property
     def images(self) -> list[ImageResult]:
@@ -648,14 +662,18 @@ class ImageService:
 
         required = (CAPABILITY_IMAGE_INPUT,) if request.reference_images else None
         base_seed = request.seed if request.seed is not None else secrets.randbits(32)
-        provider_request = (
-            request
-            if request.seed is not None
-            else request.model_copy(update={"seed": base_seed})
-        )
+        adaptation: AdaptationResult[Any] | None = None
 
         async def run(provider: Provider) -> ImageResponse:
-            return await cast(ImageProvider, provider).generate(provider_request)
+            nonlocal adaptation
+            adaptation = adapt_for_provider(
+                request,
+                provider,
+                MediaKind.IMAGE,
+                seed=base_seed,
+            )
+            adapted = cast(ImageRequest, adaptation.request)
+            return await cast(ImageProvider, provider).generate(adapted)
 
         response = await self._router.execute(
             CAPABILITY_IMAGE_GEN,
@@ -781,6 +799,9 @@ class ImageService:
             selection=selection,
             sidecars=sidecars,
             cache_hit=False,
+            adaptation_warnings=(
+                adaptation.warnings if adaptation is not None else ()
+            ),
         )
         self._last_selection = selection
         self._last_event = event

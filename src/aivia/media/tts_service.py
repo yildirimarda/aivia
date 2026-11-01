@@ -45,6 +45,7 @@ from aivia.core.pricing import ResolvedPrice
 from aivia.core.router import Router, RouteSelection
 from aivia.core.sidecar import SIDECAR_SUFFIX, build_cost_sidecar, write_cost_sidecar
 from aivia.media.accessibility import write_accessibility_sidecars
+from aivia.media.adaptation import adapt_for_provider
 from aivia.media.audio_utils import (
     AudioProcessing,
     AudioSettings,
@@ -67,6 +68,8 @@ from aivia.media.screening import (
 )
 from aivia.media.voices import prepare_speech_request
 from aivia.providers.base import Provider
+from aivia.providers.media.adapt import AdaptationResult, AdaptationWarning
+from aivia.providers.media.dto import MediaKind
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.storage import (
     StorageObject,
@@ -179,6 +182,17 @@ class SpeechOutcome:
     cache_hit: bool = False
     processed: bool = False
     failures: tuple[Mapping[str, Any], ...] = ()
+    adaptation_warnings: tuple[AdaptationWarning, ...] = ()
+
+    @property
+    def warnings(self) -> tuple[AdaptationWarning, ...]:
+        """Every change the adaptation layer made before submission."""
+        return self.adaptation_warnings
+
+    @property
+    def adaptation_messages(self) -> tuple[str, ...]:
+        """The human-readable adaptation warnings in order."""
+        return tuple(warning.message for warning in self.adaptation_warnings)
 
     @property
     def accessibility(self) -> Any:
@@ -330,6 +344,9 @@ class SpeechOutcome:
             "cache_hit": self.cache_hit,
             "amount_usd": self.amount_usd,
             "path": self.path,
+            "adaptation_warnings": [
+                warning.to_dict() for warning in self.adaptation_warnings
+            ],
         }
 
 
@@ -790,10 +807,18 @@ class SpeechService:
             budget = self._budget.remaining(run_id, operation=operation_name)
 
         units = float(len(request.text))
+        adaptation: AdaptationResult[Any] | None = None
 
         async def run(provider: Provider) -> TTSResponse:
+            nonlocal adaptation
             prepared = prepare_speech_request(request, provider=provider)
-            return await cast(TTSProvider, provider).synthesize(prepared)
+            adaptation = adapt_for_provider(
+                prepared,
+                provider,
+                MediaKind.SPEECH,
+            )
+            adapted = cast(TTSRequest, adaptation.request)
+            return await cast(TTSProvider, provider).synthesize(adapted)
 
         response = await self._router.execute(
             CAPABILITY_TTS,
@@ -947,6 +972,9 @@ class SpeechService:
             accessibility_sidecars=accessibility,
             cache_hit=False,
             processed=processed,
+            adaptation_warnings=(
+                adaptation.warnings if adaptation is not None else ()
+            ),
         )
         self._remember(outcome)
         return outcome

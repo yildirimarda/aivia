@@ -51,6 +51,7 @@ from aivia.core.pricing import PricingResolver, ResolvedPrice
 from aivia.core.router import Router, RouteSelection
 from aivia.core.sidecar import SIDECAR_SUFFIX, build_cost_sidecar, write_cost_sidecar
 from aivia.media.accessibility import write_accessibility_sidecars
+from aivia.media.adaptation import adapt_for_provider
 from aivia.media.screening import (
     DEFAULT_PROMPT_KIND,
     ScreeningToken,
@@ -69,6 +70,8 @@ from aivia.media.video_pricing import (
     VideoPricingEstimator,
 )
 from aivia.providers.base import Provider
+from aivia.providers.media.adapt import AdaptationResult, AdaptationWarning
+from aivia.providers.media.dto import MediaKind
 from aivia.providers.protocols.media import VideoFormat
 from aivia.providers.protocols.storage import (
     StorageObject,
@@ -196,6 +199,17 @@ class VideoOutcome:
     accessibility_sidecars: tuple[Any, ...] = ()
     cache_hit: bool = False
     failures: tuple[VideoFailure, ...] = ()
+    adaptation_warnings: tuple[AdaptationWarning, ...] = ()
+
+    @property
+    def warnings(self) -> tuple[AdaptationWarning, ...]:
+        """Every change the adaptation layer made before submission."""
+        return self.adaptation_warnings
+
+    @property
+    def adaptation_messages(self) -> tuple[str, ...]:
+        """The human-readable adaptation warnings in order."""
+        return tuple(warning.message for warning in self.adaptation_warnings)
 
     @property
     def accessibility(self) -> Any:
@@ -332,6 +346,9 @@ class VideoOutcome:
             "amount_usd": self.amount_usd,
             "paths": list(self.paths),
             "failures": [failure.to_dict() for failure in self.failures],
+            "adaptation_warnings": [
+                warning.to_dict() for warning in self.adaptation_warnings
+            ],
         }
 
 
@@ -880,10 +897,14 @@ class VideoService:
 
         required = self._required_capabilities(request)
         units, unit_kind = self._router_units(request)
+        adaptation: AdaptationResult[Any] | None = None
 
         async def run(provider: Provider) -> VideoResponse:
+            nonlocal adaptation
             try:
-                return await cast(VideoProvider, provider).generate(request)
+                adaptation = adapt_for_provider(request, provider, MediaKind.VIDEO)
+                adapted = cast(VideoRequest, adaptation.request)
+                return await cast(VideoProvider, provider).generate(adapted)
             except BaseException as error:
                 failures.append(self._failure(provider.name, error))
                 raise
@@ -926,8 +947,13 @@ class VideoService:
             raise RuntimeError("router completed a video call without a selection")
         provider_name = response.provider or selection.name
         model_name = response.model or request.model or ""
+        submitted = (
+            cast(VideoRequest, adaptation.request)
+            if adaptation is not None
+            else request
+        )
         raw_results = list(response.videos)
-        if response.count != request.count:
+        if response.count != submitted.count:
             failure = VideoFailure(
                 provider=selection.name,
                 error="video_count_mismatch",
@@ -935,7 +961,7 @@ class VideoService:
                 message=(
                     "video provider returned "
                     f"{response.count} clip(s) for a request asking for "
-                    f"{request.count}"
+                    f"{submitted.count}"
                 ),
                 stage="validation",
             )
@@ -948,7 +974,7 @@ class VideoService:
             try:
                 probe, stored = await self._videos.materialise(
                     result,
-                    request,
+                    submitted,
                     index=index,
                     run_id=run_id,
                     storage=active_storage,
@@ -967,7 +993,7 @@ class VideoService:
 
         validated: list[VideoResult] = []
         for result, (probe, _) in zip(response.videos, materialised, strict=True):
-            seed = result.seed if result.seed is not None else request.seed
+            seed = result.seed if result.seed is not None else submitted.seed
             validated.append(
                 VideoResult(
                     data=probe.data,
@@ -975,7 +1001,7 @@ class VideoService:
                     width=probe.width,
                     height=probe.height,
                     duration_seconds=probe.duration_seconds,
-                    fps=result.fps if result.fps is not None else request.fps,
+                    fps=result.fps if result.fps is not None else submitted.fps,
                     has_audio=bool(
                         probe.ffprobe.audio_streams
                         if probe.ffprobe is not None
@@ -998,7 +1024,7 @@ class VideoService:
         if estimator is not None:
             estimate = self._estimate_results(
                 estimator,
-                request,
+                submitted,
                 validated,
             )
             total_duration = math.fsum(
@@ -1043,7 +1069,7 @@ class VideoService:
             price = estimate
         else:
             units, unit_kind = self._metadata_units(
-                request,
+                submitted,
                 validated,
                 selection.provider,
                 operation_name,
@@ -1205,6 +1231,9 @@ class VideoService:
             accessibility_sidecars=accessibility,
             cache_hit=False,
             failures=tuple(failures),
+            adaptation_warnings=(
+                adaptation.warnings if adaptation is not None else ()
+            ),
         )
         self._remember(outcome)
         return outcome
