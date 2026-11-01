@@ -80,8 +80,15 @@ _CALL_OPTIONS = frozenset(
         "key",
         "key_prefix",
         "metadata",
+        "clip_budget",
+        "clip_budget_policy",
+        "clip_candidates",
+        "clip_options",
+        "media_budget",
         "no_cache",
         "operation",
+        "per_clip_budget",
+        "per_clip_cap",
         "pinned",
         "record_cost",
         "record_sidecar",
@@ -380,6 +387,9 @@ class MediaToolkit:
         engine: Engine | None = None,
         storage: Any = None,
         budget: Any = None,
+        clip_budget: Any = None,
+        clip_candidates: Any = None,
+        clip_options: Any = None,
         safety: Any = None,
         cache: Any = None,
         limits: Any = None,
@@ -417,6 +427,10 @@ class MediaToolkit:
         self._engine = engine
         self._storage = storage
         self._budget = budget
+        self._clip_budget = clip_budget
+        self._clip_candidates = (
+            clip_candidates if clip_candidates is not None else clip_options
+        )
         self._safety = safety
         self._cache = cache
         self._limits = limits
@@ -644,6 +658,8 @@ class MediaToolkit:
                 "cache": self._cache,
                 "limits": self._limits,
                 "no_cache": self._no_cache,
+                "clip_budget": self._clip_budget,
+                "clip_candidates": self._clip_candidates,
                 "ffprobe_executable": self._ffprobe_executable,
                 "ffprobe_runner": self._ffprobe_runner,
                 "ffprobe_timeout_seconds": self._ffprobe_timeout,
