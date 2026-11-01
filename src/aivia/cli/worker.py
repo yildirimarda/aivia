@@ -44,6 +44,9 @@ __all__ = [
     "run_worker",
 ]
 
+MEDIA_JOB_KIND_PREFIX = "media."
+"""Job kinds owned by the API media runner, which the default worker skips."""
+
 
 class JobExecutionError(AiviaError):
     """A queued job could not be executed."""
@@ -323,12 +326,14 @@ def _quotas(max_jobs: int | None, count: int) -> list[int | None]:
 async def _run_until_stopped(
     workers: Sequence[Worker],
     max_jobs: int | None,
+    *,
+    stop_when_idle: bool = False,
 ) -> int:
     quotas = _quotas(max_jobs, len(workers))
     with stop_on_signals(_WorkerGroup(workers)):
         results = await asyncio.gather(
             *(
-                worker.run(max_jobs=quota)
+                worker.run(max_jobs=quota, stop_when_idle=stop_when_idle)
                 for worker, quota in zip(workers, quotas, strict=True)
             )
         )
@@ -357,19 +362,28 @@ def run_worker(args: argparse.Namespace) -> int:
             database_path,
             config_for_run=lambda run: _config_for_run(args, run),
         )
+        kind = getattr(args, "kind", None)
+        exclude_kind_prefixes = () if kind else (MEDIA_JOB_KIND_PREFIX,)
         workers = [
             Worker(
                 queue,
                 handler,
                 worker_id=worker_id,
                 config=jobs,
-                kind=getattr(args, "kind", None),
+                kind=kind,
+                exclude_kind_prefixes=exclude_kind_prefixes,
             )
             for worker_id in _worker_ids(
                 getattr(args, "worker_id", None), jobs.concurrency
             )
         ]
-        processed = asyncio.run(_run_until_stopped(workers, _max_jobs(args)))
+        processed = asyncio.run(
+            _run_until_stopped(
+                workers,
+                _max_jobs(args),
+                stop_when_idle=bool(getattr(args, "once", False)),
+            )
+        )
     except (OSError, SQLAlchemyError, ValueError) as exc:
         print(f"error: cannot run the worker: {exc}", file=sys.stderr)
         return 1

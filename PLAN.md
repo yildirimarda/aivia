@@ -354,7 +354,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Persist measured music format, sample rate and channels on the asset so cache hits rebuild the exact track (tests/media/test_music_service.py)
 - [x] Invalidate a resumed batch item when its row content changes by storing a content fingerprint (tests/cli/test_media_batch_cli.py)
 - [x] Recover pending media API jobs on API startup so a restart cannot strand a submitted job (tests/api/test_media_api.py)
-- [ ] Make the default worker skip media API jobs so it cannot claim and dead-letter them (tests/cli/test_worker.py)
+- [x] Make the default worker skip media API jobs so it cannot claim and dead-letter them (tests/cli/test_worker.py)
 - [ ] Apply the per clip budget policy before media submits and record the chosen cheaper hint (tests/media/test_media_clip_budget.py)
 - [ ] Add voice clone create and delete to the ElevenLabs adapter behind a capability flag (tests/providers/tts/test_elevenlabs_clone.py)
 - [ ] Delete the vendor voice when its local clone record is removed and keep the record when deletion fails (tests/media/test_voice_clone.py)
