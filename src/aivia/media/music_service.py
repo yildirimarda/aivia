@@ -690,17 +690,36 @@ def _response_seeds(
     return tuple(base_seed + index for index in range(response.count))
 
 
+def _license_fingerprint(
+    value: AssetLicense | Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, AssetLicense):
+        license = value
+    elif isinstance(value, Mapping):
+        license = AssetLicense.model_validate(value)
+    else:
+        raise TypeError("license must be an AssetLicense, mapping or None")
+    return license.model_dump(mode="json")
+
+
 def music_cache_key(
     request: MusicRequest,
     *,
     index: int = 0,
     model: str | None = None,
+    license: AssetLicense | Mapping[str, Any] | None = None,
 ) -> AssetCacheKey:
     """Return the cache key for one output of *request*.
 
     The provider is deliberately left empty so an identical request can be
     answered before the router has selected a provider. The stored asset still
     records who actually served the call.
+
+    The selected provider's *license* is part of the key, so changing the
+    rights attached to a provider invalidates its cached tracks instead of
+    serving a clearance that no longer applies.
     """
     if not isinstance(request, MusicRequest):
         raise TypeError("request must be a MusicRequest")
@@ -716,6 +735,7 @@ def music_cache_key(
         "seed": _seed_for(request, index),
         "count": request.count,
         "index": index,
+        "license": _license_fingerprint(license),
     }
     return AssetCacheKey(
         provider="",
@@ -964,15 +984,44 @@ class MusicService:
         if request.lyrics:
             self._require_screened(self.screen(request.lyrics), request.lyrics)
 
+    def _provider_licenses(self) -> tuple[AssetLicense, ...]:
+        """Return the distinct licenses of providers that may serve music."""
+        providers = self._router.providers
+        licenses: list[AssetLicense] = []
+        seen: set[str] = set()
+        for name in self._router.chain_for(CAPABILITY_MUSIC_GEN):
+            provider = providers.get(name)
+            if provider is None or not provider.supports(CAPABILITY_MUSIC_GEN):
+                continue
+            license = provider.metadata.license
+            fingerprint = canonical_json(_license_fingerprint(license))
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            licenses.append(license)
+        return tuple(licenses)
+
+    def _default_cache_license(self) -> AssetLicense | None:
+        licenses = self._provider_licenses()
+        return licenses[0] if len(licenses) == 1 else None
+
     def cache_key(
         self,
         request: MusicRequest,
         *,
         index: int = 0,
         model: str | None = None,
+        license: AssetLicense | Mapping[str, Any] | None = None,
     ) -> AssetCacheKey:
         """Return the cache key for one output of *request*."""
-        return music_cache_key(request, index=index, model=model)
+        if license is None:
+            license = self._default_cache_license()
+        return music_cache_key(
+            request,
+            index=index,
+            model=model,
+            license=license,
+        )
 
     @staticmethod
     def _router_units(request: MusicRequest) -> tuple[float, str]:
@@ -1231,7 +1280,11 @@ class MusicService:
                 cost_links=cost_links,
             )
             if use_cache and self._cache is not None:
-                key_for_asset = self.cache_key(request, index=index)
+                key_for_asset = self.cache_key(
+                    request,
+                    index=index,
+                    license=selection.provider.metadata.license,
+                )
                 asset = self._cache.store(asset, key=key_for_asset)
             assets.append(asset)
 
@@ -1401,21 +1454,37 @@ class MusicService:
         cache = self._cache
         if cache is None:
             return None
-        keys = [self.cache_key(request, index=index) for index in range(request.count)]
+        keys: list[AssetCacheKey] = []
         assets: list[Asset] = []
         payloads: list[bytes] = []
-        for key in keys:
-            entry = cache.entry(key)
-            if entry is None:
-                return None
-            asset = cache.assets.get(entry.asset_id)
-            if asset is None or asset.kind is not AssetKind.MUSIC:
-                return None
-            payload = await self._cached_payload(asset, storage)
-            if payload is None:
-                return None
-            assets.append(asset)
-            payloads.append(payload)
+        for license in self._provider_licenses():
+            candidate_keys = [
+                self.cache_key(request, index=index, license=license)
+                for index in range(request.count)
+            ]
+            candidate_assets: list[Asset] = []
+            for key in candidate_keys:
+                entry = cache.entry(key)
+                if entry is None:
+                    break
+                asset = cache.assets.get(entry.asset_id)
+                if asset is None or asset.kind is not AssetKind.MUSIC:
+                    break
+                candidate_assets.append(asset)
+            else:
+                candidate_payloads: list[bytes] = []
+                for asset in candidate_assets:
+                    payload = await self._cached_payload(asset, storage)
+                    if payload is None:
+                        break
+                    candidate_payloads.append(payload)
+                else:
+                    keys = candidate_keys
+                    assets = candidate_assets
+                    payloads = candidate_payloads
+                    break
+        else:
+            return None
 
         events: list[CostEvent] = [
             cache.record_hit(key, asset, run_id=run_id, operation=operation)
