@@ -85,6 +85,40 @@ class ForgetfulStore(DatabaseAsyncJobStore):
         return super().find_by_idempotency_key(key)
 
 
+class WaitingStore(ForgetfulStore):
+    """A racing store that signals when the helper starts waiting."""
+
+    def __init__(self, engine: Engine, *, kind: str = "media_async") -> None:
+        super().__init__(engine, kind=kind)
+        self.first_get = asyncio.Event()
+
+    def get(self, job_id: str) -> AsyncJob | None:
+        self.first_get.set()
+        return super().get(job_id)
+
+
+class YieldingClock(FakeClock):
+    """A fake clock whose sleep still yields once to the event loop."""
+
+    async def sleep(self, seconds: float) -> None:
+        self.value += seconds
+        await asyncio.sleep(0)
+
+
+class BlockingBackend(FakeBackend):
+    """A backend whose submit stays in flight until the test releases it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def submit(self, request: Any) -> Any:
+        self.started.set()
+        await self.release.wait()
+        return await super().submit(request)
+
+
 @pytest.fixture
 def engine() -> Iterator[Engine]:
     created = create_database_engine(url="sqlite+pysqlite:///:memory:")
@@ -196,6 +230,60 @@ def test_a_repeated_key_from_another_process_cannot_submit_twice(
                     idempotency_key="shared-key",
                 )
             )
+        assert racer_backend.submitted == []
+    finally:
+        winner_engine.dispose()
+        racer_engine.dispose()
+
+
+def test_a_repeated_key_waits_for_an_in_flight_submission(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "data" / "aivia.db"
+    upgrade_database(database)
+    winner_engine = create_database_engine(database)
+    racer_engine = create_database_engine(database)
+    try:
+        winner_backend = BlockingBackend()
+        winner = AsyncMediaJobHelper(
+            winner_backend,
+            engine=winner_engine,
+            provider="fake-media",
+            timeout_seconds=5.0,
+            poll_interval_seconds=1.0,
+            clock=FakeClock(),
+        )
+        racer_backend = FakeBackend()
+        racer_store = WaitingStore(racer_engine)
+        racer = make_helper(
+            racer_backend,
+            store=racer_store,
+            clock=YieldingClock(),
+            timeout_seconds=30.0,
+            poll_interval_seconds=1.0,
+        )
+
+        async def scenario() -> tuple[AsyncJob, AsyncJob, bool]:
+            winner_task = asyncio.create_task(
+                winner.submit({"prompt": "a wave"}, idempotency_key="shared-key")
+            )
+            await winner_backend.started.wait()
+            racer_task = asyncio.create_task(
+                racer.submit({"prompt": "a wave"}, idempotency_key="shared-key")
+            )
+            await asyncio.wait_for(racer_store.first_get.wait(), timeout=1.0)
+            waited = not racer_task.done()
+            winner_backend.release.set()
+            first = await winner_task
+            second = await racer_task
+            return first, second, waited
+
+        first, second, waited = asyncio.run(scenario())
+
+        assert waited
+        assert second.id == first.id
+        assert second.remote_id == first.remote_id == "remote-1"
+        assert winner_backend.submitted == [{"prompt": "a wave"}]
         assert racer_backend.submitted == []
     finally:
         winner_engine.dispose()

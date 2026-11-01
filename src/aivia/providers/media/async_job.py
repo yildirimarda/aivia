@@ -8,7 +8,8 @@ adapter behaves the same way:
 * a submitted job is written to the local ``jobs`` table before the remote call,
   and the provider job identifier is written back immediately afterwards;
 * repeating a submission with the same idempotency key returns the stored job
-  instead of paying for a second generation;
+  instead of paying for a second generation, waiting for a racing submission to
+  persist its remote id rather than returning an unusable pending record;
 * polling is bounded by a deadline, records progress and terminal state, and
   raises :class:`AsyncJobTimeoutError` when the deadline passes;
 * cancelling is idempotent and never calls the provider twice;
@@ -858,6 +859,33 @@ class AsyncMediaJobHelper:
             )
         return existing
 
+    async def _reuse_or_wait(
+        self, existing: AsyncJob, *, digest: str, key: str
+    ) -> AsyncJob:
+        """Return *existing*, waiting while a racing submission is in flight.
+
+        Another process may have inserted the local row for *key* but not yet
+        received or persisted the provider job id. Returning that row would
+        give the caller a job it cannot poll, so wait for the remote id to
+        appear. A terminal record is returned as-is; a record that never gains
+        a remote id before the deadline raises :class:`AsyncJobTimeoutError`.
+        """
+        current = existing
+        deadline = self._clock() + self.timeout_seconds
+        while not current.remote_id and not current.terminal:
+            remaining = deadline - self._clock()
+            if remaining <= 0.0:
+                raise AsyncJobTimeoutError(
+                    f"async job {current.id!r} was still being submitted after "
+                    f"{self.timeout_seconds:g} seconds",
+                    job=current,
+                )
+            await self._sleep(min(self.poll_interval_seconds, remaining))
+            refreshed = self._store.get(current.id)
+            if refreshed is not None:
+                current = refreshed
+        return self._reuse_existing(current, digest=digest, key=key)
+
     async def submit(
         self,
         request: Any,
@@ -870,7 +898,9 @@ class AsyncMediaJobHelper:
         The local record is written before the remote call so a crash during
         submission leaves an auditable row. The remote identifier is written
         back as soon as the backend returns it. Reusing a key with a different
-        request raises :class:`IdempotencyConflict`.
+        request raises :class:`IdempotencyConflict`. A key that is already being
+        submitted by another process waits for its remote id instead of
+        returning a pending job that cannot be polled.
         """
         submit_fn = self._submit_fn
         if submit_fn is None:
@@ -883,7 +913,7 @@ class AsyncMediaJobHelper:
             if key:
                 existing = self._store.find_by_idempotency_key(key)
                 if existing is not None:
-                    return self._reuse_existing(existing, digest=digest, key=key)
+                    return await self._reuse_or_wait(existing, digest=digest, key=key)
 
             now = utcnow()
             job = AsyncJob(
@@ -905,7 +935,7 @@ class AsyncMediaJobHelper:
                 existing = self._store.find_by_idempotency_key(key)
                 if existing is None:
                     raise
-                return self._reuse_existing(existing, digest=digest, key=key)
+                return await self._reuse_or_wait(existing, digest=digest, key=key)
             try:
                 response = await self._call(submit_fn, request)
             except Exception as exc:
