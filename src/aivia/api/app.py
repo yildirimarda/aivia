@@ -7,7 +7,7 @@ rate limits before routing, and exposes its OpenAPI document for local clients.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -23,6 +23,7 @@ from aivia.api.limits import (
     RateLimitMiddleware,
     RequestRateLimiter,
 )
+from aivia.api.media import register_media_routes
 from aivia.api.security import validate_bind_host
 from aivia.api.uploads import sanitize_filename
 from aivia.core.config import (
@@ -33,6 +34,7 @@ from aivia.core.config import (
     selected_profile,
 )
 from aivia.core.secrets import SecretsLoader
+from aivia.media.toolkit import MediaToolkit
 
 __all__ = ["create_app", "serve"]
 
@@ -52,6 +54,7 @@ def create_app(
     database_path: str | Path | None = None,
     data_dir: str | Path | None = None,
     jobs: JobsConfig | Mapping[str, Any] | None = None,
+    toolkit: MediaToolkit | Callable[[], MediaToolkit] | None = None,
     environment: str | None = None,
     profile: str | None = None,
 ) -> FastAPI:
@@ -66,7 +69,8 @@ def create_app(
     depth limit. *environment* selects the config environment recorded on
     submitted runs; it defaults to the one selected by *environ*. *profile*
     selects the profile recorded on submitted runs so the worker applies the
-    same overrides.
+    same overrides. *toolkit* may inject a ready media toolkit or a factory;
+    otherwise the media routes build one from the layered config on first use.
     """
     api, jobs_config, config_environment, config_profile = _resolve_configs(
         config, jobs, environ, environment, profile
@@ -141,6 +145,18 @@ def create_app(
         environ=environ,
         database_path=database_path,
         data_dir=data_dir,
+        jobs=jobs_config,
+        environment=config_environment,
+        profile=config_profile,
+    )
+
+    register_media_routes(
+        app,
+        engine=engine,
+        environ=environ,
+        database_path=database_path,
+        data_dir=data_dir,
+        toolkit=toolkit,
         jobs=jobs_config,
         environment=config_environment,
         profile=config_profile,
