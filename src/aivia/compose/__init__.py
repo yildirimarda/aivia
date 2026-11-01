@@ -99,6 +99,7 @@ from aivia.compose.render import (
 from aivia.compose.schema import (
     COMPOSITION_SCHEMA_VERSION,
     CURRENT_COMPOSITION_SCHEMA_VERSION,
+    Anchor,
     AnyLayer,
     AudioTrack,
     AudioTrackConfig,
@@ -160,6 +161,7 @@ __all__ = [
     "FONT_EXTENSIONS",
     "PILLOW_STILL_RENDERER_VERSION",
     "RENDERER_VERSION",
+    "Anchor",
     "AnimatedProperty",
     "AnimatedValue",
     "AnyLayer",

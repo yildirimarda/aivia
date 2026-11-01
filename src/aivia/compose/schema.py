@@ -37,6 +37,7 @@ from pydantic import (
 __all__ = [
     "COMPOSITION_SCHEMA_VERSION",
     "CURRENT_COMPOSITION_SCHEMA_VERSION",
+    "Anchor",
     "AnyLayer",
     "AudioTrack",
     "AudioTrackConfig",
@@ -185,6 +186,85 @@ class VerticalAlign(StrEnum):
             "end": cls.BOTTOM,
         }
         return aliases.get(value.strip().lower())
+
+
+class Anchor(StrEnum):
+    """One of the nine positions a sticker or logo can be pinned to."""
+
+    TOP_LEFT = "top_left"
+    TOP_CENTER = "top_center"
+    TOP_RIGHT = "top_right"
+    MIDDLE_LEFT = "middle_left"
+    CENTER = "center"
+    MIDDLE_RIGHT = "middle_right"
+    BOTTOM_LEFT = "bottom_left"
+    BOTTOM_CENTER = "bottom_center"
+    BOTTOM_RIGHT = "bottom_right"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> Anchor | None:
+        if not isinstance(value, str):
+            return None
+        key = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "top_left": cls.TOP_LEFT,
+            "top_center": cls.TOP_CENTER,
+            "top_right": cls.TOP_RIGHT,
+            "middle_left": cls.MIDDLE_LEFT,
+            "center": cls.CENTER,
+            "middle_right": cls.MIDDLE_RIGHT,
+            "bottom_left": cls.BOTTOM_LEFT,
+            "bottom_center": cls.BOTTOM_CENTER,
+            "bottom_right": cls.BOTTOM_RIGHT,
+            "top": cls.TOP_CENTER,
+            "upper": cls.TOP_CENTER,
+            "upper_center": cls.TOP_CENTER,
+            "top_middle": cls.TOP_CENTER,
+            "north": cls.TOP_CENTER,
+            "bottom": cls.BOTTOM_CENTER,
+            "lower": cls.BOTTOM_CENTER,
+            "lower_center": cls.BOTTOM_CENTER,
+            "bottom_middle": cls.BOTTOM_CENTER,
+            "south": cls.BOTTOM_CENTER,
+            "left": cls.MIDDLE_LEFT,
+            "center_left": cls.MIDDLE_LEFT,
+            "centre_left": cls.MIDDLE_LEFT,
+            "west": cls.MIDDLE_LEFT,
+            "right": cls.MIDDLE_RIGHT,
+            "center_right": cls.MIDDLE_RIGHT,
+            "centre_right": cls.MIDDLE_RIGHT,
+            "east": cls.MIDDLE_RIGHT,
+            "middle": cls.CENTER,
+            "centre": cls.CENTER,
+            "middle_center": cls.CENTER,
+            "center_middle": cls.CENTER,
+            "centre_middle": cls.CENTER,
+            "topleft": cls.TOP_LEFT,
+            "upper_left": cls.TOP_LEFT,
+            "top_start": cls.TOP_LEFT,
+            "northwest": cls.TOP_LEFT,
+            "nw": cls.TOP_LEFT,
+            "north_west": cls.TOP_LEFT,
+            "topright": cls.TOP_RIGHT,
+            "upper_right": cls.TOP_RIGHT,
+            "top_end": cls.TOP_RIGHT,
+            "northeast": cls.TOP_RIGHT,
+            "ne": cls.TOP_RIGHT,
+            "north_east": cls.TOP_RIGHT,
+            "bottomleft": cls.BOTTOM_LEFT,
+            "lower_left": cls.BOTTOM_LEFT,
+            "bottom_start": cls.BOTTOM_LEFT,
+            "southwest": cls.BOTTOM_LEFT,
+            "sw": cls.BOTTOM_LEFT,
+            "south_west": cls.BOTTOM_LEFT,
+            "bottomright": cls.BOTTOM_RIGHT,
+            "lower_right": cls.BOTTOM_RIGHT,
+            "bottom_end": cls.BOTTOM_RIGHT,
+            "southeast": cls.BOTTOM_RIGHT,
+            "se": cls.BOTTOM_RIGHT,
+            "south_east": cls.BOTTOM_RIGHT,
+        }
+        return aliases.get(key)
 
 
 class TextStyle(StrEnum):
@@ -487,6 +567,21 @@ def _integer(value: Any, name: str) -> Any:
     return value
 
 
+def _margin_value(value: Any) -> float | tuple[float, float]:
+    if isinstance(value, (tuple, list)):
+        if len(value) != 2:
+            raise ValueError("margin must be a number or a pair of numbers")
+        horizontal = _finite(value[0], "margin")
+        vertical = _finite(value[1], "margin")
+        if horizontal < 0.0 or vertical < 0.0:
+            raise ValueError("margin must not be negative")
+        return horizontal, vertical
+    number = _finite(value, "margin")
+    if number < 0.0:
+        raise ValueError("margin must not be negative")
+    return number
+
+
 class Canvas(_SchemaModel):
     """The pixel canvas a composition renders into.
 
@@ -720,6 +815,131 @@ class _AssetLayer(Layer):
         if not stripped:
             raise ValueError("source must not be empty")
         return stripped
+
+
+class _OverlayLayer(_AssetLayer):
+    """Shared placement and shadow fields for stickers and logos.
+
+    An overlay is pinned to one of nine canvas anchors. ``margin`` is either a
+    single number applied to both axes or a ``(horizontal, vertical)`` pair.
+    A drop shadow is optional and disabled unless ``shadow`` is true.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        validate_assignment=True,
+    )
+
+    anchor: Anchor = Field(
+        default=Anchor.CENTER,
+        validation_alias=AliasChoices("anchor", "corner", "alignment"),
+    )
+    margin: float | tuple[float, float] = Field(
+        default=0.0,
+        validation_alias=AliasChoices("margin", "margins", "inset"),
+    )
+    width: int | None = Field(
+        default=None,
+        gt=0,
+        validation_alias=AliasChoices("width", "w"),
+    )
+    height: int | None = Field(
+        default=None,
+        gt=0,
+        validation_alias=AliasChoices("height", "h"),
+    )
+    scale: float = Field(
+        default=1.0,
+        gt=0.0,
+        validation_alias=AliasChoices("scale", "zoom"),
+    )
+    fit: FitMode = Field(
+        default=FitMode.CONTAIN,
+        validation_alias=AliasChoices("fit", "fit_mode", "mode"),
+    )
+    shadow: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("shadow", "drop_shadow"),
+    )
+    shadow_color: str = Field(
+        default="#000000",
+        validation_alias=AliasChoices("shadow_color", "shadow_colour"),
+    )
+    shadow_offset: tuple[float, float] = Field(
+        default=(4.0, 4.0),
+        validation_alias=AliasChoices("shadow_offset", "shadow_position"),
+    )
+    shadow_blur: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices(
+            "shadow_blur",
+            "shadow_softness",
+            "shadow_radius",
+        ),
+    )
+    shadow_opacity: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("shadow_opacity", "shadow_alpha"),
+    )
+
+    @field_validator("margin", mode="before")
+    @classmethod
+    def _validate_margin(cls, value: Any) -> Any:
+        return _margin_value(value)
+
+    @field_validator("width", "height", mode="before")
+    @classmethod
+    def _validate_dimension(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return _integer(value, "overlay dimension")
+
+    @field_validator("scale", "shadow_blur", "shadow_opacity", mode="before")
+    @classmethod
+    def _validate_overlay_number(cls, value: Any) -> Any:
+        return _finite(value, "overlay")
+
+    @field_validator("shadow", mode="before")
+    @classmethod
+    def _validate_shadow_flag(cls, value: Any) -> Any:
+        if not isinstance(value, bool):
+            raise ValueError("shadow must be a boolean")
+        return value
+
+    @field_validator("shadow_color", mode="before")
+    @classmethod
+    def _validate_shadow_color(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            raise ValueError("shadow_color must be a string")
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("shadow_color must not be empty")
+        return stripped
+
+    @field_validator("shadow_offset", mode="before")
+    @classmethod
+    def _validate_shadow_offset(cls, value: Any) -> Any:
+        if not isinstance(value, (tuple, list)) or len(value) != 2:
+            raise ValueError("shadow_offset must be a pair of numbers")
+        return _finite(value[0], "shadow_offset"), _finite(value[1], "shadow_offset")
+
+    @property
+    def margin_x(self) -> float:
+        """The horizontal margin in pixels."""
+        if isinstance(self.margin, tuple):
+            return self.margin[0]
+        return self.margin
+
+    @property
+    def margin_y(self) -> float:
+        """The vertical margin in pixels."""
+        if isinstance(self.margin, tuple):
+            return self.margin[1]
+        return self.margin
 
 
 class ImageLayer(_AssetLayer):
@@ -1057,7 +1277,7 @@ class ShapeLayer(Layer):
         return data
 
 
-class StickerLayer(_AssetLayer):
+class StickerLayer(_OverlayLayer):
     """A decorative sticker placed on the canvas."""
 
     type: Literal[LayerType.STICKER] = Field(
@@ -1073,7 +1293,7 @@ class StickerLayer(_AssetLayer):
         return data
 
 
-class LogoLayer(_AssetLayer):
+class LogoLayer(_OverlayLayer):
     """A brand logo placed on the canvas."""
 
     type: Literal[LayerType.LOGO] = Field(
