@@ -624,6 +624,152 @@ def test_media_api_runner_cancels_the_in_flight_call_when_its_claim_is_recovered
     assert "media" not in stored.metadata
 
 
+def test_media_api_runner_does_not_record_a_result_after_losing_its_claim(
+    engine: Engine,
+    toolkit: MediaToolkit,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue = JobQueue(engine)
+    job = queue.enqueue(
+        Job(
+            kind="media.image",
+            payload={
+                "kind": "image",
+                "request": {"prompt": "A stranded lighthouse"},
+            },
+        )
+    )
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    tick = asyncio.Event()
+    original = toolkit.generate
+
+    async def blocking_generate(
+        kind: str,
+        request: Any = None,
+        **options: Any,
+    ) -> MediaResult:
+        entered.set()
+        await release.wait()
+        return await original(kind, request, **options)
+
+    monkeypatch.setattr(toolkit, "generate", blocking_generate)
+
+    class Clock:
+        def __init__(self) -> None:
+            self.now = datetime.now(UTC)
+
+        def __call__(self) -> datetime:
+            return self.now
+
+    clock = Clock()
+
+    async def sleep(seconds: float) -> None:
+        await tick.wait()
+        tick.clear()
+
+    runner = MediaJobRunner(
+        lambda: engine,
+        lambda: toolkit,
+        jobs=JobsConfig(heartbeat_seconds=1, stale_after_seconds=60),
+        clock=clock,
+        sleep=sleep,
+    )
+
+    async def main() -> None:
+        task = asyncio.create_task(runner.run(job.id))
+        await entered.wait()
+        recovered = queue.recover_stale(
+            stale_after_seconds=1,
+            now=clock.now + timedelta(seconds=2),
+        )
+        assert [item.id for item in recovered] == [job.id]
+        release.set()
+        await asyncio.wait_for(task, timeout=2)
+
+    asyncio.run(main())
+
+    stored = queue.get(job.id)
+    assert stored is not None
+    assert stored.state is JobState.PENDING
+    assert stored.claimed_by == ""
+    assert stored.error_code == "stale_heartbeat"
+    assert "media" not in stored.metadata
+
+
+def test_media_api_runner_does_not_record_a_failure_after_losing_its_claim(
+    engine: Engine,
+    toolkit: MediaToolkit,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue = JobQueue(engine)
+    job = queue.enqueue(
+        Job(
+            kind="media.image",
+            payload={
+                "kind": "image",
+                "request": {"prompt": "A stranded lighthouse"},
+            },
+        )
+    )
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    tick = asyncio.Event()
+
+    async def blocking_generate(
+        kind: str,
+        request: Any = None,
+        **options: Any,
+    ) -> MediaResult:
+        entered.set()
+        await release.wait()
+        raise RuntimeError("provider exploded")
+
+    monkeypatch.setattr(toolkit, "generate", blocking_generate)
+
+    class Clock:
+        def __init__(self) -> None:
+            self.now = datetime.now(UTC)
+
+        def __call__(self) -> datetime:
+            return self.now
+
+    clock = Clock()
+
+    async def sleep(seconds: float) -> None:
+        await tick.wait()
+        tick.clear()
+
+    runner = MediaJobRunner(
+        lambda: engine,
+        lambda: toolkit,
+        jobs=JobsConfig(heartbeat_seconds=1, stale_after_seconds=60),
+        clock=clock,
+        sleep=sleep,
+    )
+
+    async def main() -> None:
+        task = asyncio.create_task(runner.run(job.id))
+        await entered.wait()
+        recovered = queue.recover_stale(
+            stale_after_seconds=1,
+            now=clock.now + timedelta(seconds=2),
+        )
+        assert [item.id for item in recovered] == [job.id]
+        release.set()
+        await asyncio.wait_for(task, timeout=2)
+
+    asyncio.run(main())
+
+    stored = queue.get(job.id)
+    assert stored is not None
+    assert stored.state is JobState.PENDING
+    assert stored.claimed_by == ""
+    assert stored.error_code == "stale_heartbeat"
+    assert stored.error_message != "provider exploded"
+    assert "media" not in stored.metadata
+
+
 def test_api_startup_leaves_running_jobs_of_other_kinds_for_the_worker(
     engine: Engine,
     toolkit: MediaToolkit,

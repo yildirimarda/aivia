@@ -513,8 +513,7 @@ class MediaJobRunner:
         if lost_claim.is_set():
             return
         if error is not None:
-            self._record_failure(engine, claimed, error)
-            with suppress(JobNotFoundError, JobNotClaimedError):
+            try:
                 queue.fail(
                     claimed.id,
                     self._worker_id,
@@ -523,12 +522,17 @@ class MediaJobRunner:
                     retryable=False,
                     now=self._clock(),
                 )
+            except (JobNotFoundError, JobNotClaimedError):
+                return
+            self._record_failure(engine, claimed, error)
         else:
             if result is None:
                 return
-            self._record_result(engine, claimed, result)
-            with suppress(JobNotFoundError, JobNotClaimedError):
+            try:
                 queue.complete(claimed.id, self._worker_id, now=self._clock())
+            except (JobNotFoundError, JobNotClaimedError):
+                return
+            self._record_result(engine, claimed, result)
 
     async def _call_toolkit(self, claimed: Job) -> MediaResult:
         kind = _job_kind(claimed)
