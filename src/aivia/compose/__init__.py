@@ -224,6 +224,14 @@ from aivia.compose.validation import (
     validate_composition,
     validate_composition_or_raise,
 )
+from aivia.compose.video import (
+    VIDEO_RENDERER_VERSION,
+    FFmpegRunner,
+    VideoRenderer,
+    VideoRenderError,
+    VideoRenderResult,
+    render_video,
+)
 
 __all__ = [
     "COMPOSITION_JSON_SCHEMA_DIALECT",
@@ -241,6 +249,7 @@ __all__ = [
     "FONT_EXTENSIONS",
     "PILLOW_STILL_RENDERER_VERSION",
     "RENDERER_VERSION",
+    "VIDEO_RENDERER_VERSION",
     "Anchor",
     "AnimatedProperty",
     "AnimatedValue",
@@ -277,6 +286,7 @@ __all__ = [
     "FFmpegCommand",
     "FFmpegCommandError",
     "FFmpegInput",
+    "FFmpegRunner",
     "FaceBox",
     "FilterType",
     "FitMode",
@@ -331,6 +341,9 @@ __all__ = [
     "UnknownFontError",
     "VerticalAlign",
     "VideoLayer",
+    "VideoRenderError",
+    "VideoRenderResult",
+    "VideoRenderer",
     "add_backing_box",
     "add_contrast_treatment",
     "add_outline",
@@ -418,6 +431,7 @@ __all__ = [
     "read_composition_file",
     "relative_luminance",
     "render_still",
+    "render_video",
     "resolve_contrast",
     "resolve_font",
     "sample_layer",
