@@ -22,6 +22,7 @@ from aivia.providers.media import AsyncJobState, AsyncJobTimeoutError
 from aivia.providers.protocols import (
     CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
+    CAPABILITY_VIDEO_NATIVE_AUDIO,
     VideoRequest,
 )
 from aivia.providers.protocols.media import VideoFormat
@@ -98,9 +99,11 @@ def test_metadata_and_registration_describe_the_video_provider() -> None:
     assert provider.capabilities == (
         CAPABILITY_VIDEO_GEN,
         CAPABILITY_VIDEO_FIRST_FRAME,
+        CAPABILITY_VIDEO_NATIVE_AUDIO,
     )
     assert provider.supports(CAPABILITY_VIDEO_GEN)
     assert provider.supports(CAPABILITY_VIDEO_FIRST_FRAME)
+    assert provider.supports(CAPABILITY_VIDEO_NATIVE_AUDIO)
     assert provider.base_url == DEFAULT_BASE_URL
     assert provider.default_model == MODEL
     assert provider.endpoint == ENDPOINT

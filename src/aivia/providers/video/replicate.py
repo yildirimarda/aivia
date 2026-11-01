@@ -51,6 +51,7 @@ from aivia.providers.protocols.video import (
     CAPABILITY_VIDEO_FIRST_FRAME,
     CAPABILITY_VIDEO_GEN,
     CAPABILITY_VIDEO_INPUT,
+    CAPABILITY_VIDEO_NATIVE_AUDIO,
     VideoRequest,
     VideoResponse,
     VideoResult,
@@ -94,7 +95,11 @@ REPLICATE_VIDEO_BASE_URL = DEFAULT_BASE_URL
 
 _DEFAULT_METADATA = ProviderMeta(
     name="replicate",
-    capabilities=[CAPABILITY_VIDEO_GEN, CAPABILITY_VIDEO_FIRST_FRAME],
+    capabilities=[
+        CAPABILITY_VIDEO_GEN,
+        CAPABILITY_VIDEO_FIRST_FRAME,
+        CAPABILITY_VIDEO_NATIVE_AUDIO,
+    ],
 )
 
 DEFAULT_FIRST_FRAME_FIELD = "image"
