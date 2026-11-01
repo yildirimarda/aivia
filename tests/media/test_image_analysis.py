@@ -21,6 +21,7 @@ from aivia.llm.structured import StructuredOutputHelper
 from aivia.media.image_analysis import (
     ImageAnalysis,
     ImageAnalysisCache,
+    ImageAnalysisCacheKey,
     ImageAnalyzer,
     analyze_image,
     analyze_image_offline,
@@ -85,8 +86,9 @@ def _solid_bytes(
 class FakeVisionProvider:
     """An async LLM provider that returns one canned analysis payload."""
 
-    def __init__(self, payload: dict[str, Any] | str) -> None:
+    def __init__(self, payload: dict[str, Any] | str, *, name: str = "acme") -> None:
         self.payload = payload
+        self.name = name
         self.requests: list[LLMRequest] = []
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
@@ -96,7 +98,7 @@ class FakeVisionProvider:
         )
         return LLMResponse(
             content=content,
-            provider="acme",
+            provider=self.name,
             model="vision-model",
             usage=LLMUsage(input_tokens=10, output_tokens=5),
         )
@@ -504,6 +506,61 @@ def test_a_different_prompt_does_not_reuse_the_cached_analysis(
     _run(analyze_image(data, provider=provider, cache=cache, prompt="second"))
 
     assert len(provider.requests) == 2
+
+
+def test_the_cache_key_includes_the_analysis_provider() -> None:
+    first = ImageAnalysisCacheKey(
+        content_hash="abc",
+        provider="alpha",
+        model="shared-model",
+    )
+    second = ImageAnalysisCacheKey(
+        content_hash="abc",
+        provider="beta",
+        model="shared-model",
+    )
+
+    assert first.digest != second.digest
+    assert first.asset_key().digest != second.asset_key().digest
+
+
+def test_two_providers_serving_one_model_do_not_share_a_cached_analysis(
+    engine: Engine,
+) -> None:
+    first_provider = FakeVisionProvider(
+        {"description": "from alpha", "alt_text": "alpha"},
+        name="alpha",
+    )
+    second_provider = FakeVisionProvider(
+        {"description": "from beta", "alt_text": "beta"},
+        name="beta",
+    )
+    cache = ImageAnalysisCache(engine)
+    data = _image_bytes()
+
+    first = _run(
+        analyze_image(
+            data,
+            provider=first_provider,
+            model="shared-model",
+            cache=cache,
+        )
+    )
+    second = _run(
+        analyze_image(
+            data,
+            provider=second_provider,
+            model="shared-model",
+            cache=cache,
+        )
+    )
+
+    assert first.description == "from alpha"
+    assert second.description == "from beta"
+    assert first.provider == "alpha"
+    assert second.provider == "beta"
+    assert len(first_provider.requests) == 1
+    assert len(second_provider.requests) == 1
 
 
 def test_a_cache_hit_records_a_zero_cost_event(engine: Engine) -> None:

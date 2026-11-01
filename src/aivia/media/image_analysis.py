@@ -677,11 +677,13 @@ def image_content_hash(source: VisionSource) -> str:
 class ImageAnalysisCacheKey:
     """Everything that makes two vision analyses the same paid call.
 
-    ``content_hash`` identifies the pixels. The prompt, model, role and extra
-    parameters are included because they change what a vision model returns.
+    ``content_hash`` identifies the pixels. The provider, prompt, model, role
+    and extra parameters are included because they change what a vision model
+    returns; two providers serving the same model must not share a result.
     """
 
     content_hash: str
+    provider: str = ""
     prompt: str = ""
     model: str = ""
     role: str = ""
@@ -689,6 +691,7 @@ class ImageAnalysisCacheKey:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "content_hash", self.content_hash.strip().lower())
+        object.__setattr__(self, "provider", self.provider.strip())
         object.__setattr__(self, "prompt", self.prompt.strip())
         object.__setattr__(self, "model", self.model.strip())
         object.__setattr__(self, "role", self.role.strip())
@@ -699,6 +702,7 @@ class ImageAnalysisCacheKey:
         """The stable SHA-256 digest used as the in-memory cache key."""
         payload = {
             "content_hash": self.content_hash,
+            "provider": self.provider,
             "prompt": self.prompt,
             "model": self.model,
             "role": self.role,
@@ -718,7 +722,7 @@ class ImageAnalysisCacheKey:
         parameters["content_hash"] = self.content_hash
         parameters["role"] = self.role
         return AssetCacheKey(
-            provider="",
+            provider=self.provider,
             model=self.model,
             prompt=self.prompt,
             parameters=parameters,
@@ -770,6 +774,7 @@ class ImageAnalysisCache:
         self,
         source: VisionSource,
         *,
+        provider: str = "",
         prompt: str = DEFAULT_VISION_PROMPT,
         model: str | None = None,
         role: str = "vision_qa",
@@ -781,6 +786,7 @@ class ImageAnalysisCache:
         values.setdefault("alt_text_length", alt_text_length)
         return ImageAnalysisCacheKey(
             content_hash=image_content_hash(source),
+            provider=provider,
             prompt=prompt,
             model=model or "",
             role=role,
@@ -1093,8 +1099,14 @@ async def analyze_image(
 
     cache_key: ImageAnalysisCacheKey | None = None
     if cache is not None and not no_cache:
+        cache_provider = (
+            provider_name(analyzer)
+            if analyzer is not None
+            else provider_name(provider or getattr(helper, "provider", None))
+        )
         cache_key = cache.key(
             source,
+            provider=cache_provider,
             prompt=prompt,
             model=model,
             role=role,
