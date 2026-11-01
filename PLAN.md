@@ -345,7 +345,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Declare native audio support on video providers that forward generate_audio and regenerate the capability matrix (tests/providers/video/test_audio_capability.py)
 - [x] Apply the video audio policy before storing a clip and record when returned audio was stripped (tests/media/test_video_audio.py)
 - [x] Reject a source video whose media type is not video before any video-to-video provider call (tests/providers/video/test_v2v.py)
-- [ ] Normalize differing clip dimensions and frame rates before crossfading so mixed sources join cleanly (tests/media/test_video_utils.py)
+- [x] Normalize differing clip dimensions and frame rates before crossfading so mixed sources join cleanly (tests/media/test_video_utils.py)
 - [ ] Drop audio with a recorded warning when a retimed or looped clip has no track (tests/media/test_video_utils.py)
 - [ ] Probe the configured local text to speech executable and model in health so a missing binary fails early (tests/providers/tts/test_local.py)
 - [ ] Convert local text to speech output to the requested container with ffmpeg and reject unsupported conversions (tests/providers/tts/test_local.py)
