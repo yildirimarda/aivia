@@ -323,7 +323,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add audio analysis for tempo, silence and loudness plus multi track mixing with verified voice ducking (tests/media/test_audio_mix.py)
 - [x] Add media generate commands for image, video, speech, transcription, music and sfx with provider, strategy, prompt files, estimate and dry run support (tests/cli/test_media_generate.py)
 - [x] Add a media edit command for instruction edits, background removal, upscaling and outpainting (tests/cli/test_media_edit.py)
-- [ ] Add a batch CLI that only parses CSV or YAML, maps flags onto the batch runner and resumes completed entries by manifest (tests/cli/test_media_batch_cli.py)
+- [x] Add a batch CLI that only parses CSV or YAML, maps flags onto the batch runner and resumes completed entries by manifest (tests/cli/test_media_batch_cli.py)
 - [ ] Add named presets with CLI flags overriding preset values and list and show commands (tests/core/test_presets.py)
 - [ ] Expose a MediaToolkit Python API for image, video, speech, transcription, music and edit returning results with cost (tests/test_media_toolkit.py)
 - [ ] Expose toolkit HTTP routes with job submission, status and result download (tests/api/test_media_api.py)
