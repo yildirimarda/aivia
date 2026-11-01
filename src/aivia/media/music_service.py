@@ -191,6 +191,42 @@ def _media_format(value: AudioFormat | str | None) -> MediaFormat | None:
         return None
 
 
+def _measured_audio(
+    probe: MediaProbe,
+    *,
+    fallback_format: AudioFormat,
+    fallback_sample_rate: int | None = None,
+    fallback_channels: int | None = None,
+) -> tuple[AudioFormat, int | None, int | None]:
+    """Return the container, sample rate and channel count measured by ffprobe."""
+    fmt = _audio_format(probe.format.value, fallback_format)
+    sample_rate = fallback_sample_rate
+    channels = fallback_channels
+    info = probe.ffprobe
+    if info is not None:
+        streams = info.audio_streams
+        if streams:
+            stream = streams[0]
+            if stream.sample_rate is not None:
+                sample_rate = stream.sample_rate
+            if stream.channels is not None:
+                channels = stream.channels
+    return fmt, sample_rate, channels
+
+
+def _stored_audio_format(
+    analysis: AssetAnalysis,
+    fallback: AudioFormat,
+) -> AudioFormat:
+    """Return the format recorded on *analysis*, or *fallback* when unknown."""
+    value = analysis.format.strip().lower()
+    if value:
+        found = _AUDIO_FORMATS.get(value)
+        if found is not None:
+            return found
+    return fallback
+
+
 def _license_values(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
     if not isinstance(metadata, Mapping):
         return {}
@@ -1276,7 +1312,12 @@ class MusicService:
                 pinned=pinned,
                 seed=track.seed,
                 license=license,
-                analysis=AssetAnalysis(duration_seconds=probe.duration_seconds),
+                analysis=AssetAnalysis(
+                    duration_seconds=probe.duration_seconds,
+                    format=track.format.value,
+                    sample_rate=track.sample_rate,
+                    channels=track.channels,
+                ),
                 cost_links=cost_links,
             )
             if use_cache and self._cache is not None:
@@ -1392,7 +1433,12 @@ class MusicService:
                     },
                 )
             )
-        fmt = _audio_format(probe.format.value, track.format)
+        fmt, sample_rate, channels = _measured_audio(
+            probe,
+            fallback_format=track.format,
+            fallback_sample_rate=track.sample_rate,
+            fallback_channels=track.channels,
+        )
         metadata = dict(track.metadata)
         metadata["duration_seconds"] = probe.duration_seconds
         metadata["format"] = fmt.value
@@ -1401,6 +1447,8 @@ class MusicService:
                 "data": payload,
                 "format": fmt,
                 "duration_seconds": probe.duration_seconds,
+                "sample_rate": sample_rate,
+                "channels": channels,
                 "seed": seed,
                 "metadata": metadata,
             }
@@ -1500,12 +1548,21 @@ class MusicService:
             probes.append(probe)
             metadata = asset.license.model_dump(mode="json")
             metadata["cache"] = "hit"
+            fmt = _stored_audio_format(
+                asset.analysis,
+                _audio_format(probe.format.value, request.format),
+            )
             tracks.append(
                 MusicTrack(
                     data=payload,
-                    format=_audio_format(probe.format.value, request.format),
+                    format=fmt,
                     duration_seconds=probe.duration_seconds,
-                    sample_rate=request.sample_rate,
+                    sample_rate=(
+                        asset.analysis.sample_rate
+                        if asset.analysis.sample_rate is not None
+                        else request.sample_rate
+                    ),
+                    channels=asset.analysis.channels,
                     seed=asset.seed,
                     title=asset.label or request.prompt,
                     lyrics=None if request.instrumental else request.lyrics,

@@ -370,6 +370,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Normalize differing pixel formats before crossfading so xfade inputs always match (tests/media/test_video_utils.py)
 - [ ] Probe ffmpeg in local text to speech health when the default output needs conversion (tests/providers/tts/test_local.py)
 - [ ] Probe or accept a duration hint for remote audio before the speech to text budget check (tests/media/test_stt_service.py)
+- [ ] Persist measured speech format, sample rate and channels on the asset so cache hits rebuild the exact audio (tests/media/test_tts_service.py)
 
 ## Milestone 9: Composition and rendering
 

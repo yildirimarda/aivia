@@ -278,7 +278,8 @@ class AssetAnalysis(ModelBase):
     Every field is optional because analysis may run before or after an asset
     is stored. ``width`` and ``height`` are pixels, ``duration_seconds`` only
     applies to timed media, ``fps`` is the measured frame rate and ``format``
-    the validated container. ``has_audio`` is ``None`` when presence was never
+    the validated container. ``sample_rate`` and ``channels`` describe the
+    measured audio stream. ``has_audio`` is ``None`` when presence was never
     measured, so a legacy record is distinguishable from a clip known to have
     no audio track. ``audio_stripped`` records that returned audio was removed
     by the request policy rather than never generated. ``colors`` holds
@@ -300,6 +301,20 @@ class AssetAnalysis(ModelBase):
     format: str = Field(
         default="",
         validation_alias=AliasChoices("format", "container", "container_format"),
+    )
+    sample_rate: int | None = Field(
+        default=None,
+        gt=0,
+        validation_alias=AliasChoices(
+            "sample_rate",
+            "sample_rate_hz",
+            "audio_sample_rate",
+        ),
+    )
+    channels: int | None = Field(
+        default=None,
+        gt=0,
+        validation_alias=AliasChoices("channels", "channel_count", "audio_channels"),
     )
     has_audio: bool | None = Field(
         default=None,
@@ -421,6 +436,8 @@ class AssetAnalysis(ModelBase):
             or self.duration_seconds
             or self.fps
             or self.format
+            or self.sample_rate
+            or self.channels
             or self.has_audio is not None
             or self.audio_stripped is not None
             or self.colors
