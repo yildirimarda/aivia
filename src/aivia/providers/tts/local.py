@@ -294,6 +294,20 @@ class LocalTTSProvider(Provider):
             return None
         return model
 
+    def _needs_ffmpeg(self) -> bool:
+        """Whether the default output format needs ffmpeg conversion.
+
+        Local synthesizers produce WAV, so a non-WAV default is converted with
+        ffmpeg unless the caller injected a converter, encoder or runner.
+        """
+        if self._format is AudioFormat.WAV:
+            return False
+        return (
+            self._converter is None
+            and self._encoder is None
+            and self._ffmpeg_runner is None
+        )
+
     async def check_health(self) -> ProviderHealth:
         """Probe the configured executable and model without synthesizing."""
         details: dict[str, object] = {
@@ -334,6 +348,26 @@ class LocalTTSProvider(Provider):
             )
         if self._default_model:
             details["model"] = self._default_model
+        if self._needs_ffmpeg():
+            if shutil.which(self._ffmpeg) is None:
+                return ProviderHealth(
+                    status=HealthStatus.UNHEALTHY,
+                    message=(
+                        "local text to speech needs ffmpeg to convert to "
+                        f"{self._format.value}, but ffmpeg was not found: "
+                        f"{self._ffmpeg}"
+                    ),
+                    details={
+                        **details,
+                        "executable": executable,
+                        "ffmpeg": self._ffmpeg,
+                        "ffmpeg_executable": self._ffmpeg,
+                        "format": self._format.value,
+                    },
+                )
+            details["ffmpeg"] = self._ffmpeg
+            details["ffmpeg_executable"] = self._ffmpeg
+            details["format"] = self._format.value
         return ProviderHealth(
             status=HealthStatus.HEALTHY,
             message="ok",
