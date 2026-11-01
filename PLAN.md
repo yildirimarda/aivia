@@ -371,7 +371,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Probe ffmpeg in local text to speech health when the default output needs conversion (tests/providers/tts/test_local.py)
 - [x] Probe or accept a duration hint for remote audio before the speech to text budget check (tests/media/test_stt_service.py)
 - [x] Persist measured speech format, sample rate and channels on the asset so cache hits rebuild the exact audio (tests/media/test_tts_service.py)
-- [ ] Include CLI batch defaults and referenced input file contents in the content fingerprint so changed inputs invalidate a resumed row (tests/cli/test_media_batch_cli.py)
+- [x] Include CLI batch defaults and referenced input file contents in the content fingerprint so changed inputs invalidate a resumed row (tests/cli/test_media_batch_cli.py)
 - [ ] Recover media API jobs left running by a crashed API process so a restart cannot leave them stuck (tests/api/test_media_api.py)
 - [ ] Refuse to remove a clone record when configured providers do not cover its vendor so no vendor voice is orphaned (tests/media/test_voice_clone.py)
 - [ ] Store sound effect cost sidecars through the storage provider so remote outputs get them too (tests/media/test_sfx_service.py)
@@ -379,6 +379,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Cap animated frame count and total decoded pixels in media probe validation (tests/core/test_media_probe.py)
 - [ ] Guard a remote first frame download with the shared SSRF policy before a Veo call (tests/providers/video/test_replicate_veo_frames.py)
 - [ ] Refuse a speech to text call with an unknown duration when a budget is configured (tests/media/test_stt_service.py)
+- [ ] Invalidate a resumed batch row when its output destination changes so the new path receives the artifact (tests/cli/test_media_batch_cli.py)
 
 ## Milestone 9: Composition and rendering
 

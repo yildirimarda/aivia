@@ -268,6 +268,214 @@ def test_changed_row_content_invalidates_a_resumed_item(
     assert "Total cost: $0.040000" in third_out
 
 
+def test_changed_cli_default_invalidates_a_resumed_item(
+    config: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int | None] = []
+
+    class FakeOutcome:
+        provider = "fake"
+        model = "fake"
+        amount_usd = 0.02
+        cached = False
+
+    async def fake_generate(runtime: Any, args: Any, kind: str) -> FakeOutcome:
+        calls.append(args.seed)
+        return FakeOutcome()
+
+    monkeypatch.setattr(media_module, "_generate", fake_generate)
+    manifest = tmp_path / "manifest.json"
+    batch = tmp_path / "items.csv"
+    batch.write_text(
+        "id,prompt\none,A lighthouse\ntwo,A castle\n",
+        encoding="utf-8",
+    )
+    arguments = (
+        "media",
+        "batch",
+        str(batch),
+        "--manifest",
+        str(manifest),
+        "--config",
+        str(config),
+    )
+
+    first_code, _first_out, first_err = run_cli(capsys, *arguments, "--seed", "7")
+
+    assert first_code == 0
+    assert first_err == ""
+    assert calls == [7, 7]
+
+    second_code, second_out, second_err = run_cli(capsys, *arguments, "--seed", "7")
+
+    assert second_code == 0
+    assert second_err == ""
+    assert calls == [7, 7]
+    assert second_out.count("resumed") == 2
+
+    third_code, third_out, third_err = run_cli(capsys, *arguments, "--seed", "8")
+
+    assert third_code == 0
+    assert third_err == ""
+    assert calls == [7, 7, 8, 8]
+    assert third_out.count("resumed") == 0
+
+
+def test_changed_cli_prompt_file_invalidates_a_resumed_item(
+    config: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class FakeOutcome:
+        provider = "fake"
+        model = "fake"
+        amount_usd = 0.02
+        cached = False
+
+    async def fake_generate(runtime: Any, args: Any, kind: str) -> FakeOutcome:
+        calls.append(Path(args.prompt_file).read_text(encoding="utf-8"))
+        return FakeOutcome()
+
+    monkeypatch.setattr(media_module, "_generate", fake_generate)
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("A lighthouse", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    batch = tmp_path / "items.csv"
+    batch.write_text("id\none\ntwo\n", encoding="utf-8")
+    arguments = (
+        "media",
+        "batch",
+        str(batch),
+        "--manifest",
+        str(manifest),
+        "--prompt-file",
+        str(prompt_file),
+        "--config",
+        str(config),
+    )
+
+    first_code, _first_out, first_err = run_cli(capsys, *arguments)
+
+    assert first_code == 0
+    assert first_err == ""
+    assert calls == ["A lighthouse", "A lighthouse"]
+
+    second_code, second_out, second_err = run_cli(capsys, *arguments)
+
+    assert second_code == 0
+    assert second_err == ""
+    assert calls == ["A lighthouse", "A lighthouse"]
+    assert second_out.count("resumed") == 2
+
+    prompt_file.write_text("A bright lighthouse", encoding="utf-8")
+    third_code, third_out, third_err = run_cli(capsys, *arguments)
+
+    assert third_code == 0
+    assert third_err == ""
+    assert calls == [
+        "A lighthouse",
+        "A lighthouse",
+        "A bright lighthouse",
+        "A bright lighthouse",
+    ]
+    assert third_out.count("resumed") == 0
+
+
+def test_changed_referenced_input_files_invalidate_only_their_rows(
+    config: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class FakeOutcome:
+        provider = "fake"
+        model = "fake"
+        amount_usd = 0.02
+        cached = False
+
+    async def fake_generate(runtime: Any, args: Any, kind: str) -> FakeOutcome:
+        calls.append(kind)
+        return FakeOutcome()
+
+    monkeypatch.setattr(media_module, "_generate", fake_generate)
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("A lighthouse", encoding="utf-8")
+    lyrics_file = tmp_path / "lyrics.txt"
+    lyrics_file.write_text("la la", encoding="utf-8")
+    audio_file = tmp_path / "clip.wav"
+    audio_file.write_bytes(b"RIFF-audio")
+    manifest = tmp_path / "manifest.json"
+    batch = tmp_path / "items.csv"
+    batch.write_text(
+        "id,kind,prompt,prompt_file,lyrics_file,audio_file\n"
+        f"image,image,,{prompt_file},,\n"
+        f"music,music,A song,,{lyrics_file},\n"
+        f"transcript,transcription,,,,{audio_file}\n",
+        encoding="utf-8",
+    )
+    arguments = (
+        "media",
+        "batch",
+        str(batch),
+        "--manifest",
+        str(manifest),
+        "--config",
+        str(config),
+    )
+
+    first_code, _first_out, first_err = run_cli(capsys, *arguments)
+
+    assert first_code == 0
+    assert first_err == ""
+    assert calls == ["image", "music", "transcription"]
+
+    second_code, second_out, second_err = run_cli(capsys, *arguments)
+
+    assert second_code == 0
+    assert second_err == ""
+    assert calls == ["image", "music", "transcription"]
+    assert second_out.count("resumed") == 3
+
+    prompt_file.write_text("A bright lighthouse", encoding="utf-8")
+    third_code, third_out, third_err = run_cli(capsys, *arguments)
+
+    assert third_code == 0
+    assert third_err == ""
+    assert calls == ["image", "music", "transcription", "image"]
+    assert third_out.count("resumed") == 2
+
+    lyrics_file.write_text("la la la", encoding="utf-8")
+    fourth_code, fourth_out, fourth_err = run_cli(capsys, *arguments)
+
+    assert fourth_code == 0
+    assert fourth_err == ""
+    assert calls == ["image", "music", "transcription", "image", "music"]
+    assert fourth_out.count("resumed") == 2
+
+    audio_file.write_bytes(b"RIFF-other-audio")
+    fifth_code, fifth_out, fifth_err = run_cli(capsys, *arguments)
+
+    assert fifth_code == 0
+    assert fifth_err == ""
+    assert calls == [
+        "image",
+        "music",
+        "transcription",
+        "image",
+        "music",
+        "transcription",
+    ]
+    assert fifth_out.count("resumed") == 2
+
+
 def test_a_bad_batch_file_is_reported_without_running(
     config: Path,
     tmp_path: Path,
