@@ -280,7 +280,9 @@ class AssetAnalysis(ModelBase):
     applies to timed media, ``fps`` is the measured frame rate and ``format``
     the validated container. ``has_audio`` is ``None`` when presence was never
     measured, so a legacy record is distinguishable from a clip known to have
-    no audio track. ``colors`` holds dominant colors in first-seen order,
+    no audio track. ``audio_stripped`` records that returned audio was removed
+    by the request policy rather than never generated. ``colors`` holds
+    dominant colors in first-seen order,
     ``description`` is a vision description, ``detected_text`` is OCR output
     and ``faces`` holds the detected face rectangles. ``provider`` and
     ``model`` identify the analyser that produced those fields, which is not
@@ -302,6 +304,14 @@ class AssetAnalysis(ModelBase):
     has_audio: bool | None = Field(
         default=None,
         validation_alias=AliasChoices("has_audio", "audio"),
+    )
+    audio_stripped: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "audio_stripped",
+            "stripped_audio",
+            "audio_was_stripped",
+        ),
     )
     colors: list[str] = Field(
         default_factory=list,
@@ -412,6 +422,7 @@ class AssetAnalysis(ModelBase):
             or self.fps
             or self.format
             or self.has_audio is not None
+            or self.audio_stripped is not None
             or self.colors
             or self.description
             or self.detected_text

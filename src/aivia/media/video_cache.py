@@ -59,10 +59,16 @@ from aivia.providers.protocols.storage import (
     StoragePutRequest,
 )
 from aivia.providers.protocols.video import VideoRequest, VideoResult
+from aivia.providers.video.flags import (
+    FFmpegRunner,
+    should_strip_audio,
+    strip_audio,
+)
 
 __all__ = [
     "VIDEO_CACHE_OPERATION",
     "VIDEO_OPERATION",
+    "MaterialisedVideo",
     "VideoAssetCache",
     "VideoCache",
     "VideoCacheOutcome",
@@ -258,12 +264,27 @@ def _stored_video_format(
 
 
 @dataclass(frozen=True, slots=True)
+class MaterialisedVideo:
+    """One validated clip and whether its unwanted audio was removed."""
+
+    probe: MediaProbe
+    storage_object: StorageObject | None = None
+    audio_stripped: bool = False
+
+    @property
+    def stored(self) -> StorageObject | None:
+        """Alias for :attr:`storage_object`."""
+        return self.storage_object
+
+
+@dataclass(frozen=True, slots=True)
 class VideoCacheOutcome:
     """One stored or reused video together with its asset and cache metadata.
 
     ``probe`` and ``storage_object`` are present on a fresh store. A cache hit
     only carries the reconstructed :class:`VideoResult` and the existing asset;
-    ``event`` is then the zero-amount hit record.
+    ``event`` is then the zero-amount hit record. ``audio_stripped`` records
+    that audio the request did not want was removed before storage.
     """
 
     request: VideoRequest
@@ -274,6 +295,12 @@ class VideoCacheOutcome:
     event: CostEvent | None = None
     key: AssetCacheKey | None = None
     cache_hit: bool = False
+    audio_stripped: bool = False
+
+    @property
+    def stripped_audio(self) -> bool:
+        """Alias for :attr:`audio_stripped`."""
+        return self.audio_stripped
 
     @property
     def cached(self) -> bool:
@@ -371,6 +398,8 @@ class VideoCache:
         ffprobe_executable: str = "ffprobe",
         ffprobe_timeout_seconds: float = DEFAULT_FFPROBE_TIMEOUT_SECONDS,
         ffprobe_runner: FFprobeRunner | None = None,
+        ffmpeg_executable: str = "ffmpeg",
+        ffmpeg_runner: FFmpegRunner | None = None,
     ) -> None:
         if engine is not None and cache is not None:
             raise TypeError("pass either an engine or a cache, not both")
@@ -389,6 +418,8 @@ class VideoCache:
         self._ffprobe_executable = ffprobe_executable
         self._ffprobe_timeout_seconds = ffprobe_timeout_seconds
         self._ffprobe_runner = ffprobe_runner
+        self._ffmpeg_executable = ffmpeg_executable
+        self._ffmpeg_runner = ffmpeg_runner
         if downloader is not None:
             if ffprobe_runner is None:
                 self._ffprobe_runner = downloader.ffprobe_runner
@@ -504,6 +535,7 @@ class VideoCache:
             event=event,
             key=key,
             cache_hit=True,
+            audio_stripped=bool(asset.analysis.audio_stripped),
         )
 
     async def get(
@@ -546,7 +578,7 @@ class VideoCache:
         if not isinstance(result, VideoResult):
             raise TypeError("result must be a VideoResult")
         active_storage = storage if storage is not None else self._storage
-        probe, stored = await self.materialise(
+        materialised = await self.materialise_with_policy(
             result,
             request,
             index=index,
@@ -555,6 +587,9 @@ class VideoCache:
             key=key,
             key_prefix=key_prefix,
         )
+        probe = materialised.probe
+        stored = materialised.storage_object
+        audio_stripped = materialised.audio_stripped
         provider_name = _text(provider)
         model_name = _text(model) if model is not None else (request.model or "")
         selected_seed = (
@@ -587,6 +622,7 @@ class VideoCache:
                 fps=video_fps,
                 format=video_format.value,
                 has_audio=video_has_audio,
+                audio_stripped=audio_stripped,
             ),
             cost_links=list(cost_links or ()),
         )
@@ -611,6 +647,7 @@ class VideoCache:
             storage_object=stored,
             key=self.key(request, index=index),
             cache_hit=False,
+            audio_stripped=audio_stripped,
         )
 
     async def put(
@@ -638,6 +675,35 @@ class VideoCache:
         A URL result is downloaded and probed by the shared downloader; inline
         bytes are probed directly. The returned probe is the only evidence a
         caller should use for dimensions and duration.
+        """
+        materialised = await self.materialise_with_policy(
+            result,
+            request,
+            index=index,
+            run_id=run_id,
+            storage=storage,
+            key=key,
+            key_prefix=key_prefix,
+        )
+        return materialised.probe, materialised.storage_object
+
+    async def materialise_with_policy(
+        self,
+        result: VideoResult,
+        request: VideoRequest,
+        *,
+        index: int = 0,
+        run_id: str = "",
+        storage: StorageProvider | None = None,
+        key: str | None = None,
+        key_prefix: str | None = None,
+    ) -> MaterialisedVideo:
+        """Validate *result*, apply the audio policy and optionally store it.
+
+        Audio the request did not ask for is removed before the bytes reach
+        storage, so an asset never records a soundtrack the caller rejected.
+        The stripped payload is probed again before it is written, and
+        ``audio_stripped`` records that removal happened.
         """
         if result.data is not None:
             payload = result.data
@@ -668,6 +734,26 @@ class VideoCache:
                 details={"format": probe.format.value},
             )
 
+        audio_stripped = False
+        if should_strip_audio(result, request):
+            payload = strip_audio(
+                payload,
+                ffmpeg_executable=self._ffmpeg_executable,
+                ffprobe_executable=self._ffprobe_executable,
+                timeout_seconds=self._ffprobe_timeout_seconds,
+                ffmpeg_runner=self._ffmpeg_runner,
+                ffprobe_runner=self._ffprobe_runner,
+            )
+            probe = validate_media(
+                payload,
+                limits=self._limits,
+                expected_format=result.format.value,
+                ffprobe_executable=self._ffprobe_executable,
+                ffprobe_timeout_seconds=self._ffprobe_timeout_seconds,
+                ffprobe_runner=self._ffprobe_runner,
+            )
+            audio_stripped = True
+
         stored: StorageObject | None = None
         if storage is not None:
             storage_key = self._storage_key(
@@ -677,19 +763,26 @@ class VideoCache:
                 key_prefix=key_prefix,
                 count=request.count,
             )
+            metadata = {
+                "kind": "video",
+                "format": probe.format.value,
+                "run_id": run_id,
+            }
+            if audio_stripped:
+                metadata["audio_stripped"] = "true"
             stored = await storage.put(
                 StoragePutRequest(
                     data=payload,
                     key=storage_key,
                     content_type=probe.mime_type,
-                    metadata={
-                        "kind": "video",
-                        "format": probe.format.value,
-                        "run_id": run_id,
-                    },
+                    metadata=metadata,
                 )
             )
-        return probe, stored
+        return MaterialisedVideo(
+            probe=probe,
+            storage_object=stored,
+            audio_stripped=audio_stripped,
+        )
 
     def _downloader_for(self) -> MediaDownloader:
         if self._downloader is None:

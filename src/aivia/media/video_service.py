@@ -60,6 +60,7 @@ from aivia.media.screening import (
 )
 from aivia.media.video_cache import (
     VIDEO_OPERATION,
+    MaterialisedVideo,
     VideoCache,
     VideoCacheOutcome,
     validated_video_format,
@@ -195,6 +196,12 @@ class VideoOutcome:
     cache_hit: bool = False
     failures: tuple[VideoFailure, ...] = ()
     adaptation_warnings: tuple[AdaptationWarning, ...] = ()
+    audio_stripped: bool = False
+
+    @property
+    def stripped_audio(self) -> bool:
+        """Alias for :attr:`audio_stripped`."""
+        return self.audio_stripped
 
     @property
     def warnings(self) -> tuple[AdaptationWarning, ...]:
@@ -338,6 +345,7 @@ class VideoOutcome:
             "provider": self.provider,
             "model": self.model,
             "cache_hit": self.cache_hit,
+            "audio_stripped": self.audio_stripped,
             "amount_usd": self.amount_usd,
             "paths": list(self.paths),
             "failures": [failure.to_dict() for failure in self.failures],
@@ -406,6 +414,8 @@ class VideoService:
         ffprobe_executable: str = "ffprobe",
         ffprobe_timeout_seconds: float | None = None,
         ffprobe_runner: Any = None,
+        ffmpeg_executable: str = "ffmpeg",
+        ffmpeg_runner: Any = None,
     ) -> None:
         if not isinstance(router, Router):
             raise TypeError("router must be a Router")
@@ -494,6 +504,8 @@ class VideoService:
                         else _default_ffprobe_timeout()
                     ),
                     ffprobe_runner=ffprobe_runner,
+                    ffmpeg_executable=ffmpeg_executable,
+                    ffmpeg_runner=ffmpeg_runner,
                 )
             else:
                 selected_video = VideoCache(
@@ -508,6 +520,8 @@ class VideoService:
                         else _default_ffprobe_timeout()
                     ),
                     ffprobe_runner=ffprobe_runner,
+                    ffmpeg_executable=ffmpeg_executable,
+                    ffmpeg_runner=ffmpeg_runner,
                 )
         else:
             if no_cache and selected_video.cache is not None:
@@ -522,6 +536,8 @@ class VideoService:
                 or ffprobe_runner is not None
                 or ffprobe_timeout_seconds is not None
                 or ffprobe_executable != "ffprobe"
+                or ffmpeg_runner is not None
+                or ffmpeg_executable != "ffmpeg"
             ) and selected_video.cache is not None:
                 selected_video = VideoCache(
                     cache=selected_video.cache,
@@ -536,6 +552,8 @@ class VideoService:
                         else _default_ffprobe_timeout()
                     ),
                     ffprobe_runner=ffprobe_runner,
+                    ffmpeg_executable=ffmpeg_executable,
+                    ffmpeg_runner=ffmpeg_runner,
                 )
 
         supplied_safety = [
@@ -964,10 +982,10 @@ class VideoService:
             self._last_failures = tuple(failures)
             raise ValidationError(failure.message)
 
-        materialised: list[tuple[MediaProbe, StorageObject | None]] = []
+        materialised: list[MaterialisedVideo] = []
         for index, result in enumerate(response.videos):
             try:
-                probe, stored = await self._videos.materialise(
+                item = await self._videos.materialise_with_policy(
                     result,
                     submitted,
                     index=index,
@@ -982,12 +1000,14 @@ class VideoService:
                 )
                 self._last_failures = tuple(failures)
                 raise
-            materialised.append((probe, stored))
+            materialised.append(item)
         if not materialised:
             raise ValueError("video provider returned no clips")
+        audio_stripped = any(item.audio_stripped for item in materialised)
 
         validated: list[VideoResult] = []
-        for result, (probe, _) in zip(response.videos, materialised, strict=True):
+        for result, item in zip(response.videos, materialised, strict=True):
+            probe = item.probe
             seed = result.seed if result.seed is not None else submitted.seed
             validated.append(
                 VideoResult(
@@ -1047,6 +1067,7 @@ class VideoService:
             if estimate.resolution is not None:
                 details["resolution"] = list(estimate.resolution)
             details["audio"] = estimate.audio
+            details["audio_stripped"] = audio_stripped
             if response.request_id:
                 details["request_id"] = response.request_id
             if metadata is not None:
@@ -1087,6 +1108,7 @@ class VideoService:
                 "billed_units": resolved.billed_units,
                 "price_unit": resolved.price_unit,
                 "price_source": resolved.source.value,
+                "audio_stripped": audio_stripped,
             }
             if resolved.missing:
                 details["missing_price"] = True
@@ -1156,9 +1178,11 @@ class VideoService:
         )
         assets: list[Asset] = []
         stored_outcomes: list[VideoCacheOutcome] = []
-        for index, (result, (probe, stored)) in enumerate(
+        for index, (result, item) in enumerate(
             zip(response.videos, materialised, strict=True)
         ):
+            probe = item.probe
+            stored = item.storage_object
             raw = raw_results[index]
             asset = Asset(
                 kind=AssetKind.VIDEO,
@@ -1181,6 +1205,7 @@ class VideoService:
                     fps=result.fps,
                     format=result.format.value,
                     has_audio=result.has_audio,
+                    audio_stripped=item.audio_stripped,
                 ),
                 cost_links=list(cost_links),
             )
@@ -1198,6 +1223,7 @@ class VideoService:
                     event=event,
                     key=self.cache_key(request, index=index),
                     cache_hit=False,
+                    audio_stripped=item.audio_stripped,
                 )
             )
 
@@ -1208,7 +1234,7 @@ class VideoService:
                 [event] * len(assets),
                 run_id=run_id,
                 storage=active_storage,
-                stored_objects=[stored for _, stored in materialised],
+                stored_objects=[item.storage_object for item in materialised],
             )
 
         accessibility = self._write_accessibility_sidecars(
@@ -1220,9 +1246,11 @@ class VideoService:
             response=response,
             assets=tuple(assets),
             stored=tuple(stored_outcomes),
-            probes=tuple(probe for probe, _ in materialised),
+            probes=tuple(item.probe for item in materialised),
             storage_objects=tuple(
-                stored for _, stored in materialised if stored is not None
+                item.storage_object
+                for item in materialised
+                if item.storage_object is not None
             ),
             events=(event,),
             price=price,
@@ -1232,6 +1260,7 @@ class VideoService:
             cache_hit=False,
             failures=tuple(failures),
             adaptation_warnings=(adaptation.warnings if adaptation is not None else ()),
+            audio_stripped=audio_stripped,
         )
         self._remember(outcome)
         return outcome
@@ -1367,6 +1396,7 @@ class VideoService:
             accessibility_sidecars=accessibility,
             cache_hit=True,
             failures=(),
+            audio_stripped=any(hit.audio_stripped for hit in recorded_hits),
         )
 
     def _write_accessibility_sidecars(
