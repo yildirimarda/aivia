@@ -20,6 +20,13 @@ from pathlib import Path
 from typing import Any
 
 from .errors import RenderError
+from .keyframes import KeyframeTrack
+from .motion import (
+    MotionTracks,
+    pair_expression,
+    track_expression,
+    tracks_for_layer,
+)
 from .schema import Anchor, Composition, FitMode, Layer, LayerType
 
 __all__ = [
@@ -446,6 +453,63 @@ def _video_filters(layer: Layer, composition: Composition) -> list[str]:
     ]
 
 
+def _scale_expression(track: KeyframeTrack, variable: str) -> str:
+    first = track.keyframes[0].value
+    if isinstance(first, tuple):
+        x_expression, y_expression = pair_expression(track, variable=variable)
+        return f"sqrt(({x_expression})*({y_expression}))"
+    return track_expression(track, variable=variable)
+
+
+def _motion_filters(
+    tracks: MotionTracks,
+    composition: Composition,
+    width: int | None,
+    height: int | None,
+    start_seconds: float,
+) -> list[str]:
+    if tracks.scale is None and tracks.pan is None:
+        return []
+    box_width = composition.canvas.width if width is None else width
+    box_height = composition.canvas.height if height is None else height
+    variable = f"(on/{composition.fps}+{_seconds(start_seconds)})"
+    zoom = "1" if tracks.scale is None else _scale_expression(tracks.scale, variable)
+    if tracks.pan is None:
+        pan_x, pan_y = "0", "0"
+    else:
+        pan_x, pan_y = pair_expression(tracks.pan, variable=variable)
+    x_expression = f"iw/2-(iw/zoom/2)+({pan_x})"
+    y_expression = f"ih/2-(ih/zoom/2)+({pan_y})"
+    return [
+        f"fps={composition.fps}",
+        f"zoompan=z='{zoom}':x='{x_expression}':y='{y_expression}':"
+        f"d=1:s={box_width}x{box_height}:fps={composition.fps}",
+    ]
+
+
+def _rotation_filters(tracks: MotionTracks, start_seconds: float) -> list[str]:
+    if tracks.rotation is None:
+        return []
+    variable = f"(t+{_seconds(start_seconds)})"
+    angle = track_expression(tracks.rotation, variable=variable)
+    return [f"rotate=a='({angle})*PI/180':ow=iw:oh=ih:c=none"]
+
+
+def _opacity_filters(
+    layer: Layer,
+    tracks: MotionTracks,
+    start_seconds: float,
+) -> list[str]:
+    if tracks.opacity is not None:
+        variable = f"(T+{_seconds(start_seconds)})"
+        alpha = track_expression(tracks.opacity, variable=variable)
+        return [f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({alpha})'"]
+    opacity = _finite(layer.opacity, "opacity")
+    if opacity < 1.0:
+        return [f"colorchannelmixer=aa={opacity:.6f}"]
+    return []
+
+
 def _layer_filters(
     layer: Layer,
     composition: Composition,
@@ -453,6 +517,11 @@ def _layer_filters(
 ) -> tuple[str, str]:
     overlay = layer.type in _OVERLAY_TYPES
     x, y, width, height = _box(layer, composition, overlay=overlay)
+    tracks = tracks_for_layer(
+        layer,
+        layer.start_seconds,
+        _layer_end(layer, composition),
+    )
     filters: list[str] = []
 
     if layer.type is LayerType.VIDEO:
@@ -468,12 +537,20 @@ def _layer_filters(
         fit = _fit_mode(layer, default=FitMode.COVER)
         if width is not None and height is not None:
             filters.extend(_fit_filters(width, height, fit))
+    if not overlay:
+        filters.extend(
+            _motion_filters(
+                tracks,
+                composition,
+                width,
+                height,
+                layer.start_seconds,
+            )
+        )
+    filters.extend(_rotation_filters(tracks, layer.start_seconds))
     filters.append("setsar=1")
     filters.append("format=rgba")
-
-    opacity = _finite(layer.opacity, "opacity")
-    if opacity < 1.0:
-        filters.append(f"colorchannelmixer=aa={opacity:.6f}")
+    filters.extend(_opacity_filters(layer, tracks, layer.start_seconds))
     filters.append(f"setpts=PTS-STARTPTS+{layer.start_seconds:.6f}/TB")
 
     label = f"v{index}"
@@ -484,6 +561,10 @@ def _layer_filters(
         y=y,
         anchored=overlay,
     )
+    if tracks.position is not None:
+        position_x, position_y = pair_expression(tracks.position, variable="t")
+        overlay_x = f"'({overlay_x})+({position_x})'"
+        overlay_y = f"'({overlay_y})+({position_y})'"
     end = _layer_end(layer, composition)
     overlay_node = (
         f"[base{index}][{label}]overlay="

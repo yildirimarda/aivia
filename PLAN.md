@@ -403,7 +403,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a contrast utility that chooses light or dark text and adds outline, shadow or a backing box below the configured contrast (tests/compose/test_contrast.py)
 - [x] Build the FFmpeg filtergraph as a pure function producing an argument list tested without executing ffmpeg (tests/compose/test_ffmpeg_cmd.py)
 - [x] Render multi layer video with timing, scaling and overlay, verified by ffprobe (slow, tests/compose/test_render_video.py)
-- [ ] Implement keyframed motion in video including Ken Burns and parallax with sampled frame checks (slow, tests/compose/test_motion.py)
+- [x] Implement keyframed motion in video including Ken Burns and parallax with sampled frame checks (slow, tests/compose/test_motion.py)
 - [ ] Render text in video with entrance and exit animations sampled at start, middle and end (slow, tests/compose/test_text_video.py)
 - [ ] Generate procedural overlays such as confetti, sparkles, snow and bokeh deterministically by seed without external assets (slow, tests/compose/test_overlays.py)
 - [ ] Implement cut, crossfade and slide transitions with sampled frame checks (slow, tests/compose/test_transitions.py)
@@ -437,6 +437,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Scale vision face rectangles to canvas coordinates when a background image is fitted (tests/compose/test_placement.py)
 - [ ] Apply the contrast utility to text and subtitle layers from render config so low contrast backgrounds get a treatment (tests/compose/test_contrast.py)
 - [ ] Apply masks, blend modes and filters to video image layers in the FFmpeg command (tests/compose/test_ffmpeg_cmd.py)
+- [ ] Apply motion presets and scale keyframes to sticker and logo overlay layers with sampled frame checks (slow, tests/compose/test_motion.py)
+- [ ] Support independent x and y scale keyframes in video motion instead of collapsing them to one zoom (tests/compose/test_motion.py)
 
 ## Milestone 10: Research engine
 
