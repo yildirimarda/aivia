@@ -36,9 +36,9 @@ from aivia.core.config.media import (
     DEFAULT_MEDIA_MAX_BYTES,
     DEFAULT_MEDIA_MAX_PIXELS,
 )
-from aivia.core.errors import ValidationError
-from aivia.core.paths import package_fonts_dir
 
+from .errors import FontError, RenderError
+from .fonts import FontManager
 from .keyframes import AnimatedProperty, keyframes_for_layer
 from .schema import (
     Composition,
@@ -58,6 +58,7 @@ __all__ = [
     "PILLOW_STILL_RENDERER_VERSION",
     "RENDERER_VERSION",
     "AssetResolver",
+    "FontError",
     "ImageSource",
     "LayerPlacement",
     "PillowRenderer",
@@ -82,12 +83,6 @@ type ImageSource = str | Path | bytes | Image.Image
 
 type AssetResolver = Mapping[str, ImageSource] | Callable[[str], ImageSource]
 """How a layer source string is resolved to image data."""
-
-
-class RenderError(ValidationError):
-    """A composition could not be rendered deterministically."""
-
-    code = "render"
 
 
 @dataclass(frozen=True, slots=True)
@@ -492,40 +487,14 @@ def _shape_image(
     return Image.alpha_composite(image, overlay)
 
 
-_FONT_SUFFIXES = {
-    (False, False): "Regular",
-    (True, False): "Bold",
-    (False, True): "Italic",
-    (True, True): "BoldItalic",
-}
+@lru_cache(maxsize=1)
+def _default_font_manager() -> FontManager:
+    return FontManager()
 
 
 @lru_cache(maxsize=32)
 def _font_path(family: str, weight: TextWeight, style: TextStyle) -> Path:
-    if family:
-        candidate = Path(family).expanduser()
-        if candidate.is_file():
-            return candidate
-    name = family or "Lato"
-    root = package_fonts_dir()
-    if not root.is_dir():
-        raise RenderError("bundled fonts are not available")
-    family_dir = next(
-        (
-            candidate
-            for candidate in root.iterdir()
-            if candidate.is_dir() and candidate.name.lower() == name.lower()
-        ),
-        None,
-    )
-    if family_dir is None:
-        raise RenderError(f"font family {name!r} is not available")
-    suffix = _FONT_SUFFIXES[(weight.is_bold, style is TextStyle.ITALIC)]
-    expected = f"{name}-{suffix}".lower()
-    for candidate in family_dir.glob("*.ttf"):
-        if candidate.stem.lower() == expected:
-            return candidate
-    raise RenderError(f"font family {name!r} has no {suffix.lower()} member")
+    return _default_font_manager().resolve(family or None, weight=weight, style=style)
 
 
 @lru_cache(maxsize=128)
@@ -673,6 +642,7 @@ def layout_text(
     min_font_size: float = 8.0,
     overflow: TextOverflow = TextOverflow.ELLIPSIS,
     ellipsis: str = "\u2026",
+    fonts: FontManager | None = None,
 ) -> TextLayout:
     """Lay *text* out inside a pixel box, wrapping and optionally shrinking it."""
     if not isinstance(text, str) or not text.strip():
@@ -696,7 +666,12 @@ def layout_text(
     if not isinstance(ellipsis, str) or not ellipsis.strip():
         raise RenderError("ellipsis must not be empty")
 
-    path = _font_path(font_family, font_weight, font_style)
+    manager = _default_font_manager() if fonts is None else fonts
+    path = manager.resolve(
+        font_family or None,
+        weight=font_weight,
+        style=font_style,
+    )
     size = base_size
     font = _load_font(str(path), size)
     line_height_px = max(1, round(size * factor))
@@ -824,6 +799,7 @@ class PillowStillRenderer:
         assets: AssetResolver | None = None,
         *,
         source_root: str | Path | None = None,
+        fonts: FontManager | None = None,
         max_bytes: int = DEFAULT_MEDIA_MAX_BYTES,
         max_pixels: int = DEFAULT_MEDIA_MAX_PIXELS,
         max_frames: int = DEFAULT_MEDIA_MAX_ANIMATED_FRAMES,
@@ -831,6 +807,7 @@ class PillowStillRenderer:
     ) -> None:
         self._assets = assets
         self._source_root = None if source_root is None else Path(source_root)
+        self._fonts = fonts
         self._max_bytes = max_bytes
         self._max_pixels = max_pixels
         self._max_frames = max_frames
@@ -1146,7 +1123,8 @@ class PillowStillRenderer:
         )
 
         placement = placement_for_layer(layer, canvas)
-        path = _font_path(family, weight, style)
+        manager = _default_font_manager() if self._fonts is None else self._fonts
+        path = manager.resolve(family or None, weight=weight, style=style)
         layout = layout_text(
             raw_text,
             max_width=placement.width,
@@ -1163,6 +1141,7 @@ class PillowStillRenderer:
             min_font_size=min_font_size,
             overflow=overflow,
             ellipsis=ellipsis,
+            fonts=self._fonts,
         )
         font = _load_font(str(path), layout.font_size)
         text_image = Image.new(
