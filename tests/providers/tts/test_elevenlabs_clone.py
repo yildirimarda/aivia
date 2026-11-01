@@ -95,9 +95,7 @@ def test_any_voice_clone_flag_alias_enables_the_capability() -> None:
         provider = ElevenLabsTTSProvider(
             api_key=API_KEY,
             default_model=MODEL,
-            transport=httpx.MockTransport(
-                lambda request: httpx.Response(200, json={})
-            ),
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})),
             **{flag: True},  # type: ignore[arg-type]
         )
         assert provider.supports(CAPABILITY_VOICE_CLONE)
@@ -237,9 +235,10 @@ def test_delete_voice_accepts_a_response_model_or_mapping() -> None:
     requests, handler = _capture(httpx.Response(200, json={"status": "ok"}))
     provider = _provider(handler)
 
-    assert asyncio.run(
-        provider.delete_clone(VoiceCloneResponse(voice_id=VOICE_ID))
-    ) is True
+    assert (
+        asyncio.run(provider.delete_clone(VoiceCloneResponse(voice_id=VOICE_ID)))
+        is True
+    )
     assert str(requests[0].url) == VOICE_URL
 
     requests, handler = _capture(httpx.Response(200, json={"status": "ok"}))

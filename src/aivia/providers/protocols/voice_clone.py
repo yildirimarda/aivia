@@ -115,9 +115,7 @@ def _labels(value: Any) -> dict[str, str]:
         else:
             return {
                 key.strip(): item.strip()
-                for key, _, item in (
-                    entry.partition(":") for entry in text.split(",")
-                )
+                for key, _, item in (entry.partition(":") for entry in text.split(","))
                 if key.strip() and item.strip()
             }
     if isinstance(value, Mapping):

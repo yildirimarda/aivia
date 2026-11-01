@@ -211,9 +211,7 @@ def _clone_request_data(
     elif isinstance(request, str):
         data = {"name": request}
     else:
-        raise TypeError(
-            "request must be a VoiceCloneRequest, mapping, string or None"
-        )
+        raise TypeError("request must be a VoiceCloneRequest, mapping, string or None")
     if samples is not None and not any(
         key in data for key in ("samples", "files", "audio", "audio_samples")
     ):
