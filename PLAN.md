@@ -382,7 +382,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Invalidate a resumed batch row when its output destination changes so the new path receives the artifact (tests/cli/test_media_batch_cli.py)
 - [x] Give each media API runner a unique worker id and heartbeat so startup recovery cannot steal a live job (tests/api/test_media_api.py)
 - [x] Cancel an in-flight media API call when its heartbeat detects a recovered claim (tests/api/test_media_api.py)
-- [ ] Refuse to record a media result or failure when the runner no longer owns the claim (tests/api/test_media_api.py)
+- [x] Refuse to record a media result or failure when the runner no longer owns the claim (tests/api/test_media_api.py)
 
 ## Milestone 9: Composition and rendering
 
