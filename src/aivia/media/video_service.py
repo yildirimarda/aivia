@@ -62,6 +62,9 @@ from aivia.media.video_cache import (
     VIDEO_OPERATION,
     VideoCache,
     VideoCacheOutcome,
+    validated_video_format,
+    validated_video_fps,
+    validated_video_has_audio,
     video_cache_key,
 )
 from aivia.media.video_pricing import (
@@ -72,7 +75,6 @@ from aivia.media.video_pricing import (
 from aivia.providers.base import Provider
 from aivia.providers.media.adapt import AdaptationResult, AdaptationWarning
 from aivia.providers.media.dto import MediaKind
-from aivia.providers.protocols.media import VideoFormat
 from aivia.providers.protocols.storage import (
     StorageObject,
     StorageProvider,
@@ -130,13 +132,6 @@ def _file_path(url: str) -> Path | None:
     if parsed.scheme.lower() != "file":
         return None
     return Path(unquote(parsed.path))
-
-
-def _video_format(probe: MediaProbe, fallback: VideoFormat) -> VideoFormat:
-    try:
-        return VideoFormat(probe.format.value)
-    except ValueError:
-        return fallback
 
 
 def _redacted_message(error: BaseException) -> str:
@@ -997,15 +992,17 @@ class VideoService:
             validated.append(
                 VideoResult(
                     data=probe.data,
-                    format=_video_format(probe, result.format),
+                    format=validated_video_format(probe, result.format),
                     width=probe.width,
                     height=probe.height,
                     duration_seconds=probe.duration_seconds,
-                    fps=result.fps if result.fps is not None else submitted.fps,
-                    has_audio=bool(
-                        probe.ffprobe.audio_streams
-                        if probe.ffprobe is not None
-                        else result.has_audio
+                    fps=validated_video_fps(
+                        probe,
+                        result.fps if result.fps is not None else submitted.fps,
+                    ),
+                    has_audio=validated_video_has_audio(
+                        probe,
+                        result.has_audio,
                     ),
                     seed=seed,
                     metadata=dict(result.metadata),
@@ -1181,6 +1178,9 @@ class VideoService:
                     width=probe.width,
                     height=probe.height,
                     duration_seconds=probe.duration_seconds,
+                    fps=result.fps,
+                    format=result.format.value,
+                    has_audio=result.has_audio,
                 ),
                 cost_links=list(cost_links),
             )

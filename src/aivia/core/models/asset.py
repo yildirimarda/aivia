@@ -277,9 +277,12 @@ class AssetAnalysis(ModelBase):
 
     Every field is optional because analysis may run before or after an asset
     is stored. ``width`` and ``height`` are pixels, ``duration_seconds`` only
-    applies to timed media, ``colors`` holds dominant colors in first-seen
-    order, ``description`` is a vision description, ``detected_text`` is OCR
-    output and ``faces`` holds the detected face rectangles. ``provider`` and
+    applies to timed media, ``fps`` is the measured frame rate and ``format``
+    the validated container. ``has_audio`` is ``None`` when presence was never
+    measured, so a legacy record is distinguishable from a clip known to have
+    no audio track. ``colors`` holds dominant colors in first-seen order,
+    ``description`` is a vision description, ``detected_text`` is OCR output
+    and ``faces`` holds the detected face rectangles. ``provider`` and
     ``model`` identify the analyser that produced those fields, which is not
     necessarily the provider that generated the asset.
     """
@@ -290,6 +293,15 @@ class AssetAnalysis(ModelBase):
         default=None,
         gt=0,
         validation_alias=AliasChoices("duration_seconds", "duration", "seconds"),
+    )
+    fps: int | None = Field(default=None, gt=0, le=120)
+    format: str = Field(
+        default="",
+        validation_alias=AliasChoices("format", "container", "container_format"),
+    )
+    has_audio: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices("has_audio", "audio"),
     )
     colors: list[str] = Field(
         default_factory=list,
@@ -321,7 +333,7 @@ class AssetAnalysis(ModelBase):
         validation_alias=AliasChoices("model", "model_id", "analysis_model"),
     )
 
-    @field_validator("provider", "model", mode="before")
+    @field_validator("provider", "model", "format", mode="before")
     @classmethod
     def _strip_provenance(cls, value: Any) -> Any:
         return _strip(value)
@@ -397,6 +409,9 @@ class AssetAnalysis(ModelBase):
             self.width
             or self.height
             or self.duration_seconds
+            or self.fps
+            or self.format
+            or self.has_audio is not None
             or self.colors
             or self.description
             or self.detected_text
@@ -798,6 +813,21 @@ class Asset(ModelBase):
     def height(self) -> int | None:
         """The analyzed pixel height, if known."""
         return self.analysis.height
+
+    @property
+    def fps(self) -> int | None:
+        """The analyzed frame rate, if known."""
+        return self.analysis.fps
+
+    @property
+    def format(self) -> str:
+        """The analyzed container format, if known."""
+        return self.analysis.format
+
+    @property
+    def has_audio(self) -> bool | None:
+        """Whether analysis found an audio track, or ``None`` if unmeasured."""
+        return self.analysis.has_audio
 
     @property
     def colors(self) -> list[str]:
