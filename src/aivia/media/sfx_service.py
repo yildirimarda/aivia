@@ -32,11 +32,12 @@ from aivia.core.media_probe import (
     validate_media,
 )
 from aivia.core.models.asset import Asset, AssetAnalysis, AssetCostLink, AssetKind
+from aivia.core.models.base import canonical_json
 from aivia.core.models.cost import CostEvent
 from aivia.core.models.run import ToolchainFingerprint
 from aivia.core.pricing import PricingResolver, ResolvedPrice
 from aivia.core.router import Router, RouteSelection
-from aivia.core.sidecar import write_cost_sidecar
+from aivia.core.sidecar import SIDECAR_SUFFIX, build_cost_sidecar, write_cost_sidecar
 from aivia.media.accessibility import (
     store_accessibility_sidecars,
     write_accessibility_sidecars,
@@ -310,6 +311,50 @@ class SFXService:
                 written.append(result)
         return tuple(written)
 
+    async def _write_sidecars(
+        self,
+        assets: Sequence[Asset],
+        event: CostEvent,
+        *,
+        run_id: str,
+        storage: StorageProvider | None,
+        stored_objects: Sequence[StorageObject | None],
+    ) -> tuple[Path, ...]:
+        written: list[Path] = []
+        for index, asset in enumerate(assets):
+            path = _file_path(asset.path) if asset.path else None
+            if path is not None:
+                written.append(
+                    write_cost_sidecar(
+                        path,
+                        [event],
+                        toolchain_fingerprint=self._toolchain,
+                        run_id=run_id or None,
+                    )
+                )
+                continue
+            stored = stored_objects[index] if index < len(stored_objects) else None
+            if storage is None or stored is None:
+                continue
+            sidecar = build_cost_sidecar(
+                stored.url or stored.key,
+                [event],
+                toolchain_fingerprint=self._toolchain,
+                run_id=run_id or None,
+            )
+            payload = (canonical_json(sidecar.to_dict(), indent=2) + "\n").encode(
+                "utf-8"
+            )
+            await storage.put(
+                StoragePutRequest(
+                    data=payload,
+                    key=f"{stored.key}{SIDECAR_SUFFIX}",
+                    content_type="application/json",
+                    overwrite=True,
+                )
+            )
+        return tuple(written)
+
     @property
     def router(self) -> Router:
         """The router every call goes through."""
@@ -523,19 +568,13 @@ class SFXService:
 
         sidecars: tuple[Path, ...] = ()
         if self._record_sidecar:
-            written: list[Path] = []
-            for asset in assets:
-                path = _file_path(asset.path) if asset.path else None
-                if path is not None:
-                    written.append(
-                        write_cost_sidecar(
-                            path,
-                            [event],
-                            toolchain_fingerprint=self._toolchain,
-                            run_id=run_id or None,
-                        )
-                    )
-            sidecars = tuple(written)
+            sidecars = await self._write_sidecars(
+                assets,
+                event,
+                run_id=run_id,
+                storage=active_storage,
+                stored_objects=[stored for _, stored in materialised],
+            )
 
         accessibility = await self._write_accessibility_sidecars(
             assets,
