@@ -35,6 +35,7 @@ from pydantic import (
 )
 
 from .motion import Motion
+from .text_animation import TextAnimation
 
 __all__ = [
     "COMPOSITION_SCHEMA_VERSION",
@@ -78,6 +79,7 @@ __all__ = [
     "ShapeType",
     "StickerLayer",
     "TextAlign",
+    "TextAnimation",
     "TextLayer",
     "TextOverflow",
     "TextPlacement",
@@ -1155,6 +1157,91 @@ class Layer(_SchemaModel):
         default=None,
         validation_alias=AliasChoices("motion", "camera", "movement"),
     )
+    entrance: TextAnimation | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "entrance",
+            "entrance_animation",
+            "enter",
+            "in",
+            "appear",
+            "in_animation",
+        ),
+    )
+    exit: TextAnimation | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "exit",
+            "exit_animation",
+            "leave",
+            "out",
+            "disappear",
+            "out_animation",
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fold_text_animation(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(data)
+        bundle = values.pop("text_animation", None)
+        if bundle is not None:
+            if isinstance(bundle, Mapping):
+                for key in ("entrance", "enter", "in", "exit", "leave", "out"):
+                    if key in bundle:
+                        target = (
+                            "exit" if key in {"exit", "leave", "out"} else "entrance"
+                        )
+                        values.setdefault(target, bundle[key])
+            elif isinstance(bundle, (str, bool)):
+                values.setdefault("entrance", bundle)
+        for container in ("animation", "animations"):
+            raw = values.get(container)
+            if isinstance(raw, (str, bool)):
+                values.pop(container, None)
+                values.setdefault("entrance", raw)
+                continue
+            if not isinstance(raw, Mapping):
+                continue
+            keys = {
+                "".join(
+                    character for character in str(key).lower() if character.isalnum()
+                )
+                for key in raw
+            }
+            if keys and keys <= {
+                "entrance",
+                "enter",
+                "in",
+                "exit",
+                "leave",
+                "out",
+            }:
+                values.pop(container, None)
+                for key, item in raw.items():
+                    normalized = "".join(
+                        character
+                        for character in str(key).lower()
+                        if character.isalnum()
+                    )
+                    target = (
+                        "exit" if normalized in {"exit", "leave", "out"} else "entrance"
+                    )
+                    values.setdefault(target, item)
+        return values
+
+    @field_validator("entrance", "exit", mode="before")
+    @classmethod
+    def _validate_text_animation(cls, value: Any) -> Any:
+        if value is None or value is False:
+            return None
+        if isinstance(value, TextAnimation):
+            return value
+        if isinstance(value, (str, bool, Mapping)):
+            return TextAnimation.model_validate(value)
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -1284,6 +1371,16 @@ class Layer(_SchemaModel):
         if self.end_seconds is not None:
             return self.end_seconds - self.start_seconds
         return None
+
+    @property
+    def entrance_animation(self) -> TextAnimation | None:
+        """Alias for :attr:`entrance`."""
+        return self.entrance
+
+    @property
+    def exit_animation(self) -> TextAnimation | None:
+        """Alias for :attr:`exit`."""
+        return self.exit
 
     @property
     def z(self) -> int:
@@ -1628,6 +1725,10 @@ class TextLayer(Layer):
     placement: TextPlacement | None = Field(
         default=None,
         validation_alias=AliasChoices("placement", "text_placement"),
+    )
+    keyframes: Any | None = Field(
+        default=None,
+        validation_alias=AliasChoices("keyframes", "animation", "animations"),
     )
 
     @model_validator(mode="before")

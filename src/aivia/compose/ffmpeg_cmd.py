@@ -7,8 +7,9 @@ without an external binary while leaving execution to the caller.
 
 Visual layers are composited over a generated colour background. Image, video,
 sticker and logo layers become inputs; their geometry, fit, opacity and time
-window become filter nodes. Audio mixing, transitions and text rendering are
-deliberately left to later composition steps.
+window become filter nodes. Text layers become transparent inputs with a
+``drawtext`` filter so they animate with the same keyframes. Audio mixing and
+transitions are deliberately left to later composition steps.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import RenderError
+from .fonts import font_manager
 from .keyframes import KeyframeTrack
 from .motion import (
     MotionTracks,
@@ -27,7 +29,15 @@ from .motion import (
     track_expression,
     tracks_for_layer,
 )
-from .schema import Anchor, Composition, FitMode, Layer, LayerType
+from .schema import (
+    Anchor,
+    Composition,
+    FitMode,
+    Layer,
+    LayerType,
+    TextStyle,
+    TextWeight,
+)
 
 __all__ = [
     "DEFAULT_AUDIO_CODEC",
@@ -70,7 +80,7 @@ _IMAGE_TYPES = frozenset(
     }
 )
 _OVERLAY_TYPES = frozenset({LayerType.STICKER, LayerType.LOGO})
-_UNSUPPORTED_TYPES = frozenset({LayerType.TEXT, LayerType.SHAPE})
+_UNSUPPORTED_TYPES = frozenset({LayerType.SHAPE})
 
 
 class FFmpegCommandError(RenderError):
@@ -234,7 +244,10 @@ def _active_layers(composition: Composition) -> list[Layer]:
                 f"layer type {layer.type.value!r} is not supported by the ffmpeg "
                 "command builder yet"
             )
-        if layer.type not in _IMAGE_TYPES and layer.type is not LayerType.VIDEO:
+        if layer.type not in _IMAGE_TYPES and layer.type not in (
+            LayerType.VIDEO,
+            LayerType.TEXT,
+        ):
             continue
         end = _layer_end(layer, composition)
         if end <= layer.start_seconds:
@@ -425,6 +438,71 @@ def _video_input(layer: Layer) -> FFmpegInput:
     return FFmpegInput(source=source.strip(), options=options, layer_id=layer.id)
 
 
+def _text_input(layer: Layer, composition: Composition) -> FFmpegInput:
+    duration = _layer_end(layer, composition) - layer.start_seconds
+    canvas = composition.canvas
+    return FFmpegInput(
+        source=(
+            f"color=c=black@0.0:s={canvas.width}x{canvas.height}:"
+            f"r={composition.fps}:d={_seconds(duration)}"
+        ),
+        options=("-f", "lavfi"),
+        layer_id=layer.id,
+    )
+
+
+def _filter_text(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace(":", "\\:")
+        .replace("%", "\\%")
+        .replace("\n", "\\n")
+    )
+
+
+def _text_filters(layer: Layer, x: int | None, y: int | None) -> list[str]:
+    raw_text = _layer_value(layer, "text", "content", "value")
+    if not isinstance(raw_text, str) or not raw_text.strip():
+        raise FFmpegCommandError("text layer has no text")
+    raw_family = _layer_value(layer, "font_family", "font", "family") or ""
+    if not isinstance(raw_family, str):
+        raise FFmpegCommandError("font_family must be a string")
+    raw_size = _layer_value(layer, "font_size", "size", "font_size_px") or 48.0
+    font_size = _finite(raw_size, "font_size")
+    if font_size <= 0.0:
+        raise FFmpegCommandError("font_size must be positive")
+    raw_color = _layer_value(layer, "color", "fill", "text_color") or "#ffffff"
+    if not isinstance(raw_color, str):
+        raise FFmpegCommandError("text colour must be a string")
+    weight = _layer_value(layer, "font_weight", "weight", "font-weight")
+    style = _layer_value(layer, "font_style", "style", "font-style")
+    path = font_manager().resolve(
+        raw_family.strip() or None,
+        weight=None if weight is None else TextWeight(weight),
+        style=None if style is None else TextStyle(style),
+    )
+    options = [
+        f"fontfile='{_filter_text(str(path))}'",
+        f"text='{_filter_text(raw_text)}'",
+        f"fontsize={font_size:g}",
+        f"fontcolor={_ffmpeg_color(raw_color)}",
+        f"x={0 if x is None else x}",
+        f"y={0 if y is None else y}",
+    ]
+    raw_stroke = _layer_value(layer, "stroke", "stroke_color", "outline")
+    raw_stroke_width = _layer_value(layer, "stroke_width", "outline_width") or 0.0
+    stroke_width = _finite(raw_stroke_width, "stroke_width")
+    if isinstance(raw_stroke, str) and raw_stroke.strip() and stroke_width > 0.0:
+        options.extend(
+            (
+                f"borderw={stroke_width:g}",
+                f"bordercolor={_ffmpeg_color(raw_stroke)}",
+            )
+        )
+    return [f"drawtext={':'.join(options)}"]
+
+
 def _video_filters(layer: Layer, composition: Composition) -> list[str]:
     visible = _layer_end(layer, composition) - layer.start_seconds
     trim_start = _finite(
@@ -524,7 +602,9 @@ def _layer_filters(
     )
     filters: list[str] = []
 
-    if layer.type is LayerType.VIDEO:
+    if layer.type is LayerType.TEXT:
+        filters.extend(_text_filters(layer, x, y))
+    elif layer.type is LayerType.VIDEO:
         filters.extend(_video_filters(layer, composition))
         fit = _fit_mode(layer, default=FitMode.COVER)
         if width is not None and height is not None:
@@ -561,6 +641,8 @@ def _layer_filters(
         y=y,
         anchored=overlay,
     )
+    if layer.type is LayerType.TEXT:
+        overlay_x, overlay_y = "0", "0"
     if tracks.position is not None:
         position_x, position_y = pair_expression(tracks.position, variable="t")
         overlay_x = f"'({overlay_x})+({position_x})'"
@@ -613,6 +695,8 @@ def _command_inputs(composition: Composition) -> list[FFmpegInput]:
     for layer in _active_layers(composition):
         if layer.type is LayerType.VIDEO:
             inputs.append(_video_input(layer))
+        elif layer.type is LayerType.TEXT:
+            inputs.append(_text_input(layer, composition))
         else:
             inputs.append(_image_input(layer, composition))
     return inputs

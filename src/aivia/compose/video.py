@@ -1,10 +1,11 @@
 """Render a composition to a deterministic video file with FFmpeg.
 
 Command construction lives in :mod:`aivia.compose.ffmpeg_cmd` and stays pure.
-This module is the thin execution layer around it: it runs the built argv,
-writes through a temporary file so a failed render cannot leave a partial
-output, and verifies the result with ffprobe before publishing it. Both
-runners are injectable so the offline suite never needs the real binaries.
+This module is the thin execution layer around it: it rasterizes text layers
+with Pillow, runs the built argv, writes through a temporary file so a failed
+render cannot leave a partial output, and verifies the result with ffprobe
+before publishing it. Both runners are injectable so the offline suite never
+needs the real binaries.
 """
 
 from __future__ import annotations
@@ -26,7 +27,10 @@ from aivia.core.errors import ValidationError
 
 from .errors import RenderError
 from .ffmpeg_cmd import FFmpegCommand, build_ffmpeg_command
-from .schema import Composition
+from .keyframes import AnimatedProperty
+from .motion import tracks_for_layer
+from .render import PillowStillRenderer
+from .schema import Composition, Layer, LayerType
 
 if TYPE_CHECKING:
     from aivia.core.media_probe import FFprobeInfo, FFprobeRunner
@@ -91,6 +95,125 @@ def _frame_rate(value: str | None) -> float | None:
     if bottom == 0.0:
         return None
     return top / bottom
+
+
+def _text_layer_data(layer: Layer) -> dict[str, Any]:
+    data = layer.model_dump(by_alias=False, exclude_none=True)
+    for key in (
+        "entrance",
+        "exit",
+        "entrance_animation",
+        "exit_animation",
+        "text_animation",
+        "animation",
+        "animations",
+        "keyframes",
+        "motion",
+        "mask",
+        "filters",
+        "blend_mode",
+    ):
+        data.pop(key, None)
+    data["type"] = LayerType.TEXT.value
+    data["start_seconds"] = 0.0
+    data["opacity"] = 1.0
+    data["visible"] = True
+    data["z_index"] = 0
+    data.pop("end_seconds", None)
+    data.pop("duration_seconds", None)
+    return data
+
+
+def _rasterize_text_layer(
+    composition: Composition,
+    layer: Layer,
+    directory: Path,
+    index: int,
+) -> tuple[Path, tuple[int, int, int, int]] | None:
+    static = Composition.model_validate(
+        {
+            "canvas": {
+                "width": composition.canvas.width,
+                "height": composition.canvas.height,
+                "background": "#00000000",
+            },
+            "duration_seconds": composition.duration_seconds,
+            "fps": composition.fps,
+            "layers": [_text_layer_data(layer)],
+        }
+    )
+    image = PillowStillRenderer().render_still(static, 0.0)
+    box = image.getchannel("A").getbbox()
+    if box is None:
+        return None
+    cropped = image.crop(box)
+    source = directory / f"text-{index}.png"
+    cropped.save(source)
+    return source, box
+
+
+def _keyframe_mapping(
+    layer: Layer,
+    start_seconds: float,
+    end_seconds: float,
+) -> dict[str, Any]:
+    tracks = tracks_for_layer(layer, start_seconds, end_seconds)
+    mapping: dict[str, Any] = {}
+    for property_name in AnimatedProperty:
+        track = getattr(tracks, property_name.value, None)
+        if track is None:
+            continue
+        mapping[property_name.value] = [
+            {
+                "time": frame.time_seconds,
+                "value": frame.value,
+                "easing": frame.easing.value,
+            }
+            for frame in track.keyframes
+        ]
+    return mapping
+
+
+def _prepare_text_layers(
+    composition: Composition,
+    directory: Path,
+) -> Composition:
+    if not any(layer.type is LayerType.TEXT for layer in composition.layers):
+        return composition
+    layers: list[Any] = []
+    for index, layer in enumerate(composition.layers):
+        if layer.type is not LayerType.TEXT:
+            layers.append(layer)
+            continue
+        end = layer.end if layer.end is not None else composition.duration_seconds
+        if not layer.visible or end <= layer.start_seconds:
+            continue
+        raster = _rasterize_text_layer(composition, layer, directory, index)
+        if raster is None:
+            continue
+        source, box = raster
+        mapping: dict[str, Any] = {
+            "id": layer.id,
+            "type": LayerType.IMAGE.value,
+            "source": str(source),
+            "x": box[0],
+            "y": box[1],
+            "width": box[2] - box[0],
+            "height": box[3] - box[1],
+            "fit": "none",
+            "z_index": layer.z_index,
+            "opacity": layer.opacity,
+            "visible": True,
+            "start_seconds": layer.start_seconds,
+            "end_seconds": end,
+        }
+        keyframes = _keyframe_mapping(layer, layer.start_seconds, end)
+        if keyframes:
+            mapping["keyframes"] = keyframes
+        layers.append(mapping)
+    data = composition.model_dump(by_alias=False)
+    data["layers"] = layers
+    return Composition.model_validate(data)
 
 
 class VideoRenderer:
@@ -210,7 +333,12 @@ class VideoRenderer:
         )
         os.close(handle)
         temporary = Path(temporary_name)
+        text_directory = tempfile.TemporaryDirectory(
+            prefix=f".{destination.stem}-text-",
+            dir=destination.parent,
+        )
         try:
+            value = _prepare_text_layers(value, Path(text_directory.name))
             options = dict(command_options)
             options.pop("executable", None)
             command = build_ffmpeg_command(
@@ -247,6 +375,7 @@ class VideoRenderer:
             self._verify(value, probe)
             os.replace(temporary, destination)
         finally:
+            text_directory.cleanup()
             temporary.unlink(missing_ok=True)
         return VideoRenderResult(output=destination, command=command, probe=probe)
 

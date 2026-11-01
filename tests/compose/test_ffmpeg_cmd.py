@@ -286,11 +286,29 @@ def test_no_fit_leaves_the_source_geometry_untouched() -> None:
     assert "overlay=x=0:y=0" in graph
 
 
-def test_text_and_shape_layers_are_reported_instead_of_silently_dropped() -> None:
-    with pytest.raises(FFmpegCommandError):
-        build_ffmpeg_filtergraph(
-            _composition(layers=[{"id": "title", "type": "text", "text": "hi"}])
+def test_text_layers_become_drawtext_filters() -> None:
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            layers=[
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 20,
+                    "y": 30,
+                }
+            ]
         )
+    )
+
+    assert "drawtext=" in graph
+    assert "text='hi'" in graph
+    assert "x=20" in graph
+    assert "y=30" in graph
+    assert "overlay=x=0:y=0" in graph
+
+
+def test_shape_layers_are_reported_instead_of_silently_dropped() -> None:
     with pytest.raises(FFmpegCommandError):
         build_ffmpeg_filtergraph(
             _composition(
