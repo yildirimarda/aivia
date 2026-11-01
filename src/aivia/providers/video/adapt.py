@@ -5,7 +5,10 @@ rejects unsupported options. Video adds one decision that only makes sense for
 a timeline: a request longer than the provider's per-clip cap can either be
 clamped (the default) or divided into several shorter clips that are generated
 separately and joined afterwards. Splitting multiplies the number of paid calls,
-so it happens only when it is explicitly enabled.
+so it happens only when it is explicitly enabled. A request that pins a first or
+last frame is never split, because each piece would otherwise be generated
+against the same frame instead of continuing the intended motion; the request is
+clamped instead and the reason is recorded.
 
 Every change is recorded as an :class:`AdaptationWarning` and the original
 request is never mutated. The result carries the adapted clips together with
@@ -115,6 +118,18 @@ def _clip_cost(
     return (cost_per_clip + cost_per_second * duration) * request.count
 
 
+def _pinned_frame_text(request: VideoRequest) -> str | None:
+    has_first = request.first_frame is not None
+    has_last = request.last_frame is not None
+    if has_first and has_last:
+        return "first and last frames"
+    if has_first:
+        return "first frame"
+    if has_last:
+        return "last frame"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class VideoAdaptation:
     """The adapted video clips, their warnings and their combined cost.
@@ -202,8 +217,10 @@ def adapt_video_request(
     ``constraints.max_duration_seconds``. *config* supplies the split flag and
     the cap from a capability chain; explicit arguments win. A split is made
     only when it is enabled, a positive cap exists and the requested duration
-    exceeds that cap. Otherwise the request is clamped exactly like the shared
-    media adaptation layer does.
+    exceeds that cap. A request that pins a first or last frame is never split:
+    it is clamped instead and a warning records that the pinned frame prevented
+    the split. Otherwise the request is clamped exactly like the shared media
+    adaptation layer does.
 
     *cost_per_second* and *cost_per_clip* price each generated video, and
     ``count`` multiplies the result. They are intentionally simple inputs: the
@@ -217,7 +234,9 @@ def adapt_video_request(
             split = config.split_long_requests
         if max_clip_seconds is None and config.max_clip_seconds > 0:
             max_clip_seconds = config.max_clip_seconds
-    allow_split = bool(split)
+    split_requested = bool(split)
+    pinned_frames = _pinned_frame_text(request)
+    allow_split = split_requested and pinned_frames is None
 
     caps = [
         _positive(cap, label="max_clip_seconds")
@@ -226,19 +245,47 @@ def adapt_video_request(
     ]
     cap = min(caps) if caps else None
 
-    base_constraints = (
-        constraints.model_copy(update={"max_duration_seconds": None})
-        if allow_split and cap is not None
-        else constraints
-    )
+    base_constraints = constraints
+    if cap is not None:
+        if allow_split:
+            base_constraints = constraints.model_copy(
+                update={"max_duration_seconds": None}
+            )
+        elif split_requested and pinned_frames is not None:
+            base_constraints = constraints.model_copy(
+                update={"max_duration_seconds": cap}
+            )
     adapted = _adapt_video_request(request, base_constraints)
     warnings = list(adapted.warnings)
+    requested_duration = request.duration_seconds
     duration = adapted.request.duration_seconds
 
     clips: tuple[VideoRequest, ...]
-    if not allow_split or cap is None or duration is None or duration <= cap + _EPSILON:
+    needs_split = (
+        cap is not None
+        and requested_duration is not None
+        and requested_duration > cap + _EPSILON
+    )
+    if not split_requested or not needs_split:
         clips = (adapted.request,)
+    elif pinned_frames is not None:
+        assert cap is not None
+        clips = (adapted.request,)
+        warnings.append(
+            AdaptationWarning(
+                action=AdaptationAction.SKIPPED_SPLIT,
+                option="duration_seconds",
+                message=(
+                    "duration_seconds was not split because the request pins "
+                    f"the {pinned_frames}; it was clamped to the {cap:g}s "
+                    "per-clip limit"
+                ),
+                requested=requested_duration,
+                applied=adapted.request.duration_seconds,
+            )
+        )
     else:
+        assert cap is not None and duration is not None
         parts = split_duration(
             duration,
             max_clip_seconds=cap,
