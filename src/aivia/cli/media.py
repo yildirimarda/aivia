@@ -10,15 +10,19 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
+import io
 import mimetypes
+import re
 import shutil
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+import yaml
 from pydantic import ValidationError
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -38,6 +42,7 @@ from aivia.core.dry_run import apply_dry_run
 from aivia.core.errors import AiviaError, ConfigError
 from aivia.core.estimate import Estimator, render_estimate
 from aivia.core.router import Router
+from aivia.media.batch_runner import BatchResult, BatchRunner
 from aivia.media.image_edit_service import ImageEditService
 from aivia.media.image_service import ImageService
 from aivia.media.music_service import MusicService
@@ -451,8 +456,99 @@ def _configure_edit(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_media_handler=_run_edit, _media_kind="edit")
 
 
+def _configure_batch(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "file",
+        metavar="FILE",
+        help="CSV or YAML file with one row or list entry per batch item",
+    )
+    parser.add_argument(
+        "--kind",
+        choices=KINDS,
+        default="image",
+        help="generation kind used by rows that do not set one (default: image)",
+    )
+    parser.add_argument(
+        "--manifest",
+        metavar="PATH",
+        help="manifest file or directory (default: FILE.manifest.json)",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        metavar="N",
+        help="maximum number of items in flight (default: 1)",
+    )
+    parser.add_argument(
+        "--max-cost",
+        "--budget",
+        dest="max_cost",
+        type=float,
+        metavar="USD",
+        help="stop starting items once the batch cost reaches this amount",
+    )
+    parser.add_argument(
+        "--resume",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="reuse succeeded entries from the manifest (default: yes)",
+    )
+    parser.add_argument(
+        "--key",
+        metavar="FIELD",
+        help="row field used as the stable item key (default: id or key)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        metavar="DIR",
+        help="write each item output under DIR instead of leaving it in storage",
+    )
+    parser.add_argument(
+        "--prompt",
+        dest="prompt_option",
+        metavar="TEXT",
+        help="default prompt for rows that do not set one",
+    )
+    parser.add_argument(
+        "--prompt-file",
+        metavar="PATH",
+        help="default prompt file for rows that do not set one",
+    )
+    parser.add_argument(
+        "--provider",
+        action="append",
+        default=None,
+        metavar="NAME",
+        help="default provider chain; rows may override it",
+    )
+    parser.add_argument(
+        "--strategy",
+        choices=_STRATEGIES,
+        metavar="NAME",
+        help="default provider selection strategy",
+    )
+    parser.add_argument("--model", metavar="NAME", help="default provider model id")
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=1,
+        metavar="N",
+        help="default number of outputs per item (default: 1)",
+    )
+    parser.add_argument("--seed", type=int, metavar="N", help="default seed")
+    parser.add_argument(
+        "--database",
+        "--db",
+        dest="database",
+        metavar="PATH",
+        help="database file to use instead of the one in the user data directory",
+    )
+    parser.set_defaults(_media_handler=_run_batch, _media_kind="batch")
+
+
 def configure(parser: argparse.ArgumentParser) -> None:
-    """Add the media group with its ``generate`` and ``edit`` commands."""
+    """Add the media group with its ``generate``, ``edit`` and ``batch`` commands."""
     subparsers = parser.add_subparsers(dest="media_command", metavar="COMMAND")
     generate = subparsers.add_parser(
         "generate",
@@ -482,6 +578,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="Edit one image through the configured provider chain",
     )
     _configure_edit(edit)
+    batch = subparsers.add_parser(
+        "batch",
+        help="Generate media from a CSV or YAML batch file with a resumable manifest",
+        description="Run one generation per row or list entry through the batch runner",
+    )
+    _configure_batch(batch)
     parser.set_defaults(_media_handler=run_media)
 
 
@@ -494,7 +596,7 @@ def run_media(args: argparse.Namespace) -> int:
     if handler is None or kind not in CAPABILITIES:
         print("error: missing media command", file=sys.stderr)
         print(
-            "usage: aivia media {generate,edit}",
+            "usage: aivia media {generate,edit,batch}",
             file=sys.stderr,
         )
         return 2
@@ -1146,6 +1248,392 @@ def _print_outcome(outcome: Any, args: argparse.Namespace, kind: str) -> int:
         if text:
             print(text)
     return 0
+
+
+def _batch_text(value: Any) -> str:
+    if isinstance(value, bool):
+        raise ValueError("expected text")
+    text = str(value).strip()
+    if not text:
+        raise ValueError("expected non-empty text")
+    return text
+
+
+def _batch_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("expected text")
+    text = str(value).strip()
+    return text or None
+
+
+def _batch_int(value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError("expected an integer")
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"expected an integer, got {value!r}") from None
+
+
+def _batch_float(value: Any) -> float:
+    if isinstance(value, bool):
+        raise ValueError("expected a number")
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"expected a number, got {value!r}") from None
+
+
+def _batch_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        if value in (0, 1):
+            return bool(value)
+        raise ValueError("expected a boolean")
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off", ""}:
+        return False
+    raise ValueError(f"expected a boolean, got {value!r}")
+
+
+def _batch_providers(value: Any) -> list[str] | None:
+    if isinstance(value, (list, tuple)):
+        names = [str(item).strip() for item in value if str(item).strip()]
+        return names or None
+    text = str(value)
+    names = [part.strip() for part in text.split(",") if part.strip()]
+    return names or None
+
+
+_BATCH_FIELDS: dict[str, tuple[str, Callable[[Any], Any]]] = {
+    "prompt": ("prompt", _batch_text),
+    "prompt_file": ("prompt_file", _batch_text),
+    "provider": ("provider", _batch_providers),
+    "strategy": ("strategy", _batch_text),
+    "model": ("model", _batch_optional_text),
+    "count": ("count", _batch_int),
+    "seed": ("seed", _batch_int),
+    "negative_prompt": ("negative_prompt", _batch_optional_text),
+    "width": ("width", _batch_int),
+    "height": ("height", _batch_int),
+    "aspect_ratio": ("aspect_ratio", _batch_optional_text),
+    "format": ("output_format", _batch_text),
+    "output_format": ("output_format", _batch_text),
+    "quality": ("quality", _batch_optional_text),
+    "style": ("style", _batch_optional_text),
+    "duration": ("duration", _batch_float),
+    "fps": ("fps", _batch_int),
+    "audio": ("generate_audio", _batch_bool),
+    "generate_audio": ("generate_audio", _batch_bool),
+    "audio_prompt": ("audio_prompt", _batch_optional_text),
+    "voice": ("voice", _batch_text),
+    "language": ("language", _batch_optional_text),
+    "speed": ("speed", _batch_float),
+    "instructions": ("instructions", _batch_optional_text),
+    "word_timestamps": ("word_timestamps", _batch_bool),
+    "lyrics": ("lyrics", _batch_optional_text),
+    "lyrics_file": ("lyrics_file", _batch_optional_text),
+    "instrumental": ("instrumental", _batch_bool),
+    "loop": ("loop", _batch_bool),
+    "audio_file": ("audio_file", _batch_text),
+    "input_file": ("audio_file", _batch_text),
+    "file": ("audio_file", _batch_text),
+    "database": ("database", _batch_text),
+    "db": ("database", _batch_text),
+    "timeout": ("timeout", _batch_float),
+    "output": ("output", _batch_text),
+    "output_path": ("output", _batch_text),
+}
+
+_BATCH_SPECIAL_FIELDS = {"id", "key", "kind"}
+_BATCH_EXTENSIONS = {
+    "image": ".png",
+    "video": ".mp4",
+    "speech": ".mp3",
+    "music": ".mp3",
+    "sfx": ".mp3",
+    "transcription": ".txt",
+}
+
+
+def _batch_field(name: str) -> str:
+    return name.strip().lstrip("-").replace("-", "_").lower()
+
+
+@dataclass(frozen=True, slots=True)
+class _BatchItem:
+    key: str
+    index: int
+    kind: str
+    args: argparse.Namespace
+
+
+def _normalize_batch_item(raw: Mapping[Any, Any], *, position: int) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for raw_name, raw_value in raw.items():
+        name = _batch_field(str(raw_name))
+        if name in _BATCH_SPECIAL_FIELDS:
+            values[name] = raw_value
+            continue
+        if name not in _BATCH_FIELDS:
+            raise ValueError(f"batch item {position} has an unknown field: {raw_name}")
+        if raw_value is None:
+            continue
+        if isinstance(raw_value, str) and not raw_value.strip():
+            continue
+        values[name] = raw_value
+    return values
+
+
+def _parse_batch_csv(text: str) -> list[dict[str, Any]]:
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise ValueError("a batch CSV needs a header row")
+    items: list[dict[str, Any]] = []
+    for position, row in enumerate(reader, start=2):
+        if None in row:
+            raise ValueError(f"batch CSV row {position} has extra values")
+        items.append(dict(row))
+    return items
+
+
+def _parse_batch_yaml(text: str) -> list[dict[str, Any]]:
+    payload = yaml.safe_load(text)
+    if payload is None:
+        return []
+    defaults: Mapping[Any, Any] = {}
+    if isinstance(payload, Mapping):
+        unknown = set(payload) - {"defaults", "items"}
+        if unknown or "items" not in payload:
+            raise ValueError(
+                "a batch YAML mapping needs an items list and only a defaults key"
+            )
+        raw_defaults = payload.get("defaults") or {}
+        if not isinstance(raw_defaults, Mapping):
+            raise ValueError("batch YAML defaults must be a mapping")
+        defaults = raw_defaults
+        raw_items = payload["items"]
+    else:
+        raw_items = payload
+    if not isinstance(raw_items, list):
+        raise ValueError("batch YAML must be a list or a mapping with items")
+    items: list[dict[str, Any]] = []
+    for position, raw in enumerate(raw_items, start=1):
+        if isinstance(raw, str):
+            raw = {"prompt": raw}
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"batch YAML item {position} must be a mapping or string")
+        items.append({**defaults, **raw})
+    return items
+
+
+def _batch_args(
+    base: argparse.Namespace,
+    values: Mapping[str, Any],
+    *,
+    position: int,
+) -> argparse.Namespace:
+    args = argparse.Namespace(**vars(base))
+    mapped: dict[str, Any] = {}
+    for name, raw in values.items():
+        if name in _BATCH_SPECIAL_FIELDS:
+            continue
+        destination, convert = _BATCH_FIELDS[name]
+        try:
+            mapped[destination] = convert(raw)
+        except ValueError as exc:
+            raise ValueError(f"batch item {position} field {name}: {exc}") from None
+    for destination, value in mapped.items():
+        setattr(args, destination, value)
+    if "prompt" in mapped:
+        args.prompt_option = None
+        args.prompt_file = None
+    elif "prompt_file" in mapped:
+        args.prompt = None
+        args.prompt_option = None
+    return args
+
+
+def _batch_key(
+    values: Mapping[str, Any],
+    *,
+    index: int,
+    key_field: str | None,
+) -> str:
+    candidates: list[Any] = []
+    if key_field:
+        candidates.append(values.get(_batch_field(key_field)))
+    candidates.extend(values.get(name) for name in ("id", "key"))
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        text = str(candidate).strip()
+        if text:
+            return text
+    return str(index)
+
+
+def _batch_items(args: argparse.Namespace) -> list[_BatchItem]:
+    path = Path(args.file).expanduser()
+    if not path.is_file():
+        raise ConfigError(f"batch file not found: {path}")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"cannot read batch file {path}: {exc}") from exc
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        raw_items = _parse_batch_csv(text)
+    elif suffix in {".yaml", ".yml"}:
+        raw_items = _parse_batch_yaml(text)
+    else:
+        raise ConfigError("batch file must use the .csv, .yaml or .yml extension")
+    if not raw_items:
+        raise ConfigError("batch file has no items")
+    items: list[_BatchItem] = []
+    for index, raw in enumerate(raw_items):
+        position = index + 1
+        values = _normalize_batch_item(raw, position=position)
+        kind = values.get("kind", args.kind)
+        if not isinstance(kind, str) or kind not in KINDS:
+            raise ConfigError(f"batch item {position} has an unknown kind: {kind}")
+        item_args = _batch_args(args, values, position=position)
+        items.append(
+            _BatchItem(
+                key=_batch_key(values, index=index, key_field=args.key),
+                index=index,
+                kind=kind,
+                args=item_args,
+            )
+        )
+    return items
+
+
+def _default_batch_manifest(path: Path) -> Path:
+    return path.with_name(f"{path.name}.manifest.json")
+
+
+def _batch_output_path(
+    directory: Path,
+    *,
+    key: str,
+    kind: str,
+    outcome: Any,
+) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", key).strip("-._") or "item"
+    if kind == "transcription":
+        suffix = ".txt"
+    else:
+        paths = _asset_paths(outcome)
+        suffix = paths[0].suffix if paths else _BATCH_EXTENSIONS.get(kind, "")
+    return directory / f"{safe}{suffix}"
+
+
+def _batch_write_output(
+    outcome: Any,
+    args: argparse.Namespace,
+    kind: str,
+    *,
+    key: str,
+) -> list[Path]:
+    explicit = getattr(args, "output", None)
+    directory = getattr(args, "output_dir", None)
+    if explicit:
+        target = Path(explicit).expanduser()
+    elif directory:
+        target = _batch_output_path(
+            Path(directory).expanduser(), key=key, kind=kind, outcome=outcome
+        )
+    else:
+        return []
+    if kind == "transcription":
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(getattr(outcome, "text", ""), encoding="utf-8")
+        return [target]
+    paths = _asset_paths(outcome)
+    if not paths:
+        return []
+    return _copy_output(paths, str(target))
+
+
+def _batch_handler(item: _BatchItem) -> dict[str, Any]:
+    runtime = _runtime(item.args, item.kind)
+    try:
+        outcome = asyncio.run(_generate(runtime, item.args, item.kind))
+        outputs = _batch_write_output(outcome, item.args, item.kind, key=item.key)
+    finally:
+        runtime.engine.dispose()
+    return {
+        "provider": getattr(outcome, "provider", "") or "",
+        "model": getattr(outcome, "model", "") or "",
+        "cost_usd": float(getattr(outcome, "amount_usd", 0.0)),
+        "cached": bool(getattr(outcome, "cached", False)),
+        "outputs": [str(path) for path in outputs],
+    }
+
+
+def _print_batch_result(result: BatchResult) -> None:
+    print(f"Batch: {len(result)} items")
+    for item in result.items:
+        flags = ["resumed"] if item.resumed else []
+        print(f"  {item.key}: {item.status.value} ${item.cost_usd:.6f}")
+        if flags:
+            print(f"    {', '.join(flags)}")
+        value = item.value if isinstance(item.value, Mapping) else {}
+        outputs = value.get("outputs") or []
+        if isinstance(outputs, list):
+            for output in outputs:
+                print(f"    Output: {output}")
+        if item.error:
+            print(f"    Error: {item.error}", file=sys.stderr)
+    print(f"Succeeded: {len(result.succeeded)}")
+    if result.budget_stopped:
+        print(f"Budget stopped: {len(result.budget_stopped)}")
+    print(f"Total cost: ${result.total_cost_usd:.6f}")
+    if result.manifest_path is not None:
+        print(f"Manifest: {result.manifest_path}")
+
+
+def _run_batch(args: argparse.Namespace) -> int:
+    try:
+        items = _batch_items(args)
+        if getattr(args, "estimate", False):
+            code = 0
+            for item in items:
+                code = max(code, _print_estimate(item.args, item.kind))
+            return code
+        manifest = (
+            Path(args.manifest).expanduser()
+            if args.manifest
+            else _default_batch_manifest(Path(args.file).expanduser())
+        )
+        runner = BatchRunner(
+            _batch_handler,
+            concurrency=args.concurrency,
+            max_cost_usd=args.max_cost,
+            manifest=manifest,
+            resume=args.resume,
+        )
+        result = runner.run_sync(items)
+        _print_batch_result(result)
+        return 0 if result.ok else 1
+    except (
+        AiviaError,
+        ConfigError,
+        OSError,
+        SQLAlchemyError,
+        ValidationError,
+        ValueError,
+        csv.Error,
+        yaml.YAMLError,
+    ) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 def _run_generate(args: argparse.Namespace, kind: str) -> int:

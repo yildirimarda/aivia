@@ -352,6 +352,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Implement the speech to text service with audio hash caching, duration based budget and cost plus a transcript sidecar (tests/media/test_stt_service.py)
 - [ ] Include the selected provider license in the music cache key so a rights change cannot serve stale clearance (tests/media/test_music_service.py)
 - [ ] Persist measured music format, sample rate and channels on the asset so cache hits rebuild the exact track (tests/media/test_music_service.py)
+- [ ] Invalidate a resumed batch item when its row content changes by storing a content fingerprint (tests/cli/test_media_batch_cli.py)
 
 ## Milestone 9: Composition and rendering
 
