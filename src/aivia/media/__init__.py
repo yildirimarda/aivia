@@ -108,6 +108,11 @@ from aivia.media.batch_runner import (
     run_batch,
     run_batch_sync,
 )
+from aivia.media.facade import (
+    MEDIA_METRICS_FILENAME,
+    MediaMetrics,
+    MediaServiceFacade,
+)
 from aivia.media.i2v_flow import (
     I2V_OPERATION,
     I2V_UNIT,
@@ -624,6 +629,7 @@ __all__ = [
     "LIBRARY_SCHEMA_VERSION",
     "MANIFEST_NAME",
     "MANIFEST_VERSION",
+    "MEDIA_METRICS_FILENAME",
     "MUSIC_OPERATION",
     "MUSIC_UNIT",
     "SCREENING_TOKEN_PREFIX",
@@ -692,7 +698,9 @@ __all__ = [
     "LanguageVoices",
     "LicenseDecision",
     "LineBreakRules",
+    "MediaMetrics",
     "MediaResult",
+    "MediaServiceFacade",
     "MediaToolkit",
     "MediaToolkitResult",
     "MusicCandidate",

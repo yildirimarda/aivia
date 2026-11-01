@@ -33,6 +33,7 @@ from aivia.core.db import JobRepository, create_database_engine, upgrade_databas
 from aivia.core.errors import QuotaError
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, JobState
+from aivia.media.facade import MEDIA_METRICS_FILENAME, MediaServiceFacade
 from aivia.media.toolkit import MediaResult, MediaToolkit
 from aivia.providers.protocols.image import ImageRequest
 from aivia.providers.protocols.image_edit import ImageEditRequest
@@ -797,4 +798,9 @@ def _toolkit_from_config(
         active_data_dir = Path(database_path).expanduser().parent
     else:
         active_data_dir = resolve_paths(environ=environ).data_dir
-    return MediaToolkit.from_config(root, data_dir=active_data_dir, engine=engine)
+    return MediaServiceFacade.from_config(
+        root,
+        data_dir=active_data_dir,
+        engine=engine,
+        metrics_path=active_data_dir / MEDIA_METRICS_FILENAME,
+    )

@@ -43,13 +43,7 @@ from aivia.core.errors import AiviaError, ConfigError
 from aivia.core.estimate import Estimator, render_estimate
 from aivia.core.router import Router
 from aivia.media.batch_runner import BatchResult, BatchRunner
-from aivia.media.image_edit_service import ImageEditService
-from aivia.media.image_service import ImageService
-from aivia.media.music_service import MusicService
-from aivia.media.sfx_service import SFXService
-from aivia.media.stt_service import STTService
-from aivia.media.tts_service import SpeechService
-from aivia.media.video_service import VideoService
+from aivia.media.facade import MEDIA_METRICS_FILENAME, MediaServiceFacade
 from aivia.providers import image_edit as _image_edit  # noqa: F401
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.image import ImageRequest
@@ -813,13 +807,14 @@ async def _edit(
     image: Path,
 ) -> Any:
     prompt = _prompt_or_empty(args)
-    service = ImageEditService(
+    facade = MediaServiceFacade(
         runtime.router,
         **_common_service_values(runtime, args, "edit"),
     )
     request = _edit_request(args, operation, image, prompt)
-    token = service.screen(prompt) if prompt else None
-    return await service.edit(request, token=token)
+    token = facade.edit_service.screen(prompt) if prompt else None
+    result = await facade.edit(request, token=token)
+    return result.outcome
 
 
 def _run_edit(args: argparse.Namespace) -> int:
@@ -968,6 +963,7 @@ class _Runtime:
     storage: Any
     budget: BudgetGuard | None
     safety: Any
+    metrics_path: Path
 
 
 def _runtime(
@@ -1025,6 +1021,7 @@ def _runtime(
         storage=storage,
         budget=budget,
         safety=getattr(config, "safety", None),
+        metrics_path=_database_path(args, config).parent / MEDIA_METRICS_FILENAME,
     )
 
 
@@ -1041,6 +1038,7 @@ def _common_service_values(
         "safety": runtime.safety,
         "key_prefix": kind,
         "no_cache": bool(getattr(args, "no_cache", False)),
+        "metrics_path": runtime.metrics_path,
     }
 
 
@@ -1151,46 +1149,27 @@ def _transcription_request(args: argparse.Namespace) -> STTRequest:
 
 
 async def _generate(runtime: _Runtime, args: argparse.Namespace, kind: str) -> Any:
-    values = _common_service_values(runtime, args, kind)
+    facade = MediaServiceFacade(
+        runtime.router,
+        **_common_service_values(runtime, args, kind),
+    )
     if kind == "image":
-        image_service = ImageService(runtime.router, **values)
-        prompt = _prompt(args)
-        return await image_service.generate(
-            _image_request(args, prompt),
-            token=image_service.screen(prompt),
-        )
+        result = await facade.image(_image_request(args, _prompt(args)))
+        return result.outcome
     if kind == "video":
-        video_service = VideoService(runtime.router, **values)
-        prompt = _prompt(args)
-        return await video_service.generate(
-            _video_request(args, prompt),
-            token=video_service.screen(prompt),
-        )
+        result = await facade.video(_video_request(args, _prompt(args)))
+        return result.outcome
     if kind == "speech":
-        speech_service = SpeechService(runtime.router, **values)
-        prompt = _prompt(args)
-        return await speech_service.synthesize(
-            _speech_request(args, prompt),
-            token=speech_service.screen(prompt),
-        )
+        result = await facade.speech(_speech_request(args, _prompt(args)))
+        return result.outcome
     if kind == "music":
-        music_service = MusicService(runtime.router, **values)
-        prompt = _prompt(args)
-        return await music_service.generate(
-            _music_request(args, prompt),
-            token=music_service.screen(prompt),
-        )
+        result = await facade.music(_music_request(args, _prompt(args)))
+        return result.outcome
     if kind == "sfx":
-        sfx_service = SFXService(runtime.router, **values)
-        prompt = _prompt(args)
-        return await sfx_service.generate(
-            _sfx_request(args, prompt),
-            token=sfx_service.screen(prompt),
-        )
-    stt_service = STTService(runtime.router, **values)
-    request = _transcription_request(args)
-    token = stt_service.screen(request.prompt) if request.prompt else None
-    return await stt_service.generate(request, token=token)
+        result = await facade.sfx(_sfx_request(args, _prompt(args)))
+        return result.outcome
+    result = await facade.transcribe(_transcription_request(args))
+    return result.outcome
 
 
 def _asset_paths(outcome: Any) -> list[Path]:
