@@ -15,6 +15,8 @@ from aivia.core.config import ApiConfig
 from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.cost import CostTracker
 from aivia.core.db import JobRepository, create_database_engine, upgrade_database
+from aivia.core.jobs import JobQueue
+from aivia.core.models import Job, JobState
 from aivia.core.router import Router
 from aivia.media import MediaToolkit
 from aivia.providers.mock import MockProvider
@@ -339,3 +341,64 @@ def test_a_different_payload_with_the_same_key_conflicts(
     assert response.status_code == 409
     assert "different payload" in response.json()["detail"]
     assert len(JobRepository(engine).list(kind="media.image")) == 1
+
+
+def test_api_startup_runs_pending_media_jobs(
+    engine: Engine,
+    toolkit: MediaToolkit,
+    provider: MockProvider,
+) -> None:
+    queue = JobQueue(engine)
+    first = queue.enqueue(
+        Job(
+            kind="media.image",
+            payload={
+                "kind": "image",
+                "request": {"prompt": "A stranded lighthouse"},
+            },
+        )
+    )
+    second = queue.enqueue(
+        Job(
+            kind="media.image",
+            payload={
+                "kind": "image",
+                "request": {"prompt": "A stranded harbour"},
+            },
+        )
+    )
+
+    app = create_app(ApiConfig(require_auth=False), engine, environ={}, toolkit=toolkit)
+
+    with TestClient(app) as client:
+        first_status = client.get(f"/api/v1/media/jobs/{first.id}").json()
+        second_status = client.get(f"/api/v1/media/jobs/{second.id}").json()
+
+    assert first_status["status"] == "succeeded"
+    assert second_status["status"] == "succeeded"
+    assert len(provider.calls) == 2
+    stored_first = JobQueue(engine).get(first.id)
+    stored_second = JobQueue(engine).get(second.id)
+    assert stored_first is not None
+    assert stored_second is not None
+    assert stored_first.state is JobState.SUCCEEDED
+    assert stored_second.state is JobState.SUCCEEDED
+
+
+def test_api_startup_leaves_other_pending_jobs_for_the_worker(
+    engine: Engine,
+    toolkit: MediaToolkit,
+    provider: MockProvider,
+) -> None:
+    queued = JobQueue(engine).enqueue(
+        Job(kind="run", payload={"prompt": "Not a media job"})
+    )
+    app = create_app(ApiConfig(require_auth=False), engine, environ={}, toolkit=toolkit)
+
+    with TestClient(app):
+        pass
+
+    stored = JobQueue(engine).get(queued.id)
+    assert stored is not None
+    assert stored.state is JobState.PENDING
+    assert not provider.calls
