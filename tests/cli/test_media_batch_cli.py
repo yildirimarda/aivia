@@ -324,6 +324,82 @@ def test_changed_cli_default_invalidates_a_resumed_item(
     assert third_out.count("resumed") == 0
 
 
+def test_changed_output_destination_invalidates_a_resumed_item(
+    config: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    source = tmp_path / "artifact.png"
+    source.write_bytes(b"image")
+
+    class FakeAsset:
+        path = source.as_uri()
+
+    class FakeOutcome:
+        provider = "fake"
+        model = "fake"
+        amount_usd = 0.02
+        cached = False
+        assets = (FakeAsset(),)
+
+    async def fake_generate(runtime: Any, args: Any, kind: str) -> FakeOutcome:
+        calls.append(args.prompt)
+        return FakeOutcome()
+
+    monkeypatch.setattr(media_module, "_generate", fake_generate)
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    manifest = tmp_path / "manifest.json"
+    batch = tmp_path / "items.csv"
+    batch.write_text("id,prompt\none,A lighthouse\n", encoding="utf-8")
+    arguments = (
+        "media",
+        "batch",
+        str(batch),
+        "--manifest",
+        str(manifest),
+        "--config",
+        str(config),
+    )
+
+    first_code, _first_out, first_err = run_cli(
+        capsys, *arguments, "--output-dir", str(first_dir)
+    )
+
+    assert first_code == 0
+    assert first_err == ""
+    assert calls == ["A lighthouse"]
+    assert (first_dir / "one.png").is_file()
+    first_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    first_fingerprint = first_payload["items"]["one"]["fingerprint"]
+
+    second_code, second_out, second_err = run_cli(
+        capsys, *arguments, "--output-dir", str(first_dir)
+    )
+
+    assert second_code == 0
+    assert second_err == ""
+    assert calls == ["A lighthouse"]
+    assert second_out.count("resumed") == 1
+
+    third_code, third_out, third_err = run_cli(
+        capsys, *arguments, "--output-dir", str(second_dir)
+    )
+
+    assert third_code == 0
+    assert third_err == ""
+    assert calls == ["A lighthouse", "A lighthouse"]
+    assert third_out.count("resumed") == 0
+    assert (second_dir / "one.png").is_file()
+    third_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert third_payload["items"]["one"]["fingerprint"] != first_fingerprint
+    assert third_payload["items"]["one"]["value"]["outputs"] == [
+        str(second_dir / "one.png")
+    ]
+
+
 def test_changed_cli_prompt_file_invalidates_a_resumed_item(
     config: Path,
     tmp_path: Path,
