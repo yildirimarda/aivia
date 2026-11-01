@@ -401,7 +401,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add masks, blend modes and basic filters to image layers with numeric difference tests (tests/compose/test_blend_filters.py)
 - [x] Add smart text placement that finds low detail regions and optionally avoids faces with a vision check (tests/compose/test_placement.py)
 - [x] Add a contrast utility that chooses light or dark text and adds outline, shadow or a backing box below the configured contrast (tests/compose/test_contrast.py)
-- [ ] Build the FFmpeg filtergraph as a pure function producing an argument list tested without executing ffmpeg (tests/compose/test_ffmpeg_cmd.py)
+- [x] Build the FFmpeg filtergraph as a pure function producing an argument list tested without executing ffmpeg (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Render multi layer video with timing, scaling and overlay, verified by ffprobe (slow, tests/compose/test_render_video.py)
 - [ ] Implement keyframed motion in video including Ken Burns and parallax with sampled frame checks (slow, tests/compose/test_motion.py)
 - [ ] Render text in video with entrance and exit animations sampled at start, middle and end (slow, tests/compose/test_text_video.py)
