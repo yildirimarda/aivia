@@ -279,7 +279,9 @@ class AssetAnalysis(ModelBase):
     is stored. ``width`` and ``height`` are pixels, ``duration_seconds`` only
     applies to timed media, ``colors`` holds dominant colors in first-seen
     order, ``description`` is a vision description, ``detected_text`` is OCR
-    output and ``faces`` holds the detected face rectangles.
+    output and ``faces`` holds the detected face rectangles. ``provider`` and
+    ``model`` identify the analyser that produced those fields, which is not
+    necessarily the provider that generated the asset.
     """
 
     width: int | None = Field(default=None, gt=0)
@@ -310,6 +312,19 @@ class AssetAnalysis(ModelBase):
         default_factory=list,
         validation_alias=AliasChoices("faces", "face_regions"),
     )
+    provider: str = Field(
+        default="",
+        validation_alias=AliasChoices("provider", "analysis_provider"),
+    )
+    model: str = Field(
+        default="",
+        validation_alias=AliasChoices("model", "model_id", "analysis_model"),
+    )
+
+    @field_validator("provider", "model", mode="before")
+    @classmethod
+    def _strip_provenance(cls, value: Any) -> Any:
+        return _strip(value)
 
     @field_validator("colors", mode="before")
     @classmethod

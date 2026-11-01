@@ -190,6 +190,17 @@ def test_a_vision_provider_enriches_the_offline_analysis() -> None:
     assert analysis.faces[0].box == (10.0, 10.0, 30.0, 20.0)
 
 
+def test_a_vision_result_records_the_provider_and_model() -> None:
+    provider = FakeVisionProvider(
+        {"description": "A red square.", "alt_text": "A red square."}
+    )
+
+    analysis = _run(analyze_image(_image_bytes(), provider=provider))
+
+    assert analysis.provider == "acme"
+    assert analysis.model == "vision-model"
+
+
 def test_the_vision_request_carries_the_image_inline() -> None:
     provider = FakeVisionProvider({"description": "A picture", "alt_text": "A picture"})
     data = _image_bytes()
@@ -305,6 +316,8 @@ def test_the_result_converts_to_and_from_an_asset_analysis() -> None:
         detected_text="TEXT",
         faces=[FaceRegion(x=1, y=2, width=3, height=4)],
         alt_text="white rectangle",
+        provider="acme",
+        model="vision-model",
     )
 
     asset_analysis = analysis.to_asset_analysis()
@@ -315,7 +328,22 @@ def test_the_result_converts_to_and_from_an_asset_analysis() -> None:
 
     assert isinstance(asset_analysis, AssetAnalysis)
     assert asset_analysis.description == "white"
+    assert asset_analysis.provider == "acme"
+    assert asset_analysis.model == "vision-model"
     assert restored == analysis
+
+
+def test_analysis_provenance_can_override_the_stored_analysis() -> None:
+    analysis = ImageAnalysis(description="white", provider="stored", model="stored-1")
+
+    restored = ImageAnalysis.from_asset_analysis(
+        analysis.to_asset_analysis(),
+        provider="fallback",
+        model="fallback-1",
+    )
+
+    assert restored.provider == "fallback"
+    assert restored.model == "fallback-1"
 
 
 def test_build_analysis_request_rejects_an_empty_prompt() -> None:
@@ -381,6 +409,35 @@ def test_a_cached_analysis_survives_a_new_cache_instance(engine: Engine) -> None
     assert second_provider.requests == []
     assert analysis.description == "from the first call"
     assert analysis.alt_text == "first"
+
+
+def test_analysis_provenance_survives_a_new_cache_instance(engine: Engine) -> None:
+    data = _image_bytes()
+    first_provider = FakeVisionProvider(
+        {"description": "from the first call", "alt_text": "first"},
+    )
+    first = _run(
+        analyze_image(
+            data,
+            provider=first_provider,
+            cache=ImageAnalysisCache(engine),
+        )
+    )
+
+    second_provider = FakeVisionProvider(
+        {"description": "from the second call", "alt_text": "second"},
+    )
+    second = _run(
+        analyze_image(
+            data,
+            provider=second_provider,
+            cache=ImageAnalysisCache(engine),
+        )
+    )
+
+    assert second_provider.requests == []
+    assert first.provider == second.provider == "acme"
+    assert first.model == second.model == "vision-model"
 
 
 def test_changed_image_content_is_not_served_from_the_cache(engine: Engine) -> None:

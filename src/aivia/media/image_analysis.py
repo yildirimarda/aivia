@@ -166,6 +166,8 @@ class ImageAnalysis(BaseModel):
     ``#rrggbb`` values in most-frequent first order, ``description`` is a vision
     description, ``detected_text`` is the text visible in the image, ``faces``
     holds pixel rectangles and ``alt_text`` is the accessibility text.
+    ``provider`` and ``model`` record which vision analyser produced the result
+    so the provenance survives a cache round trip.
     """
 
     model_config = ConfigDict(
@@ -205,6 +207,19 @@ class ImageAnalysis(BaseModel):
             "accessibility_text",
         ),
     )
+    provider: str = Field(
+        default="",
+        validation_alias=AliasChoices("provider", "analysis_provider"),
+    )
+    model: str = Field(
+        default="",
+        validation_alias=AliasChoices("model", "model_id", "analysis_model"),
+    )
+
+    @field_validator("provider", "model", mode="before")
+    @classmethod
+    def _strip_provenance(cls, value: Any) -> Any:
+        return _strip(value)
 
     @field_validator("colors", mode="before")
     @classmethod
@@ -312,7 +327,9 @@ class ImageAnalysis(BaseModel):
         """Return the persisted asset analysis fields, dropping alt text.
 
         Alt text lives directly on :class:`~aivia.core.models.asset.Asset`, so
-        a caller storing this result writes :attr:`alt_text` separately.
+        a caller storing this result writes :attr:`alt_text` separately. The
+        analyser provider and model travel with the analysis so provenance is
+        not lost when the result is read back.
         """
         return AssetAnalysis(
             width=self.width,
@@ -321,6 +338,8 @@ class ImageAnalysis(BaseModel):
             description=self.description,
             detected_text=self.detected_text,
             faces=list(self.faces),
+            provider=self.provider,
+            model=self.model,
         )
 
     @classmethod
@@ -329,8 +348,15 @@ class ImageAnalysis(BaseModel):
         analysis: AssetAnalysis,
         *,
         alt_text: str = "",
+        provider: str | None = None,
+        model: str | None = None,
     ) -> ImageAnalysis:
-        """Build an image analysis from a persisted :class:`AssetAnalysis`."""
+        """Build an image analysis from a persisted :class:`AssetAnalysis`.
+
+        ``provider`` and ``model`` override the stored analysis provenance,
+        which lets a cache fall back to the asset columns for entries written
+        before analysis provenance was recorded.
+        """
         return cls(
             width=analysis.width,
             height=analysis.height,
@@ -339,6 +365,8 @@ class ImageAnalysis(BaseModel):
             detected_text=analysis.detected_text,
             faces=list(analysis.faces),
             alt_text=alt_text,
+            provider=analysis.provider if provider is None else provider,
+            model=analysis.model if model is None else model,
         )
 
 
@@ -784,6 +812,8 @@ class ImageAnalysisCache:
         analysis = ImageAnalysis.from_asset_analysis(
             asset.analysis,
             alt_text=asset.alt_text,
+            provider=asset.analysis.provider or asset.provider,
+            model=asset.analysis.model or asset.model,
         )
         self._memory[key.digest] = analysis
         return analysis
@@ -804,14 +834,23 @@ class ImageAnalysisCache:
             raise TypeError("analysis must be an ImageAnalysis")
         if self.no_cache:
             return analysis
+        resolved_provider = provider or analysis.provider
+        resolved_model = model or analysis.model or key.model
+        if analysis.provider != resolved_provider or analysis.model != resolved_model:
+            analysis = analysis.model_copy(
+                update={
+                    "provider": resolved_provider,
+                    "model": resolved_model,
+                }
+            )
         self._memory[key.digest] = analysis
         if self._cache is None:
             return analysis
         asset = Asset(
             kind=AssetKind.IMAGE,
             label="image-analysis",
-            provider=provider,
-            model=model or key.model,
+            provider=resolved_provider,
+            model=resolved_model,
             prompt=key.prompt,
             content_hash=key.content_hash,
             analysis=analysis.to_asset_analysis(),
@@ -822,6 +861,8 @@ class ImageAnalysisCache:
         return ImageAnalysis.from_asset_analysis(
             stored.analysis,
             alt_text=stored.alt_text,
+            provider=stored.analysis.provider or stored.provider,
+            model=stored.analysis.model or stored.model,
         )
 
     def clear(self) -> None:
@@ -952,7 +993,7 @@ async def _call_vision_helper(
     run_id: str,
     operation: str,
     metadata: Mapping[str, Any],
-) -> VisionAnalysisOutput:
+) -> tuple[VisionAnalysisOutput, str, str]:
     request = build_analysis_request(
         source,
         prompt=prompt,
@@ -966,7 +1007,7 @@ async def _call_vision_helper(
         run_id=run_id or None,
         operation=operation,
     )
-    return _vision_payload(result.value)
+    return _vision_payload(result.value), result.provider, result.model
 
 
 def _merge(
@@ -974,6 +1015,8 @@ def _merge(
     vision: VisionAnalysisOutput | None,
     *,
     alt_text_length: int,
+    provider: str = "",
+    model: str = "",
 ) -> ImageAnalysis:
     if vision is None:
         return offline
@@ -991,6 +1034,8 @@ def _merge(
         detected_text=vision.detected_text,
         faces=faces,
         alt_text=alt_text,
+        provider=provider,
+        model=model,
     )
 
 
@@ -1061,12 +1106,18 @@ async def analyze_image(
                 offline,
                 _vision_payload(cached),
                 alt_text_length=alt_text_length,
+                provider=cached.provider,
+                model=cached.model,
             )
 
+    result_provider = ""
+    result_model = ""
     if analyzer is not None:
         vision = await _call_vision_analyzer(analyzer, source)
+        result_provider = provider_name(analyzer)
+        result_model = model or ""
     elif helper is not None:
-        vision = await _call_vision_helper(
+        vision, result_provider, result_model = await _call_vision_helper(
             helper,
             source,
             prompt=prompt,
@@ -1079,7 +1130,7 @@ async def analyze_image(
     else:
         if provider is None:
             raise TypeError("a vision provider is required")
-        vision = await _call_vision_helper(
+        vision, result_provider, result_model = await _call_vision_helper(
             StructuredOutputHelper(provider, VisionAnalysisOutput),
             source,
             prompt=prompt,
@@ -1089,13 +1140,23 @@ async def analyze_image(
             operation=operation,
             metadata=dict(metadata or {}),
         )
-    result = _merge(offline, vision, alt_text_length=alt_text_length)
+    result_provider = result_provider or provider_name(
+        provider or getattr(helper, "provider", None)
+    )
+    result_model = result_model or model or ""
+    result = _merge(
+        offline,
+        vision,
+        alt_text_length=alt_text_length,
+        provider=result_provider,
+        model=result_model,
+    )
     if cache is not None and cache_key is not None:
         cache.store(
             cache_key,
             result,
-            provider=provider_name(provider or getattr(helper, "provider", None)),
-            model=model or "",
+            provider=result_provider,
+            model=result_model,
             run_id=run_id,
         )
     return result
