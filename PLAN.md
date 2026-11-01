@@ -327,7 +327,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add named presets with CLI flags overriding preset values and list and show commands (tests/core/test_presets.py)
 - [x] Expose a MediaToolkit Python API for image, video, speech, transcription, music and edit returning results with cost (tests/test_media_toolkit.py)
 - [x] Expose toolkit HTTP routes with job submission, status and result download (tests/api/test_media_api.py)
-- [ ] Add a per clip budget policy that returns a cheaper hint or raises before submit when nothing cheaper exists (tests/core/test_media_budget.py)
+- [x] Add a per clip budget policy that returns a cheaper hint or raises before submit when nothing cheaper exists (tests/core/test_media_budget.py)
 - [ ] Add a media service facade that CLI, API and stages all use, emitting a metrics file (tests/media/test_media_facade.py)
 - [ ] Run the shared contract suite across every real media adapter offline (tests/contracts/test_media_providers.py)
 - [ ] Add an end to end media slice test where a second identical run costs nothing and totals match (tests/e2e/test_media_slice.py)
@@ -355,6 +355,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Invalidate a resumed batch item when its row content changes by storing a content fingerprint (tests/cli/test_media_batch_cli.py)
 - [ ] Recover pending media API jobs on API startup so a restart cannot strand a submitted job (tests/api/test_media_api.py)
 - [ ] Make the default worker skip media API jobs so it cannot claim and dead-letter them (tests/cli/test_worker.py)
+- [ ] Apply the per clip budget policy before media submits and record the chosen cheaper hint (tests/media/test_media_clip_budget.py)
 
 ## Milestone 9: Composition and rendering
 
