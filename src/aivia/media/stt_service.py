@@ -17,7 +17,9 @@ the caller passes a different filename. The budget and the cost both use the
 audio duration in minutes; a duration hint in the request metadata avoids a
 probe, otherwise the audio is measured before the call. Inline audio is probed
 with ffprobe directly while remote audio is downloaded and probed first, so a
-URL cannot bypass the duration based budget check.
+URL cannot bypass the duration based budget check. When a budget is configured
+but the duration stays unknown, the call is refused instead of running
+unmetered.
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ from aivia.core.budget import BudgetGuard
 from aivia.core.config.budget import BudgetConfig
 from aivia.core.config.media import DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS
 from aivia.core.cost import CostTracker
-from aivia.core.errors import ValidationError
+from aivia.core.errors import BudgetError, ValidationError
 from aivia.core.media_probe import MediaDownloader, MediaLimits
 from aivia.core.models.asset import Asset, AssetCostLink, AssetKind
 from aivia.core.models.base import canonical_json
@@ -444,6 +446,16 @@ class STTService:
         estimate_seconds = _duration_hint(request, duration_seconds)
         if estimate_seconds is None and budget is not None:
             estimate_seconds = await self._probe_duration(request)
+            if estimate_seconds is None:
+                raise BudgetError(
+                    "speech to text request has no known duration, so the "
+                    "budget cannot be enforced",
+                    details={
+                        "run_id": run_id,
+                        "operation": operation_name,
+                        "remaining_budget": budget,
+                    },
+                )
         budget_minutes = max(0.0, estimate_seconds or 0.0) / 60.0
 
         async def run(provider: Provider) -> STTResponse:
