@@ -9,9 +9,13 @@ finished result is served from the assets the media service already stored.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
-from collections.abc import Callable, Mapping
+import uuid
+from collections.abc import Awaitable, Callable, Mapping
+from contextlib import suppress
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -39,12 +43,13 @@ from aivia.core.db import (
 )
 from aivia.core.errors import QuotaError
 from aivia.core.jobs import (
-    STALE_HEARTBEAT_CODE,
     JobNotClaimedError,
     JobNotFoundError,
     JobQueue,
 )
+from aivia.core.logging import get_logger
 from aivia.core.models import Job, JobState
+from aivia.core.models.base import utcnow
 from aivia.media.facade import MEDIA_METRICS_FILENAME, MediaServiceFacade
 from aivia.media.toolkit import MediaResult, MediaToolkit
 from aivia.providers.protocols.image import ImageRequest
@@ -379,13 +384,28 @@ def _result_payload(job: Job) -> dict[str, Any]:
     return body
 
 
+def _jobs_settings(
+    config: JobsConfig | Mapping[str, Any] | None,
+) -> JobsConfig:
+    if config is None:
+        return JobsConfig.from_mapping({})
+    if isinstance(config, JobsConfig):
+        return config
+    if isinstance(config, Mapping):
+        return JobsConfig.from_mapping(config)
+    raise TypeError("jobs must be a JobsConfig, a mapping or None")
+
+
 class MediaJobRunner:
     """Execute one queued media job through a toolkit instance.
 
-    The runner claims the persisted job before doing any paid work, records the
-    result or failure on the job row and always releases the claim. A job that
-    another runner already claimed is left untouched, so an API restart or a
-    duplicate background task cannot execute the same submission twice.
+    The runner claims the persisted job before doing any paid work, keeps the
+    claim alive with a heartbeat, records the result or failure on the job row
+    and always releases the claim. Each runner uses its own worker id, so a job
+    that another live API process still owns is not mistaken for a crashed one.
+    A job that another runner already claimed is left untouched, so an API
+    restart or a duplicate background task cannot execute the same submission
+    twice.
     """
 
     def __init__(
@@ -394,12 +414,33 @@ class MediaJobRunner:
         toolkit: Callable[[], MediaToolkit],
         *,
         jobs: JobsConfig | Mapping[str, Any] | None = None,
-        worker_id: str = "api-media",
+        worker_id: str | None = None,
+        clock: Callable[[], datetime] | None = None,
+        sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
+        if worker_id is not None and (
+            not isinstance(worker_id, str) or not worker_id.strip()
+        ):
+            raise ValueError("worker_id must be a non-empty name")
+        if clock is not None and not callable(clock):
+            raise TypeError("clock must be callable")
+        if sleep is not None and not callable(sleep):
+            raise TypeError("sleep must be callable")
+        settings = _jobs_settings(jobs)
         self._engine = engine
         self._toolkit = toolkit
         self._jobs = jobs
-        self._worker_id = worker_id
+        self._worker_id = (worker_id or f"api-media-{uuid.uuid4().hex}").strip()
+        self._clock = clock or utcnow
+        self._sleep = sleep or asyncio.sleep
+        self._heartbeat_seconds = settings.heartbeat_seconds
+        self._stale_after_seconds = settings.stale_after_seconds
+        self._logger = get_logger("aivia.api.media")
+
+    @property
+    def worker_id(self) -> str:
+        """The unique identity this runner claims and heartbeats under."""
+        return self._worker_id
 
     def pending_job_ids(self) -> list[str]:
         """Return the ids of media jobs left waiting by a previous process."""
@@ -420,32 +461,22 @@ class MediaJobRunner:
         ]
 
     def recover_running(self) -> list[str]:
-        """Release claims a dead API process left on media jobs.
+        """Release stale claims a dead API process left on media jobs.
 
-        Only the API runs media jobs, so a running media job at startup cannot
-        belong to a live worker. Its claim is failed as retryable, which returns
-        it to ``pending`` (or dead-letters it once its attempts are exhausted)
-        so :meth:`recover_pending` can execute it in this process.
+        A live API process keeps refreshing its claim, so only a media job whose
+        heartbeat stopped for longer than ``jobs.stale_after_seconds`` is
+        recovered. Its claim is failed as retryable, which returns it to
+        ``pending`` (or dead-letters it once its attempts are exhausted) so
+        :meth:`recover_pending` can execute it in this process.
         """
         engine = self._engine()
         queue = JobQueue(engine, config=self._jobs)
-        recovered: list[str] = []
-        for job_id in self.running_job_ids():
-            job = queue.get(job_id)
-            if job is None or not job.claimed_by:
-                continue
-            try:
-                queue.fail(
-                    job_id,
-                    job.claimed_by,
-                    error_code=STALE_HEARTBEAT_CODE,
-                    error_message="API process stopped before finishing the job",
-                    retryable=True,
-                )
-            except (JobNotFoundError, JobNotClaimedError):
-                continue
-            recovered.append(job_id)
-        return recovered
+        recovered = queue.recover_stale(
+            stale_after_seconds=self._stale_after_seconds,
+            kind_prefix="media.",
+            now=self._clock(),
+        )
+        return [job.id for job in recovered]
 
     async def recover_pending(self) -> None:
         """Run every media job a restart left waiting or claimed."""
@@ -460,9 +491,15 @@ class MediaJobRunner:
         job = queue.get(job_id)
         if job is None or job.state is not JobState.PENDING:
             return
-        claimed = queue.claim(self._worker_id, job_id=job_id)
+        claimed = queue.claim(self._worker_id, job_id=job_id, now=self._clock())
         if claimed is None:
             return
+        lost_claim = asyncio.Event()
+        heartbeat = asyncio.create_task(
+            self._heartbeat_loop(queue, claimed.id, lost_claim)
+        )
+        result: MediaResult | None = None
+        error: Exception | None = None
         try:
             kind = _job_kind(claimed)
             payload = claimed.payload if isinstance(claimed.payload, Mapping) else {}
@@ -473,17 +510,59 @@ class MediaJobRunner:
             prepared = _prepare_request(kind, values)
             result = await self._toolkit().generate(kind, prepared, **call_options)
         except Exception as exc:
-            self._record_failure(engine, claimed, exc)
-            queue.fail(
-                claimed.id,
-                self._worker_id,
-                error_code=str(getattr(exc, "code", "") or "media_job_failed"),
-                error_message=str(exc),
-                retryable=False,
-            )
+            error = exc
+        finally:
+            await self._stop_heartbeat(heartbeat)
+        if lost_claim.is_set():
+            return
+        if error is not None:
+            self._record_failure(engine, claimed, error)
+            with suppress(JobNotFoundError, JobNotClaimedError):
+                queue.fail(
+                    claimed.id,
+                    self._worker_id,
+                    error_code=str(getattr(error, "code", "") or "media_job_failed"),
+                    error_message=str(error),
+                    retryable=False,
+                    now=self._clock(),
+                )
         else:
+            if result is None:
+                return
             self._record_result(engine, claimed, result)
-            queue.complete(claimed.id, self._worker_id)
+            with suppress(JobNotFoundError, JobNotClaimedError):
+                queue.complete(claimed.id, self._worker_id, now=self._clock())
+
+    async def _heartbeat_loop(
+        self,
+        queue: JobQueue,
+        job_id: str,
+        lost_claim: asyncio.Event,
+    ) -> None:
+        while True:
+            await self._sleep(self._heartbeat_seconds)
+            try:
+                queue.heartbeat(job_id, self._worker_id, now=self._clock())
+            except (JobNotFoundError, JobNotClaimedError):
+                self._logger.warning(
+                    "lost claim on media job %s; another process recovered it",
+                    job_id,
+                )
+                lost_claim.set()
+                return
+            except Exception:
+                self._logger.exception("heartbeat failed for media job %s", job_id)
+                return
+
+    @staticmethod
+    async def _stop_heartbeat(task: asyncio.Task[None]) -> None:
+        if task.done():
+            with suppress(asyncio.CancelledError, Exception):
+                task.result()
+            return
+        task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await task
 
     def _record_result(self, engine: Engine, job: Job, result: MediaResult) -> None:
         metadata = dict(job.metadata)

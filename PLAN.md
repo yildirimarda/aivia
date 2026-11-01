@@ -380,7 +380,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Guard a remote first frame download with the shared SSRF policy before a Veo call (tests/providers/video/test_replicate_veo_frames.py)
 - [x] Refuse a speech to text call with an unknown duration when a budget is configured (tests/media/test_stt_service.py)
 - [x] Invalidate a resumed batch row when its output destination changes so the new path receives the artifact (tests/cli/test_media_batch_cli.py)
-- [ ] Give each media API runner a unique worker id and heartbeat so startup recovery cannot steal a live job (tests/api/test_media_api.py)
+- [x] Give each media API runner a unique worker id and heartbeat so startup recovery cannot steal a live job (tests/api/test_media_api.py)
+- [ ] Cancel an in-flight media API call when its heartbeat detects a recovered claim (tests/api/test_media_api.py)
 
 ## Milestone 9: Composition and rendering
 

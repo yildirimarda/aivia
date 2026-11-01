@@ -417,6 +417,7 @@ class JobQueue:
         self,
         *,
         stale_after_seconds: float,
+        kind_prefix: str | None = None,
         now: datetime | None = None,
     ) -> list[Job]:
         """Recover running jobs whose worker stopped heartbeating.
@@ -425,8 +426,11 @@ class JobQueue:
         live worker can take over. A stale job that already used its last
         attempt becomes ``dead_letter``. Recovered jobs carry
         :data:`STALE_HEARTBEAT_CODE` and no longer name the dead worker.
+        ``kind_prefix`` limits recovery to one job family, so a caller that
+        owns only those jobs leaves other running work alone.
         """
         seconds = _coerce_stale_after(stale_after_seconds)
+        wanted_prefix = _coerce_kind(kind_prefix)
         current = _as_utc(now)
         cutoff = current - timedelta(seconds=seconds)
         reference = func.coalesce(
@@ -435,6 +439,12 @@ class JobQueue:
             jobs.c.started_at,
             jobs.c.updated_at,
         )
+        conditions = [
+            jobs.c.state == JobState.RUNNING.value,
+            reference < cutoff,
+        ]
+        if wanted_prefix is not None:
+            conditions.append(jobs.c.kind.startswith(wanted_prefix))
 
         recovered: list[str] = []
         with _write_transaction(self.engine) as connection:
@@ -446,10 +456,7 @@ class JobQueue:
                         jobs.c.max_attempts,
                         jobs.c.claimed_by,
                     )
-                    .where(
-                        jobs.c.state == JobState.RUNNING.value,
-                        reference < cutoff,
-                    )
+                    .where(*conditions)
                     .order_by(jobs.c.created_at, jobs.c.id)
                 )
                 .mappings()
