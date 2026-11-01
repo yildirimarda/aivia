@@ -148,9 +148,7 @@ def test_opacity_scales_the_whole_overlay() -> None:
 
 
 def test_overlay_effects_are_applied_after_the_layers() -> None:
-    composition = _composition(
-        [{"type": "snow", "params": {"seed": 7, "count": 200}}]
-    )
+    composition = _composition([{"type": "snow", "params": {"seed": 7, "count": 200}}])
 
     image = PillowStillRenderer().render_still(composition, 0.5)
 
@@ -172,9 +170,7 @@ def test_overlay_effect_uses_time_relative_to_its_start() -> None:
 
     rendered = PillowStillRenderer().render_still(composition, 1.5)
     direct = render_overlay(Overlay(type=OverlayType.SPARKLES, seed=21), SIZE, 0.5)
-    expected = Image.alpha_composite(
-        Image.new("RGBA", SIZE, (0, 0, 0, 255)), direct
-    )
+    expected = Image.alpha_composite(Image.new("RGBA", SIZE, (0, 0, 0, 255)), direct)
 
     assert rendered.tobytes() == expected.tobytes()
 

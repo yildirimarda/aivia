@@ -506,8 +506,7 @@ def _rotated_rectangle(
         (-width / 2.0, height / 2.0),
     )
     return [
-        (x + dx * cosine - dy * sine, y + dx * sine + dy * cosine)
-        for dx, dy in corners
+        (x + dx * cosine - dy * sine, y + dx * sine + dy * cosine) for dx, dy in corners
     ]
 
 
