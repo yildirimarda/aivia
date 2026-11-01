@@ -44,6 +44,7 @@ __all__ = [
     "AudioTrackRole",
     "AudioTrackSpec",
     "BaseLayer",
+    "BlendMode",
     "Canvas",
     "CanvasConfig",
     "CanvasSpec",
@@ -54,11 +55,14 @@ __all__ = [
     "Effect",
     "EffectConfig",
     "EffectSpec",
+    "FilterType",
     "FitMode",
     "Gradient",
     "GradientStop",
     "GradientType",
+    "ImageFilter",
     "ImageLayer",
+    "ImageMask",
     "Layer",
     "LayerAdapter",
     "LayerConfig",
@@ -66,6 +70,7 @@ __all__ = [
     "LayerType",
     "LayerUnion",
     "LogoLayer",
+    "MaskMode",
     "ShapeLayer",
     "ShapeType",
     "StickerLayer",
@@ -263,6 +268,111 @@ class Anchor(StrEnum):
             "southeast": cls.BOTTOM_RIGHT,
             "se": cls.BOTTOM_RIGHT,
             "south_east": cls.BOTTOM_RIGHT,
+        }
+        return aliases.get(key)
+
+
+class BlendMode(StrEnum):
+    """How an image layer is combined with the pixels below it."""
+
+    NORMAL = "normal"
+    MULTIPLY = "multiply"
+    SCREEN = "screen"
+    OVERLAY = "overlay"
+    ADD = "add"
+    SUBTRACT = "subtract"
+    DARKEN = "darken"
+    LIGHTEN = "lighten"
+    DIFFERENCE = "difference"
+    HARD_LIGHT = "hard_light"
+    SOFT_LIGHT = "soft_light"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> BlendMode | None:
+        if not isinstance(value, str):
+            return None
+        key = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "source_over": cls.NORMAL,
+            "src_over": cls.NORMAL,
+            "over": cls.NORMAL,
+            "plus": cls.ADD,
+            "addition": cls.ADD,
+            "linear_dodge": cls.ADD,
+            "sub": cls.SUBTRACT,
+            "minus": cls.SUBTRACT,
+            "darker": cls.DARKEN,
+            "lighter": cls.LIGHTEN,
+            "hardlight": cls.HARD_LIGHT,
+            "hard_light": cls.HARD_LIGHT,
+            "softlight": cls.SOFT_LIGHT,
+            "soft_light": cls.SOFT_LIGHT,
+        }
+        return aliases.get(key)
+
+
+class MaskMode(StrEnum):
+    """Which channel of a mask image controls an image layer's visibility."""
+
+    ALPHA = "alpha"
+    LUMINANCE = "luminance"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> MaskMode | None:
+        if not isinstance(value, str):
+            return None
+        key = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "luma": cls.LUMINANCE,
+            "brightness": cls.LUMINANCE,
+            "gray": cls.LUMINANCE,
+            "grey": cls.LUMINANCE,
+            "greyscale": cls.LUMINANCE,
+            "grayscale": cls.LUMINANCE,
+            "opacity": cls.ALPHA,
+            "transparency": cls.ALPHA,
+        }
+        return aliases.get(key)
+
+
+class FilterType(StrEnum):
+    """A basic, deterministic image filter."""
+
+    BLUR = "blur"
+    BOX_BLUR = "box_blur"
+    SHARPEN = "sharpen"
+    UNSHARP_MASK = "unsharp_mask"
+    BRIGHTNESS = "brightness"
+    CONTRAST = "contrast"
+    SATURATION = "saturation"
+    GRAYSCALE = "grayscale"
+    INVERT = "invert"
+    AUTOCONTRAST = "autocontrast"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> FilterType | None:
+        if not isinstance(value, str):
+            return None
+        key = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "gaussian_blur": cls.BLUR,
+            "gaussian": cls.BLUR,
+            "blur_gaussian": cls.BLUR,
+            "boxblur": cls.BOX_BLUR,
+            "sharpness": cls.SHARPEN,
+            "unsharp": cls.UNSHARP_MASK,
+            "unsharp_mask_filter": cls.UNSHARP_MASK,
+            "bright": cls.BRIGHTNESS,
+            "lightness": cls.BRIGHTNESS,
+            "color": cls.SATURATION,
+            "colour": cls.SATURATION,
+            "colorfulness": cls.SATURATION,
+            "greyscale": cls.GRAYSCALE,
+            "grey": cls.GRAYSCALE,
+            "gray": cls.GRAYSCALE,
+            "negate": cls.INVERT,
+            "negative": cls.INVERT,
+            "auto_contrast": cls.AUTOCONTRAST,
         }
         return aliases.get(key)
 
@@ -530,6 +640,171 @@ class Gradient(_SchemaModel):
         return self
 
 
+class ImageMask(_SchemaModel):
+    """A second image that limits which pixels of a layer are visible.
+
+    ``alpha`` uses the mask image's alpha channel while ``luminance`` uses its
+    brightness, so a plain grayscale PNG works as a mask. The mask is scaled to
+    the layer box, optionally inverted and softened with a Gaussian feather.
+    """
+
+    source: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices(
+            "source",
+            "path",
+            "file",
+            "asset",
+            "asset_id",
+            "mask",
+        ),
+    )
+    mode: MaskMode = Field(
+        default=MaskMode.ALPHA,
+        validation_alias=AliasChoices("mode", "mask_mode", "channel"),
+    )
+    invert: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("invert", "inverted", "reverse"),
+    )
+    feather: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("feather", "blur", "softness"),
+    )
+    fit: FitMode = Field(
+        default=FitMode.STRETCH,
+        validation_alias=AliasChoices("fit", "fit_mode", "mode_name"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_string_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"source": data}
+        return data
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def _validate_source(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            raise ValueError("mask source must be a string")
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("mask source must not be empty")
+        return stripped
+
+    @field_validator("feather", mode="before")
+    @classmethod
+    def _validate_feather(cls, value: Any) -> Any:
+        return _finite(value, "mask feather")
+
+    @field_validator("invert", mode="before")
+    @classmethod
+    def _validate_invert(cls, value: Any) -> Any:
+        if not isinstance(value, bool):
+            raise ValueError("mask invert must be a boolean")
+        return value
+
+
+class ImageFilter(_SchemaModel):
+    """One basic filter applied to an image layer before compositing.
+
+    Colour and tone filters use ``amount`` as their strength. Blur and sharpen
+    filters use ``radius``; a scalar shorthand such as ``{"blur": 2}`` fills the
+    matching field. Filters run in the order they are declared.
+    """
+
+    type: FilterType = Field(
+        validation_alias=AliasChoices("type", "kind", "filter", "name"),
+    )
+    amount: float = Field(
+        default=1.0,
+        ge=0.0,
+        validation_alias=AliasChoices(
+            "amount",
+            "value",
+            "factor",
+            "strength",
+            "intensity",
+        ),
+    )
+    radius: float | None = Field(
+        default=None,
+        ge=0.0,
+        validation_alias=AliasChoices("radius", "size", "blur_radius", "softness"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_string_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"type": data}
+        return data
+
+    @field_validator("amount", "radius", mode="before")
+    @classmethod
+    def _validate_number(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return _finite(value, "filter")
+
+
+def _filter_spec(name: str, value: Any) -> Any:
+    """Turn one ``{name: value}`` filter shorthand into a spec mapping."""
+    if isinstance(value, bool):
+        return {"type": name} if value else None
+    if isinstance(value, Mapping):
+        item = dict(value)
+        item.setdefault("type", name)
+        return item
+    try:
+        filter_type = FilterType(name)
+    except (TypeError, ValueError):
+        return {"type": name, "amount": value}
+    if filter_type in (
+        FilterType.BLUR,
+        FilterType.BOX_BLUR,
+        FilterType.SHARPEN,
+        FilterType.UNSHARP_MASK,
+    ):
+        return {"type": name, "radius": value}
+    return {"type": name, "amount": value}
+
+
+def normalise_filters(value: Any) -> Any:
+    """Normalise filter shorthand into a list of :class:`ImageFilter` specs."""
+    if value is None:
+        return []
+    if isinstance(value, (ImageFilter, str)):
+        return [value]
+    if isinstance(value, Mapping):
+        if any(key in value for key in ("type", "kind", "filter", "name")):
+            return [value]
+        specs: list[Any] = []
+        for name, spec in value.items():
+            normalized = _filter_spec(str(name), spec)
+            if normalized is not None:
+                specs.append(normalized)
+        return specs
+    if isinstance(value, (list, tuple)):
+        specs = []
+        for item in value:
+            if (
+                isinstance(item, Mapping)
+                and len(item) == 1
+                and not any(key in item for key in ("type", "kind", "filter", "name"))
+            ):
+                ((name, spec),) = item.items()
+                normalized = _filter_spec(str(name), spec)
+                if normalized is not None:
+                    specs.append(normalized)
+            else:
+                specs.append(item)
+        return specs
+    return value
+
+
 def _first_present(values: dict[str, Any], *names: str) -> Any:
     for name in names:
         if name in values:
@@ -695,6 +970,57 @@ class Layer(_SchemaModel):
     visible: bool = Field(
         default=True, validation_alias=AliasChoices("visible", "enabled")
     )
+    blend_mode: BlendMode = Field(
+        default=BlendMode.NORMAL,
+        validation_alias=AliasChoices(
+            "blend_mode",
+            "blend",
+            "blending",
+            "blending_mode",
+        ),
+    )
+    mask: ImageMask | None = Field(
+        default=None,
+        validation_alias=AliasChoices("mask", "image_mask", "mask_source"),
+    )
+    filters: list[ImageFilter] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("filters", "filter", "image_filters"),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _merge_flat_mask_options(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(data)
+        flat = {
+            "mask_mode": "mode",
+            "mask_channel": "mode",
+            "mask_invert": "invert",
+            "mask_feather": "feather",
+            "mask_fit": "fit",
+        }
+        if not any(name in values for name in flat):
+            return values
+        raw = values.get("mask", values.get("image_mask", values.get("mask_source")))
+        if isinstance(raw, ImageMask):
+            return values
+        if raw is None:
+            raw = {}
+        elif isinstance(raw, str):
+            raw = {"source": raw}
+        elif isinstance(raw, Mapping):
+            raw = dict(raw)
+        else:
+            return values
+        for name, target in flat.items():
+            if name in values and target not in raw:
+                raw[target] = values.pop(name)
+        for name in ("mask", "image_mask", "mask_source"):
+            values.pop(name, None)
+        values["mask"] = raw
+        return values
 
     @model_validator(mode="before")
     @classmethod
@@ -702,6 +1028,22 @@ class Layer(_SchemaModel):
         if isinstance(data, str):
             return {"type": data}
         return data
+
+    @field_validator("mask", mode="before")
+    @classmethod
+    def _validate_mask(cls, value: Any) -> Any:
+        if value is None or value is False:
+            return None
+        if isinstance(value, ImageMask):
+            return value
+        if isinstance(value, str):
+            return {"source": value}
+        return value
+
+    @field_validator("filters", mode="before")
+    @classmethod
+    def _validate_filters(cls, value: Any) -> Any:
+        return normalise_filters(value)
 
     @field_validator("id", mode="before")
     @classmethod
