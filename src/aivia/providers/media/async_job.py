@@ -10,8 +10,9 @@ adapter behaves the same way:
 * repeating a submission with the same idempotency key returns the stored job
   instead of paying for a second generation, waiting for a racing submission to
   persist its remote id rather than returning an unusable pending record;
-* a pending job whose submitter died before storing a remote id is resumed on
-  the same local record, so a repeated key recovers it instead of hanging;
+* a pending job whose submitter died before storing a remote id is claimed
+  atomically and resumed on the same local record, so a repeated key recovers
+  it instead of hanging and two processes cannot resubmit it;
 * polling is bounded by a deadline, records progress and terminal state, and
   raises :class:`AsyncJobTimeoutError` when the deadline passes;
 * cancelling is idempotent and never calls the provider twice;
@@ -40,7 +41,7 @@ from typing import Any, Protocol, Self, runtime_checkable
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import Engine
+from sqlalchemy import Engine, update
 from sqlalchemy.exc import IntegrityError
 
 from aivia.core.config.http import HttpClientConfig
@@ -488,6 +489,16 @@ class AsyncJobStore(Protocol):
     def save(self, job: AsyncJob) -> AsyncJob:
         """Insert or update *job* and return the stored record."""
 
+    def claim_recovery(
+        self, job: AsyncJob, *, owner: str, started: datetime
+    ) -> AsyncJob | None:
+        """Atomically claim a crashed job for *owner* and return the record.
+
+        The claim only succeeds when *job* is still the stored record and no
+        other process has claimed it. ``None`` means another process won and
+        the caller must wait for its remote id instead of resubmitting.
+        """
+
 
 class InMemoryAsyncJobStore:
     """A process-local store for tests and short-lived helpers.
@@ -515,6 +526,27 @@ class InMemoryAsyncJobStore:
         if job.idempotency_key:
             self._keys[job.idempotency_key] = job.id
         return job
+
+    def claim_recovery(
+        self, job: AsyncJob, *, owner: str, started: datetime
+    ) -> AsyncJob | None:
+        current = self._jobs.get(job.id)
+        if current is None or current.updated_at != job.updated_at:
+            return None
+        if current.remote_id or current.terminal:
+            return None
+        if current.submission_owner != job.submission_owner:
+            return None
+        claimed = current.model_copy(
+            update={
+                "state": AsyncJobState.PENDING,
+                "submission_owner": _text(owner),
+                "submission_started_at": started,
+                "updated_at": started,
+            }
+        )
+        self._jobs[claimed.id] = claimed
+        return claimed
 
 
 class DatabaseAsyncJobStore:
@@ -568,6 +600,33 @@ class DatabaseAsyncJobStore:
                 raise RuntimeError(f"async job {job.id!r} disappeared while saving")
             stored = updated
         return _from_job(stored)
+
+    def claim_recovery(
+        self, job: AsyncJob, *, owner: str, started: datetime
+    ) -> AsyncJob | None:
+        claimed = job.model_copy(
+            update={
+                "state": AsyncJobState.PENDING,
+                "submission_owner": _text(owner),
+                "submission_started_at": started,
+                "updated_at": started,
+            }
+        )
+        values = _job_values(claimed, kind=self.kind)
+        values["run_id"] = None
+        values["updated_at"] = started
+        table = self.repository.table
+        condition = (
+            (table.c.id == claimed.id)
+            & (table.c.kind == self.kind)
+            & (table.c.state == JobState.PENDING.value)
+            & (table.c.updated_at == job.updated_at)
+        )
+        with self.engine.begin() as connection:
+            result = connection.execute(update(table).where(condition).values(**values))
+        if result.rowcount != 1:
+            return None
+        return self.get(claimed.id)
 
 
 _JOB_STATES: dict[AsyncJobState, JobState] = {
@@ -964,17 +1023,19 @@ class AsyncMediaJobHelper:
         payload = request if request is not None else current.request
         owner = _new_submission_owner()
         started = utcnow()
-        pending = current.model_copy(
-            update={
-                "state": AsyncJobState.PENDING,
-                "submission_owner": owner,
-                "submission_started_at": started,
-                "updated_at": started,
-            }
-        )
+        pending = self._store.claim_recovery(current, owner=owner, started=started)
+        if pending is None:
+            refreshed = self._store.get(current.id)
+            if refreshed is None:
+                raise JobNotFoundError(
+                    f"async job {current.id!r} disappeared while being recovered",
+                    details={"job_id": current.id},
+                )
+            return await self._reuse_or_wait(
+                refreshed, digest=digest, key=key, request=request
+            )
         _ACTIVE_SUBMISSIONS.add(owner)
         try:
-            self._store.save(pending)
             try:
                 response = await self._call(submit_fn, payload)
             except Exception as exc:

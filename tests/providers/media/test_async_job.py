@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -103,6 +104,41 @@ class YieldingClock(FakeClock):
     async def sleep(self, seconds: float) -> None:
         self.value += seconds
         await asyncio.sleep(0)
+
+
+class StaleReadStore(DatabaseAsyncJobStore):
+    """A store that keeps returning the crashed row both processes read.
+
+    A second process can read the pending row before the first one claims it.
+    Returning the same snapshot reproduces that interleaving deterministically
+    and records every recovery claim attempt.
+    """
+
+    def __init__(
+        self,
+        engine: Engine,
+        snapshot: AsyncJob,
+        *,
+        kind: str = "media_async",
+    ) -> None:
+        super().__init__(engine, kind=kind)
+        self.snapshot = snapshot
+        self.claim_attempts = 0
+        self.claim_attempted = asyncio.Event()
+
+    def find_by_idempotency_key(self, key: str) -> AsyncJob | None:
+        if key and key == self.snapshot.idempotency_key:
+            return self.snapshot
+        return super().find_by_idempotency_key(key)
+
+    def claim_recovery(
+        self, job: AsyncJob, *, owner: str, started: datetime
+    ) -> AsyncJob | None:
+        self.claim_attempts += 1
+        try:
+            return super().claim_recovery(job, owner=owner, started=started)
+        finally:
+            self.claim_attempted.set()
 
 
 class BlockingBackend(FakeBackend):
@@ -338,6 +374,123 @@ def test_a_repeated_key_resumes_a_job_left_pending_by_a_crash(
     assert stored is not None
     assert stored.remote_id == "remote-1"
     assert stored.state is AsyncJobState.RUNNING
+
+
+def test_claim_recovery_lets_only_one_process_take_a_crashed_job(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "data" / "aivia.db"
+    upgrade_database(database)
+    setup_engine = create_database_engine(database)
+    winner_engine = create_database_engine(database)
+    loser_engine = create_database_engine(database)
+    try:
+        crashed = DatabaseAsyncJobStore(setup_engine).save(
+            AsyncJob(
+                id="job_crashed",
+                provider="fake-media",
+                idempotency_key="crash-claim",
+                submission_owner="1:dead",
+                submission_started_at=datetime(2020, 1, 1, tzinfo=UTC),
+            )
+        )
+        winner_store = DatabaseAsyncJobStore(winner_engine)
+        loser_store = DatabaseAsyncJobStore(loser_engine)
+        started = datetime.now(UTC)
+
+        winner = winner_store.claim_recovery(crashed, owner="2:winner", started=started)
+        loser = loser_store.claim_recovery(crashed, owner="3:loser", started=started)
+
+        assert winner is not None
+        assert winner.submission_owner == "2:winner"
+        assert loser is None
+        stored = winner_store.get(crashed.id)
+        assert stored is not None
+        assert stored.submission_owner == "2:winner"
+        assert stored.state is AsyncJobState.PENDING
+    finally:
+        setup_engine.dispose()
+        winner_engine.dispose()
+        loser_engine.dispose()
+
+
+def test_two_processes_cannot_resubmit_the_same_crashed_job(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "data" / "aivia.db"
+    upgrade_database(database)
+    setup_engine = create_database_engine(database)
+    try:
+        crashing = CrashingBackend()
+        seed = make_helper(crashing, engine=setup_engine)
+
+        async def crash() -> AsyncJob:
+            task = asyncio.create_task(
+                seed.submit({"prompt": "a wave"}, idempotency_key="crash-race")
+            )
+            await crashing.started.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            pending = seed.store.find_by_idempotency_key("crash-race")
+            assert pending is not None
+            return pending
+
+        crashed = asyncio.run(crash())
+    finally:
+        setup_engine.dispose()
+
+    winner_engine = create_database_engine(database)
+    loser_engine = create_database_engine(database)
+    try:
+        winner_backend = BlockingBackend()
+        winner_store = StaleReadStore(winner_engine, crashed)
+        winner = make_helper(
+            winner_backend,
+            store=winner_store,
+            clock=YieldingClock(),
+            timeout_seconds=30.0,
+            poll_interval_seconds=1.0,
+        )
+        loser_backend = FakeBackend()
+        loser_store = StaleReadStore(loser_engine, crashed)
+        loser = make_helper(
+            loser_backend,
+            store=loser_store,
+            clock=YieldingClock(),
+            timeout_seconds=30.0,
+            poll_interval_seconds=1.0,
+        )
+
+        async def scenario() -> tuple[AsyncJob, AsyncJob]:
+            winner_task = asyncio.create_task(
+                winner.submit({"prompt": "a wave"}, idempotency_key="crash-race")
+            )
+            await winner_backend.started.wait()
+            loser_task = asyncio.create_task(
+                loser.submit({"prompt": "a wave"}, idempotency_key="crash-race")
+            )
+            await asyncio.wait_for(loser_store.claim_attempted.wait(), timeout=1.0)
+            assert not loser_task.done()
+            assert loser_backend.submitted == []
+            winner_backend.release.set()
+            return await winner_task, await loser_task
+
+        first, second = asyncio.run(scenario())
+
+        assert first.id == crashed.id == second.id
+        assert first.remote_id == second.remote_id == "remote-1"
+        assert winner_backend.submitted == [{"prompt": "a wave"}]
+        assert loser_backend.submitted == []
+        assert winner_store.claim_attempts == 1
+        assert loser_store.claim_attempts == 1
+        stored = winner_store.get(crashed.id)
+        assert stored is not None
+        assert stored.remote_id == "remote-1"
+        assert stored.submission_owner == ""
+    finally:
+        winner_engine.dispose()
+        loser_engine.dispose()
 
 
 def test_the_jobs_table_rejects_a_duplicate_async_idempotency_key(
