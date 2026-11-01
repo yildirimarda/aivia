@@ -41,7 +41,7 @@ from aivia.core.config.media import (
     DEFAULT_MEDIA_MIN_ANIMATED_FRAME_RATE as DEFAULT_MEDIA_MIN_ANIMATED_FRAME_RATE,
 )
 from aivia.core.errors import ValidationError
-from aivia.core.media_probe import FFprobeRunner, run_ffprobe, sniff_media
+from aivia.core.media_probe import FFprobeInfo, FFprobeRunner, run_ffprobe, sniff_media
 
 __all__ = [
     "DEFAULT_ANIMATED_FRAME_RATE",
@@ -715,6 +715,61 @@ def _concat_entry(path: Path) -> str:
     return f"file '{escaped}'"
 
 
+def _frame_rate(value: str | None) -> float | None:
+    if not value:
+        return None
+    numerator, _, denominator = value.partition("/")
+    try:
+        rate = float(numerator)
+        if denominator:
+            rate /= float(denominator)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    if not math.isfinite(rate) or rate <= 0:
+        return None
+    return rate
+
+
+def _even_dimension(value: int) -> int:
+    return max(2, value - value % 2)
+
+
+def _video_geometry(
+    info: FFprobeInfo,
+) -> tuple[int | None, int | None, float | None]:
+    stream = info.primary_video
+    if stream is None:
+        return None, None, None
+    width = stream.width if stream.width and stream.width > 0 else None
+    height = stream.height if stream.height and stream.height > 0 else None
+    if width is None or height is None:
+        width = height = None
+    return width, height, _frame_rate(stream.frame_rate)
+
+
+def _normalize_video_filter(
+    geometry: tuple[int | None, int | None, float | None],
+    target: tuple[int, int, float | None],
+) -> str:
+    width, height, frame_rate = geometry
+    target_width, target_height, target_rate = target
+    filters: list[str] = []
+    if width != target_width or height != target_height:
+        filters.extend(
+            [
+                f"scale={target_width}:{target_height}:"
+                "force_original_aspect_ratio=decrease:flags=lanczos",
+                f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:color=black",
+                "setsar=1",
+            ]
+        )
+    if target_rate is not None and (
+        frame_rate is None or abs(frame_rate - target_rate) > 1e-3
+    ):
+        filters.append(f"fps={target_rate:.6f}")
+    return ",".join(filters)
+
+
 def _crossfade_graph(
     durations: Sequence[float],
     crossfade: float,
@@ -723,16 +778,24 @@ def _crossfade_graph(
     fmt: VideoOutputFormat,
     quality: int,
     post_filters: Sequence[str],
+    input_filters: Sequence[str] | None = None,
 ) -> list[str]:
     parts: list[str] = []
-    video_label = "0:v"
+    normalizers = list(input_filters or [])
+    if len(normalizers) < len(durations):
+        normalizers.extend([""] * (len(durations) - len(normalizers)))
+    for index, normalizer in enumerate(normalizers):
+        if normalizer:
+            parts.append(f"[{index}:v]{normalizer}[vn{index}]")
+    video_label = "vn0" if normalizers[0] else "0:v"
     audio_label: str | None = "0:a" if with_audio else None
     offset = 0.0
     for index in range(1, len(durations)):
         offset += durations[index - 1] - crossfade
         next_video = f"v{index}"
+        source_video = f"vn{index}" if normalizers[index] else f"{index}:v"
         parts.append(
-            f"[{video_label}][{index}:v]"
+            f"[{video_label}][{source_video}]"
             f"xfade=transition=fade:duration={crossfade:.6f}:"
             f"offset={offset:.6f}[{next_video}]"
         )
@@ -772,8 +835,10 @@ def concatenate_videos(
 
     A zero crossfade uses ffmpeg's concat demuxer, which keeps the source
     codecs. A positive crossfade probes each clip's duration, requires the fade
-    to be shorter than every clip and builds an ``xfade`` chain. Audio is kept
-    when every clip has an audio track.
+    to be shorter than every clip and builds an ``xfade`` chain. Clips whose
+    dimensions or frame rate differ from the first clip that reports them are
+    scaled, padded and resampled to that canonical geometry so ``xfade`` gets
+    matching inputs. Audio is kept when every clip has an audio track.
     """
     path = Path(destination)
     fmt = (
@@ -872,6 +937,29 @@ def concatenate_videos(
         if crossfade >= min(durations):
             raise ValidationError("crossfade_seconds must be shorter than every clip")
         with_audio = all(info.audio_streams for info in infos)
+        geometries = [_video_geometry(info) for info in infos]
+        target_width, target_height = next(
+            (
+                (width, height)
+                for width, height, _ in geometries
+                if width is not None and height is not None
+            ),
+            (None, None),
+        )
+        target_rate = next(
+            (rate for _, _, rate in geometries if rate is not None),
+            None,
+        )
+        input_filters: list[str] = []
+        if target_width is not None and target_height is not None:
+            target = (
+                _even_dimension(target_width),
+                _even_dimension(target_height),
+                target_rate,
+            )
+            input_filters = [
+                _normalize_video_filter(geometry, target) for geometry in geometries
+            ]
         graph = _crossfade_graph(
             durations,
             crossfade,
@@ -879,6 +967,7 @@ def concatenate_videos(
             fmt=fmt,
             quality=attempt.quality,
             post_filters=post_filters,
+            input_filters=input_filters,
         )
 
         def build_crossfade(temporary: Path) -> list[str]:

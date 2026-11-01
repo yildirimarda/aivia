@@ -58,16 +58,19 @@ def probe_json(
     duration: float,
     *,
     audio: bool = True,
+    width: int = 1280,
+    height: int = 720,
+    frame_rate: str = "30/1",
 ) -> str:
     streams: list[dict[str, Any]] = [
         {
             "index": 0,
             "codec_type": "video",
             "codec_name": "h264",
-            "width": 1280,
-            "height": 720,
+            "width": width,
+            "height": height,
             "duration": f"{duration:.3f}",
-            "avg_frame_rate": "30/1",
+            "avg_frame_rate": frame_rate,
         }
     ]
     if audio:
@@ -98,6 +101,8 @@ def probe_runner(
     durations: Sequence[float],
     *,
     audio: bool | Sequence[bool] = True,
+    dimensions: Sequence[tuple[int, int]] | None = None,
+    frame_rates: Sequence[str] | None = None,
     calls: list[list[str]] | None = None,
 ) -> Callable[[Sequence[str]], subprocess.CompletedProcess[str]]:
     remaining = iter(durations)
@@ -105,14 +110,29 @@ def probe_runner(
         list(audio) if isinstance(audio, Sequence) else [bool(audio)] * len(durations)
     )
     audio_iter = iter(audio_values)
+    dimension_values = (
+        list(dimensions) if dimensions is not None else [(1280, 720)] * len(durations)
+    )
+    dimension_iter = iter(dimension_values)
+    rate_values = (
+        list(frame_rates) if frame_rates is not None else ["30/1"] * len(durations)
+    )
+    rate_iter = iter(rate_values)
 
     def run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
         if calls is not None:
             calls.append(list(argv))
+        width, height = next(dimension_iter)
         return subprocess.CompletedProcess(
             list(argv),
             0,
-            stdout=probe_json(next(remaining), audio=next(audio_iter)),
+            stdout=probe_json(
+                next(remaining),
+                audio=next(audio_iter),
+                width=width,
+                height=height,
+                frame_rate=next(rate_iter),
+            ),
             stderr="",
         )
 
@@ -281,6 +301,67 @@ def test_concatenate_with_crossfade_builds_offsets_and_audio_fades(
     assert "[v1]" in calls[0]
     assert "[a1]" in calls[0]
     assert len(probes) == 2
+
+
+def test_concatenate_crossfade_normalizes_mixed_dimensions_and_frame_rates(
+    tmp_path: Path,
+) -> None:
+    first = source_file(tmp_path, "first.mp4")
+    second = source_file(tmp_path, "second.mp4")
+    third = source_file(tmp_path, "third.mp4")
+    calls: list[list[str]] = []
+
+    concatenate_videos(
+        [first, second, third],
+        tmp_path / "mixed.mp4",
+        crossfade_seconds=1.0,
+        ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner(
+            [4.0, 6.0, 8.0],
+            dimensions=[(1280, 720), (640, 480), (1920, 1080)],
+            frame_rates=["30/1", "24/1", "60/1"],
+        ),
+    )
+
+    graph = filter_graph(calls[0])
+    assert (
+        "[1:v]scale=1280:720:force_original_aspect_ratio=decrease:flags=lanczos,"
+        "pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,"
+        "fps=30.000000[vn1]"
+    ) in graph
+    assert (
+        "[2:v]scale=1280:720:force_original_aspect_ratio=decrease:flags=lanczos,"
+        "pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,"
+        "fps=30.000000[vn2]"
+    ) in graph
+    assert (
+        "[0:v][vn1]xfade=transition=fade:duration=1.000000:offset=3.000000[v1]"
+    ) in graph
+    assert (
+        "[v1][vn2]xfade=transition=fade:duration=1.000000:offset=8.000000[v2]"
+    ) in graph
+    assert "[0:v]scale" not in graph
+
+
+def test_concatenate_crossfade_skips_normalization_for_matching_geometry(
+    tmp_path: Path,
+) -> None:
+    first = source_file(tmp_path, "first.mp4")
+    second = source_file(tmp_path, "second.mp4")
+    calls: list[list[str]] = []
+
+    concatenate_videos(
+        [first, second],
+        tmp_path / "matched.mp4",
+        crossfade_seconds=1.0,
+        ffmpeg_runner=writer(calls=calls),
+        ffprobe_runner=probe_runner([4.0, 6.0]),
+    )
+
+    graph = filter_graph(calls[0])
+    assert "scale=" not in graph
+    assert "fps=" not in graph
+    assert "[0:v][1:v]xfade" in graph
 
 
 def test_concatenate_crossfade_requires_a_shorter_fade_than_every_clip(
