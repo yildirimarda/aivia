@@ -379,7 +379,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Cap animated frame count and total decoded pixels in media probe validation (tests/core/test_media_probe.py)
 - [x] Guard a remote first frame download with the shared SSRF policy before a Veo call (tests/providers/video/test_replicate_veo_frames.py)
 - [x] Refuse a speech to text call with an unknown duration when a budget is configured (tests/media/test_stt_service.py)
-- [ ] Invalidate a resumed batch row when its output destination changes so the new path receives the artifact (tests/cli/test_media_batch_cli.py)
+- [x] Invalidate a resumed batch row when its output destination changes so the new path receives the artifact (tests/cli/test_media_batch_cli.py)
 - [ ] Give each media API runner a unique worker id and heartbeat so startup recovery cannot steal a live job (tests/api/test_media_api.py)
 
 ## Milestone 9: Composition and rendering
