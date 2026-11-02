@@ -416,7 +416,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Generate cover or thumbnail frames and apply watermark, intro and outro from the branding block (tests/compose/test_cover_branding.py)
 - [x] Validate outputs against platform data for duration, resolution, size, audio presence and loudness with per type messages (tests/compose/test_output_validation.py)
 - [x] Cache renders by composition hash, asset hashes, renderer version, ffmpeg version and font fingerprint (tests/compose/test_render_cache.py)
-- [ ] Add a preview render at reduced resolution and fps that is measurably faster than a full render (slow, tests/compose/test_preview.py)
+- [x] Add a preview render at reduced resolution and fps that is measurably faster than a full render (slow, tests/compose/test_preview.py)
 - [ ] Add a validated reversible patch language for composition edits where apply and undo restore the original hash (tests/compose/test_patch.py)
 - [ ] Convert a timeline with voice timings, beats, assets, subtitles and music into a composition per language and platform with exact duration (tests/compose/test_timeline.py)
 - [ ] Add compose render, validate and schema commands with output selection and preview (tests/cli/test_compose.py)
