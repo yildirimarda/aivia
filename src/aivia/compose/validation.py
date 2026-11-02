@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import ValidationError as PydanticValidationError
 
 from aivia.compose.keyframes import Easing
+from aivia.compose.safe_area import warn_safe_area_violations
 from aivia.compose.schema import Composition, Layer
 from aivia.core.errors import ValidationError
 
@@ -603,6 +604,7 @@ def validate_composition(
     *,
     assets: AssetLookup | None = None,
     asset_exists: AssetCheck | None = None,
+    warn_safe_area: bool = True,
 ) -> CompositionIssues:
     """Return every cross-object problem in *composition*.
 
@@ -610,13 +612,18 @@ def validate_composition(
     known ids, a directory to resolve relative paths against, or a callable.
     When neither ``assets`` nor ``asset_exists`` is given, asset existence is
     not checked. A mapping is parsed first; any schema errors are returned as
-    issues with their dotted paths instead of raising.
+    issues with their dotted paths instead of raising. Manual text or sticker
+    coordinates outside the platform safe area emit a :class:`SafeAreaWarning`
+    unless *warn_safe_area* is false.
     """
     try:
         loaded = _load(composition)
     except PydanticValidationError as error:
         return CompositionIssues(_schema_issue(item) for item in error.errors())
-    return _validate_loaded(loaded, assets=assets, asset_exists=asset_exists)
+    issues = _validate_loaded(loaded, assets=assets, asset_exists=asset_exists)
+    if warn_safe_area:
+        warn_safe_area_violations(loaded, stacklevel=3)
+    return issues
 
 
 def validate_composition_or_raise(
@@ -624,6 +631,7 @@ def validate_composition_or_raise(
     *,
     assets: AssetLookup | None = None,
     asset_exists: AssetCheck | None = None,
+    warn_safe_area: bool = True,
 ) -> Composition:
     """Validate *composition* and return it, raising every issue at once."""
     try:
@@ -633,5 +641,7 @@ def validate_composition_or_raise(
             [_schema_issue(item) for item in error.errors()]
         ) from error
     issues = _validate_loaded(loaded, assets=assets, asset_exists=asset_exists)
+    if warn_safe_area:
+        warn_safe_area_violations(loaded, stacklevel=3)
     issues.raise_for_errors()
     return loaded

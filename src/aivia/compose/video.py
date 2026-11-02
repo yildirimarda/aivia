@@ -152,6 +152,8 @@ def _rasterize_text_layer(
             },
             "duration_seconds": composition.duration_seconds,
             "fps": composition.fps,
+            "platform": composition.platform,
+            "safe_area": composition.safe_area,
             "layers": [_text_layer_data(layer)],
         }
     )
