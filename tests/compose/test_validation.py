@@ -174,6 +174,67 @@ def test_asset_existence_can_use_a_callable_mapping_or_directory(
     assert not validate_composition(composition, assets=tmp_path)
 
 
+def test_missing_mask_assets_are_reported_with_the_layer_source() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "bg",
+                "type": "image",
+                "source": "bg.png",
+                "mask": "missing-mask.png",
+            },
+            {
+                "id": "overlay",
+                "type": "image",
+                "source": "overlay.png",
+                "image_mask": {"source": "present-mask.png"},
+            },
+            {
+                "id": "flat",
+                "type": "image",
+                "source": "flat.png",
+                "mask_source": "flat-missing.png",
+            },
+        ]
+    )
+
+    issues = validate_composition(
+        composition,
+        assets={"bg.png", "overlay.png", "present-mask.png", "flat.png"},
+    )
+
+    assert _codes(issues) == ["missing_asset", "missing_asset"]
+    assert [issue.path for issue in issues] == [
+        "layers[0].mask.source",
+        "layers[2].mask.source",
+    ]
+    assert "missing-mask.png" in str(issues[0])
+    assert "flat-missing.png" in str(issues[1])
+
+
+def test_mask_assets_use_the_same_resolver_as_layer_sources(tmp_path: Path) -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "bg",
+                "type": "image",
+                "source": "bg.png",
+                "mask": {"source": "mask.png"},
+            }
+        ]
+    )
+    (tmp_path / "bg.png").write_bytes(b"image")
+
+    issues = validate_composition(composition, assets=tmp_path)
+
+    assert _codes(issues) == ["missing_asset"]
+    assert issues[0].path == "layers[0].mask.source"
+
+    (tmp_path / "mask.png").write_bytes(b"mask")
+
+    assert validate_composition(composition, assets=tmp_path) == []
+
+
 def test_asset_existence_is_skipped_without_a_resolver() -> None:
     composition = _composition(
         layers=[{"id": "bg", "type": "image", "source": "missing.png"}],

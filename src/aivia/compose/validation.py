@@ -227,6 +227,23 @@ def _check_window(
         )
 
 
+def _reference_source(reference: Any) -> str | None:
+    if isinstance(reference, str):
+        source = reference
+    elif isinstance(reference, Mapping):
+        source = None
+        for key in ("source", "path", "file", "asset", "asset_id", "mask"):
+            value = reference.get(key)
+            if isinstance(value, str) and value.strip():
+                source = value
+                break
+    else:
+        source = getattr(reference, "source", None)
+    if isinstance(source, str) and source.strip():
+        return source.strip()
+    return None
+
+
 def _layer_source(layer: Layer) -> str | None:
     source = getattr(layer, "source", None)
     if isinstance(source, str):
@@ -237,6 +254,17 @@ def _layer_source(layer: Layer) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def _mask_source(layer: Layer) -> str | None:
+    mask = getattr(layer, "mask", None)
+    if mask is None:
+        extras = layer.model_extra or {}
+        for key in ("mask", "image_mask", "mask_source"):
+            if key in extras:
+                mask = extras[key]
+                break
+    return _reference_source(mask)
 
 
 def _asset_checker(
@@ -278,6 +306,15 @@ def _check_assets(
                 CompositionIssue(
                     path=f"layers[{index}].source",
                     message=f"asset {source!r} does not exist",
+                    code="missing_asset",
+                )
+            )
+        mask_source = _mask_source(layer)
+        if mask_source and not checker(mask_source):
+            issues.append(
+                CompositionIssue(
+                    path=f"layers[{index}].mask.source",
+                    message=f"asset {mask_source!r} does not exist",
                     code="missing_asset",
                 )
             )
