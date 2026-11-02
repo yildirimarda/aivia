@@ -461,6 +461,8 @@ class VideoRenderer:
                 render_config = getattr(config, "render", None)
                 if render_config is None and isinstance(config, Mapping):
                     render_config = config.get("render")
+            if render_config is not None:
+                options.setdefault("render", render_config)
             subtitle_options: dict[str, Any] = {
                 "width": value.canvas.width,
                 "height": value.canvas.height,
