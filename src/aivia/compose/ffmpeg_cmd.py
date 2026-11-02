@@ -370,13 +370,18 @@ def _fit_filters(width: int, height: int, fit: FitMode) -> list[str]:
     ]
 
 
-def _overlay_scale(layer: Layer) -> str | None:
-    width = _layer_value(layer, "width", "w")
-    height = _layer_value(layer, "height", "h")
+def _overlay_static_scale(layer: Layer) -> float:
     raw_scale = _layer_value(layer, "scale", "zoom")
     scale = 1.0 if raw_scale is None else _finite(raw_scale, "scale")
     if scale <= 0.0:
         raise FFmpegCommandError("scale must be positive")
+    return scale
+
+
+def _overlay_scale(layer: Layer) -> str | None:
+    width = _layer_value(layer, "width", "w")
+    height = _layer_value(layer, "height", "h")
+    scale = _overlay_static_scale(layer)
 
     if width is not None and height is not None:
         target_width = max(1, round(_integer(width, "layer width") * scale))
@@ -417,6 +422,142 @@ def _margin(layer: Layer) -> tuple[float, float]:
     if horizontal < 0.0 or vertical < 0.0:
         raise FFmpegCommandError("margin must not be negative")
     return horizontal, vertical
+
+
+def _max_scale(track: KeyframeTrack) -> float:
+    maximum = 1.0
+    for frame in track.keyframes:
+        value = frame.value
+        if isinstance(value, tuple):
+            magnitude = math.sqrt(max(0.0, value[0] * value[1]))
+        else:
+            magnitude = float(value)
+        maximum = max(maximum, magnitude)
+    return maximum
+
+
+def _overlay_axis_placement(
+    *,
+    axis: str,
+    coordinate: int | None,
+    base_size: int | None,
+    box_size: int,
+    canvas_size: int,
+    safe_start: int,
+    safe_end: int,
+    margin: float,
+    position: str,
+) -> tuple[str, str]:
+    outer = "ow" if axis == "x" else "oh"
+    inner = "iw" if axis == "x" else "ih"
+    center_pad = f"({outer}-{inner})/2"
+    end_pad = f"{outer}-{inner}"
+    if coordinate is not None:
+        if base_size is None:
+            return "0", f"{coordinate}"
+        offset = coordinate + base_size / 2 - box_size / 2
+        return center_pad, f"{offset:g}"
+
+    if position in ("center", "middle"):
+        center = safe_start + (canvas_size - safe_start - safe_end) / 2
+        return center_pad, f"{center - box_size / 2:g}"
+    if position in ("left", "top"):
+        if base_size is None:
+            return "0", f"{safe_start + margin:g}"
+        center = safe_start + margin + base_size / 2
+        return center_pad, f"{center - box_size / 2:g}"
+    if base_size is None:
+        return end_pad, f"{canvas_size - safe_end - margin - box_size:g}"
+    center = canvas_size - safe_end - margin - base_size / 2
+    return center_pad, f"{center - box_size / 2:g}"
+
+
+def _overlay_motion_filters(
+    layer: Layer,
+    composition: Composition,
+    tracks: MotionTracks,
+    x: int | None,
+    y: int | None,
+    width: int | None,
+    height: int | None,
+    start_seconds: float,
+) -> tuple[list[str], str, str, str]:
+    if tracks.scale is None:
+        raise FFmpegCommandError("overlay motion needs a scale track")
+    variable = f"(t+{_seconds(start_seconds)})"
+    scale = f"max(({_scale_expression(tracks.scale, variable)}),0.0001)"
+    static_scale = _overlay_static_scale(layer)
+    base_width: int | None = None
+    base_height: int | None = None
+    if width is not None and height is not None:
+        base_width = max(1, round(_integer(width, "layer width") * static_scale))
+        base_height = max(1, round(_integer(height, "layer height") * static_scale))
+        scale_filter = (
+            f"scale=w='{base_width}*({scale})':h='{base_height}*({scale})':eval=frame"
+        )
+    elif width is not None:
+        base_width = max(1, round(_integer(width, "layer width") * static_scale))
+        scale_filter = f"scale=w='{base_width}*({scale})':h=-1:eval=frame"
+    elif height is not None:
+        base_height = max(1, round(_integer(height, "layer height") * static_scale))
+        scale_filter = f"scale=w=-1:h='{base_height}*({scale})':eval=frame"
+    else:
+        scale_filter = (
+            f"scale=w='iw*{static_scale:g}*({scale})':"
+            f"h='ih*{static_scale:g}*({scale})':eval=frame"
+        )
+
+    maximum = _max_scale(tracks.scale)
+    canvas_width = composition.canvas.width
+    canvas_height = composition.canvas.height
+    box_width = (
+        canvas_width
+        if base_width is None
+        else max(canvas_width, round(base_width * maximum))
+    )
+    box_height = (
+        canvas_height
+        if base_height is None
+        else max(canvas_height, round(base_height * maximum))
+    )
+    safe_top, safe_right, safe_bottom, safe_left = effective_safe_area(
+        composition
+    ).to_pixels(canvas_width, canvas_height)
+    margin_x, margin_y = _margin(layer)
+    parts = _anchor(layer).split("_")
+    x_position = (
+        "left" if "left" in parts else "right" if "right" in parts else "center"
+    )
+    y_position = (
+        "top" if "top" in parts else "bottom" if "bottom" in parts else "middle"
+    )
+    pad_x, overlay_x = _overlay_axis_placement(
+        axis="x",
+        coordinate=x,
+        base_size=base_width,
+        box_size=box_width,
+        canvas_size=canvas_width,
+        safe_start=safe_left,
+        safe_end=safe_right,
+        margin=margin_x,
+        position=x_position,
+    )
+    pad_y, overlay_y = _overlay_axis_placement(
+        axis="y",
+        coordinate=y,
+        base_size=base_height,
+        box_size=box_height,
+        canvas_size=canvas_height,
+        safe_start=safe_top,
+        safe_end=safe_bottom,
+        margin=margin_y,
+        position=y_position,
+    )
+    pad = (
+        f"pad=w={box_width}:h={box_height}:"
+        f"x='{pad_x}':y='{pad_y}':color=black@0:eval=frame"
+    )
+    return [scale_filter], pad, overlay_x, overlay_y
 
 
 def _anchor_position(layer: Layer, composition: Composition) -> tuple[str, str]:
@@ -805,6 +946,9 @@ def _layer_filters(
         _layer_end(layer, composition),
     )
     filters: list[str] = []
+    overlay_pad: str | None = None
+    overlay_motion_x: str | None = None
+    overlay_motion_y: str | None = None
 
     if layer.type is LayerType.TEXT:
         if x is None or y is None:
@@ -820,9 +964,28 @@ def _layer_filters(
         if width is not None and height is not None:
             filters.extend(_fit_filters(width, height, fit))
     elif overlay:
-        scale = _overlay_scale(layer)
-        if scale is not None:
-            filters.append(scale)
+        if tracks.scale is not None:
+            motion_x, motion_y = x, y
+            if x is not None or y is not None:
+                motion_x = 0 if x is None else x
+                motion_y = 0 if y is None else y
+            motion_filters, overlay_pad, overlay_motion_x, overlay_motion_y = (
+                _overlay_motion_filters(
+                    layer,
+                    composition,
+                    tracks,
+                    motion_x,
+                    motion_y,
+                    width,
+                    height,
+                    layer.start_seconds,
+                )
+            )
+            filters.extend(motion_filters)
+        else:
+            scale = _overlay_scale(layer)
+            if scale is not None:
+                filters.append(scale)
     else:
         fit = _fit_mode(layer, default=FitMode.COVER)
         if width is not None and height is not None:
@@ -840,6 +1003,8 @@ def _layer_filters(
     filters.extend(_rotation_filters(tracks, layer.start_seconds))
     filters.append("setsar=1")
     filters.append("format=rgba")
+    if overlay_pad is not None:
+        filters.append(overlay_pad)
     filters.extend(_image_filter_filters(layer))
     transition = layer_transition_for(layer)
     tail_filters = _opacity_filters(
@@ -873,12 +1038,18 @@ def _layer_filters(
         y=y,
         anchored=overlay,
     )
+    if overlay_motion_x is not None and overlay_motion_y is not None:
+        overlay_x, overlay_y = overlay_motion_x, overlay_motion_y
     if layer.type is LayerType.TEXT:
         overlay_x, overlay_y = "0", "0"
     if tracks.position is not None:
         position_x, position_y = pair_expression(tracks.position, variable="t")
         overlay_x = f"'({overlay_x})+({position_x})'"
         overlay_y = f"'({overlay_y})+({position_y})'"
+    if overlay and tracks.pan is not None:
+        pan_x, pan_y = pair_expression(tracks.pan, variable="t")
+        overlay_x = f"'({overlay_x})+({pan_x})'"
+        overlay_y = f"'({overlay_y})+({pan_y})'"
     if transition is not None and transition.is_slide:
         span = transition.duration_seconds
         progress = f"clip((t-{layer.start_seconds:.6f})/{_seconds(span)},0,1)"

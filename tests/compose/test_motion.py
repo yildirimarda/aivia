@@ -14,6 +14,7 @@ from aivia.compose import (
     Layer,
     Motion,
     MotionError,
+    build_ffmpeg_filtergraph,
     ken_burns,
     motion_for_layer,
     motion_tracks,
@@ -53,6 +54,14 @@ def _center_box(path: Path) -> Path:
     image = Image.new("RGB", (320, 240), BLUE)
     draw = ImageDraw.Draw(image)
     draw.rectangle((80, 60, 239, 179), fill=RED)
+    image.save(path)
+    return path
+
+
+def _sticker(path: Path) -> Path:
+    image = Image.new("RGBA", (40, 40), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((10, 10, 29, 29), fill=(255, 0, 0, 255))
     image.save(path)
     return path
 
@@ -339,3 +348,92 @@ def test_position_keyframes_move_a_video_layer_in_sampled_frames(
     _assert_color(start, (120, 20), BLACK)
     _assert_color(end, (20, 20), BLACK)
     _assert_color(end, (120, 20), BLUE)
+
+
+def test_overlay_motion_builds_a_time_dependent_scale_and_pad() -> None:
+    composition = _composition(
+        {
+            "id": "badge",
+            "type": "sticker",
+            "source": "badge.png",
+            "width": 40,
+            "height": 40,
+            "motion": ken_burns(start_scale=1.0, end_scale=2.0),
+        }
+    )
+
+    graph = build_ffmpeg_filtergraph(composition)
+
+    assert "scale=w='40*(" in graph
+    assert "eval=frame" in graph
+    assert "pad=w=320:h=240" in graph
+    assert "zoompan" not in graph
+
+
+def test_sticker_scale_keyframes_grow_across_sampled_frames(
+    tmp_path: Path,
+) -> None:
+    source = _sticker(tmp_path / "badge.png")
+    output = tmp_path / "sticker-scale.mp4"
+    render_video(
+        _composition(
+            {
+                "id": "badge",
+                "type": "sticker",
+                "source": str(source),
+                "width": 40,
+                "height": 40,
+                "keyframes": {
+                    "scale": [
+                        {"time": 0, "value": 1.0, "easing": "linear"},
+                        {"time": 2, "value": 2.0},
+                    ]
+                },
+            }
+        ),
+        output,
+        preset="ultrafast",
+        crf=28,
+    )
+
+    start = _frame(output, 0.0, tmp_path / "start.png")
+    end = _frame(output, 1.9, tmp_path / "end.png")
+
+    _assert_color(start, (160, 120), RED)
+    _assert_color(start, (145, 120), BLACK)
+    _assert_color(end, (160, 120), RED)
+    _assert_color(end, (145, 120), RED)
+    _assert_color(end, (185, 120), BLACK)
+
+
+def test_logo_motion_preset_scales_and_pans_across_sampled_frames(
+    tmp_path: Path,
+) -> None:
+    source = _sticker(tmp_path / "logo.png")
+    output = tmp_path / "logo-motion.mp4"
+    render_video(
+        _composition(
+            {
+                "id": "logo",
+                "type": "logo",
+                "source": str(source),
+                "motion": ken_burns(
+                    start_scale=1.0,
+                    end_scale=2.0,
+                    start_pan=(0, 0),
+                    end_pan=(60, 0),
+                ),
+            }
+        ),
+        output,
+        preset="ultrafast",
+        crf=28,
+    )
+
+    start = _frame(output, 0.0, tmp_path / "start.png")
+    end = _frame(output, 1.9, tmp_path / "end.png")
+
+    _assert_color(start, (160, 120), RED)
+    _assert_color(start, (220, 120), BLACK)
+    _assert_color(end, (160, 120), BLACK)
+    _assert_color(end, (220, 120), RED)
