@@ -441,7 +441,7 @@ def test_render_preview_scales_layer_geometry_before_compositing(
     assert "s=1280x720" not in graph
     assert "scale=320:180" in graph
     assert "scale=50:25" in graph
-    assert "x='(115)+(if(lt(t,0),50" in graph
+    assert "x='(117)+(if(lt(t,0),50" in graph
     assert "scale=640:360:flags=lanczos[vout]" not in graph
     assert graph.endswith("[vout]")
 

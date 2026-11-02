@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import pytest
 from PIL import Image
@@ -15,6 +17,8 @@ from aivia.compose import (
     TextAnimation,
     TextAnimationType,
     TextLayer,
+    VideoRenderer,
+    VideoRenderError,
     animation_tracks,
     fade,
     render_video,
@@ -323,6 +327,55 @@ def test_still_preview_keeps_explicit_keyframes_over_entrance() -> None:
 def test_an_unknown_text_animation_is_rejected() -> None:
     with pytest.raises(ValueError):
         TextLayer.model_validate({"text": "Hi", "entrance": "wobble"})
+
+
+def test_text_rasterization_samples_the_background_image_behind_it(
+    tmp_path: Path,
+) -> None:
+    background = tmp_path / "black.png"
+    Image.new("RGB", (320, 240), (0, 0, 0)).save(background)
+    composition = _composition(
+        layers=[
+            {
+                "id": "back",
+                "type": "image",
+                "source": str(background),
+                "fit": "stretch",
+                "z_index": 0,
+            },
+            {
+                "id": "title",
+                "type": "text",
+                "text": "HELLO",
+                "font_size": 48,
+                "color": "#ffffff",
+                "x": 60,
+                "y": 80,
+                "width": 200,
+                "height": 80,
+                "z_index": 1,
+            },
+        ]
+    )
+    captured: dict[str, Image.Image] = {}
+
+    def fail(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        source = next(Path(arg) for arg in argv if arg.endswith("text-1.png"))
+        with Image.open(source) as image:
+            captured["raster"] = image.convert("RGBA").copy()
+        return subprocess.CompletedProcess(list(argv), 1, stdout="", stderr="boom")
+
+    with pytest.raises(VideoRenderError, match="could not render"):
+        VideoRenderer(ffmpeg_runner=fail).render(composition, tmp_path / "failed.mp4")
+
+    raster = captured["raster"]
+    assert raster.getchannel("A").getbbox() is not None
+    pixels = cast(
+        "list[tuple[int, int, int, int]]",
+        raster.get_flattened_data(),
+    )
+    dark = [pixel for pixel in pixels if pixel[3] > 200 and max(pixel[:3]) < 60]
+    assert dark == []
 
 
 @pytest.mark.slow

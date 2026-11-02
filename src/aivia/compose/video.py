@@ -26,11 +26,19 @@ from aivia.core.config.media import (
     DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS,
     DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS,
 )
+from aivia.core.config.sections import RenderConfig
 from aivia.core.errors import ValidationError
 
 from .audio_subs import subtitle_for, write_subtitle_document
+from .contrast import parse_color
 from .errors import RenderError
-from .ffmpeg_cmd import FFmpegCommand, FFmpegOverlayFrames, build_ffmpeg_command
+from .ffmpeg_cmd import (
+    FFmpegCommand,
+    FFmpegOverlayFrames,
+    _as_render_config,
+    _text_background,
+    build_ffmpeg_command,
+)
 from .keyframes import AnimatedProperty, Easing
 from .motion import MotionTracks, tracks_for_layer
 from .output_profiles import (
@@ -39,7 +47,7 @@ from .output_profiles import (
     resolve_output_profile,
 )
 from .overlays import apply_overlay_effects, overlay_from_effect
-from .render import PillowStillRenderer
+from .render import AssetResolver, PillowStillRenderer
 from .schema import Composition, Layer, LayerType
 
 if TYPE_CHECKING:
@@ -146,6 +154,9 @@ def _rasterize_layer(
     layer: Layer,
     directory: Path,
     index: int,
+    *,
+    render: RenderConfig | None = None,
+    contrast_background: Image.Image | None = None,
 ) -> tuple[Path, tuple[int, int, int, int]] | None:
     static = Composition.model_validate(
         {
@@ -161,7 +172,11 @@ def _rasterize_layer(
             "layers": [_raster_layer_data(layer)],
         }
     )
-    image = PillowStillRenderer().render_still(static, 0.0)
+    image = PillowStillRenderer(render=render).render_still(
+        static,
+        0.0,
+        contrast_background=contrast_background,
+    )
     box = image.getchannel("A").getbbox()
     if box is None:
         return None
@@ -313,9 +328,13 @@ _RASTER_TYPES = frozenset({LayerType.TEXT, LayerType.SHAPE})
 def _prepare_raster_layers(
     composition: Composition,
     directory: Path,
+    *,
+    render: RenderConfig | Mapping[str, Any] | None = None,
+    assets: AssetResolver | None = None,
 ) -> Composition:
     if not any(layer.type in _RASTER_TYPES for layer in composition.layers):
         return composition
+    render_config = _as_render_config(render)
     layers: list[Any] = []
     for index, layer in enumerate(composition.layers):
         if layer.type not in _RASTER_TYPES:
@@ -324,7 +343,28 @@ def _prepare_raster_layers(
         end = layer.end if layer.end is not None else composition.duration_seconds
         if not layer.visible or end <= layer.start_seconds:
             continue
-        raster = _rasterize_layer(composition, layer, directory, index)
+        contrast_background = None
+        if layer.type is LayerType.TEXT:
+            color = _text_background(
+                composition,
+                layer,
+                composition.layers[:index],
+                render_config,
+                assets,
+            )
+            contrast_background = Image.new(
+                "RGBA",
+                composition.canvas.size,
+                parse_color(color),
+            )
+        raster = _rasterize_layer(
+            composition,
+            layer,
+            directory,
+            index,
+            render=render_config,
+            contrast_background=contrast_background,
+        )
         if raster is None:
             continue
         source, box = raster
@@ -526,7 +566,19 @@ class VideoRenderer:
                     options.setdefault("bitrate", resolved.bitrate)
                 if resolved.audio_bitrate is not None:
                     options.setdefault("audio_bitrate", resolved.audio_bitrate)
-            value = _prepare_raster_layers(value, Path(text_directory.name))
+            render_config = options.get("render")
+            if render_config is None and config is not None:
+                render_config = getattr(config, "render", None)
+                if render_config is None and isinstance(config, Mapping):
+                    render_config = config.get("render")
+            if render_config is not None:
+                options.setdefault("render", render_config)
+            value = _prepare_raster_layers(
+                value,
+                Path(text_directory.name),
+                render=render_config,
+                assets=options.get("assets"),
+            )
             overlay_frames = _prepare_overlay_frames(value, Path(text_directory.name))
             subtitles = options.pop("subtitles", None)
             subtitle_file = options.pop(
@@ -537,13 +589,6 @@ class VideoRenderer:
             subtitle_preset = options.pop("subtitle_preset", None)
             highlight = options.pop("highlight", True)
             track = subtitle_for(value, subtitles)
-            render_config = None
-            if config is not None:
-                render_config = getattr(config, "render", None)
-                if render_config is None and isinstance(config, Mapping):
-                    render_config = config.get("render")
-            if render_config is not None:
-                options.setdefault("render", render_config)
             subtitle_options: dict[str, Any] = {
                 "width": value.canvas.width,
                 "height": value.canvas.height,
