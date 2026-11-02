@@ -247,9 +247,7 @@ def test_keyframe_times_cannot_outlive_an_explicit_layer_end() -> None:
     issues = validate_composition(composition)
 
     assert _codes(issues) == ["keyframe_time"]
-    assert [issue.path for issue in issues] == [
-        "layers[0].scale_keyframes[1].time"
-    ]
+    assert [issue.path for issue in issues] == ["layers[0].scale_keyframes[1].time"]
     assert "after the layer window ending at 3s" in str(issues[0])
 
 
@@ -275,9 +273,7 @@ def test_keyframe_times_cannot_outlive_a_layer_duration() -> None:
     issues = validate_composition(composition)
 
     assert _codes(issues) == ["keyframe_time"]
-    assert [issue.path for issue in issues] == [
-        "layers[0].keyframes.position[1].time"
-    ]
+    assert [issue.path for issue in issues] == ["layers[0].keyframes.position[1].time"]
     assert "after the layer window ending at 4s" in str(issues[0])
 
 
