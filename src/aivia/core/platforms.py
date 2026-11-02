@@ -180,6 +180,7 @@ _MEDIA_LIMIT_KEYS = frozenset(
         "requires_audio",
         "loudness_lufs",
         "loudness",
+        "loudness_tolerance_lufs",
         "frame_rates",
         "fps",
     }
@@ -228,6 +229,7 @@ _PLATFORM_KEYS = frozenset(
         "requires_audio",
         "loudness_lufs",
         "loudness",
+        "loudness_tolerance_lufs",
         "frame_rates",
         "fps",
         "aliases",
@@ -524,6 +526,7 @@ class MediaLimits:
     max_file_size_bytes: int | None = None
     audio_required: bool = False
     loudness_lufs: float | None = None
+    loudness_tolerance_lufs: float | None = None
 
     @property
     def type(self) -> str:
@@ -585,6 +588,11 @@ class MediaLimits:
         """Alias for :attr:`loudness_lufs`."""
         return self.loudness_lufs
 
+    @property
+    def loudness_tolerance(self) -> float | None:
+        """Alias for :attr:`loudness_tolerance_lufs`."""
+        return self.loudness_tolerance_lufs
+
     def supports_resolution(self, resolution: str) -> bool:
         """Whether *resolution* is listed for this media type."""
         return resolution in self.resolutions
@@ -612,6 +620,8 @@ class MediaLimits:
             "requires_audio": self.audio_required,
             "loudness_lufs": self.loudness_lufs,
             "loudness": self.loudness_lufs,
+            "loudness_tolerance_lufs": self.loudness_tolerance_lufs,
+            "loudness_tolerance": self.loudness_tolerance_lufs,
         }
         try:
             return aliases[key]
@@ -874,6 +884,11 @@ class Platform:
         """The primary media type's loudness target."""
         return self.limits.primary.loudness_lufs
 
+    @property
+    def loudness_tolerance_lufs(self) -> float | None:
+        """The primary media type's loudness tolerance."""
+        return self.limits.primary.loudness_tolerance_lufs
+
     def supports(self, media_type: str) -> bool:
         """Whether this platform supports *media_type*."""
         return self.limits.for_media_type(media_type) is not None
@@ -916,6 +931,8 @@ class Platform:
             "safe_areas": self.safe_area,
             "disclosure": self.disclosure,
             "disclosure_rules": self.disclosure,
+            "loudness_lufs": self.loudness_lufs,
+            "loudness_tolerance_lufs": self.loudness_tolerance_lufs,
             "aliases": self.aliases,
         }
         try:
@@ -1279,6 +1296,9 @@ def _parse_platform(
         ),
         "audio_required": _first(data, "audio_required", "requires_audio"),
         "loudness_lufs": _first(data, "loudness_lufs", "loudness"),
+        "loudness_tolerance_lufs": _first(
+            data, "loudness_tolerance_lufs", "loudness_tolerance"
+        ),
     }
     if any(value is not None for value in flat.values()):
         media_type = media_types[0] if media_types else "video"
@@ -1307,6 +1327,11 @@ def _parse_platform(
             loudness_lufs=_parse_number(
                 flat["loudness_lufs"],
                 field=f"platform {key!r} loudness_lufs",
+                source=source,
+            ),
+            loudness_tolerance_lufs=_parse_number(
+                flat["loudness_tolerance_lufs"],
+                field=f"platform {key!r} loudness_tolerance_lufs",
                 source=source,
             ),
         )
@@ -1373,6 +1398,7 @@ def _merge_media_limits(
     max_file_size_bytes: int | None = None,
     audio_required: bool | None = None,
     loudness_lufs: float | None = None,
+    loudness_tolerance_lufs: float | None = None,
 ) -> MediaLimits:
     return MediaLimits(
         media_type=limits.media_type,
@@ -1391,6 +1417,11 @@ def _merge_media_limits(
         ),
         loudness_lufs=(
             loudness_lufs if loudness_lufs is not None else limits.loudness_lufs
+        ),
+        loudness_tolerance_lufs=(
+            loudness_tolerance_lufs
+            if loudness_tolerance_lufs is not None
+            else limits.loudness_tolerance_lufs
         ),
     )
 
@@ -1474,6 +1505,11 @@ def _parse_media_limits(
         loudness_lufs=_parse_number(
             _first(raw, "loudness_lufs", "loudness"),
             field=f"{field} loudness_lufs",
+            source=source,
+        ),
+        loudness_tolerance_lufs=_parse_number(
+            _first(raw, "loudness_tolerance_lufs", "loudness_tolerance"),
+            field=f"{field} loudness_tolerance_lufs",
             source=source,
         ),
     )

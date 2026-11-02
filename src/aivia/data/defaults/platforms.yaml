@@ -24,6 +24,7 @@ platforms:
         max_file_size_bytes: 268435456000
         audio_required: true
         loudness_lufs: -14
+        loudness_tolerance_lufs: 1.0
     caption_limits:
       max_length: 5000
       max_title_length: 100
@@ -49,6 +50,7 @@ platforms:
         max_file_size_bytes: 1073741824
         audio_required: true
         loudness_lufs: -14
+        loudness_tolerance_lufs: 1.0
       image:
         resolutions: ["1080x1080", "1080x1350"]
         aspect_ratios: ["1:1", "4:5"]
@@ -77,6 +79,7 @@ platforms:
         max_file_size_bytes: 4294967296
         audio_required: true
         loudness_lufs: -14
+        loudness_tolerance_lufs: 1.0
     caption_limits:
       max_length: 2200
       max_description_length: 2200
@@ -98,6 +101,7 @@ platforms:
         aspect_ratios: ["16:9", "9:16", "1:1"]
         max_file_size_bytes: 536870912
         loudness_lufs: -14
+        loudness_tolerance_lufs: 1.0
       image:
         resolutions: ["1200x675", "1080x1080"]
         aspect_ratios: ["16:9", "1:1"]
@@ -120,12 +124,14 @@ platforms:
         aspect_ratios: ["16:9", "9:16", "1:1"]
         max_file_size_bytes: 2147483648
         loudness_lufs: -14
+        loudness_tolerance_lufs: 1.0
       image:
         max_file_size_bytes: 10485760
       audio:
         max_duration_seconds: 3600
         max_file_size_bytes: 52428800
         loudness_lufs: -14
+        loudness_tolerance_lufs: 1.0
       web_card:
         max_file_size_bytes: 5242880
     caption_limits:
