@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 from typing import Any
 
@@ -14,7 +15,10 @@ from aivia.compose import (
     SafeAreaWarning,
     build_ffmpeg_filtergraph,
     effective_safe_area,
+    safe_area_bounds,
     safe_area_box,
+    safe_area_insets,
+    safe_area_pixels,
     safe_area_violations,
     validate_composition,
 )
@@ -87,6 +91,27 @@ def test_the_platform_supplies_the_safe_area_when_none_is_given() -> None:
     assert effective_safe_area(composition) == SafeArea(
         top=0.1, bottom=0.25, left=0.06, right=0.06
     )
+
+
+@pytest.mark.parametrize("field", ["top", "right", "bottom", "left"])
+@pytest.mark.parametrize(
+    "value",
+    [math.nan, math.inf, -math.inf],
+    ids=["nan", "infinity", "negative-infinity"],
+)
+def test_safe_area_pixel_helpers_reject_non_finite_margins(
+    field: str, value: float
+) -> None:
+    composition = _composition([], safe_area=SafeArea(**{field: value}))
+
+    for helper in (
+        safe_area_insets,
+        safe_area_pixels,
+        safe_area_box,
+        safe_area_bounds,
+    ):
+        with pytest.raises(ValueError, match="safe area margins must be finite"):
+            helper(composition)
 
 
 def test_text_defaults_stay_inside_the_platform_safe_area() -> None:
