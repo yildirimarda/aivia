@@ -532,6 +532,83 @@ def test_render_rejects_a_preview_for_an_animated_output(
     assert "preview" in err
 
 
+def test_render_reuses_the_cached_render_for_an_unchanged_composition(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _write(tmp_path / "composition.json", _composition())
+    output = tmp_path / "out.mp4"
+    calls: list[Path] = []
+
+    def fake_video(composition: Any, path: Any, **options: Any) -> None:
+        calls.append(Path(path))
+        Path(path).write_bytes(f"video-{len(calls)}".encode())
+
+    monkeypatch.setattr(compose_cli, "render_video", fake_video)
+
+    assert _run(capsys, "render", str(source), str(output))[0] == 0
+    output.unlink()
+    code, stdout, err = _run(capsys, "render", str(source), str(output))
+
+    assert code == 0
+    assert err == ""
+    assert len(calls) == 1
+    assert output.read_bytes() == b"video-1"
+    assert f"Output: {output}" in stdout
+
+
+def test_render_no_cache_flag_forces_a_fresh_render(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _write(tmp_path / "composition.json", _composition())
+    output = tmp_path / "out.mp4"
+    calls: list[Path] = []
+
+    def fake_video(composition: Any, path: Any, **options: Any) -> None:
+        calls.append(Path(path))
+        Path(path).write_bytes(f"video-{len(calls)}".encode())
+
+    monkeypatch.setattr(compose_cli, "render_video", fake_video)
+
+    assert _run(capsys, "render", str(source), str(output))[0] == 0
+    assert _run(capsys, "render", str(source), str(output), "--no-cache")[0] == 0
+    assert len(calls) == 2
+    assert output.read_bytes() == b"video-2"
+
+    assert _run(capsys, "render", str(source), str(output))[0] == 0
+    assert len(calls) == 2
+    assert output.read_bytes() == b"video-2"
+
+
+def test_render_cache_misses_when_the_composition_changes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _write(tmp_path / "composition.json", _composition())
+    output = tmp_path / "out.mp4"
+    calls: list[Path] = []
+
+    def fake_video(composition: Any, path: Any, **options: Any) -> None:
+        calls.append(Path(path))
+        Path(path).write_bytes(f"video-{len(calls)}".encode())
+
+    monkeypatch.setattr(compose_cli, "render_video", fake_video)
+
+    assert _run(capsys, "render", str(source), str(output))[0] == 0
+    _write(
+        source,
+        _composition(canvas={"width": 32, "height": 24, "background": "#202020"}),
+    )
+    assert _run(capsys, "render", str(source), str(output))[0] == 0
+
+    assert len(calls) == 2
+    assert output.read_bytes() == b"video-2"
+
+
 def test_compose_without_a_subcommand_prints_usage(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

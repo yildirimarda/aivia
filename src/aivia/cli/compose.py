@@ -9,7 +9,9 @@ pipeline.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import shutil
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -22,6 +24,8 @@ from aivia.cli.registry import register_command
 from aivia.compose import (
     Composition,
     CompositionIOError,
+    RenderCache,
+    RenderCacheEntry,
     dump_composition_schema,
     load_composition,
     preview_settings,
@@ -31,6 +35,7 @@ from aivia.compose import (
     render_web_card,
     validate_composition,
 )
+from aivia.core import paths
 from aivia.core.errors import AiviaError
 
 __all__ = [
@@ -451,6 +456,59 @@ def _preview_options(args: argparse.Namespace) -> dict[str, Any]:
     return options
 
 
+def _render_cache_variant(
+    *,
+    kind: str,
+    output: Path,
+    preview: bool,
+    profile_options: Mapping[str, Any],
+    preview_options: Mapping[str, Any],
+    time_seconds: float,
+) -> str:
+    payload = {
+        "kind": kind,
+        "suffix": output.suffix.lower(),
+        "preview": preview,
+        "profile": dict(sorted(profile_options.items())),
+        "preview_options": dict(sorted(preview_options.items())),
+        "time_seconds": time_seconds,
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _render_cache(
+    args: argparse.Namespace,
+    *,
+    kind: str,
+    output: Path,
+    preview: bool,
+    profile_options: Mapping[str, Any],
+    preview_options: Mapping[str, Any],
+    time_seconds: float,
+) -> RenderCache:
+    variant = _render_cache_variant(
+        kind=kind,
+        output=output,
+        preview=preview,
+        profile_options=profile_options,
+        preview_options=preview_options,
+        time_seconds=time_seconds,
+    )
+    root = paths.data_dir() / "cache" / "renders" / "compose" / variant
+    return RenderCache(root, no_cache=bool(getattr(args, "no_cache", False)))
+
+
+def _serve_cached_render(entry: RenderCacheEntry, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(entry.path, output)
+
+
 def _save_still(
     composition: Any,
     output: Path,
@@ -487,31 +545,48 @@ def run_render(args: argparse.Namespace) -> int:
         preview = bool(getattr(args, "preview", False))
         profile_options = _profile_options(args)
         preview_options = _preview_options(args)
+        time_seconds = getattr(args, "time", None) or 0.0
+        cache = _render_cache(
+            args,
+            kind=kind,
+            output=output,
+            preview=preview,
+            profile_options=profile_options,
+            preview_options=preview_options,
+            time_seconds=time_seconds,
+        )
+        cached = cache.get(composition)
 
-        if kind == "web-card":
-            if preview:
-                raise ValueError("a preview renders to a video or a still image")
-            render_web_card(composition, output)
-        elif kind == "still":
-            _save_still(
-                composition,
-                output,
-                time_seconds=getattr(args, "time", None) or 0.0,
-                preview=preview,
-                preview_options=preview_options,
-            )
-        elif kind == "video" and preview:
-            render_preview(composition, output, **preview_options, **profile_options)
-        elif preview:
-            raise ValueError("a preview renders to a video or a still image")
-        elif kind == "gif":
-            render_gif(composition, output, **profile_options)
-        elif kind == "webp":
-            render_webp(composition, output, **profile_options)
-        elif kind == "audio":
-            render_audio(composition, output, **profile_options)
+        if cached is not None:
+            _serve_cached_render(cached, output)
         else:
-            render_video(composition, output, **profile_options)
+            if kind == "web-card":
+                if preview:
+                    raise ValueError("a preview renders to a video or a still image")
+                render_web_card(composition, output)
+            elif kind == "still":
+                _save_still(
+                    composition,
+                    output,
+                    time_seconds=time_seconds,
+                    preview=preview,
+                    preview_options=preview_options,
+                )
+            elif kind == "video" and preview:
+                render_preview(
+                    composition, output, **preview_options, **profile_options
+                )
+            elif preview:
+                raise ValueError("a preview renders to a video or a still image")
+            elif kind == "gif":
+                render_gif(composition, output, **profile_options)
+            elif kind == "webp":
+                render_webp(composition, output, **profile_options)
+            elif kind == "audio":
+                render_audio(composition, output, **profile_options)
+            else:
+                render_video(composition, output, **profile_options)
+            cache.store(composition, output, metadata={"kind": kind})
     except (AiviaError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
