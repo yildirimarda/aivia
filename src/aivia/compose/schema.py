@@ -40,6 +40,7 @@ from pydantic import (
 from aivia.core.platforms import SafeArea
 
 from .bidi import TextDirection, resolve_direction
+from .keyframes import KeyframeTrack, LayerKeyframes
 from .motion import Motion
 from .subtitles import SubtitleTrack
 from .text_animation import TextAnimation
@@ -1197,6 +1198,29 @@ class Layer(_SchemaModel):
             "in_transition",
         ),
     )
+    keyframes: LayerKeyframes | None = Field(
+        default=None,
+        validation_alias=AliasChoices("keyframes", "animation", "animations"),
+    )
+    position_keyframes: KeyframeTrack | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "position_keyframes",
+            "position_animation",
+        ),
+    )
+    scale_keyframes: KeyframeTrack | None = Field(
+        default=None,
+        validation_alias=AliasChoices("scale_keyframes", "scale_animation"),
+    )
+    rotation_keyframes: KeyframeTrack | None = Field(
+        default=None,
+        validation_alias=AliasChoices("rotation_keyframes", "rotation_animation"),
+    )
+    opacity_keyframes: KeyframeTrack | None = Field(
+        default=None,
+        validation_alias=AliasChoices("opacity_keyframes", "opacity_animation"),
+    )
 
     @field_validator("transition", mode="before")
     @classmethod
@@ -1768,10 +1792,6 @@ class TextLayer(Layer):
         default=None,
         validation_alias=AliasChoices("placement", "text_placement"),
     )
-    keyframes: Any | None = Field(
-        default=None,
-        validation_alias=AliasChoices("keyframes", "animation", "animations"),
-    )
 
     @model_validator(mode="before")
     @classmethod
@@ -2097,6 +2117,15 @@ def parse_layer(data: Any) -> AnyLayer:
     return LayerAdapter.validate_python(data)
 
 
+_KEYFRAME_FIELD_NAMES = (
+    "keyframes",
+    "position_keyframes",
+    "scale_keyframes",
+    "rotation_keyframes",
+    "opacity_keyframes",
+)
+
+
 def _composition_layer_class(base: type[Layer]) -> type[Layer]:
     """Return a concrete layer class that keeps unknown fields as extras.
 
@@ -2105,12 +2134,19 @@ def _composition_layer_class(base: type[Layer]) -> type[Layer]:
     fields that the schema does not model yet, so the composition parser uses
     the same validated classes with extras allowed until those fields get
     their own typed declarations.
+
+    Keyframes stay untyped on composition layers so cross-object validation
+    can report every malformed track instead of failing the whole parse. The
+    typed declarations live on :class:`Layer` and are what the JSON schema
+    exports.
     """
     return type(
         f"_Composition{base.__name__}",
         (base,),
         {
             "__module__": __name__,
+            "__annotations__": dict.fromkeys(_KEYFRAME_FIELD_NAMES, Any | None),
+            **dict.fromkeys(_KEYFRAME_FIELD_NAMES),
             "model_config": ConfigDict(
                 extra="allow",
                 populate_by_name=True,
