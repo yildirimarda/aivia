@@ -472,7 +472,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Measure rendered loudness during compose output validation so platform loudness limits are enforced (tests/cli/test_compose.py)
 - [x] Account for background image rotation keyframes when scaling vision face rectangles (tests/compose/test_placement.py)
 - [x] Sample the background image behind each video text layer so contrast treatments match still renders (tests/compose/test_ffmpeg_cmd.py)
-- [ ] Account for background image motion pan when scaling vision face rectangles (tests/compose/test_placement.py)
+- [x] Account for background image motion pan when scaling vision face rectangles (tests/compose/test_placement.py)
 - [ ] Preserve motion preset pan when rasterizing shape layers for video so previews match (tests/compose/test_shape_video.py)
 - [ ] Guard safe area pixel helpers against non-finite margins so direct callers fail cleanly (tests/compose/test_safe_area.py)
 - [ ] Sample the background image when rasterizing text layers for video so production contrast matches the filtergraph (tests/compose/test_text_video.py)
