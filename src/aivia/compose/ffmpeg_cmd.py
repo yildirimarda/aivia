@@ -528,6 +528,17 @@ def _max_scale(track: KeyframeTrack, index: int = 0) -> float:
     return maximum
 
 
+def _is_unit_scale(track: KeyframeTrack | None) -> bool:
+    if track is None:
+        return True
+    for frame in track.keyframes:
+        value = frame.value
+        components = value if isinstance(value, tuple) else (value,)
+        if any(abs(float(component) - 1.0) > 1e-9 for component in components):
+            return False
+    return True
+
+
 def _overlay_axis_placement(
     *,
     axis: str,
@@ -1059,6 +1070,8 @@ def _motion_filters(
 ) -> list[str]:
     if tracks.scale is None and tracks.pan is None:
         return []
+    if _is_unit_scale(tracks.scale) and tracks.pan is not None:
+        return []
     if tracks.scale is not None and isinstance(tracks.scale.keyframes[0].value, tuple):
         return _pair_scale_motion_filters(
             tracks,
@@ -1383,10 +1396,14 @@ def _layer_filters(
         position_x, position_y = pair_expression(tracks.position, variable="t")
         overlay_x = f"'({overlay_x})+({position_x})'"
         overlay_y = f"'({overlay_y})+({position_y})'"
-    if overlay and tracks.pan is not None:
+    if tracks.pan is not None:
         pan_x, pan_y = pair_expression(tracks.pan, variable="t")
-        overlay_x = f"'({overlay_x})+({pan_x})'"
-        overlay_y = f"'({overlay_y})+({pan_y})'"
+        if overlay:
+            overlay_x = f"'({overlay_x})+({pan_x})'"
+            overlay_y = f"'({overlay_y})+({pan_y})'"
+        elif _is_unit_scale(tracks.scale) and layer.type is not LayerType.TEXT:
+            overlay_x = f"'({overlay_x})-({pan_x})'"
+            overlay_y = f"'({overlay_y})-({pan_y})'"
     if transition is not None and transition.is_slide:
         span = transition.duration_seconds
         progress = f"clip((t-{layer.start_seconds:.6f})/{_seconds(span)},0,1)"
