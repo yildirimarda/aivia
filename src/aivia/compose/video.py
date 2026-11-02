@@ -47,7 +47,8 @@ from .output_profiles import (
     resolve_output_profile,
 )
 from .overlays import apply_overlay_effects, overlay_from_effect
-from .render import AssetResolver, PillowStillRenderer
+from .render import AssetResolver, PillowStillRenderer, placement_for_layer
+from .safe_area import effective_safe_area
 from .schema import Composition, Layer, LayerType
 
 if TYPE_CHECKING:
@@ -231,10 +232,21 @@ def _max_rotated_extent(
 def _expand_box(
     box: tuple[int, int, int, int],
     expansion: _RasterExpansion,
+    *,
+    pivot: tuple[float, float] | None = None,
 ) -> tuple[int, int, int, int]:
     left, top, right, bottom = box
-    width = right - left
-    height = bottom - top
+    width: float
+    height: float
+    if pivot is None:
+        width = float(right - left)
+        height = float(bottom - top)
+        center_x = (left + right) / 2.0
+        center_y = (top + bottom) / 2.0
+    else:
+        center_x, center_y = pivot
+        width = 2.0 * max(center_x - left, right - center_x)
+        height = 2.0 * max(center_y - top, bottom - center_y)
     scaled_width = width * expansion.scale_x
     scaled_height = height * expansion.scale_y
     target_width = scaled_width
@@ -245,10 +257,8 @@ def _expand_box(
         target_height = _max_rotated_extent(scaled_height, scaled_width, low, high)
     target_width = max(float(width), target_width)
     target_height = max(float(height), target_height)
-    if target_width == width and target_height == height:
+    if pivot is None and target_width == width and target_height == height:
         return box
-    center_x = (left + right) / 2.0
-    center_y = (top + bottom) / 2.0
     return (
         math.floor(center_x - target_width / 2.0),
         math.floor(center_y - target_height / 2.0),
@@ -266,6 +276,7 @@ def _rasterize_layer(
     render: RenderConfig | None = None,
     contrast_background: Image.Image | None = None,
     expand: _RasterExpansion | None = None,
+    pivot: tuple[float, float] | None = None,
 ) -> tuple[Path, tuple[int, int, int, int]] | None:
     if expand is None:
         expand = _RasterExpansion()
@@ -291,7 +302,7 @@ def _rasterize_layer(
     box = image.getchannel("A").getbbox()
     if box is None:
         return None
-    box = _expand_box(box, expand)
+    box = _expand_box(box, expand, pivot=pivot)
     cropped = image.crop(box)
     source = directory / f"{layer.type.value}-{index}.png"
     cropped.save(source)
@@ -447,6 +458,12 @@ def _prepare_raster_layers(
     if not any(layer.type in _RASTER_TYPES for layer in composition.layers):
         return composition
     render_config = _as_render_config(render)
+    text_canvas = (
+        Image.new("L", composition.canvas.size)
+        if any(layer.type is LayerType.TEXT for layer in composition.layers)
+        else None
+    )
+    safe_area = effective_safe_area(composition) if text_canvas is not None else None
     layers: list[Any] = []
     for index, layer in enumerate(composition.layers):
         if layer.type not in _RASTER_TYPES:
@@ -456,6 +473,7 @@ def _prepare_raster_layers(
         if not layer.visible or end <= layer.start_seconds:
             continue
         contrast_background = None
+        pivot = None
         if layer.type is LayerType.TEXT:
             color = _text_background(
                 composition,
@@ -469,6 +487,12 @@ def _prepare_raster_layers(
                 composition.canvas.size,
                 parse_color(color),
             )
+            if text_canvas is not None:
+                pivot = placement_for_layer(
+                    layer,
+                    text_canvas,
+                    safe_area=safe_area,
+                ).center
         expand = _raster_expansion(layer, layer.start_seconds, end)
         raster = _rasterize_layer(
             composition,
@@ -478,6 +502,7 @@ def _prepare_raster_layers(
             render=render_config,
             contrast_background=contrast_background,
             expand=expand,
+            pivot=pivot,
         )
         if raster is None:
             continue
