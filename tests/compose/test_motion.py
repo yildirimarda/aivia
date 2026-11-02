@@ -20,6 +20,7 @@ from aivia.compose import (
     motion_tracks,
     pair_expression,
     parallax,
+    render_still,
     render_video,
     track_expression,
     tracks_for_layer,
@@ -542,3 +543,138 @@ def test_independent_scale_keyframes_stretch_only_the_x_axis(
     _assert_color(end, (160, 105), BLUE)
     _assert_color(start, (160, 135), BLUE)
     _assert_color(end, (160, 135), BLUE)
+
+
+def _still(
+    composition: Composition,
+    time_seconds: float,
+    source_root: Path,
+) -> Image.Image:
+    return render_still(
+        composition,
+        time_seconds,
+        source_root=source_root,
+    ).convert("RGB")
+
+
+def test_still_renderer_honors_ken_burns_zoom(tmp_path: Path) -> None:
+    source = _center_box(tmp_path / "center.png")
+    composition = _composition(
+        {
+            "id": "still",
+            "type": "image",
+            "source": str(source),
+            "fit": "stretch",
+            "motion": ken_burns(start_scale=1.0, end_scale=2.0),
+        }
+    )
+
+    start = _still(composition, 0.0, tmp_path)
+    middle = _still(composition, 1.0, tmp_path)
+    end = _still(composition, 1.9, tmp_path)
+
+    _assert_color(start, (10, 10), BLUE)
+    _assert_color(middle, (10, 10), BLUE)
+    _assert_color(end, (10, 10), RED)
+    _assert_color(start, (160, 120), RED)
+    _assert_color(end, (160, 120), RED)
+
+
+def test_still_renderer_honors_ken_burns_pan(tmp_path: Path) -> None:
+    source = _center_box(tmp_path / "center.png")
+    composition = _composition(
+        {
+            "id": "still",
+            "type": "image",
+            "source": str(source),
+            "fit": "stretch",
+            "motion": ken_burns(
+                start_scale=1.0,
+                end_scale=1.0,
+                start_pan=(0, 0),
+                end_pan=(80, 0),
+                easing="linear",
+            ),
+        }
+    )
+
+    start = _still(composition, 0.0, tmp_path)
+    end = _still(composition, 1.9, tmp_path)
+
+    _assert_color(start, (200, 120), RED)
+    _assert_color(end, (200, 120), BLUE)
+    _assert_color(end, (100, 120), RED)
+
+
+def test_still_renderer_honors_parallax_drift(tmp_path: Path) -> None:
+    source = _solid(tmp_path / "bar.png", (40, 40), RED)
+    composition = _composition(
+        {
+            "id": "foreground",
+            "type": "image",
+            "source": str(source),
+            "fit": "stretch",
+            "x": 0,
+            "y": 0,
+            "width": 40,
+            "height": 40,
+            "motion": parallax(depth=1.0, drift=(100, 0)),
+        }
+    )
+
+    start = _still(composition, 0.0, tmp_path)
+    end = _still(composition, 1.9, tmp_path)
+
+    _assert_color(start, (20, 20), RED)
+    _assert_color(start, (120, 20), BLACK)
+    _assert_color(end, (20, 20), BLACK)
+    _assert_color(end, (120, 20), RED)
+
+
+def test_still_renderer_honors_logo_motion_preset(tmp_path: Path) -> None:
+    source = _sticker(tmp_path / "logo.png")
+    composition = _composition(
+        {
+            "id": "logo",
+            "type": "logo",
+            "source": str(source),
+            "motion": ken_burns(
+                start_scale=1.0,
+                end_scale=2.0,
+                start_pan=(0, 0),
+                end_pan=(60, 0),
+            ),
+        }
+    )
+
+    start = _still(composition, 0.0, tmp_path)
+    end = _still(composition, 1.9, tmp_path)
+
+    _assert_color(start, (160, 120), RED)
+    _assert_color(start, (220, 120), BLACK)
+    _assert_color(end, (160, 120), BLACK)
+    _assert_color(end, (220, 120), RED)
+
+
+def test_still_renderer_explicit_keyframes_win_over_motion(tmp_path: Path) -> None:
+    source = _center_box(tmp_path / "center.png")
+    composition = _composition(
+        {
+            "id": "still",
+            "type": "image",
+            "source": str(source),
+            "fit": "stretch",
+            "motion": ken_burns(start_scale=1.0, end_scale=4.0),
+            "keyframes": {
+                "scale": [
+                    {"time": 0, "value": 1.0},
+                    {"time": 2, "value": 1.0},
+                ]
+            },
+        }
+    )
+
+    end = _still(composition, 1.9, tmp_path)
+
+    _assert_color(end, (10, 10), BLUE)
+    _assert_color(end, (160, 120), RED)
