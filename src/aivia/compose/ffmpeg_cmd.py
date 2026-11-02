@@ -796,9 +796,7 @@ def _text_filters(
         layer, "font_size", "font_size", "size", "font_size_px"
     )
     font_size = (
-        float(render.font_size)
-        if raw_size is None
-        else _finite(raw_size, "font_size")
+        float(render.font_size) if raw_size is None else _finite(raw_size, "font_size")
     )
     if font_size <= 0.0:
         raise FFmpegCommandError("font_size must be positive")

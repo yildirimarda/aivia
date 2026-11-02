@@ -374,9 +374,7 @@ def test_text_default_family_comes_from_render_config() -> None:
 
 
 def test_explicit_text_style_overrides_render_config() -> None:
-    config = RenderConfig.from_mapping(
-        {"default_font": "Amiri", "font_size": 24}
-    )
+    config = RenderConfig.from_mapping({"default_font": "Amiri", "font_size": 24})
     layer = {
         "id": "title",
         "type": "text",
