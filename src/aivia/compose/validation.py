@@ -433,6 +433,7 @@ def _check_keyframe_track(
     prop: str,
     frames: Any,
     duration: float,
+    layer_end: float,
     issues: CompositionIssues,
 ) -> None:
     if isinstance(frames, Mapping):
@@ -478,14 +479,22 @@ def _check_keyframe_track(
                             code="keyframe_time",
                         )
                     )
-                if time > duration + _EPSILON:
+                window_end = min(layer_end, duration)
+                if time > window_end + _EPSILON:
+                    if window_end < duration - _EPSILON:
+                        message = (
+                            f"keyframe time {time:g}s is after the layer window "
+                            f"ending at {window_end:g}s"
+                        )
+                    else:
+                        message = (
+                            f"keyframe time {time:g}s is after the composition "
+                            f"duration of {duration:g}s"
+                        )
                     issues.append(
                         CompositionIssue(
                             path=f"{frame_path}.time",
-                            message=(
-                                f"keyframe time {time:g}s is after the composition "
-                                f"duration of {duration:g}s"
-                            ),
+                            message=message,
                             code="keyframe_time",
                         )
                     )
@@ -517,12 +526,16 @@ def _check_keyframe_track(
 
 def _check_keyframes(composition: Composition, issues: CompositionIssues) -> None:
     for index, layer in enumerate(composition.layers):
+        layer_end = layer.end
+        if layer_end is None:
+            layer_end = composition.duration_seconds
         for path, prop, frames in _keyframe_tracks(layer, index):
             _check_keyframe_track(
                 path=path,
                 prop=prop,
                 frames=frames,
                 duration=composition.duration_seconds,
+                layer_end=layer_end,
                 issues=issues,
             )
 

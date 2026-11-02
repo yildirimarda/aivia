@@ -224,6 +224,63 @@ def test_unsorted_keyframes_and_out_of_range_values_are_all_reported() -> None:
     assert "after the composition duration" in str(issues[3])
 
 
+def test_keyframe_times_cannot_outlive_an_explicit_layer_end() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "title",
+                "type": "text",
+                "text": "Hello",
+                "start": 1,
+                "end": 3,
+                "keyframes": {
+                    "opacity": [
+                        {"time": 1, "value": 0},
+                        {"time": 3, "value": 1},
+                    ]
+                },
+                "scale_keyframes": [(1, 1), (4, 2)],
+            }
+        ]
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["keyframe_time"]
+    assert [issue.path for issue in issues] == [
+        "layers[0].scale_keyframes[1].time"
+    ]
+    assert "after the layer window ending at 3s" in str(issues[0])
+
+
+def test_keyframe_times_cannot_outlive_a_layer_duration() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "title",
+                "type": "text",
+                "text": "Hello",
+                "start": 2,
+                "duration": 2,
+                "keyframes": {
+                    "position": [
+                        {"at": 2, "value": [0, 0]},
+                        {"at": 4.5, "value": [10, 20]},
+                    ]
+                },
+            }
+        ]
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["keyframe_time"]
+    assert [issue.path for issue in issues] == [
+        "layers[0].keyframes.position[1].time"
+    ]
+    assert "after the layer window ending at 4s" in str(issues[0])
+
+
 def test_keyframes_accept_pairs_and_property_specific_containers() -> None:
     composition = _composition(
         layers=[
