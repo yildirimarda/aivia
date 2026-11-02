@@ -1450,6 +1450,11 @@ class PillowStillRenderer:
                 offset = pair
         scale = _sample(tracks, AnimatedProperty.SCALE, time_seconds)
         rotation = _sample(tracks, AnimatedProperty.ROTATION, time_seconds)
+        pan = (0.0, 0.0)
+        if tracks.pan is not None:
+            pair = _offset_pair(tracks.pan.sample(time_seconds), "motion pan")
+            if pair is not None:
+                pan = pair
         return scale_faces_to_canvas(
             faces,
             image.size,
@@ -1458,6 +1463,7 @@ class PillowStillRenderer:
             offset=offset,
             scale=scale,
             rotation=0.0 if rotation is None else float(rotation),
+            pan=pan,
         )
 
     def _resolve(self, source: str) -> ImageSource:

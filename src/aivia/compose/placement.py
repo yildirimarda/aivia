@@ -434,6 +434,7 @@ def scale_faces_to_canvas(
     offset: tuple[float, float] = (0.0, 0.0),
     scale: float | tuple[float, float] | None = None,
     rotation: float = 0.0,
+    pan: tuple[float, float] = (0.0, 0.0),
 ) -> list[FaceBox]:
     """Map face rectangles from source image pixels to canvas pixels.
 
@@ -441,10 +442,10 @@ def scale_faces_to_canvas(
     *target_size* (or *canvas_size*) is the canvas, while *placement* names the
     rectangle the background image occupies. *fit* mirrors the renderer's fit
     modes so a cover crop or a contain letterbox lands in the right place.
-    *offset*, *scale* and *rotation* mirror the background layer's position,
-    scale and rotation keyframes at the sampled time, so an animated background
-    keeps its faces aligned with the pixels they were detected on. Rotated
-    rectangles are returned as their axis aligned bounding box.
+    *offset*, *scale*, *rotation* and *pan* mirror the background layer's
+    position, scale, rotation and motion pan at the sampled time, so an animated
+    background keeps its faces aligned with the pixels they were detected on.
+    Rotated rectangles are returned as their axis aligned bounding box.
     """
     records = _face_records(faces)
     if not records:
@@ -463,6 +464,9 @@ def scale_faces_to_canvas(
     scale_x, scale_y, dx, dy = _fit_transform(source, box, mode)
     offset_x = _finite(offset[0], "offset")
     offset_y = _finite(offset[1], "offset")
+    pan_x = _finite(pan[0], "pan")
+    pan_y = _finite(pan[1], "pan")
+    pan_scale_x = pan_scale_y = 1.0
     if scale is None:
         dx += offset_x
         dy += offset_y
@@ -495,11 +499,15 @@ def scale_faces_to_canvas(
         )
         scale_x *= local_scale_x
         scale_y *= local_scale_y
+        pan_scale_x = local_scale_x
+        pan_scale_y = local_scale_y
+    dx -= pan_x * pan_scale_x
+    dy -= pan_y * pan_scale_y
     angle = math.radians(_finite(rotation, "rotation"))
     cos_angle = math.cos(angle)
     sin_angle = math.sin(angle)
-    center_x = box_left + box_width / 2.0 + offset_x
-    center_y = box_top + box_height / 2.0 + offset_y
+    center_x = box_left + box_width / 2.0 + offset_x - pan_x * pan_scale_x
+    center_y = box_top + box_height / 2.0 + offset_y - pan_y * pan_scale_y
     box_right = box_left + box_width
     box_bottom = box_top + box_height
     scaled: list[FaceBox] = []

@@ -351,6 +351,49 @@ def test_face_rectangles_follow_background_rotation_keyframes() -> None:
     assert with_keyframe[0] < 100
 
 
+def test_face_rectangles_follow_background_motion_pan() -> None:
+    layers: list[dict[str, Any]] = [
+        {
+            "type": "image",
+            "id": "bg",
+            "source": "bg",
+            "fit": "cover",
+        },
+        {
+            "type": "text",
+            "id": "caption",
+            "text": "X",
+            "font_size": 20,
+            "color": "#000000",
+            "placement": "smart",
+        },
+    ]
+    assets = {"bg": Image.new("RGB", (400, 200), (255, 255, 255))}
+    faces = {"caption": [FaceBox(x=0, y=0, width=200, height=200)]}
+
+    without_pan = _text_bbox(layers, assets=assets, faces=faces)
+    with_pan = _text_bbox(
+        [
+            {
+                **layers[0],
+                "motion": {
+                    "type": "ken_burns",
+                    "start_pan": [100, 0],
+                    "end_pan": [200, 0],
+                },
+            },
+            layers[1],
+        ],
+        assets=assets,
+        faces=faces,
+    )
+
+    assert without_pan is not None
+    assert with_pan is not None
+    assert without_pan[0] >= 100
+    assert with_pan[0] < 100
+
+
 def test_face_rectangles_follow_background_scale_keyframes() -> None:
     layers: list[dict[str, Any]] = [
         {
@@ -416,6 +459,30 @@ def test_face_scaling_applies_position_and_scale_keyframe_geometry() -> None:
 
     assert positioned[0].box == pytest.approx((25.0, 0.0, 60.0, 35.0))
     assert scaled[0].box == pytest.approx((0.0, 0.0, 60.0, 50.0))
+
+
+def test_face_scaling_applies_motion_pan_geometry() -> None:
+    face = FaceBox(x=10, y=20, width=30, height=40)
+    centered = FaceBox(x=40, y=40, width=10, height=10)
+
+    panned = scale_faces_to_canvas(
+        [face],
+        (100, 100),
+        (200, 50),
+        "cover",
+        pan=(10, 0),
+    )
+    scaled_pan = scale_faces_to_canvas(
+        [centered],
+        (100, 100),
+        (100, 100),
+        "stretch",
+        scale=2.0,
+        pan=(10, 0),
+    )
+
+    assert panned[0].box == pytest.approx((10.0, 0.0, 60.0, 45.0))
+    assert scaled_pan[0].box == pytest.approx((10.0, 30.0, 20.0, 20.0))
 
 
 def test_face_scaling_applies_rotation_keyframe_geometry() -> None:
