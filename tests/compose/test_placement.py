@@ -20,6 +20,7 @@ from aivia.compose import (
     faces_with_vision,
     find_low_detail_regions,
     find_text_placement,
+    scale_faces_to_canvas,
 )
 
 CANVAS = (200, 100)
@@ -267,3 +268,58 @@ def test_manual_placement_is_unchanged() -> None:
     assert bbox is not None
     assert 10 <= bbox[0] <= 20
     assert 10 <= bbox[1] <= 20
+
+
+def test_face_rectangles_are_scaled_to_canvas_when_the_background_is_fitted() -> None:
+    bbox = _text_bbox(
+        [
+            {"type": "image", "id": "bg", "source": "bg", "fit": "cover"},
+            {
+                "type": "text",
+                "id": "caption",
+                "text": "X",
+                "font_size": 20,
+                "color": "#000000",
+                "placement": "smart",
+            },
+        ],
+        assets={"bg": Image.new("RGB", (400, 200), (255, 255, 255))},
+        faces={"caption": [FaceBox(x=0, y=0, width=200, height=200)]},
+    )
+
+    assert bbox is not None
+    assert bbox[0] >= 100
+
+
+def test_face_scaling_follows_stretch_cover_and_contain_geometry() -> None:
+    face = FaceBox(x=10, y=20, width=30, height=40, confidence=0.9)
+
+    stretched = scale_faces_to_canvas([face], (100, 100), (200, 50), "stretch")
+    covered = scale_faces_to_canvas([face], (100, 100), (200, 50), "cover")
+    contained = scale_faces_to_canvas([face], (100, 100), (200, 50), "contain")
+
+    assert stretched[0].box == (20.0, 10.0, 60.0, 20.0)
+    assert covered[0].box == (20.0, 0.0, 60.0, 45.0)
+    assert contained[0].box == (80.0, 10.0, 15.0, 20.0)
+    assert covered[0].confidence == 0.9
+
+
+def test_face_scaling_accepts_an_explicit_placement() -> None:
+    face = FaceBox(x=10, y=20, width=30, height=40)
+
+    scaled = scale_faces_to_canvas(
+        [face],
+        (100, 100),
+        fit="stretch",
+        placement=(10, 20, 200, 50),
+    )
+
+    assert scaled[0].box == (30.0, 30.0, 60.0, 20.0)
+
+
+def test_face_scaling_rejects_bad_geometry() -> None:
+    face = FaceBox(x=0, y=0, width=1, height=1)
+    with pytest.raises(RenderError):
+        scale_faces_to_canvas([face], (0, 100), (200, 50), "cover")
+    with pytest.raises(RenderError):
+        scale_faces_to_canvas([face], (100, 100), (200, 50), "diagonal")

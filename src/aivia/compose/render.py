@@ -48,7 +48,7 @@ from .errors import FontError, RenderError
 from .fonts import FontManager
 from .keyframes import AnimatedProperty, keyframes_for_layer
 from .overlays import apply_overlay_effects
-from .placement import LayerPlacement, find_text_placement
+from .placement import LayerPlacement, find_text_placement, scale_faces_to_canvas
 from .safe_area import effective_safe_area, safe_area_box
 from .schema import (
     Anchor,
@@ -1325,6 +1325,48 @@ class PillowStillRenderer:
             faces.extend(extra)
         return faces
 
+    def _background_image_layer(
+        self,
+        layer: Layer,
+        composition: Composition,
+        time_seconds: float,
+    ) -> Layer | None:
+        for candidate in self._active_layers(composition, time_seconds):
+            if candidate is layer:
+                return None
+            if candidate.type is LayerType.IMAGE:
+                source = _layer_value(candidate, "source", "path", "file", "asset")
+                if isinstance(source, str) and source.strip():
+                    return candidate
+        return None
+
+    def _placement_faces(
+        self,
+        layer: Layer,
+        config: TextPlacement,
+        composition: Composition,
+        canvas: Image.Image,
+        time_seconds: float,
+    ) -> list[Any]:
+        faces = self._layer_faces(layer, config)
+        if not faces:
+            return faces
+        background = self._background_image_layer(layer, composition, time_seconds)
+        if background is None:
+            return faces
+        source = _layer_value(background, "source", "path", "file", "asset")
+        if not isinstance(source, str) or not source.strip():
+            return faces
+        image = self._open(source.strip())
+        placement = placement_for_layer(background, canvas)
+        fit = _layer_value(background, "fit", "fit_mode", "mode") or FitMode.COVER
+        return scale_faces_to_canvas(
+            faces,
+            image.size,
+            fit=fit,
+            placement=placement,
+        )
+
     def _resolve(self, source: str) -> ImageSource:
         if callable(self._assets):
             return self._assets(source)
@@ -1849,6 +1891,13 @@ class PillowStillRenderer:
             pad = round(config.padding)
             box_width = min(canvas.width, max(1, box_width + pad * 2))
             box_height = min(canvas.height, max(1, box_height + pad * 2))
+            faces = self._placement_faces(
+                layer,
+                config,
+                composition,
+                canvas,
+                time_seconds,
+            )
             area_left, area_top, area_width, area_height = safe_area_box(composition)
             if (area_left, area_top, area_width, area_height) != (
                 0,
@@ -1864,10 +1913,7 @@ class PillowStillRenderer:
                         area_top + area_height,
                     )
                 )
-                faces = [
-                    _shift_face(face, -area_left, -area_top)
-                    for face in self._layer_faces(layer, config)
-                ]
+                faces = [_shift_face(face, -area_left, -area_top) for face in faces]
                 region = find_text_placement(
                     working,
                     (box_width, box_height),
@@ -1887,7 +1933,7 @@ class PillowStillRenderer:
                 region = find_text_placement(
                     canvas,
                     (box_width, box_height),
-                    faces=self._layer_faces(layer, config),
+                    faces=faces,
                     avoid_faces=config.avoid_faces,
                     face_padding=config.face_padding,
                     margin=config.margin,

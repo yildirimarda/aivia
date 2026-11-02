@@ -23,7 +23,7 @@ from typing import Any, cast
 from PIL import Image, ImageChops, ImageFilter
 
 from .errors import RenderError
-from .schema import FaceBox
+from .schema import FaceBox, FitMode
 
 __all__ = [
     "DEFAULT_ANALYSIS_SIZE",
@@ -50,6 +50,9 @@ __all__ = [
     "low_detail_regions",
     "place_text",
     "rank_text_placements",
+    "scale_face_rectangles",
+    "scale_faces_for_fit",
+    "scale_faces_to_canvas",
     "smart_placement",
     "vision_faces",
 ]
@@ -224,7 +227,22 @@ def _face_rect(value: FaceInput) -> tuple[float, float, float, float] | None:
     return rectangle
 
 
-def _face_list(faces: Any) -> list[tuple[float, float, float, float]]:
+def _face_confidence(value: Any) -> float | None:
+    if isinstance(value, Mapping):
+        raw = value.get("confidence")
+    else:
+        raw = getattr(value, "confidence", None)
+    if raw is None:
+        return None
+    try:
+        return _finite(raw, "face confidence")
+    except RenderError:
+        return None
+
+
+def _face_records(
+    faces: Any,
+) -> list[tuple[tuple[float, float, float, float], float | None]]:
     if faces is None:
         return []
     if not isinstance(faces, (Mapping, FaceBox, tuple, list)) and (
@@ -247,12 +265,16 @@ def _face_list(faces: Any) -> list[tuple[float, float, float, float]]:
         faces = [faces]
     if not isinstance(faces, Sequence):
         faces = [faces]
-    rectangles = []
+    records = []
     for face in faces:
         rectangle = _face_rect(face)
         if rectangle is not None:
-            rectangles.append(rectangle)
-    return rectangles
+            records.append((rectangle, _face_confidence(face)))
+    return records
+
+
+def _face_list(faces: Any) -> list[tuple[float, float, float, float]]:
+    return [rectangle for rectangle, _ in _face_records(faces)]
 
 
 def faces_from_analysis(analysis: Any) -> list[Any]:
@@ -306,6 +328,145 @@ def _overlap(
     if right <= left or bottom <= top:
         return 0.0
     return (right - left) * (bottom - top)
+
+
+def _size_pair(value: Any, name: str) -> tuple[float, float]:
+    if not isinstance(value, (tuple, list)) or len(value) != 2:
+        raise RenderError(f"{name} must be a pair of positive numbers")
+    width = _finite(value[0], name)
+    height = _finite(value[1], name)
+    if width <= 0.0 or height <= 0.0:
+        raise RenderError(f"{name} must be a pair of positive numbers")
+    return width, height
+
+
+def _target_box(
+    target_size: Any,
+    placement: Any,
+) -> tuple[float, float, float, float]:
+    if placement is not None:
+        if isinstance(placement, LayerPlacement):
+            return (
+                float(placement.x),
+                float(placement.y),
+                float(placement.width),
+                float(placement.height),
+            )
+        if isinstance(placement, (tuple, list)) and len(placement) == 4:
+            x = _finite(placement[0], "placement x")
+            y = _finite(placement[1], "placement y")
+            width = _finite(placement[2], "placement width")
+            height = _finite(placement[3], "placement height")
+            if width <= 0.0 or height <= 0.0:
+                raise RenderError("placement must be a rectangle with positive size")
+            return x, y, width, height
+        raise RenderError("placement must be a rectangle or LayerPlacement")
+    width, height = _size_pair(target_size, "target_size")
+    return 0.0, 0.0, width, height
+
+
+def _fit_transform(
+    source_size: tuple[float, float],
+    target_box: tuple[float, float, float, float],
+    fit: FitMode,
+) -> tuple[float, float, float, float]:
+    source_width, source_height = source_size
+    x, y, width, height = target_box
+    if fit is FitMode.STRETCH:
+        return width / source_width, height / source_height, x, y
+    if fit is FitMode.COVER:
+        scale = max(width / source_width, height / source_height)
+        return (
+            scale,
+            scale,
+            x + (width - source_width * scale) / 2.0,
+            y + (height - source_height * scale) / 2.0,
+        )
+    if fit is FitMode.CONTAIN:
+        fitted_width: float
+        fitted_height: float
+        if source_width / source_height > width / height:
+            fitted_width = width
+            fitted_height = round(source_height / source_width * width)
+        else:
+            fitted_height = height
+            fitted_width = round(source_width / source_height * height)
+        return (
+            fitted_width / source_width,
+            fitted_height / source_height,
+            x + (width - fitted_width) / 2.0,
+            y + (height - fitted_height) / 2.0,
+        )
+    return (
+        1.0,
+        1.0,
+        x + (width - source_width) / 2.0,
+        y + (height - source_height) / 2.0,
+    )
+
+
+def scale_faces_to_canvas(
+    faces: Any,
+    source_size: tuple[int, int],
+    target_size: tuple[int, int] | None = None,
+    fit: FitMode | str = FitMode.COVER,
+    *,
+    canvas_size: tuple[int, int] | None = None,
+    placement: LayerPlacement | tuple[int, int, int, int] | None = None,
+    offset: tuple[float, float] = (0.0, 0.0),
+) -> list[FaceBox]:
+    """Map face rectangles from source image pixels to canvas pixels.
+
+    *source_size* is the size of the image the vision check analysed.
+    *target_size* (or *canvas_size*) is the canvas, while *placement* names the
+    rectangle the background image occupies. *fit* mirrors the renderer's fit
+    modes so a cover crop or a contain letterbox lands in the right place.
+    """
+    records = _face_records(faces)
+    if not records:
+        return []
+    source = _size_pair(source_size, "source_size")
+    if target_size is None:
+        target_size = canvas_size
+    if target_size is None and placement is None:
+        raise RenderError("target_size, canvas_size or placement is required")
+    box = _target_box(target_size, placement)
+    try:
+        mode = FitMode(fit)
+    except (TypeError, ValueError) as exc:
+        raise RenderError(f"unsupported fit mode {fit!r}") from exc
+    scale_x, scale_y, dx, dy = _fit_transform(source, box, mode)
+    dx += _finite(offset[0], "offset")
+    dy += _finite(offset[1], "offset")
+    box_left, box_top, box_width, box_height = box
+    box_right = box_left + box_width
+    box_bottom = box_top + box_height
+    scaled: list[FaceBox] = []
+    for rectangle, confidence in records:
+        left = rectangle[0] * scale_x + dx
+        top = rectangle[1] * scale_y + dy
+        right = left + rectangle[2] * scale_x
+        bottom = top + rectangle[3] * scale_y
+        left = max(left, box_left)
+        top = max(top, box_top)
+        right = min(right, box_right)
+        bottom = min(bottom, box_bottom)
+        if right <= left or bottom <= top:
+            continue
+        scaled.append(
+            FaceBox(
+                x=left,
+                y=top,
+                width=right - left,
+                height=bottom - top,
+                confidence=confidence,
+            )
+        )
+    return scaled
+
+
+scale_faces_for_fit = scale_faces_to_canvas
+scale_face_rectangles = scale_faces_to_canvas
 
 
 def _integral(image: Image.Image) -> list[list[float]]:
