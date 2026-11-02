@@ -11,8 +11,10 @@ from pydantic import ValidationError
 
 from aivia.compose import (
     Anchor,
+    Canvas,
     Composition,
     FitMode,
+    Layer,
     LayerType,
     LogoLayer,
     PillowStillRenderer,
@@ -34,17 +36,23 @@ def _composition(
     height: int = CANVAS[1],
     background: str = "#0000ff",
     duration_seconds: float = 3.0,
+    validate: bool = True,
 ) -> Composition:
-    return Composition.model_validate(
-        {
-            "canvas": {
-                "width": width,
-                "height": height,
-                "background": background,
-            },
-            "duration_seconds": duration_seconds,
-            "layers": layers,
-        }
+    values = {
+        "canvas": {
+            "width": width,
+            "height": height,
+            "background": background,
+        },
+        "duration_seconds": duration_seconds,
+        "layers": layers,
+    }
+    if validate:
+        return Composition.model_validate(values)
+    return Composition.model_construct(
+        canvas=Canvas.model_validate(values["canvas"]),
+        duration_seconds=duration_seconds,
+        layers=[Layer.model_validate(layer) for layer in layers],
     )
 
 
@@ -78,9 +86,12 @@ def _render(
     layers: list[dict[str, Any]],
     *,
     assets: dict[str, Image.Image] | None = None,
+    validate: bool = True,
     **kwargs: Any,
 ) -> Image.Image:
-    return PillowStillRenderer(assets).render_still(_composition(layers, **kwargs))
+    return PillowStillRenderer(assets).render_still(
+        _composition(layers, validate=validate, **kwargs)
+    )
 
 
 def test_sticker_layer_defaults_to_center_without_a_shadow() -> None:
@@ -476,12 +487,13 @@ def test_the_renderer_rejects_invalid_overlay_placement(
                 }
             ],
             assets={"badge.png": _solid(RED)},
+            validate=False,
         )
 
 
 def test_a_supported_overlay_without_a_source_fails_clearly() -> None:
     with pytest.raises(RenderError, match="has no source"):
-        _render([{"type": "logo", "anchor": "center"}])
+        _render([{"type": "logo", "anchor": "center"}], validate=False)
 
     with pytest.raises(RenderError, match="no asset registered"):
         _render(

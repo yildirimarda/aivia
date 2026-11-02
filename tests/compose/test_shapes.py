@@ -10,10 +10,12 @@ from PIL import Image
 from pydantic import ValidationError
 
 from aivia.compose import (
+    Canvas,
     Composition,
     Gradient,
     GradientStop,
     GradientType,
+    Layer,
     LayerType,
     PillowStillRenderer,
     RenderError,
@@ -29,17 +31,23 @@ def _composition(
     height: int = 10,
     background: str = "#000000",
     duration_seconds: float = 3.0,
+    validate: bool = True,
 ) -> Composition:
-    return Composition.model_validate(
-        {
-            "canvas": {
-                "width": width,
-                "height": height,
-                "background": background,
-            },
-            "duration_seconds": duration_seconds,
-            "layers": layers,
-        }
+    values = {
+        "canvas": {
+            "width": width,
+            "height": height,
+            "background": background,
+        },
+        "duration_seconds": duration_seconds,
+        "layers": layers,
+    }
+    if validate:
+        return Composition.model_validate(values)
+    return Composition.model_construct(
+        canvas=Canvas.model_validate(values["canvas"]),
+        duration_seconds=duration_seconds,
+        layers=[Layer.model_validate(layer) for layer in layers],
     )
 
 
@@ -62,8 +70,15 @@ def _assert_color(
         assert abs(channel - target) <= tolerance, (actual, expected)
 
 
-def _render(layers: list[dict[str, Any]], **kwargs: Any) -> Image.Image:
-    return PillowStillRenderer().render_still(_composition(layers, **kwargs))
+def _render(
+    layers: list[dict[str, Any]],
+    *,
+    validate: bool = True,
+    **kwargs: Any,
+) -> Image.Image:
+    return PillowStillRenderer().render_still(
+        _composition(layers, validate=validate, **kwargs)
+    )
 
 
 def test_shape_layer_carries_fill_stroke_radius_and_gradient() -> None:
@@ -473,4 +488,4 @@ def test_shape_geometry_follows_position_keyframes() -> None:
 )
 def test_invalid_shape_styles_raise_a_render_error(layer: dict[str, Any]) -> None:
     with pytest.raises(RenderError):
-        _render([layer])
+        _render([layer], validate=False)

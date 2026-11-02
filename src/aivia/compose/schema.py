@@ -11,8 +11,9 @@ migration can upgrade older documents instead of guessing.
 
 Audio track and effect objects carry a small common envelope. Layers share the
 same envelope and add a concrete class per kind with the fields that kind needs.
-Unknown fields are rejected on a concrete layer while the generic :class:`Layer`
-envelope keeps them for forward compatibility.
+A composition parses each layer into its concrete class while keeping fields the
+schema does not model yet as extras. Unknown fields are rejected on a concrete
+layer built directly.
 """
 
 from __future__ import annotations
@@ -22,13 +23,15 @@ import math
 import re
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any, Literal, Self, cast
+from typing import Annotated, Any, Literal, Self, cast
 
 from pydantic import (
     AliasChoices,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
+    SerializeAsAny,
     TypeAdapter,
     field_validator,
     model_validator,
@@ -2094,6 +2097,90 @@ def parse_layer(data: Any) -> AnyLayer:
     return LayerAdapter.validate_python(data)
 
 
+def _composition_layer_class(base: type[Layer]) -> type[Layer]:
+    """Return a concrete layer class that keeps unknown fields as extras.
+
+    Concrete layer classes reject unknown fields so a typo cannot hide in a
+    hand written layer. Compositions still carry renderer options and future
+    fields that the schema does not model yet, so the composition parser uses
+    the same validated classes with extras allowed until those fields get
+    their own typed declarations.
+    """
+    return type(
+        f"_Composition{base.__name__}",
+        (base,),
+        {
+            "__module__": __name__,
+            "model_config": ConfigDict(
+                extra="allow",
+                populate_by_name=True,
+                validate_assignment=True,
+            ),
+        },
+    )
+
+
+_CompositionImageLayer = _composition_layer_class(ImageLayer)
+_CompositionVideoLayer = _composition_layer_class(VideoLayer)
+_CompositionTextLayer = _composition_layer_class(TextLayer)
+_CompositionShapeLayer = _composition_layer_class(ShapeLayer)
+_CompositionStickerLayer = _composition_layer_class(StickerLayer)
+_CompositionLogoLayer = _composition_layer_class(LogoLayer)
+
+_COMPOSITION_LAYER_CLASSES: dict[LayerType, type[Layer]] = {
+    LayerType.IMAGE: _CompositionImageLayer,
+    LayerType.VIDEO: _CompositionVideoLayer,
+    LayerType.TEXT: _CompositionTextLayer,
+    LayerType.SHAPE: _CompositionShapeLayer,
+    LayerType.STICKER: _CompositionStickerLayer,
+    LayerType.LOGO: _CompositionLogoLayer,
+}
+
+
+_CONCRETE_LAYER_FIELDS: dict[LayerType, tuple[str, ...]] = {
+    layer_type: tuple(
+        name for name in layer_class.model_fields if name not in Layer.model_fields
+    )
+    for layer_type, layer_class in _COMPOSITION_LAYER_CLASSES.items()
+}
+
+
+def _composition_layer_extras(
+    layer: Layer,
+    concrete_fields: tuple[str, ...],
+) -> dict[str, Any] | None:
+    extras = dict(layer.model_extra or {})
+    fields = type(layer).model_fields
+    for name in concrete_fields:
+        field = fields[name]
+        value = getattr(layer, name)
+        if field.is_required() or value != field.get_default(call_default_factory=True):
+            extras[name] = value
+    return extras or None
+
+
+def parse_composition_layer(data: Any) -> Layer:
+    """Parse *data* into its concrete layer class, preserving extra fields."""
+    if isinstance(data, Layer):
+        if data.__class__ in _COMPOSITION_LAYER_CLASSES.values():
+            return data
+        data = data.model_dump()
+    guard = _LayerTypeGuard.model_validate(data)
+    layer = _COMPOSITION_LAYER_CLASSES[guard.type].model_validate(data)
+    extras = _composition_layer_extras(layer, _CONCRETE_LAYER_FIELDS[guard.type])
+    if extras is not None:
+        layer.__pydantic_extra__ = extras
+    return layer
+
+
+CompositionLayer = Annotated[
+    Layer,
+    BeforeValidator(parse_composition_layer),
+    SerializeAsAny(),
+]
+"""A layer that the composition parser turns into its concrete class."""
+
+
 class AudioTrack(_SchemaModel):
     """One audio input with its placement, gain and fades."""
 
@@ -2348,7 +2435,7 @@ class Composition(_SchemaModel):
         gt=0,
         validation_alias=AliasChoices("fps", "frame_rate", "frames_per_second"),
     )
-    layers: list[Layer] = Field(default_factory=list)
+    layers: list[CompositionLayer] = Field(default_factory=list)
     audio_tracks: list[AudioTrack] = Field(
         default_factory=list,
         validation_alias=AliasChoices("audio_tracks", "tracks", "audio"),

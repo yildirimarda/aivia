@@ -12,6 +12,13 @@ from aivia.compose import (
     CompositionIssue,
     CompositionIssues,
     CompositionValidationError,
+    FitMode,
+    ImageLayer,
+    LogoLayer,
+    ShapeLayer,
+    StickerLayer,
+    TextLayer,
+    VideoLayer,
     validate_composition,
     validate_composition_or_raise,
 )
@@ -265,6 +272,88 @@ def test_invalid_keyframe_shapes_and_values_are_reported() -> None:
         "keyframe time must be a finite number" in str(issue) for issue in issues
     )
     assert any("must be a single number" in str(issue) for issue in issues)
+
+
+def test_composition_layers_are_parsed_into_their_concrete_classes() -> None:
+    composition = _composition(
+        layers=[
+            {"id": "bg", "type": "image", "source": "bg.png", "fit": "contain"},
+            {"id": "clip", "type": "video", "source": "clip.mp4", "loop": True},
+            {"id": "title", "type": "text", "text": "Hello", "font_size": 32},
+            {"id": "badge", "type": "shape", "shape": "circle"},
+            {"id": "sticker", "type": "sticker", "source": "sticker.png"},
+            {"id": "logo", "type": "logo", "source": "logo.svg"},
+        ]
+    )
+
+    layers = composition.layers
+    assert isinstance(layers[0], ImageLayer)
+    assert isinstance(layers[1], VideoLayer)
+    assert isinstance(layers[2], TextLayer)
+    assert isinstance(layers[3], ShapeLayer)
+    assert isinstance(layers[4], StickerLayer)
+    assert isinstance(layers[5], LogoLayer)
+    assert layers[0].fit is FitMode.CONTAIN
+    assert layers[1].loop is True
+    assert layers[2].font_size == 32.0
+    assert layers[4].source == "sticker.png"
+
+
+@pytest.mark.parametrize(
+    ("layer", "path"),
+    [
+        ({"type": "image"}, "layers[0].source"),
+        ({"type": "image", "source": "bg.png", "fit": "squish"}, "layers[0].fit"),
+        (
+            {"type": "video", "source": "clip.mp4", "speed": 0},
+            "layers[0].speed",
+        ),
+        ({"type": "text", "text": "Hi", "font_size": 0}, "layers[0].font_size"),
+        ({"type": "text"}, "layers[0].text"),
+        ({"type": "shape", "shape": "triangle"}, "layers[0].shape"),
+        (
+            {"type": "sticker", "source": "s.png", "anchor": "diagonal"},
+            "layers[0].anchor",
+        ),
+        ({"type": "logo", "source": "l.svg", "opacity": 2}, "layers[0].opacity"),
+    ],
+)
+def test_composition_validates_type_specific_layer_fields(
+    layer: dict[str, Any], path: str
+) -> None:
+    issues = validate_composition(
+        {
+            "canvas": "1080x1920",
+            "duration_seconds": 10.0,
+            "fps": 30,
+            "layers": [layer],
+        }
+    )
+
+    assert _codes(issues) == ["schema"]
+    assert issues[0].path == path
+
+
+def test_composition_keeps_unmodelled_layer_fields_as_extras() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "bg",
+                "type": "image",
+                "source": "bg.png",
+                "x": 12,
+                "keyframes": {"opacity": [(0, 0), (1, 1)]},
+            }
+        ]
+    )
+
+    layer = composition.layers[0]
+    assert isinstance(layer, ImageLayer)
+    assert layer.model_extra == {
+        "source": "bg.png",
+        "x": 12,
+        "keyframes": {"opacity": [(0, 0), (1, 1)]},
+    }
 
 
 def test_schema_errors_are_returned_with_paths_instead_of_raising() -> None:
