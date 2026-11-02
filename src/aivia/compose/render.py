@@ -41,6 +41,7 @@ from aivia.core.config.media import (
 )
 from aivia.core.platforms import SafeArea
 
+from .bidi import TextDirection, resolve_direction, shape_text
 from .errors import FontError, RenderError
 from .fonts import FontManager
 from .keyframes import AnimatedProperty, keyframes_for_layer
@@ -1037,9 +1038,16 @@ def layout_text(
     min_font_size: float = 8.0,
     overflow: TextOverflow = TextOverflow.ELLIPSIS,
     ellipsis: str = "\u2026",
+    direction: TextDirection | str | None = None,
+    language: str = "",
     fonts: FontManager | None = None,
 ) -> TextLayout:
-    """Lay *text* out inside a pixel box, wrapping and optionally shrinking it."""
+    """Lay *text* out inside a pixel box, wrapping and optionally shrinking it.
+
+    Wrapping works on logical text, then each visible line is reordered into
+    visual order for its paragraph direction. *direction* wins over *language*,
+    which wins over the first strong character in the line.
+    """
     if not isinstance(text, str) or not text.strip():
         raise RenderError("text must not be empty")
     if max_width < 1 or max_height < 1:
@@ -1114,6 +1122,9 @@ def layout_text(
             if _measure_text(line, font, spacing) > max_width:
                 truncated = True
 
+    visible = [
+        shape_text(line, direction=direction, language=language) for line in visible
+    ]
     width = max(
         (_measure_text(line, font, spacing) for line in visible),
         default=0.0,
@@ -1669,6 +1680,30 @@ class PillowStillRenderer:
             "auto_shrink",
         )
 
+        raw_language = _layer_value(layer, "language", "lang", "locale")
+        if raw_language is None:
+            language = composition.language
+        elif isinstance(raw_language, str):
+            language = raw_language.strip()
+        else:
+            raise RenderError("language must be a string")
+
+        raw_direction = _layer_value(
+            layer,
+            "direction",
+            "text_direction",
+            "writing_direction",
+            "dir",
+        )
+        try:
+            direction = resolve_direction(
+                raw_text,
+                language=language,
+                direction=raw_direction,
+            )
+        except ValueError as exc:
+            raise RenderError(str(exc)) from exc
+
         config = _text_placement_config(layer)
         safe_area = effective_safe_area(composition)
         placement = placement_for_layer(layer, canvas, safe_area=safe_area)
@@ -1692,6 +1727,8 @@ class PillowStillRenderer:
                 min_font_size=min_font_size,
                 overflow=overflow,
                 ellipsis=ellipsis,
+                direction=direction,
+                language=language,
                 fonts=self._fonts,
             )
 
