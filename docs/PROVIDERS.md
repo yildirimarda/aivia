@@ -112,6 +112,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `voyage` | `embeddings` | 60/min | - | - | unknown |
 | `whisper` | `stt` | 60/min | - | - | unknown |
 | `whisper-api` | `stt` | 60/min | - | - | unknown |
+| `wikipedia` | `source` | 60/min | - | - | unknown |
 
 ## Pricing
 
@@ -238,6 +239,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `voyage` | - | - |
 | `whisper` | `stt` | $0.006 per minute |
 | `whisper-api` | `stt` | $0.006 per minute |
+| `wikipedia` | - | - |
 
 ## Supported options
 
@@ -346,6 +348,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `voyage` | - | - |
 | `whisper` | - | - |
 | `whisper-api` | - | - |
+| `wikipedia` | - | - |
 
 ## Licensing
 
@@ -454,3 +457,4 @@ This matrix is generated from the metadata every registered provider declares. C
 | `voyage` | - | unknown | no | - |
 | `whisper` | - | unknown | no | - |
 | `whisper-api` | - | unknown | no | - |
+| `wikipedia` | - | unknown | no | - |

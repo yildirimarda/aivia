@@ -20,9 +20,26 @@ from aivia.providers.sources.base import (
     source_registry,
 )
 from aivia.providers.sources.mock import MockSource, MockSourceProvider
+from aivia.providers.sources.wikipedia import (
+    DEFAULT_BASE_URL,
+    DEFAULT_LANGUAGE,
+    DEFAULT_USER_AGENT,
+    MAX_RESULTS,
+    Wikipedia,
+    WikipediaAPI,
+    WikipediaProvider,
+    WikipediaSource,
+    WikipediaSourceProvider,
+    edition_url,
+    normalize_language,
+)
 
 __all__ = [
     "CAPABILITY_SOURCE",
+    "DEFAULT_BASE_URL",
+    "DEFAULT_LANGUAGE",
+    "DEFAULT_USER_AGENT",
+    "MAX_RESULTS",
     "MockSource",
     "MockSourceProvider",
     "Source",
@@ -33,6 +50,13 @@ __all__ = [
     "SourceRequest",
     "SourceResponse",
     "SourceResult",
+    "Wikipedia",
+    "WikipediaAPI",
+    "WikipediaProvider",
+    "WikipediaSource",
+    "WikipediaSourceProvider",
+    "edition_url",
+    "normalize_language",
     "register_source",
     "resolve_source",
     "source_registry",
