@@ -283,3 +283,54 @@ def test_shape_layers_keep_their_z_index_over_image_layers(tmp_path: Path) -> No
 
     _assert_color(frame, (60, 45), BLUE)
     _assert_color(frame, (10, 10), RED)
+
+
+@pytest.mark.slow
+@requires_ffmpeg
+@pytest.mark.parametrize(
+    ("start_scale", "end_scale"),
+    [
+        (1.0, 2.0),
+        ([1.0, 1.0], [2.0, 1.5]),
+    ],
+    ids=["uniform", "pair"],
+)
+def test_scale_motion_expands_a_shape_beyond_its_base_box(
+    tmp_path: Path,
+    start_scale: Any,
+    end_scale: Any,
+) -> None:
+    composition = _composition(
+        [
+            {
+                "id": "box",
+                "type": "shape",
+                "shape": "rectangle",
+                "x": 60,
+                "y": 45,
+                "width": 40,
+                "height": 30,
+                "fill": "#ff0000",
+                "keyframes": {
+                    "scale": [
+                        {"time": 0, "value": start_scale, "easing": "linear"},
+                        {"time": 2, "value": end_scale},
+                    ]
+                },
+            }
+        ]
+    )
+    output = tmp_path / "shape-scale.mp4"
+    render_video(composition, output, preset="ultrafast", crf=20)
+
+    start = _frame(output, 0.0, tmp_path / "start.png")
+    end = _frame(output, 1.9, tmp_path / "end.png")
+    preview = render_still(composition, 1.9).convert("RGB")
+
+    _assert_color(start, (80, 60), RED)
+    for point in ((45, 60), (80, 40)):
+        _assert_color(end, point, RED)
+        expected = preview.getpixel(point)
+        assert isinstance(expected, tuple)
+        _assert_color(end, point, (expected[0], expected[1], expected[2]))
+    _assert_color(end, (20, 20), BLACK)
