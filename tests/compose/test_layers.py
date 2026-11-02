@@ -6,6 +6,7 @@ import math
 from typing import Any
 
 import pytest
+from PIL import Image
 from pydantic import ValidationError
 
 from aivia.compose import (
@@ -14,6 +15,7 @@ from aivia.compose import (
     ImageLayer,
     Layer,
     LayerAdapter,
+    LayerPlacement,
     LayerType,
     LayerUnion,
     LogoLayer,
@@ -24,6 +26,7 @@ from aivia.compose import (
     TextLayer,
     VideoLayer,
     parse_layer,
+    placement_for_layer,
 )
 
 
@@ -313,3 +316,106 @@ def test_concrete_layers_round_trip_through_json(
     restored = layer_class.model_validate(layer.model_dump(mode="json"))
 
     assert restored == layer
+
+
+@pytest.mark.parametrize(
+    ("layer_class", "payload"),
+    [
+        (ImageLayer, {"source": "cover.png"}),
+        (VideoLayer, {"source": "clip.mp4"}),
+        (TextLayer, {"text": "Hello"}),
+        (ShapeLayer, {"shape": "circle"}),
+        (StickerLayer, {"source": "sticker.png"}),
+        (LogoLayer, {"source": "logo.svg"}),
+    ],
+)
+def test_visual_layers_validate_position_and_size_geometry(
+    layer_class: type[Layer], payload: dict[str, Any]
+) -> None:
+    layer = layer_class.model_validate(
+        {**payload, "x": 10, "y": 20, "width": 30, "height": 40}
+    )
+
+    assert (layer.x, layer.y) == (10, 20)
+    assert (layer.width, layer.height) == (30, 40)
+    assert layer.position is None
+    assert layer.size is None
+
+    restored = layer_class.model_validate(layer.model_dump(mode="json"))
+
+    assert restored == layer
+
+
+def test_visual_layers_accept_position_size_and_axis_aliases() -> None:
+    from_pairs = ImageLayer.model_validate(
+        {"source": "cover.png", "position": [10, 20], "size": [30, 40]}
+    )
+    from_aliases = ShapeLayer.model_validate(
+        {"shape": "circle", "left": 10, "top": 20, "w": 30, "h": 40}
+    )
+
+    assert (from_pairs.x, from_pairs.y) == (None, None)
+    assert (from_pairs.width, from_pairs.height) == (None, None)
+    assert from_pairs.position == (10, 20)
+    assert from_pairs.size == (30, 40)
+    assert (from_aliases.x, from_aliases.y) == (10, 20)
+    assert (from_aliases.width, from_aliases.height) == (30, 40)
+    assert from_aliases.position is None
+    assert from_aliases.size is None
+
+
+def test_text_size_keeps_scalar_font_sizes_and_pair_geometry() -> None:
+    scalar = TextLayer.model_validate({"text": "Hello", "size": 64})
+    pair = TextLayer.model_validate({"text": "Hello", "size": [120, 50]})
+
+    assert scalar.font_size == 64.0
+    assert scalar.size is None
+    assert pair.font_size == 48.0
+    assert pair.size == (120, 50)
+    assert (pair.width, pair.height) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("layer_class", "payload"),
+    [
+        (ImageLayer, {"source": "cover.png"}),
+        (VideoLayer, {"source": "clip.mp4"}),
+        (TextLayer, {"text": "Hello"}),
+        (ShapeLayer, {"shape": "circle"}),
+        (StickerLayer, {"source": "sticker.png"}),
+        (LogoLayer, {"source": "logo.svg"}),
+    ],
+)
+@pytest.mark.parametrize(
+    "geometry",
+    [
+        {"x": 1.5},
+        {"y": True},
+        {"width": 0},
+        {"height": -1},
+        {"width": math.inf},
+        {"position": [1]},
+        {"position": [1, 2, 3]},
+        {"position": [1.5, 2]},
+        {"size": [0, 10]},
+        {"size": [10, 0]},
+        {"size": [10.5, 20]},
+        {"size": [10]},
+    ],
+)
+def test_visual_layers_reject_invalid_geometry(
+    layer_class: type[Layer], payload: dict[str, Any], geometry: dict[str, Any]
+) -> None:
+    with pytest.raises(ValidationError):
+        layer_class.model_validate({**payload, **geometry})
+
+
+def test_layer_geometry_round_trips_into_the_renderer_placement() -> None:
+    canvas = Image.new("RGBA", (100, 100))
+    layer = ImageLayer.model_validate(
+        {"source": "cover.png", "position": [7, 9], "size": [11, 13]}
+    )
+
+    restored = ImageLayer.model_validate(layer.model_dump(mode="json"))
+
+    assert placement_for_layer(restored, canvas) == LayerPlacement(7, 9, 11, 13)
