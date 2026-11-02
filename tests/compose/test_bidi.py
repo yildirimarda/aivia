@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageFont
 from pydantic import ValidationError
 
 from aivia.compose import (
@@ -218,6 +218,15 @@ def test_wrapping_keeps_words_whole_and_shapes_every_line() -> None:
     assert any("\u05d3\u05d2\u05d1" in line for line in layout.lines)
     assert all("\u05d4\u05d5\u05d6" not in line for line in layout.lines)
     assert any("\u05d6\u05d5\u05d4" in line for line in layout.lines)
+
+
+def test_renderer_uses_basic_layout_so_pillow_does_not_reshape_bidi_text() -> None:
+    from aivia.compose.fonts import font_manager
+    from aivia.compose.render import _load_font
+
+    font = _load_font(str(font_manager().resolve(None)), 24)
+
+    assert font.layout_engine is ImageFont.Layout.BASIC
 
 
 def test_renderer_uses_a_layer_language_default() -> None:

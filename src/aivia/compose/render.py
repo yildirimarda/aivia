@@ -896,7 +896,11 @@ def _font_path(family: str, weight: TextWeight, style: TextStyle) -> Path:
 @lru_cache(maxsize=128)
 def _load_font(path: str, size: int) -> ImageFont.FreeTypeFont:
     try:
-        return ImageFont.truetype(path, size=size)
+        return ImageFont.truetype(
+            path,
+            size=size,
+            layout_engine=ImageFont.Layout.BASIC,
+        )
     except OSError as exc:
         raise RenderError("could not load font file") from exc
 
