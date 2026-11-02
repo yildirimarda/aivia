@@ -462,7 +462,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Validate a composition subtitle file reference exists before rendering (tests/compose/test_validation.py)
 - [x] Account for background image position and scale keyframes when scaling vision face rectangles (tests/compose/test_placement.py)
 - [x] Apply the contrast utility to video text layers in the FFmpeg filtergraph so video text matches still renders (tests/compose/test_ffmpeg_cmd.py)
-- [ ] Scope the ffmpeg skip marker to rendering tests so pure motion tests run offline (tests/compose/test_motion.py)
+- [x] Scope the ffmpeg skip marker to rendering tests so pure motion tests run offline (tests/compose/test_motion.py)
 - [ ] Honor motion presets in the still renderer so Ken Burns previews match video output (tests/compose/test_motion.py)
 - [ ] Rasterize procedural overlay frames only across each effect window so long compositions do not write unused PNGs (slow, tests/compose/test_video_overlays.py)
 - [ ] Reject SRT or VTT subtitle files in the pure FFmpeg command builder so callers convert them to ASS first (tests/compose/test_ffmpeg_cmd.py)
@@ -811,3 +811,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Load every built-in adapter before provider lookup so real config types resolve outside docs (tests/cli/test_media_generate.py)
 - [ ] Include local background removal and remote ops adapters in provider docs and regenerate the matrix (tests/test_provider_docs.py)
 - [ ] Break the media probe import cycle so its test module collects without importing providers first (tests/core/test_media_probe.py)
+- [ ] Fix the placement test helper typing so mypy passes on the compose suite (tests/compose/test_placement.py)
