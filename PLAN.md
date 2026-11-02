@@ -456,7 +456,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Serve repeated compose render calls from the render cache and honor the global no cache flag (tests/cli/test_compose.py)
 - [x] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
 - [x] Add a golden CI job that installs the pinned ffmpeg and runs the render goldens with comparisons enabled (CI)
-- [ ] Honor explicit x and y coordinates for sticker and logo layers in the still renderer so previews match video (tests/compose/test_stickers.py)
+- [x] Honor explicit x and y coordinates for sticker and logo layers in the still renderer so previews match video (tests/compose/test_stickers.py)
 - [ ] Add an RTL capable bundled font and Arabic joining so right to left text draws real glyphs (golden, tests/compose/test_bidi.py)
 - [ ] Resolve text layer font defaults in the FFmpeg filtergraph from render config (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Validate a composition subtitle file reference exists before rendering (tests/compose/test_validation.py)
