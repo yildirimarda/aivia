@@ -444,7 +444,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Apply procedural overlay effects to video renders so confetti, sparkles, snow and bokeh animate in the output (slow, tests/compose/test_video_overlays.py)
 - [x] Validate transition durations stay inside each layer window and report every violation (tests/compose/test_validation.py)
 - [x] Validate subtitle cue spans against the composition duration so a cue cannot outlive the video (tests/compose/test_validation.py)
-- [ ] Convert an SRT or VTT subtitle file referenced by a composition to ASS before burning (tests/compose/test_audio_subs.py)
+- [x] Convert an SRT or VTT subtitle file referenced by a composition to ASS before burning (tests/compose/test_audio_subs.py)
 - [ ] Validate composition safe area margins leave a visible area before subtitles are burned (tests/compose/test_validation.py)
 - [ ] Reject an output container whose extension cannot carry the configured codec before invoking ffmpeg (tests/compose/test_output_profiles.py)
 - [ ] Warn when an output profile changes the aspect ratio of a composition with absolute pixel layer geometry (tests/compose/test_output_profiles.py)
