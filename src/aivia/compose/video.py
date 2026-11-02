@@ -281,23 +281,32 @@ class VideoRenderer:
                 details={"executable": argv[0], "error": type(exc).__name__},
             ) from exc
 
-    def _verify(self, composition: Composition, probe: FFprobeInfo) -> None:
+    def _verify(
+        self,
+        composition: Composition,
+        probe: FFprobeInfo,
+        *,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> None:
         stream = probe.primary_video
+        expected_width = composition.canvas.width if width is None else width
+        expected_height = composition.canvas.height if height is None else height
         if stream is None:
             raise VideoRenderError("the rendered file has no video stream")
-        if stream.width != composition.canvas.width:
+        if stream.width != expected_width:
             raise VideoRenderError(
                 "the rendered video width does not match the canvas",
                 details={
-                    "expected": composition.canvas.width,
+                    "expected": expected_width,
                     "actual": stream.width,
                 },
             )
-        if stream.height != composition.canvas.height:
+        if stream.height != expected_height:
             raise VideoRenderError(
                 "the rendered video height does not match the canvas",
                 details={
-                    "expected": composition.canvas.height,
+                    "expected": expected_height,
                     "actual": stream.height,
                 },
             )
@@ -361,6 +370,8 @@ class VideoRenderer:
         try:
             options = dict(command_options)
             options.pop("executable", None)
+            output_width = options.pop("output_width", None)
+            output_height = options.pop("output_height", None)
             output_profile = options.pop("output_profile", None)
             config = options.pop("config", options.pop("video", None))
             profile_name = options.pop("profile", None)
@@ -415,6 +426,8 @@ class VideoRenderer:
                 value,
                 temporary,
                 executable=self.ffmpeg_executable,
+                output_width=output_width,
+                output_height=output_height,
                 **options,
             )
             completed = self._run(command.argv)
@@ -442,7 +455,12 @@ class VideoRenderer:
                     "the rendered file could not be inspected",
                     details={"error": exc.message},
                 ) from exc
-            self._verify(value, probe)
+            self._verify(
+                value,
+                probe,
+                width=output_width,
+                height=output_height,
+            )
             os.replace(temporary, destination)
         finally:
             text_directory.cleanup()

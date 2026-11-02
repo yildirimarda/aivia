@@ -27,6 +27,8 @@ __all__ = [
     "DEFAULT_MEDIA_MAX_BYTES",
     "DEFAULT_MEDIA_MAX_PIXELS",
     "DEFAULT_MEDIA_MIN_ANIMATED_FRAME_RATE",
+    "DEFAULT_MEDIA_PREVIEW_MAX_FPS",
+    "DEFAULT_MEDIA_PREVIEW_SCALE",
     "DEFAULT_MEDIA_SUBTITLE_MAX_CHARS",
     "DEFAULT_MEDIA_SUBTITLE_MAX_DURATION_SECONDS",
     "DEFAULT_MEDIA_SUBTITLE_MAX_GAP_SECONDS",
@@ -111,6 +113,12 @@ DEFAULT_MEDIA_ANIMATED_FRAME_RATE = 15.0
 
 DEFAULT_MEDIA_MIN_ANIMATED_FRAME_RATE = 8.0
 """Lowest frame rate a size-capped animated output may fall back to."""
+
+DEFAULT_MEDIA_PREVIEW_SCALE = 0.5
+"""Fraction applied to preview canvas dimensions and frame rate."""
+
+DEFAULT_MEDIA_PREVIEW_MAX_FPS = 15
+"""Frame rate a preview never exceeds unless the caller asks for more."""
 
 DEFAULT_MEDIA_SUBTITLE_MAX_CHARS = 42
 """Longest cue text before the next word starts a new subtitle cue."""
