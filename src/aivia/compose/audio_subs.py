@@ -22,6 +22,7 @@ from aivia.core.config.video import VideoConfig
 from aivia.core.errors import ValidationError
 from aivia.core.platforms import Platform, SafeArea
 
+from .contrast import contrast_subtitle_style
 from .errors import RenderError
 from .schema import Composition
 from .subtitles import SubtitleTrack
@@ -283,11 +284,16 @@ def subtitle_document(
     safe_area: SafeArea | Mapping[str, float] | None = None,
     platform: Platform | str | None = None,
     highlight: bool | str = True,
+    background: str | None = None,
+    render: Any | None = None,
+    config: Any | None = None,
 ) -> str:
     """Return the ASS document that should be burned into the video.
 
     A composition supplies its canvas, platform and safe area unless the
     caller overrides them. An absent subtitle track produces an empty string.
+    When a *background* is known (from the composition canvas by default), the
+    subtitle style takes the contrast treatment named by the render config.
     """
     track = _as_subtitle(source)
     if track is None:
@@ -299,14 +305,30 @@ def subtitle_document(
             safe_area = source.safe_area
         if platform is None and source.platform:
             platform = source.platform
+        if background is None:
+            background = source.canvas.background
     if width is None:
         width = 1920
     if height is None:
         height = 1080
+    chosen_style = style
+    if background is not None:
+        from aivia.media.subtitles import resolve_style
+
+        chosen = resolve_style(track.style if style is None else style)
+        if preset is not None:
+            chosen = resolve_style(preset)
+            preset = None
+        chosen_style = contrast_subtitle_style(
+            chosen,
+            background,
+            render=render,
+            config=config,
+        )
     return track.to_ass(
         width=width,
         height=height,
-        style=style,
+        style=chosen_style,
         preset=preset,
         safe_area=safe_area,
         platform=platform,
