@@ -884,3 +884,27 @@ def test_mask_inputs_shift_the_audio_input_indices() -> None:
 
     assert "[3:a]" in graph
     assert "[2:a]" not in graph
+
+
+@pytest.mark.parametrize("suffix", [".srt", ".vtt", ".SRT", ".VTT"])
+def test_srt_and_vtt_subtitle_files_are_rejected_by_the_builder(suffix: str) -> None:
+    composition = _composition(subtitle_file=f"captions{suffix}")
+
+    with pytest.raises(FFmpegCommandError, match="convert SRT or VTT to ASS"):
+        build_ffmpeg_filtergraph(composition)
+    with pytest.raises(FFmpegCommandError, match="convert SRT or VTT to ASS"):
+        build_ffmpeg_command(composition, "out.mp4")
+    with pytest.raises(FFmpegCommandError, match="convert SRT or VTT to ASS"):
+        build_ffmpeg_command(
+            _composition(),
+            "out.mp4",
+            subtitle_file=f"captions{suffix}",
+        )
+
+
+def test_an_ass_subtitle_file_is_still_accepted_by_the_builder() -> None:
+    composition = _composition(subtitle_file="captions.ass")
+
+    graph = build_ffmpeg_filtergraph(composition)
+
+    assert "ass=filename='captions.ass'" in graph
