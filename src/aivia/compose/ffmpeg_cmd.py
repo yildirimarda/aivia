@@ -38,8 +38,10 @@ from .motion import (
 )
 from .output_profiles import (
     OutputProfile,
+    OutputProfileError,
     apply_output_profile,
     resolve_output_profile,
+    validate_output_container,
 )
 from .safe_area import effective_safe_area
 from .schema import (
@@ -71,6 +73,7 @@ __all__ = [
     "FFmpegCommandError",
     "FFmpegInput",
     "FFmpegOverlayFrames",
+    "OutputContainerError",
     "build_ffmpeg_args",
     "build_ffmpeg_command",
     "build_ffmpeg_filtergraph",
@@ -110,6 +113,12 @@ class FFmpegCommandError(RenderError):
     """An ffmpeg command could not be built from the composition."""
 
     code = "ffmpeg_command"
+
+
+class OutputContainerError(FFmpegCommandError, OutputProfileError):
+    """The configured video codec cannot be written into the output container."""
+
+    code = "output_profile"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1417,6 +1426,10 @@ def build_ffmpeg_command(
         raise FFmpegCommandError("video_codec must be a non-empty string")
     if not isinstance(audio_codec, str) or not audio_codec.strip():
         raise FFmpegCommandError("audio_codec must be a non-empty string")
+    try:
+        validate_output_container(output, video_codec)
+    except OutputProfileError as exc:
+        raise OutputContainerError(str(exc)) from exc
     if isinstance(crf, bool) or not isinstance(crf, int):
         raise FFmpegCommandError("crf must be an integer")
     if crf < 0:

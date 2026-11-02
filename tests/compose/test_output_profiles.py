@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -264,6 +266,92 @@ def test_invalid_bitrates_are_rejected() -> None:
         build_ffmpeg_command(composition, audio_bitrate=-1)
     with pytest.raises(FFmpegCommandError):
         build_ffmpeg_command(composition, config=_video_config(), video_codec="")
+
+
+@pytest.mark.parametrize(
+    ("output", "codec"),
+    [
+        ("out.webm", "libx264"),
+        ("out.webm", "h264_nvenc"),
+        ("out.mp4", "libvpx"),
+        ("out.mp4", "libvpx-vp9"),
+        ("out.mov", "libtheora"),
+        ("out.ogv", "libx264"),
+        ("out.avi", "libvpx-vp9"),
+    ],
+)
+def test_an_output_container_that_cannot_carry_the_codec_is_rejected(
+    output: str, codec: str
+) -> None:
+    with pytest.raises(OutputProfileError, match="container"):
+        build_ffmpeg_command(_composition(), output, video_codec=codec)
+
+
+def test_the_configured_codec_is_checked_against_the_output_container() -> None:
+    with pytest.raises(OutputProfileError, match="libx264"):
+        build_ffmpeg_command(_composition(), "out.webm", config=_video_config())
+
+
+def test_an_explicit_codec_override_can_make_the_container_compatible() -> None:
+    command = build_ffmpeg_command(
+        _composition(),
+        "out.webm",
+        config=_video_config(),
+        video_codec="libvpx-vp9",
+    )
+
+    assert _option(command, "-c:v") == "libvpx-vp9"
+
+
+@pytest.mark.parametrize(
+    ("output", "codec"),
+    [
+        ("out.mp4", "libx264"),
+        ("out.mp4", "libx265"),
+        ("out.mp4", "libaom-av1"),
+        ("out.mov", "prores_ks"),
+        ("out.mkv", "libx264"),
+        ("out.mkv", "made-up-encoder"),
+        ("out.webm", "libvpx-vp9"),
+        ("out.ogv", "libtheora"),
+        ("out.avi", "mpeg4"),
+        ("out.ts", "libx265"),
+    ],
+)
+def test_compatible_output_containers_are_accepted(output: str, codec: str) -> None:
+    command = build_ffmpeg_command(_composition(), output, video_codec=codec)
+
+    assert _option(command, "-c:v") == codec
+
+
+def test_an_unknown_output_container_extension_is_rejected() -> None:
+    with pytest.raises(OutputProfileError, match="unsupported video output container"):
+        build_ffmpeg_command(_composition(), "out.xyz")
+
+
+def test_a_missing_output_container_extension_is_rejected() -> None:
+    with pytest.raises(OutputProfileError, match="cannot infer a video container"):
+        build_ffmpeg_command(_composition(), "out")
+
+
+def test_render_rejects_an_incompatible_container_before_ffmpeg_runs(
+    tmp_path: Path,
+) -> None:
+    calls: list[list[str]] = []
+
+    def runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 0, stdout="", stderr="")
+
+    with pytest.raises(OutputProfileError, match="container"):
+        render_video(
+            _composition(),
+            tmp_path / "out.webm",
+            config=_video_config(),
+            ffmpeg_runner=runner,
+        )
+
+    assert calls == []
 
 
 @requires_ffmpeg
