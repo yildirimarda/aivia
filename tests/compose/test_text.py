@@ -10,7 +10,9 @@ from PIL import Image, ImageChops
 from pydantic import ValidationError
 
 from aivia.compose import (
+    Canvas,
     Composition,
+    Layer,
     LayerType,
     PillowStillRenderer,
     RenderError,
@@ -31,25 +33,35 @@ def _composition(
     height: int = 60,
     background: str = "#000000",
     duration_seconds: float = 3.0,
+    validate: bool = True,
 ) -> Composition:
-    return Composition.model_validate(
-        {
-            "canvas": {
-                "width": width,
-                "height": height,
-                "background": background,
-            },
-            "duration_seconds": duration_seconds,
-            "layers": layers,
-        }
+    values = {
+        "canvas": {
+            "width": width,
+            "height": height,
+            "background": background,
+        },
+        "duration_seconds": duration_seconds,
+        "layers": layers,
+    }
+    if validate:
+        return Composition.model_validate(values)
+    return Composition.model_construct(
+        canvas=Canvas.model_validate(values["canvas"]),
+        duration_seconds=duration_seconds,
+        layers=[Layer.model_validate(layer) for layer in layers],
     )
 
 
 def _render(
     layers: list[dict[str, Any]],
+    *,
+    validate: bool = True,
     **kwargs: Any,
 ) -> Image.Image:
-    return PillowStillRenderer().render_still(_composition(layers, **kwargs))
+    return PillowStillRenderer().render_still(
+        _composition(layers, validate=validate, **kwargs)
+    )
 
 
 def _bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
@@ -507,4 +519,4 @@ def test_text_follows_position_keyframes() -> None:
 )
 def test_invalid_text_layers_raise_a_render_error(layer: dict[str, Any]) -> None:
     with pytest.raises(RenderError):
-        _render([layer])
+        _render([layer], validate=False)

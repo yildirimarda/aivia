@@ -63,7 +63,13 @@ def test_composition_carries_canvas_duration_fps_layers_audio_and_effects() -> N
                     "start": 0,
                     "end": 12.0,
                 },
-                {"id": "title", "kind": "text", "start": 1, "duration": 3},
+                {
+                    "id": "title",
+                    "kind": "text",
+                    "text": "Hello",
+                    "start": 1,
+                    "duration": 3,
+                },
             ],
             "tracks": [
                 {
@@ -130,7 +136,15 @@ def test_composition_defaults_are_empty_and_versioned() -> None:
 def test_composition_round_trips_through_json() -> None:
     composition = _composition(
         id="composition_round_trip",
-        layers=[{"id": "logo", "type": "logo", "start": 1, "duration": 2}],
+        layers=[
+            {
+                "id": "logo",
+                "type": "logo",
+                "source": "logo.svg",
+                "start": 1,
+                "duration": 2,
+            }
+        ],
         audio_tracks=[{"id": "voice", "source": "voice.mp3", "role": "voice"}],
         effects=[{"id": "blur", "type": "blur"}],
     )
@@ -334,7 +348,7 @@ def test_effect_rejects_invalid_values(payload: dict[str, object]) -> None:
 
 def test_composition_looks_up_objects_by_id() -> None:
     composition = _composition(
-        layers=[{"id": "title", "type": "text"}],
+        layers=[{"id": "title", "type": "text", "text": "Hello"}],
         audio_tracks=[{"id": "voice", "source": "voice.mp3"}],
         effects=[{"id": "fade", "type": "fade"}],
     )

@@ -1685,20 +1685,31 @@ class PillowStillRenderer:
         )
 
         raw_language = _layer_value(layer, "language", "lang", "locale")
-        if raw_language is None:
+        if raw_language is None or (
+            isinstance(raw_language, str) and not raw_language.strip()
+        ):
             language = composition.language
         elif isinstance(raw_language, str):
             language = raw_language.strip()
         else:
             raise RenderError("language must be a string")
 
-        raw_direction = _layer_value(
-            layer,
-            "direction",
-            "text_direction",
-            "writing_direction",
-            "dir",
+        extras = layer.model_extra or {}
+        raw_direction = next(
+            (
+                extras[name]
+                for name in (
+                    "direction",
+                    "text_direction",
+                    "writing_direction",
+                    "dir",
+                )
+                if name in extras
+            ),
+            None,
         )
+        if raw_direction is None:
+            raw_direction = getattr(layer, "direction", None)
         try:
             direction = resolve_direction(
                 raw_text,
