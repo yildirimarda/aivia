@@ -87,6 +87,11 @@ resolve_safe_area = effective_safe_area
 safe_area_for = effective_safe_area
 
 
+def _finite_margins(area: SafeArea) -> None:
+    if not all(math.isfinite(value) for value in area.margins):
+        raise ValueError("safe area margins must be finite")
+
+
 def safe_area_insets(
     composition: Composition,
     *,
@@ -94,6 +99,7 @@ def safe_area_insets(
 ) -> tuple[int, int, int, int]:
     """Return the safe area margins as ``(top, right, bottom, left)`` pixels."""
     area = effective_safe_area(composition, platform=platform)
+    _finite_margins(area)
     return area.to_pixels(composition.width, composition.height)
 
 
