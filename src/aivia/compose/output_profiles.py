@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from aivia.core.config.video import (
@@ -37,6 +38,7 @@ __all__ = [
     "output_profile",
     "output_profile_for",
     "resolve_output_profile",
+    "validate_output_container",
 ]
 
 
@@ -44,6 +46,152 @@ class OutputProfileError(RenderError):
     """A configured output profile could not be resolved or applied."""
 
     code = "output_profile"
+
+
+_CONTAINER_ALIASES: dict[str, str] = {
+    "m2ts": "ts",
+    "m4v": "mp4",
+    "mts": "ts",
+    "mpg": "mpeg",
+}
+
+_CONTAINER_CODECS: dict[str, frozenset[str] | None] = {
+    "3gp": frozenset({"h263", "h264", "mpeg4"}),
+    "avi": frozenset({"ffv1", "h264", "huffyuv", "mjpeg", "mpeg4", "rawvideo"}),
+    "flv": frozenset({"flv1", "h264"}),
+    "gif": frozenset({"gif"}),
+    "mkv": None,
+    "mov": frozenset({"av1", "dnxhd", "h264", "hevc", "mpeg4", "prores"}),
+    "mp4": frozenset({"av1", "h264", "hevc", "mpeg4"}),
+    "mpeg": frozenset({"mpeg1video", "mpeg2video"}),
+    "ogv": frozenset({"theora", "vp8", "vp9"}),
+    "ts": frozenset({"h264", "hevc", "mpeg2video"}),
+    "webm": frozenset({"av1", "vp8", "vp9"}),
+    "webp": frozenset({"webp"}),
+    "wmv": frozenset({"mpeg4", "vc1", "wmv1", "wmv2"}),
+}
+
+_CODEC_FAMILIES: dict[str, str] = {
+    "avc": "h264",
+    "avc1": "h264",
+    "dnxhd": "dnxhd",
+    "ffv1": "ffv1",
+    "ffvhuff": "huffyuv",
+    "flv": "flv1",
+    "flv1": "flv1",
+    "gif": "gif",
+    "h263": "h263",
+    "h264": "h264",
+    "h265": "hevc",
+    "hevc": "hevc",
+    "huffyuv": "huffyuv",
+    "libaom-av1": "av1",
+    "librav1e": "av1",
+    "libsvtav1": "av1",
+    "libtheora": "theora",
+    "libvorbis": "vorbis",
+    "libvpx": "vp8",
+    "libvpx-vp8": "vp8",
+    "libvpx-vp9": "vp9",
+    "libwebp": "webp",
+    "libwebp_anim": "webp",
+    "libx264": "h264",
+    "libx265": "hevc",
+    "libxvid": "mpeg4",
+    "mjpeg": "mjpeg",
+    "mpeg1video": "mpeg1video",
+    "mpeg2video": "mpeg2video",
+    "mpeg4": "mpeg4",
+    "prores": "prores",
+    "rawvideo": "rawvideo",
+    "theora": "theora",
+    "vc1": "vc1",
+    "vp8": "vp8",
+    "vp9": "vp9",
+    "webp": "webp",
+    "wmv1": "wmv1",
+    "wmv2": "wmv2",
+    "xvid": "mpeg4",
+}
+
+_CODEC_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("libx264", "h264"),
+    ("libx265", "hevc"),
+    ("libvpx-vp9", "vp9"),
+    ("libvpx-vp8", "vp8"),
+    ("libaom-av1", "av1"),
+    ("libsvtav1", "av1"),
+    ("librav1e", "av1"),
+    ("libtheora", "theora"),
+    ("libwebp", "webp"),
+    ("libxvid", "mpeg4"),
+    ("dnx", "dnxhd"),
+    ("h264", "h264"),
+    ("h265", "hevc"),
+    ("hevc", "hevc"),
+    ("vp8", "vp8"),
+    ("vp9", "vp9"),
+    ("av1", "av1"),
+    ("prores", "prores"),
+    ("mpeg1", "mpeg1video"),
+    ("mpeg2", "mpeg2video"),
+    ("mpeg4", "mpeg4"),
+    ("mjpeg", "mjpeg"),
+    ("wmv", "wmv2"),
+)
+
+
+def _video_codec_family(codec: str) -> str:
+    name = codec.strip().lower()
+    if name in _CODEC_FAMILIES:
+        return _CODEC_FAMILIES[name]
+    for prefix, family in _CODEC_PREFIXES:
+        if name.startswith(prefix):
+            return family
+    return name
+
+
+def _video_container(output: str | Path) -> str:
+    suffix = Path(output).suffix.lower().lstrip(".")
+    if not suffix:
+        raise OutputProfileError(
+            f"cannot infer a video container from output {str(output)!r}; "
+            "use an extension such as .mp4, .mov, .mkv or .webm"
+        )
+    container = _CONTAINER_ALIASES.get(suffix, suffix)
+    if container not in _CONTAINER_CODECS:
+        allowed = ", ".join(f".{name}" for name in sorted(_CONTAINER_CODECS))
+        raise OutputProfileError(
+            f"unsupported video output container {suffix!r}; expected one of {allowed}"
+        )
+    return container
+
+
+def validate_output_container(
+    output: str | Path,
+    codec: str | OutputProfile,
+) -> None:
+    """Reject a video container that cannot carry *codec*.
+
+    *codec* may be an encoder name or a resolved :class:`OutputProfile`. The
+    check is purely textual: it inspects the output suffix and the configured
+    encoder so an incompatible pair fails before ffmpeg is invoked.
+    """
+    if isinstance(codec, OutputProfile):
+        codec = codec.codec
+    if not isinstance(codec, str) or not codec.strip():
+        raise OutputProfileError("codec must be a non-empty string")
+    container = _video_container(output)
+    allowed = _CONTAINER_CODECS[container]
+    if allowed is None:
+        return
+    family = _video_codec_family(codec)
+    if family not in allowed:
+        expected = ", ".join(sorted(allowed))
+        raise OutputProfileError(
+            f"output container '.{container}' cannot carry video codec "
+            f"{codec!r}; expected one of {expected}"
+        )
 
 
 def _positive_integer(value: Any, name: str) -> int:

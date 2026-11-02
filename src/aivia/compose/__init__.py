@@ -76,6 +76,7 @@ from aivia.compose.ffmpeg_cmd import (
     FFmpegCommandError,
     FFmpegInput,
     FFmpegOverlayFrames,
+    OutputContainerError,
     build_ffmpeg_args,
     build_ffmpeg_command,
     build_ffmpeg_filtergraph,
@@ -198,6 +199,7 @@ from aivia.compose.output_profiles import (
     output_profile,
     output_profile_for,
     resolve_output_profile,
+    validate_output_container,
 )
 from aivia.compose.output_validation import (
     OutputIssue,
@@ -706,6 +708,7 @@ __all__ = [
     "MotionTracks",
     "MotionType",
     "Operation",
+    "OutputContainerError",
     "OutputIssue",
     "OutputIssues",
     "OutputProfile",
@@ -1044,6 +1047,7 @@ __all__ = [
     "validate_composition",
     "validate_composition_or_raise",
     "validate_output",
+    "validate_output_container",
     "validate_output_or_raise",
     "validate_patch",
     "validate_platform_output",
