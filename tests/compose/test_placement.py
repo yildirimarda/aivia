@@ -319,7 +319,7 @@ def test_face_rectangles_follow_background_position_keyframes() -> None:
 
 
 def test_face_rectangles_follow_background_scale_keyframes() -> None:
-    layers = [
+    layers: list[dict[str, Any]] = [
         {
             "type": "image",
             "id": "bg",
