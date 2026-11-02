@@ -405,8 +405,9 @@ def test_composition_keeps_unmodelled_layer_fields_as_extras() -> None:
     assert layer.model_extra == {
         "source": "bg.png",
         "x": 12,
-        "keyframes": {"opacity": [(0, 0), (1, 1)]},
     }
+    assert layer.keyframes is not None
+    assert layer.model_dump()["keyframes"] == {"opacity": [(0, 0), (1, 1)]}
 
 
 def test_schema_errors_are_returned_with_paths_instead_of_raising() -> None:

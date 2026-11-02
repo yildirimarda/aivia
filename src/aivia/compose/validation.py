@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
-from aivia.compose.keyframes import Easing
+from aivia.compose.keyframes import Easing, KeyframeTrack, LayerKeyframes
 from aivia.compose.safe_area import warn_safe_area_violations
 from aivia.compose.schema import Composition, Layer
 from aivia.core.errors import ValidationError
@@ -38,6 +38,13 @@ AssetLookup = Collection[str] | Mapping[str, Any] | AssetCheck | Path
 _EPSILON = 1e-9
 
 _KEYFRAME_CONTAINERS = ("keyframes", "animation", "animations")
+_KEYFRAME_LAYER_FIELDS = (
+    "keyframes",
+    "position_keyframes",
+    "scale_keyframes",
+    "rotation_keyframes",
+    "opacity_keyframes",
+)
 _KEYFRAME_TIME_KEYS = (
     "time_seconds",
     "time",
@@ -286,8 +293,32 @@ def _check_assets(
 
 
 def _keyframe_tracks(layer: Layer, index: int) -> Iterator[tuple[str, str, Any]]:
+    fields = type(layer).model_fields
+    for name in _KEYFRAME_LAYER_FIELDS:
+        if name not in fields:
+            continue
+        raw = getattr(layer, name, None)
+        if raw is None:
+            continue
+        path = f"layers[{index}].{name}"
+        if name == "keyframes":
+            if isinstance(raw, LayerKeyframes):
+                for prop, track in raw.tracks.items():
+                    yield f"{path}.{prop.value}", prop.value, track.keyframes
+            elif isinstance(raw, Mapping):
+                for prop, frames in raw.items():
+                    yield f"{path}.{prop}", str(prop), frames
+            else:
+                yield path, "value", raw
+        else:
+            property_name = name[: -len("_keyframes")]
+            frames = raw.keyframes if isinstance(raw, KeyframeTrack) else raw
+            yield path, property_name, frames
+
     extras = layer.model_extra or {}
     for key, raw in extras.items():
+        if key in _KEYFRAME_LAYER_FIELDS:
+            continue
         path = f"layers[{index}].{key}"
         if key in _KEYFRAME_CONTAINERS:
             if isinstance(raw, Mapping):

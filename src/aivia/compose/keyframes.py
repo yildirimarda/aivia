@@ -762,11 +762,21 @@ def _layer_value(layer: Any, key: str) -> Any:
 def _layer_keyframes(layer: Any) -> Iterator[tuple[str, Any]]:
     for container in ("keyframes", "animation", "animations"):
         raw = _layer_value(layer, container)
-        if isinstance(raw, Mapping):
+        if isinstance(raw, LayerKeyframes):
+            for prop, track in raw.tracks.items():
+                yield prop.value, track.keyframes
+        elif isinstance(raw, Mapping):
             for prop, frames in raw.items():
                 yield str(prop), frames
         elif raw is not None and container == "keyframes":
             yield "value", raw
+
+    for prop in AnimatedProperty:
+        raw = _layer_value(layer, f"{prop.value}_keyframes")
+        if isinstance(raw, KeyframeTrack):
+            yield prop.value, raw.keyframes
+        elif raw is not None:
+            yield prop.value, raw
 
     extras = getattr(layer, "model_extra", None) or {}
     for key, raw in extras.items():

@@ -25,11 +25,21 @@ from aivia.compose import (
     Effect,
     EffectConfig,
     EffectSpec,
+    ImageLayer,
+    KeyframeTrack,
     Layer,
     LayerConfig,
+    LayerKeyframes,
     LayerSpec,
     LayerType,
+    LogoLayer,
+    ShapeLayer,
+    StickerLayer,
+    TextLayer,
     TrackRole,
+    VideoLayer,
+    build_composition_schema,
+    keyframes_for_layer,
 )
 
 
@@ -265,6 +275,121 @@ def test_layer_accepts_shorthand_and_derives_timing() -> None:
 def test_layer_rejects_invalid_values(payload: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         Layer.model_validate(payload)
+
+
+def test_layer_keyframes_are_typed_and_round_trip() -> None:
+    layer = Layer.model_validate(
+        {
+            "type": "image",
+            "keyframes": {
+                "position": [(0, (0, 0)), (1, (10, 20))],
+                "opacity": [(0, 0), (1, 1)],
+            },
+        }
+    )
+
+    assert isinstance(layer.keyframes, LayerKeyframes)
+    assert layer.keyframes.sample_property("position", 0.5) == (5.0, 10.0)
+    assert layer.keyframes.sample_property("opacity", 0.5) == 0.5
+
+    payload = layer.model_dump(mode="json")
+    restored = Layer.model_validate(payload)
+
+    assert restored.keyframes == layer.keyframes
+    assert payload["keyframes"]["opacity"]["property"] == "opacity"
+
+
+@pytest.mark.parametrize(
+    ("layer_class", "payload"),
+    [
+        (ImageLayer, {"source": "cover.png"}),
+        (VideoLayer, {"source": "clip.mp4"}),
+        (TextLayer, {"text": "Hello"}),
+        (ShapeLayer, {"shape": "circle"}),
+        (StickerLayer, {"source": "sticker.png"}),
+        (LogoLayer, {"source": "logo.svg"}),
+    ],
+)
+def test_concrete_layers_keep_typed_keyframes(
+    layer_class: type[Layer], payload: dict[str, Any]
+) -> None:
+    layer = layer_class.model_validate(
+        {
+            **payload,
+            "keyframes": {
+                "position": [(0, (0, 0)), (1, (10, 20))],
+                "opacity": [(0, 0), (1, 1)],
+            },
+        }
+    )
+
+    assert isinstance(layer.keyframes, LayerKeyframes)
+    assert layer.keyframes.sample_property("position", 0.5) == (5.0, 10.0)
+    assert layer.keyframes.sample_property("opacity", 0.5) == 0.5
+
+    restored = layer_class.model_validate(layer.model_dump(mode="json"))
+
+    assert restored.keyframes == layer.keyframes
+
+
+def test_concrete_layers_keep_typed_property_keyframes() -> None:
+    layer = ImageLayer.model_validate(
+        {
+            "source": "cover.png",
+            "position_keyframes": [(0, (0, 0)), (1, (10, 20))],
+            "rotation_animation": [(0, 0), (1, 90)],
+            "scale_keyframes": [(0, 1), (1, 2)],
+            "opacity_animation": [(0, 0), (1, 1)],
+        }
+    )
+
+    assert isinstance(layer.position_keyframes, KeyframeTrack)
+    assert isinstance(layer.rotation_keyframes, KeyframeTrack)
+    assert isinstance(layer.scale_keyframes, KeyframeTrack)
+    assert isinstance(layer.opacity_keyframes, KeyframeTrack)
+
+    animation = keyframes_for_layer(layer)
+
+    assert set(animation.tracks) == {
+        "position",
+        "scale",
+        "rotation",
+        "opacity",
+    }
+    assert animation.sample_property("position", 0.5) == (5.0, 10.0)
+    assert animation.sample_property("rotation", 0.5) == 45.0
+    assert animation.sample_property("scale", 0.5) == 1.5
+    assert animation.sample_property("opacity", 0.5) == 0.5
+
+
+def test_json_schema_exports_typed_keyframes() -> None:
+    schema = build_composition_schema()
+    definitions = schema["$defs"]
+
+    assert {
+        "AnimatedProperty",
+        "Easing",
+        "Keyframe",
+        "KeyframeTrack",
+        "LayerKeyframes",
+    } <= set(definitions)
+
+    properties = definitions["Layer"]["properties"]
+    assert properties["keyframes"]["anyOf"][0]["$ref"] == "#/$defs/LayerKeyframes"
+    for name in (
+        "position_keyframes",
+        "scale_keyframes",
+        "rotation_keyframes",
+        "opacity_keyframes",
+    ):
+        assert properties[name]["anyOf"][0]["$ref"] == "#/$defs/KeyframeTrack"
+
+    track = definitions["KeyframeTrack"]["properties"]["keyframes"]
+    assert track["items"]["$ref"] == "#/$defs/Keyframe"
+    keyframe = definitions["Keyframe"]["properties"]
+    assert {"time_seconds", "value", "easing"} <= set(keyframe)
+    animation = definitions["LayerKeyframes"]["properties"]
+    assert animation["opacity"]["anyOf"][0]["$ref"] == "#/$defs/KeyframeTrack"
 
 
 def test_audio_track_supports_placement_gain_fades_and_ducking() -> None:
