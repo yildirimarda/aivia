@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from PIL import Image, ImageChops
+from pydantic import ValidationError
 
 from aivia.compose import (
     PILLOW_STILL_RENDERER_VERSION,
@@ -328,22 +329,6 @@ def test_sources_can_be_bytes_a_callable_or_relative_to_a_root(tmp_path: Path) -
             0.0,
             {},
         ),
-        (
-            {
-                "canvas": "4x4",
-                "duration_seconds": 1,
-                "layers": [
-                    {
-                        "id": "bad",
-                        "type": "image",
-                        "source": "red.png",
-                        "width": 0,
-                    }
-                ],
-            },
-            0.0,
-            {"red.png": _solid((255, 0, 0, 255))},
-        ),
     ],
 )
 def test_invalid_renders_raise_a_render_error(
@@ -355,6 +340,17 @@ def test_invalid_renders_raise_a_render_error(
 
     with pytest.raises(RenderError):
         PillowStillRenderer(assets).render_still(composition, time_seconds)
+
+
+def test_a_non_positive_layer_width_is_rejected_before_rendering() -> None:
+    payload = {
+        "canvas": "4x4",
+        "duration_seconds": 1,
+        "layers": [{"id": "bad", "type": "image", "source": "red.png", "width": 0}],
+    }
+
+    with pytest.raises(ValidationError):
+        Composition.model_validate(payload)
 
 
 def test_the_module_level_helper_renders_a_still() -> None:

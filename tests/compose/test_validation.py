@@ -395,6 +395,7 @@ def test_composition_keeps_unmodelled_layer_fields_as_extras() -> None:
                 "type": "image",
                 "source": "bg.png",
                 "x": 12,
+                "glow": True,
                 "keyframes": {"opacity": [(0, 0), (1, 1)]},
             }
         ]
@@ -402,9 +403,10 @@ def test_composition_keeps_unmodelled_layer_fields_as_extras() -> None:
 
     layer = composition.layers[0]
     assert isinstance(layer, ImageLayer)
+    assert layer.x == 12
     assert layer.model_extra == {
         "source": "bg.png",
-        "x": 12,
+        "glow": True,
     }
     assert layer.keyframes is not None
     assert layer.model_dump()["keyframes"] == {"opacity": [(0, 0), (1, 1)]}

@@ -69,9 +69,9 @@ def test_a_patch_can_address_layers_by_index_or_id() -> None:
     result = patch.apply(composition)
 
     assert _layer(result, "title").opacity == 0.4
-    assert _layer(result, "background").model_extra["x"] == 42
+    assert _layer(result, "background").x == 42
     assert _layer(composition, "title").opacity == 1.0
-    assert _layer(composition, "background").model_extra.get("x") is None
+    assert _layer(composition, "background").x is None
 
 
 def test_every_operation_applies_and_its_inverse_restores_the_hash() -> None:

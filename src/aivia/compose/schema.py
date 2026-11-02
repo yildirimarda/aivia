@@ -1146,6 +1146,30 @@ class Layer(_SchemaModel):
     visible: bool = Field(
         default=True, validation_alias=AliasChoices("visible", "enabled")
     )
+    x: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("x", "left"),
+    )
+    y: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("y", "top"),
+    )
+    width: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("width", "w"),
+    )
+    height: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("height", "h"),
+    )
+    position: tuple[int, int] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("position", "pos", "offset"),
+    )
+    size: tuple[int, int] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("size", "dimensions"),
+    )
     blend_mode: BlendMode = Field(
         default=BlendMode.NORMAL,
         validation_alias=AliasChoices(
@@ -1374,6 +1398,36 @@ class Layer(_SchemaModel):
     @classmethod
     def _validate_opacity(cls, value: Any) -> Any:
         return _finite(value, "opacity")
+
+    @field_validator("x", "y", "width", "height", mode="before")
+    @classmethod
+    def _validate_geometry_integer(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return _integer(value, "layer geometry")
+
+    @field_validator("position", "size", mode="before")
+    @classmethod
+    def _validate_geometry_pair(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, (tuple, list)) or len(value) != 2:
+            raise ValueError("layer geometry must be a pair of integers")
+        return (
+            _integer(value[0], "layer geometry"),
+            _integer(value[1], "layer geometry"),
+        )
+
+    @model_validator(mode="after")
+    def _validate_geometry(self) -> Self:
+        if type(self) is not Layer:
+            if self.width is not None and self.width < 1:
+                raise ValueError("layer width must be positive")
+            if self.height is not None and self.height < 1:
+                raise ValueError("layer height must be positive")
+            if self.size is not None and (self.size[0] < 1 or self.size[1] < 1):
+                raise ValueError("layer size must be positive")
+        return self
 
     @model_validator(mode="after")
     def _validate_timing(self) -> Self:
@@ -1792,6 +1846,19 @@ class TextLayer(Layer):
         default=None,
         validation_alias=AliasChoices("placement", "text_placement"),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _disambiguate_size(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or "size" not in data:
+            return data
+        values = dict(data)
+        raw = values.pop("size")
+        if isinstance(raw, (tuple, list)) and len(raw) == 2:
+            values.setdefault("dimensions", raw)
+        else:
+            values.setdefault("font_size", raw)
+        return values
 
     @model_validator(mode="before")
     @classmethod
