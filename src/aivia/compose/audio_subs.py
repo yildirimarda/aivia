@@ -247,10 +247,19 @@ def _as_subtitle(
     if isinstance(source, SubtitleTrack):
         return cast(Subtitle, source.to_media())
     if isinstance(source, Composition):
-        if source.subtitles is not None:
-            return cast(Subtitle, source.subtitles.to_media())
         referenced = source.subtitle_file.strip()
-        if referenced and Path(referenced).suffix.lower() in {".srt", ".vtt"}:
+        external = bool(referenced) and Path(referenced).suffix.lower() in {
+            ".srt",
+            ".vtt",
+        }
+        if source.subtitles is not None:
+            track = cast(Subtitle, source.subtitles.to_media())
+            if track.cues or not external:
+                return track
+            loaded = Subtitle.from_file(referenced)
+            loaded.style = track.style
+            return loaded
+        if external:
             return Subtitle.from_file(referenced)
         return None
     if isinstance(source, Mapping):

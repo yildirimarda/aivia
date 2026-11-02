@@ -540,6 +540,33 @@ def _scaled_layer(
     return data
 
 
+def _scaled_subtitle_style(
+    style: Any,
+    length_factor: float,
+) -> Any:
+    if style is None or isinstance(style, str):
+        from aivia.media.subtitles import resolve_style
+
+        style = resolve_style(style).model_dump(by_alias=False)
+    if not isinstance(style, Mapping):
+        return style
+    scaled = dict(style)
+    for name in (
+        "font_size",
+        "outline",
+        "shadow",
+        "spacing",
+        "margin_l",
+        "margin_r",
+        "margin_v",
+    ):
+        if name in scaled:
+            value = _number(scaled[name])
+            if value is not None:
+                scaled[name] = max(1, round(value * length_factor))
+    return scaled
+
+
 def _scaled_subtitles(
     subtitles: Any,
     length_factor: float,
@@ -547,28 +574,14 @@ def _scaled_subtitles(
     if not isinstance(subtitles, Mapping):
         return subtitles
     data = dict(subtitles)
-    style = data.get("style")
-    if style is None or isinstance(style, str):
-        from aivia.media.subtitles import resolve_style
-
-        style = resolve_style(style).model_dump(by_alias=False)
-    if isinstance(style, Mapping):
-        scaled = dict(style)
-        for name in (
-            "font_size",
-            "outline",
-            "shadow",
-            "spacing",
-            "margin_l",
-            "margin_r",
-            "margin_v",
-        ):
-            if name in scaled:
-                value = _number(scaled[name])
-                if value is not None:
-                    scaled[name] = max(1, round(value * length_factor))
-        data["style"] = scaled
+    data["style"] = _scaled_subtitle_style(data.get("style"), length_factor)
     return data
+
+
+def _is_external_exchange_subtitle(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    return Path(value.strip()).suffix.lower() in {".srt", ".vtt"}
 
 
 def scale_composition(
@@ -623,11 +636,15 @@ def scale_composition(
         _scaled_layer(layer, x_factor, y_factor, length_factor)
         for layer in data.get("layers", [])
     ]
-    if "subtitles" in data:
+    if data.get("subtitles") is not None:
         data["subtitles"] = _scaled_subtitles(
             data["subtitles"],
             length_factor,
         )
+    elif _is_external_exchange_subtitle(data.get("subtitle_file")):
+        data["subtitles"] = {
+            "style": _scaled_subtitle_style(None, length_factor),
+        }
     return Composition.model_validate(data)
 
 
