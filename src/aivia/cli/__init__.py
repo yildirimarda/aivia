@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from aivia.cli import (
     api,
+    compose,
     config,
     confirm,
     costs,
@@ -36,6 +37,7 @@ __all__ = [
     "ParserConfigurator",
     "api",
     "build_parser",
+    "compose",
     "config",
     "confirm",
     "costs",

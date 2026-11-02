@@ -419,7 +419,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a preview render at reduced resolution and fps that is measurably faster than a full render (slow, tests/compose/test_preview.py)
 - [x] Add a validated reversible patch language for composition edits where apply and undo restore the original hash (tests/compose/test_patch.py)
 - [x] Convert a timeline with voice timings, beats, assets, subtitles and music into a composition per language and platform with exact duration (tests/compose/test_timeline.py)
-- [ ] Add compose render, validate and schema commands with output selection and preview (tests/cli/test_compose.py)
+- [x] Add compose render, validate and schema commands with output selection and preview (tests/cli/test_compose.py)
 - [ ] Run golden render tests with a pinned ffmpeg and bundled fonts on Linux only, including Turkish and German glyph cases (golden, tests/golden/test_render_golden.py)
 - [ ] Add three example compositions that validate and render (tests/compose/test_examples.py)
 - [ ] Apply per platform safe area margins to text and sticker layers and warn when manual coordinates violate them (tests/compose/test_safe_area.py)
@@ -452,6 +452,9 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Normalize intro and outro clip geometry and audio before branding concatenation so mixed sources join cleanly (tests/compose/test_cover_branding.py)
 - [ ] Set image input frame rate to the composition fps so still layers are not decoded at ffmpeg defaults (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Render previews on a reduced canvas by scaling layer geometry instead of compositing at full resolution (slow, tests/compose/test_preview.py)
+- [ ] Resolve relative asset paths against the composition document directory in compose render and validate (tests/cli/test_compose.py)
+- [ ] Serve repeated compose render calls from the render cache and honor the global no cache flag (tests/cli/test_compose.py)
+- [ ] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
 
 ## Milestone 10: Research engine
 
