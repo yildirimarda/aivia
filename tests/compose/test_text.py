@@ -75,6 +75,14 @@ def _has_color(image: Image.Image, color: tuple[int, int, int]) -> bool:
     return color in {pixel for _, pixel in rgb.getcolors(rgb.width * rgb.height) or []}
 
 
+def _fragment_width(*fragments: str, font_size: int = 24) -> int:
+    from aivia.compose.fonts import FontManager
+    from aivia.compose.render import _load_font
+
+    font = _load_font(str(FontManager().resolve(None)), font_size)
+    return max(math.ceil(font.getlength(fragment)) for fragment in fragments) + 1
+
+
 def test_text_layer_carries_full_typography_control() -> None:
     layer = TextLayer.model_validate(
         {
@@ -222,6 +230,62 @@ def test_layout_wraps_words_and_long_tokens_within_the_box() -> None:
     assert wrapped.truncated is False
     assert len(long_word.lines) > 1
     assert long_word.width <= 40
+
+
+@pytest.mark.parametrize(
+    ("text", "language", "fragments", "expected"),
+    [
+        ("E-Mail-Adresse", "de", ("E-Mail-", "Adresse"), ("E-Mail-", "Adresse")),
+        ("Türkiye", "tr", ("Tür-", "kiye"), ("Tür-", "kiye")),
+        (
+            "Silben\u00adtrennung",
+            "de",
+            ("Silben-", "trennung"),
+            ("Silben-", "trennung"),
+        ),
+    ],
+)
+def test_long_words_break_at_language_rule_points(
+    text: str,
+    language: str,
+    fragments: tuple[str, ...],
+    expected: tuple[str, ...],
+) -> None:
+    width = _fragment_width(*fragments)
+    layout = layout_text(
+        text,
+        max_width=width,
+        max_height=400,
+        font_size=24,
+        language=language,
+    )
+
+    assert layout.lines == expected
+    assert layout.width <= width
+
+
+def test_soft_hyphens_are_invisible_when_the_word_fits() -> None:
+    layout = layout_text(
+        "Silben\u00adtrennung",
+        max_width=500,
+        max_height=400,
+        font_size=24,
+        language="de",
+    )
+
+    assert layout.lines == ("Silbentrennung",)
+
+
+def test_non_breaking_hyphens_are_not_break_points() -> None:
+    layout = layout_text(
+        "E\u2011Mail",
+        max_width=_fragment_width("E\u2011Mail"),
+        max_height=400,
+        font_size=24,
+        language="de",
+    )
+
+    assert layout.lines == ("E\u2011Mail",)
 
 
 def test_newlines_are_hard_breaks_and_wrap_can_be_disabled() -> None:
