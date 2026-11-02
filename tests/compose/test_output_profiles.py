@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -11,16 +12,21 @@ from typing import Any
 import pytest
 
 from aivia.compose import (
+    AspectRatioWarning,
     Composition,
     FFmpegCommandError,
     OutputProfile,
     OutputProfileError,
+    OutputProfileWarning,
     apply_output_profile,
     apply_video_config,
+    aspect_ratio_changed,
     build_ffmpeg_command,
+    has_absolute_layer_geometry,
     output_profile_for,
     render_video,
     resolve_output_profile,
+    warn_aspect_ratio_change,
 )
 from aivia.core.config import VideoConfig
 
@@ -391,3 +397,116 @@ def test_real_render_uses_configured_output_settings(tmp_path: Path) -> None:
     assert result.probe.duration_seconds == pytest.approx(2.0, abs=0.2)
     assert _option(result.command.argv, "-b:v") == "500k"
     assert output_profile_for(video, platform="tiktok", profile="short").fps == 15
+
+
+def test_changing_the_aspect_ratio_warns_when_layers_use_pixel_geometry() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "badge",
+                "type": "shape",
+                "shape": "rectangle",
+                "x": 10,
+                "y": 20,
+                "width": 80,
+                "height": 40,
+            }
+        ]
+    )
+    profile = OutputProfile(width=1080, height=1920, fps=30, codec="libx264")
+
+    with pytest.warns(AspectRatioWarning, match="aspect ratio"):
+        applied = apply_output_profile(composition, profile)
+
+    assert (applied.canvas.width, applied.canvas.height) == (1080, 1920)
+
+
+def test_a_resolution_change_that_keeps_the_aspect_ratio_does_not_warn() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "type": "shape",
+                "shape": "rectangle",
+                "x": 10,
+                "y": 20,
+                "width": 80,
+                "height": 40,
+            }
+        ]
+    )
+    profile = OutputProfile(width=640, height=480, fps=30, codec="libx264")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        apply_output_profile(composition, profile)
+
+    assert not any(issubclass(item.category, OutputProfileWarning) for item in caught)
+
+
+def test_changing_the_aspect_ratio_without_pixel_geometry_does_not_warn() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "type": "sticker",
+                "source": "badge.png",
+                "anchor": "bottom_right",
+                "margin": 12,
+            }
+        ]
+    )
+    profile = OutputProfile(width=1080, height=1920, fps=30, codec="libx264")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        apply_output_profile(composition, profile)
+
+    assert not any(issubclass(item.category, OutputProfileWarning) for item in caught)
+
+
+def test_position_and_size_aliases_count_as_absolute_pixel_geometry() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "type": "shape",
+                "shape": "rectangle",
+                "position": [10, 20],
+                "size": [80, 40],
+            }
+        ]
+    )
+    profile = OutputProfile(width=1080, height=1920, fps=30, codec="libx264")
+
+    assert has_absolute_layer_geometry(composition)
+    assert aspect_ratio_changed(composition, profile)
+    with pytest.warns(AspectRatioWarning):
+        assert warn_aspect_ratio_change(composition, profile) is True
+
+
+def test_the_aspect_ratio_check_ignores_layer_geometry() -> None:
+    profile = OutputProfile(width=1080, height=1920, fps=30, codec="libx264")
+    same = OutputProfile(width=640, height=480, fps=30, codec="libx264")
+
+    assert aspect_ratio_changed(_composition(), profile)
+    assert not aspect_ratio_changed(_composition(), same)
+    assert not has_absolute_layer_geometry(_composition())
+
+
+def test_position_keyframes_count_as_absolute_pixel_geometry() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "type": "sticker",
+                "source": "badge.png",
+                "anchor": "center",
+                "position_keyframes": [
+                    {"time": 0, "value": [10, 20]},
+                    {"time": 1, "value": [30, 40]},
+                ],
+            }
+        ]
+    )
+    profile = OutputProfile(width=1080, height=1920, fps=30, codec="libx264")
+
+    assert has_absolute_layer_geometry(composition)
+    with pytest.warns(AspectRatioWarning):
+        apply_output_profile(composition, profile)

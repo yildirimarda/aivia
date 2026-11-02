@@ -15,6 +15,7 @@ bitrate values are exposed as ffmpeg command options.
 from __future__ import annotations
 
 import math
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,15 +31,20 @@ from .errors import RenderError
 from .schema import Composition
 
 __all__ = [
+    "AspectRatioWarning",
     "OutputProfile",
     "OutputProfileError",
+    "OutputProfileWarning",
     "apply_output_profile",
     "apply_video_config",
+    "aspect_ratio_changed",
     "ffmpeg_options",
+    "has_absolute_layer_geometry",
     "output_profile",
     "output_profile_for",
     "resolve_output_profile",
     "validate_output_container",
+    "warn_aspect_ratio_change",
 ]
 
 
@@ -46,6 +52,40 @@ class OutputProfileError(RenderError):
     """A configured output profile could not be resolved or applied."""
 
     code = "output_profile"
+
+
+class OutputProfileWarning(UserWarning):
+    """Advisory warning about an output profile applied to a composition."""
+
+
+class AspectRatioWarning(OutputProfileWarning):
+    """An output profile changes the aspect ratio of pixel-positioned layers."""
+
+
+_ABSOLUTE_GEOMETRY_FIELDS: tuple[str, ...] = (
+    "x",
+    "y",
+    "width",
+    "height",
+    "position",
+    "size",
+)
+
+_ABSOLUTE_GEOMETRY_ALIASES: tuple[str, ...] = (
+    "x",
+    "left",
+    "y",
+    "top",
+    "width",
+    "w",
+    "height",
+    "h",
+    "position",
+    "pos",
+    "offset",
+    "size",
+    "dimensions",
+)
 
 
 _CONTAINER_ALIASES: dict[str, str] = {
@@ -392,6 +432,124 @@ def output_profile_for(
     return resolve_output_profile(video, platform=platform, profile=profile)
 
 
+def has_absolute_layer_geometry(
+    composition: Composition | Mapping[str, Any],
+) -> bool:
+    """Whether any visible layer is placed with absolute pixel geometry.
+
+    A layer counts when it carries an explicit ``x``, ``y``, ``width``,
+    ``height``, ``position`` or ``size`` value, including the aliases accepted
+    by the schema, or when it animates its position in canvas pixels. Anchored
+    overlays that only use an anchor and a margin are relative to the canvas
+    and do not count.
+    """
+    value = (
+        composition
+        if isinstance(composition, Composition)
+        else Composition.model_validate(dict(composition))
+    )
+    for layer in value.layers:
+        if not layer.visible:
+            continue
+        if any(
+            getattr(layer, name, None) is not None for name in _ABSOLUTE_GEOMETRY_FIELDS
+        ):
+            return True
+        extras = layer.model_extra or {}
+        if any(extras.get(name) is not None for name in _ABSOLUTE_GEOMETRY_ALIASES):
+            return True
+        if _has_pixel_position_keyframes(layer, extras):
+            return True
+    return False
+
+
+def _has_pixel_position_keyframes(
+    layer: Any,
+    extras: Mapping[str, Any],
+) -> bool:
+    for name in ("position_keyframes", "position_animation"):
+        if getattr(layer, name, None) is not None or extras.get(name) is not None:
+            return True
+    keyframes = getattr(layer, "keyframes", None)
+    if keyframes is None:
+        keyframes = extras.get("keyframes")
+    if keyframes is None:
+        return False
+    if isinstance(keyframes, Mapping):
+        return keyframes.get("position") is not None
+    return getattr(keyframes, "position", None) is not None
+
+
+def _same_aspect_ratio(
+    first_width: int,
+    first_height: int,
+    second_width: int,
+    second_height: int,
+) -> bool:
+    return math.isclose(
+        first_width * second_height,
+        second_width * first_height,
+        rel_tol=1e-6,
+        abs_tol=0.0,
+    )
+
+
+def aspect_ratio_changed(
+    composition: Composition | Mapping[str, Any],
+    profile: OutputProfile | Mapping[str, Any],
+) -> bool:
+    """Whether *profile* changes the canvas aspect ratio of *composition*.
+
+    A profile that changes only the resolution but keeps the aspect ratio
+    returns false. Layer geometry is checked separately by
+    :func:`warn_aspect_ratio_change`.
+    """
+    value = (
+        composition
+        if isinstance(composition, Composition)
+        else Composition.model_validate(dict(composition))
+    )
+    resolved = (
+        profile
+        if isinstance(profile, OutputProfile)
+        else OutputProfile.from_mapping(profile)
+    )
+    return not _same_aspect_ratio(
+        value.width, value.height, resolved.width, resolved.height
+    )
+
+
+def warn_aspect_ratio_change(
+    composition: Composition | Mapping[str, Any],
+    profile: OutputProfile | Mapping[str, Any],
+    *,
+    stacklevel: int = 2,
+) -> bool:
+    """Emit :class:`AspectRatioWarning` when applying *profile* distorts layers."""
+    value = (
+        composition
+        if isinstance(composition, Composition)
+        else Composition.model_validate(dict(composition))
+    )
+    resolved = (
+        profile
+        if isinstance(profile, OutputProfile)
+        else OutputProfile.from_mapping(profile)
+    )
+    if not aspect_ratio_changed(value, resolved):
+        return False
+    if not has_absolute_layer_geometry(value):
+        return False
+    warnings.warn(
+        f"output profile changes the aspect ratio from "
+        f"{value.width}x{value.height} to {resolved.width}x{resolved.height}; "
+        "absolute pixel layer geometry may be distorted",
+        AspectRatioWarning,
+        stacklevel=stacklevel,
+    )
+    return True
+
+
 def apply_output_profile(
     composition: Composition | Mapping[str, Any],
     profile: OutputProfile | Mapping[str, Any],
@@ -407,6 +565,7 @@ def apply_output_profile(
         if isinstance(profile, OutputProfile)
         else OutputProfile.from_mapping(profile)
     )
+    warn_aspect_ratio_change(value, resolved, stacklevel=3)
     data = value.model_dump(by_alias=False)
     data["canvas"] = {
         **data["canvas"],
