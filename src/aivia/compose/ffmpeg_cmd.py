@@ -142,15 +142,18 @@ class FFmpegOverlayFrames:
     """A pre-rendered RGBA image sequence composited after the layers.
 
     ``pattern`` is an image2 filename pattern such as ``frame-%04d.png`` and
-    the frames are sampled at ``fps``. The sequence covers the composition
-    duration and is overlaid in one node, so procedural effects animate in the
-    same order they have in a still render.
+    the frames are sampled at ``fps``. ``start_seconds`` is the composition
+    time of the first frame, so a sequence may cover only an effect window
+    instead of the whole composition. Multiple sequences are overlaid in
+    order, which keeps procedural effects animating in the same order they
+    have in a still render.
     """
 
     pattern: str
     fps: int
     duration_seconds: float
     effect_id: str = ""
+    start_seconds: float = 0.0
 
     def input(self) -> FFmpegInput:
         """Return the image2 input for this sequence."""
@@ -165,6 +168,9 @@ class FFmpegOverlayFrames:
         length = _finite(self.duration_seconds, "overlay frames length")
         if length <= 0.0:
             raise FFmpegCommandError("overlay frames length must be positive")
+        start = _finite(self.start_seconds, "overlay frames start")
+        if start < 0.0:
+            raise FFmpegCommandError("overlay frames start must not be negative")
         return FFmpegInput(
             source=pattern,
             options=("-framerate", str(rate), "-start_number", "0"),
@@ -1132,10 +1138,23 @@ def _mask_filters(
     return filters
 
 
-def _overlay_input(
-    overlay_frames: FFmpegOverlayFrames | None,
-) -> FFmpegInput | None:
-    return None if overlay_frames is None else overlay_frames.input()
+OverlayFrames = FFmpegOverlayFrames | Sequence[FFmpegOverlayFrames] | None
+
+
+def _overlay_sequences(
+    overlay_frames: OverlayFrames,
+) -> tuple[FFmpegOverlayFrames, ...]:
+    if overlay_frames is None:
+        return ()
+    if isinstance(overlay_frames, FFmpegOverlayFrames):
+        return (overlay_frames,)
+    return tuple(overlay_frames)
+
+
+def _overlay_inputs(
+    overlay_frames: OverlayFrames,
+) -> list[FFmpegInput]:
+    return [frames.input() for frames in _overlay_sequences(overlay_frames)]
 
 
 def _input_plan(
@@ -1368,7 +1387,7 @@ def build_ffmpeg_filtergraph(
     ducking: Any | None = None,
     output_width: int | None = None,
     output_height: int | None = None,
-    overlay_frames: FFmpegOverlayFrames | None = None,
+    overlay_frames: OverlayFrames = None,
     render: RenderConfig | Mapping[str, Any] | None = None,
     config: RenderConfig | Mapping[str, Any] | None = None,
 ) -> str:
@@ -1407,18 +1426,23 @@ def build_ffmpeg_filtergraph(
         )
         parts.extend((node, overlay))
     video_label = f"base{len(layers)}"
-    if overlay_frames is not None:
-        overlay_frames.input()
-        mask_inputs = sum(1 for _index, mask_index in plan if mask_index is not None)
-        overlay_index = 1 + len(layers) + mask_inputs
-        overlay_label = f"overlay{len(layers)}"
-        next_label = f"base{len(layers) + 1}"
-        parts.append(f"[{overlay_index}:v]format=rgba,setsar=1[{overlay_label}]")
-        parts.append(
-            f"[{video_label}][{overlay_label}]overlay="
-            "x=0:y=0:eof_action=pass:repeatlast=0:shortest=0"
-            f"[{next_label}]"
-        )
+    overlay_sequences = _overlay_sequences(overlay_frames)
+    mask_inputs = sum(1 for _index, mask_index in plan if mask_index is not None)
+    for offset, sequence in enumerate(overlay_sequences):
+        sequence.input()
+        overlay_index = 1 + len(layers) + mask_inputs + offset
+        overlay_label = f"overlay{len(layers) + offset}"
+        next_label = f"base{len(layers) + offset + 1}"
+        start = sequence.start_seconds
+        filters = ["format=rgba", "setsar=1"]
+        if start:
+            filters.append(f"setpts=PTS+{_seconds(start)}/TB")
+        parts.append(f"[{overlay_index}:v]{','.join(filters)}[{overlay_label}]")
+        options = "x=0:y=0:eof_action=pass:repeatlast=0:shortest=0"
+        end = start + sequence.duration_seconds
+        if start or end < value.duration_seconds - 1e-9:
+            options += f":enable='between(t,{_seconds(start)},{_seconds(end)})'"
+        parts.append(f"[{video_label}][{overlay_label}]overlay={options}[{next_label}]")
         video_label = next_label
     path = _subtitle_path(value, subtitle_file)
     if value.subtitles is not None and path is None:
@@ -1438,11 +1462,10 @@ def build_ffmpeg_filtergraph(
 
     if include_audio and any(track.enabled for track in value.audio_tracks):
         mask_inputs = sum(1 for _index, mask_index in plan if mask_index is not None)
-        overlay_inputs = 1 if overlay_frames is not None else 0
         audio_graph = build_audio_filtergraph(
             value,
             settings=audio_settings,
-            input_offset=1 + len(layers) + mask_inputs + overlay_inputs,
+            input_offset=(1 + len(layers) + mask_inputs + len(overlay_sequences)),
             loudness_lufs=loudness_lufs,
             normalize_loudness=normalize_loudness,
             ducking=ducking,
@@ -1501,7 +1524,7 @@ def build_ffmpeg_command(
     profile: str | None = None,
     output_width: int | None = None,
     output_height: int | None = None,
-    overlay_frames: FFmpegOverlayFrames | None = None,
+    overlay_frames: OverlayFrames = None,
 ) -> FFmpegCommand:
     """Build an ffmpeg argv for *composition* without executing anything.
 
@@ -1594,9 +1617,7 @@ def build_ffmpeg_command(
         raise FFmpegCommandError("movflags must be a string or None")
 
     inputs = _command_inputs(value)
-    overlay_input = _overlay_input(overlay_frames)
-    if overlay_input is not None:
-        inputs.append(overlay_input)
+    inputs.extend(_overlay_inputs(overlay_frames))
     audio = _audio_inputs(value) if include_audio else []
     settings = None
     if audio:

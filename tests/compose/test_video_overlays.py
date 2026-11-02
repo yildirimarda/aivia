@@ -131,6 +131,119 @@ def test_video_renderer_rasterizes_overlay_frames_before_running_ffmpeg(
     assert any(argument.endswith("%04d.png") for argument in argv)
 
 
+def _capture_overlay_render(
+    composition: Composition,
+    tmp_path: Path,
+) -> tuple[list[str], list[Path], str]:
+    captured: dict[str, list[str]] = {}
+
+    def fail(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        captured["argv"] = list(argv)
+        patterns = [argument for argument in argv if argument.endswith("%04d.png")]
+        captured["patterns"] = patterns
+        captured["files"] = [
+            str(path)
+            for pattern in patterns
+            for path in sorted(Path(pattern).parent.glob("*.png"))
+        ]
+        return subprocess.CompletedProcess(list(argv), 1, stdout="", stderr="boom")
+
+    renderer = VideoRenderer(ffmpeg_runner=fail)
+    with pytest.raises(VideoRenderError, match="could not render"):
+        renderer.render(composition, tmp_path / "failed.mp4")
+
+    argv = captured["argv"]
+    graph = argv[argv.index("-filter_complex") + 1]
+    return captured["patterns"], [Path(path) for path in captured["files"]], graph
+
+
+def test_renderer_writes_overlay_frames_only_inside_the_effect_window(
+    tmp_path: Path,
+) -> None:
+    composition = _composition(
+        [
+            {
+                "type": "snow",
+                "start": 5.0,
+                "end": 6.0,
+                "params": {"seed": 4, "count": 8},
+            }
+        ],
+        duration_seconds=20.0,
+        fps=10,
+    )
+
+    patterns, files, graph = _capture_overlay_render(composition, tmp_path)
+
+    assert len(patterns) == 1
+    assert len(files) == 10
+    assert "setpts=PTS+5.000000/TB" in graph
+    assert "enable='between(t,5.000000,6.000000)'" in graph
+
+
+def test_renderer_writes_a_sequence_per_disjoint_effect_window(
+    tmp_path: Path,
+) -> None:
+    composition = _composition(
+        [
+            {
+                "type": "snow",
+                "start": 1.0,
+                "end": 2.0,
+                "params": {"seed": 4, "count": 8},
+            },
+            {
+                "type": "confetti",
+                "start": 15.0,
+                "end": 16.0,
+                "params": {"seed": 9, "count": 8},
+            },
+        ],
+        duration_seconds=20.0,
+        fps=10,
+    )
+
+    patterns, files, graph = _capture_overlay_render(composition, tmp_path)
+
+    assert len(patterns) == 2
+    assert len(files) == 20
+    assert len({Path(pattern).parent for pattern in patterns}) == 2
+    assert "setpts=PTS+1.000000/TB" in graph
+    assert "setpts=PTS+15.000000/TB" in graph
+    assert "enable='between(t,1.000000,2.000000)'" in graph
+    assert "enable='between(t,15.000000,16.000000)'" in graph
+
+
+def test_renderer_merges_overlapping_effect_windows_into_one_sequence(
+    tmp_path: Path,
+) -> None:
+    composition = _composition(
+        [
+            {
+                "type": "snow",
+                "start": 1.0,
+                "end": 3.0,
+                "params": {"seed": 4, "count": 8},
+            },
+            {
+                "type": "sparkles",
+                "start": 2.0,
+                "end": 4.0,
+                "params": {"seed": 9, "count": 8},
+            },
+        ],
+        duration_seconds=10.0,
+        fps=10,
+    )
+
+    patterns, files, graph = _capture_overlay_render(composition, tmp_path)
+
+    assert len(patterns) == 1
+    assert len(files) == 30
+    assert "setpts=PTS+1.000000/TB" in graph
+    assert "enable='between(t,1.000000,4.000000)'" in graph
+
+
 @pytest.mark.slow
 @requires_ffmpeg
 @pytest.mark.parametrize("overlay_type", list(OverlayType))
