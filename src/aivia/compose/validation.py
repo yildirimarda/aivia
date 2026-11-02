@@ -742,6 +742,19 @@ def _validate_loaded(
             issues=issues,
         )
 
+    subtitles = composition.subtitles
+    if subtitles is not None:
+        for index, cue in enumerate(subtitles.cues):
+            _check_window(
+                kind="subtitle cue",
+                collection="subtitles.cues",
+                index=index,
+                start=cue.start_seconds,
+                end=cue.end,
+                duration=duration,
+                issues=issues,
+            )
+
     checker = _asset_checker(assets, asset_exists)
     if checker is not None:
         _check_assets(composition, checker, issues)

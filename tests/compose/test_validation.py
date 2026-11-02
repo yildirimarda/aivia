@@ -474,6 +474,79 @@ def test_cut_transitions_ignore_their_duration_and_exact_fit_is_allowed() -> Non
     assert validate_composition(composition) == []
 
 
+def test_subtitle_cues_cannot_outlive_the_composition() -> None:
+    composition = _composition(
+        subtitles={
+            "cues": [
+                {"start": 1, "end": 5, "text": "fits"},
+                {"start": 8, "end": 12, "text": "late"},
+            ]
+        }
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["timing"]
+    assert [issue.path for issue in issues] == ["subtitles.cues[1]"]
+    assert "subtitle cue ends at 12s" in str(issues[0])
+    assert "after the composition duration of 10s" in str(issues[0])
+
+
+def test_every_subtitle_cue_outside_the_composition_is_reported() -> None:
+    composition = _composition(
+        subtitles={
+            "cues": [
+                {"start": 8, "end": 11, "text": "ends late"},
+                {"start": 10, "end": 10.5, "text": "starts late"},
+                {"start": 9, "end": 10, "text": "exact fit"},
+            ]
+        }
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["timing", "timing", "timing"]
+    assert [issue.path for issue in issues] == [
+        "subtitles.cues[0]",
+        "subtitles.cues[1]",
+        "subtitles.cues[1]",
+    ]
+    assert "subtitle cue ends at 11s" in str(issues[0])
+    assert "subtitle cue starts at 10s, at or after the composition duration" in str(
+        issues[1]
+    )
+    assert "subtitle cue ends at 10.5s" in str(issues[2])
+
+
+def test_subtitle_cues_may_end_exactly_at_the_composition_duration() -> None:
+    composition = _composition(
+        subtitles={
+            "cues": [
+                {"start": 0, "end": 10, "text": "whole video"},
+                {"start": 9.5, "end": 10, "text": "tail"},
+            ]
+        }
+    )
+
+    assert validate_composition(composition) == []
+
+
+def test_subtitle_cues_derived_from_words_are_validated() -> None:
+    composition = _composition(
+        subtitles={
+            "words": [
+                {"word": "late", "start": 9.5, "end": 11},
+            ]
+        }
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["timing"]
+    assert [issue.path for issue in issues] == ["subtitles.cues[0]"]
+    assert "subtitle cue ends at 11s" in str(issues[0])
+
+
 def test_composition_layers_are_parsed_into_their_concrete_classes() -> None:
     composition = _composition(
         layers=[
