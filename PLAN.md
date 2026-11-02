@@ -441,7 +441,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Support independent x and y scale keyframes in video motion instead of collapsing them to one zoom (tests/compose/test_motion.py)
 - [x] Honor text entrance and exit presets in the still renderer so still previews match video output (tests/compose/test_text_video.py)
 - [x] Validate procedural overlay effect parameters during composition validation so bad effects fail before rendering (tests/compose/test_validation.py)
-- [ ] Apply procedural overlay effects to video renders so confetti, sparkles, snow and bokeh animate in the output (slow, tests/compose/test_video_overlays.py)
+- [x] Apply procedural overlay effects to video renders so confetti, sparkles, snow and bokeh animate in the output (slow, tests/compose/test_video_overlays.py)
 - [ ] Validate transition durations stay inside each layer window and report every violation (tests/compose/test_validation.py)
 - [ ] Validate subtitle cue spans against the composition duration so a cue cannot outlive the video (tests/compose/test_validation.py)
 - [ ] Convert an SRT or VTT subtitle file referenced by a composition to ASS before burning (tests/compose/test_audio_subs.py)
@@ -464,6 +464,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Apply the contrast utility to video text layers in the FFmpeg filtergraph so video text matches still renders (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Scope the ffmpeg skip marker to rendering tests so pure motion tests run offline (tests/compose/test_motion.py)
 - [ ] Honor motion presets in the still renderer so Ken Burns previews match video output (tests/compose/test_motion.py)
+- [ ] Rasterize procedural overlay frames only across each effect window so long compositions do not write unused PNGs (slow, tests/compose/test_video_overlays.py)
 
 ## Milestone 10: Research engine
 

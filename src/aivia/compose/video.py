@@ -2,10 +2,10 @@
 
 Command construction lives in :mod:`aivia.compose.ffmpeg_cmd` and stays pure.
 This module is the thin execution layer around it: it rasterizes text layers
-with Pillow, runs the built argv, writes through a temporary file so a failed
-render cannot leave a partial output, and verifies the result with ffprobe
-before publishing it. Both runners are injectable so the offline suite never
-needs the real binaries.
+and procedural overlay effects with Pillow, runs the built argv, writes
+through a temporary file so a failed render cannot leave a partial output, and
+verifies the result with ffprobe before publishing it. Both runners are
+injectable so the offline suite never needs the real binaries.
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from PIL import Image
+
 from aivia.core.config.media import (
     DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS,
     DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS,
@@ -27,7 +29,7 @@ from aivia.core.errors import ValidationError
 
 from .audio_subs import subtitle_for, write_subtitle_document
 from .errors import RenderError
-from .ffmpeg_cmd import FFmpegCommand, build_ffmpeg_command
+from .ffmpeg_cmd import FFmpegCommand, FFmpegOverlayFrames, build_ffmpeg_command
 from .keyframes import AnimatedProperty
 from .motion import tracks_for_layer
 from .output_profiles import (
@@ -35,6 +37,7 @@ from .output_profiles import (
     apply_output_profile,
     resolve_output_profile,
 )
+from .overlays import apply_overlay_effects, overlay_from_effect
 from .render import PillowStillRenderer
 from .schema import Composition, Layer, LayerType
 
@@ -53,7 +56,7 @@ __all__ = [
     "render_video",
 ]
 
-VIDEO_RENDERER_VERSION = "1"
+VIDEO_RENDERER_VERSION = "2"
 """The version of the FFmpeg video renderer, recorded with every output."""
 
 FFmpegRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
@@ -165,6 +168,44 @@ def _rasterize_text_layer(
     source = directory / f"text-{index}.png"
     cropped.save(source)
     return source, box
+
+
+def _has_overlay_effects(composition: Composition) -> bool:
+    for effect in composition.effects:
+        if not effect.enabled:
+            continue
+        end = (
+            composition.duration_seconds
+            if effect.end_seconds is None
+            else effect.end_seconds
+        )
+        if end <= effect.start_seconds:
+            continue
+        if effect.start_seconds >= composition.duration_seconds:
+            continue
+        if overlay_from_effect(effect) is not None:
+            return True
+    return False
+
+
+def _prepare_overlay_frames(
+    composition: Composition,
+    directory: Path,
+) -> FFmpegOverlayFrames | None:
+    if not _has_overlay_effects(composition):
+        return None
+    frames = directory / "overlay-frames"
+    frames.mkdir(parents=True, exist_ok=True)
+    size = composition.canvas.size
+    for index in range(max(1, composition.frame_count)):
+        frame = Image.new("RGBA", size, (0, 0, 0, 0))
+        apply_overlay_effects(frame, composition, index / composition.fps)
+        frame.save(frames / f"{index:04d}.png")
+    return FFmpegOverlayFrames(
+        pattern=str(frames / "%04d.png"),
+        fps=composition.fps,
+        duration_seconds=composition.duration_seconds,
+    )
 
 
 def _keyframe_mapping(
@@ -401,6 +442,7 @@ class VideoRenderer:
                 if resolved.audio_bitrate is not None:
                     options.setdefault("audio_bitrate", resolved.audio_bitrate)
             value = _prepare_text_layers(value, Path(text_directory.name))
+            overlay_frames = _prepare_overlay_frames(value, Path(text_directory.name))
             subtitles = options.pop("subtitles", None)
             subtitle_file = options.pop(
                 "subtitle_file",
@@ -437,6 +479,7 @@ class VideoRenderer:
                 executable=self.ffmpeg_executable,
                 output_width=output_width,
                 output_height=output_height,
+                overlay_frames=overlay_frames,
                 **options,
             )
             completed = self._run(command.argv)
