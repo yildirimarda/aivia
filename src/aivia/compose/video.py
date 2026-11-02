@@ -149,6 +149,46 @@ def _raster_layer_data(layer: Layer) -> dict[str, Any]:
     return data
 
 
+def _shape_scale_factors(
+    layer: Layer,
+    start_seconds: float,
+    end_seconds: float,
+) -> tuple[float, float]:
+    tracks = tracks_for_layer(layer, start_seconds, end_seconds)
+    if tracks.scale is None:
+        return 1.0, 1.0
+    maximum_x = maximum_y = 1.0
+    for frame in tracks.scale.keyframes:
+        value = frame.value
+        if isinstance(value, tuple):
+            scale_x, scale_y = value
+        else:
+            scale_x = scale_y = value
+        maximum_x = max(maximum_x, float(scale_x))
+        maximum_y = max(maximum_y, float(scale_y))
+    return maximum_x, maximum_y
+
+
+def _expand_box(
+    box: tuple[int, int, int, int],
+    scale_x: float,
+    scale_y: float,
+) -> tuple[int, int, int, int]:
+    if scale_x <= 1.0 and scale_y <= 1.0:
+        return box
+    left, top, right, bottom = box
+    center_x = (left + right) / 2.0
+    center_y = (top + bottom) / 2.0
+    half_width = (right - left) / 2.0 * scale_x
+    half_height = (bottom - top) / 2.0 * scale_y
+    return (
+        math.floor(center_x - half_width),
+        math.floor(center_y - half_height),
+        math.ceil(center_x + half_width),
+        math.ceil(center_y + half_height),
+    )
+
+
 def _rasterize_layer(
     composition: Composition,
     layer: Layer,
@@ -157,6 +197,7 @@ def _rasterize_layer(
     *,
     render: RenderConfig | None = None,
     contrast_background: Image.Image | None = None,
+    expand: tuple[float, float] = (1.0, 1.0),
 ) -> tuple[Path, tuple[int, int, int, int]] | None:
     static = Composition.model_validate(
         {
@@ -180,6 +221,7 @@ def _rasterize_layer(
     box = image.getchannel("A").getbbox()
     if box is None:
         return None
+    box = _expand_box(box, *expand)
     cropped = image.crop(box)
     source = directory / f"{layer.type.value}-{index}.png"
     cropped.save(source)
@@ -357,6 +399,11 @@ def _prepare_raster_layers(
                 composition.canvas.size,
                 parse_color(color),
             )
+        expand = (
+            _shape_scale_factors(layer, layer.start_seconds, end)
+            if layer.type is LayerType.SHAPE
+            else (1.0, 1.0)
+        )
         raster = _rasterize_layer(
             composition,
             layer,
@@ -364,6 +411,7 @@ def _prepare_raster_layers(
             index,
             render=render_config,
             contrast_background=contrast_background,
+            expand=expand,
         )
         if raster is None:
             continue

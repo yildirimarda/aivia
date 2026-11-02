@@ -478,6 +478,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Sample the background image when rasterizing text layers for video so production contrast matches the filtergraph (tests/compose/test_text_video.py)
 - [x] Apply motion preset pan to image layers at unit zoom so video pan matches the still renderer (slow, tests/compose/test_motion.py)
 - [x] Expand rasterized shape bounds for scale motion so scaled shapes are not clipped to their base box (slow, tests/compose/test_shape_video.py)
+- [ ] Expand rasterized shape bounds for rotation motion so rotated shapes are not clipped to their base box (slow, tests/compose/test_shape_video.py)
+- [ ] Expand rasterized text bounds for scale motion so scaled text is not clipped to its base box (slow, tests/compose/test_text_video.py)
 
 ## Milestone 10: Research engine
 
