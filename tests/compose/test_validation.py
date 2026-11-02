@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -618,6 +619,46 @@ def test_safe_area_margins_that_leave_visible_space_are_allowed() -> None:
     )
 
     assert validate_composition(composition) == []
+
+
+@pytest.mark.parametrize("field", ["top", "right", "bottom", "left"])
+@pytest.mark.parametrize(
+    "value",
+    [math.nan, math.inf, -0.1, 1.0],
+    ids=["nan", "infinity", "negative", "one"],
+)
+def test_safe_area_margins_must_be_finite_fractions(field: str, value: float) -> None:
+    composition = _composition(safe_area={field: value})
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["safe_area"]
+    assert issues[0].path == "safe_area"
+    assert "finite fractions between 0 and 1" in str(issues[0])
+    with pytest.raises(CompositionValidationError):
+        validate_composition_or_raise(composition)
+
+
+def test_safe_area_margins_may_be_zero_and_below_one() -> None:
+    composition = _composition(
+        safe_area={"top": 0.0, "right": 0.25, "bottom": 0.5, "left": 0.0}
+    )
+
+    assert validate_composition(composition) == []
+
+
+def test_safe_area_margins_are_checked_when_loading_a_mapping() -> None:
+    issues = validate_composition(
+        {
+            "canvas": "1080x1920",
+            "duration_seconds": 10.0,
+            "safe_area": {"left": math.nan},
+        }
+    )
+
+    assert _codes(issues) == ["safe_area"]
+    assert issues[0].path == "safe_area"
+    assert "finite fractions between 0 and 1" in str(issues[0])
 
 
 def test_composition_layers_are_parsed_into_their_concrete_classes() -> None:

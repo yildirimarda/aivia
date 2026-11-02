@@ -474,6 +474,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Sample the background image behind each video text layer so contrast treatments match still renders (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Account for background image motion pan when scaling vision face rectangles (tests/compose/test_placement.py)
 - [ ] Preserve motion preset pan when rasterizing shape layers for video so previews match (tests/compose/test_shape_video.py)
+- [ ] Guard safe area pixel helpers against non-finite margins so direct callers fail cleanly (tests/compose/test_safe_area.py)
 
 ## Milestone 10: Research engine
 
