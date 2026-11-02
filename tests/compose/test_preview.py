@@ -346,6 +346,79 @@ def test_scale_composition_scales_subtitle_style_to_the_canvas() -> None:
     assert default_scaled.subtitles.style["font_size"] == 16
 
 
+@pytest.mark.parametrize("suffix", [".srt", ".vtt"])
+def test_scale_composition_scales_external_subtitle_style_to_the_canvas(
+    suffix: str,
+) -> None:
+    composition = Composition.model_validate(
+        {
+            "canvas": {"width": 1280, "height": 720},
+            "duration_seconds": 4.0,
+            "fps": 30,
+            "layers": [],
+            "subtitle_file": f"captions{suffix}",
+        }
+    )
+
+    scaled = scale_composition(composition, 640, 360, fps=15)
+
+    assert scaled.subtitle_file == f"captions{suffix}"
+    assert scaled.subtitles is not None
+    assert scaled.subtitles.cues == []
+    assert scaled.subtitles.style["font_size"] == 16
+    assert scaled.subtitles.style["outline"] == 1
+
+
+@pytest.mark.parametrize(
+    ("suffix", "document"),
+    [
+        (".srt", "1\n00:00:00,000 --> 00:00:01,000\nHello\n"),
+        (".vtt", "WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n"),
+    ],
+)
+def test_render_preview_scales_external_subtitle_style_before_burning(
+    tmp_path: Path,
+    suffix: str,
+    document: str,
+) -> None:
+    source = tmp_path / f"captions{suffix}"
+    source.write_text(document, encoding="utf-8")
+    composition = Composition.model_validate(
+        {
+            "canvas": {"width": 1280, "height": 720, "background": "#101010"},
+            "duration_seconds": 4.0,
+            "fps": 30,
+            "layers": [],
+            "subtitle_file": str(source),
+        }
+    )
+    captured: dict[str, str] = {}
+
+    def capture(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        graph = argv[argv.index("-filter_complex") + 1]
+        prefix = "ass=filename='"
+        start = graph.index(prefix) + len(prefix)
+        path = Path(graph[start : graph.index("'", start)])
+        captured["suffix"] = path.suffix
+        captured["document"] = path.read_text(encoding="utf-8")
+        Path(argv[-1]).write_bytes(b"preview")
+        return subprocess.CompletedProcess(list(argv), 0, stdout="", stderr="")
+
+    render_preview(
+        composition,
+        tmp_path / "preview.mp4",
+        scale=0.5,
+        max_fps=15,
+        ffmpeg_runner=capture,
+        ffprobe_runner=_probe_runner(_probe_json(640, 360, 15, 4.0)),
+    )
+
+    assert captured["suffix"] == ".ass"
+    assert "Hello" in captured["document"]
+    assert ",Lato,16," in captured["document"]
+    assert ",Lato,32," not in captured["document"]
+
+
 def test_render_preview_scales_layer_geometry_before_compositing(
     tmp_path: Path,
 ) -> None:

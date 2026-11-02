@@ -493,21 +493,27 @@ class VideoRenderer:
                 "background": value.canvas.background,
                 "render": render_config,
             }
-            if subtitle_file is None and track is not None:
+            referenced = value.subtitle_file.strip()
+            if (
+                subtitle_file is None
+                and track is not None
+                and (track.cues or not referenced)
+            ):
                 subtitle_file = Path(text_directory.name) / f"{destination.stem}.ass"
                 write_subtitle_document(track, subtitle_file, **subtitle_options)
-            elif subtitle_file is None:
-                referenced = value.subtitle_file.strip()
-                if referenced:
-                    subtitle_file = Path(referenced)
+            elif subtitle_file is None and referenced:
+                subtitle_file = Path(referenced)
             if subtitle_file is not None and (
                 Path(subtitle_file).suffix.lower() in {".srt", ".vtt"}
             ):
                 converted = Path(text_directory.name) / f"{destination.stem}.ass"
+                conversion_options = dict(subtitle_options)
+                if track is not None and not track.cues:
+                    conversion_options["style"] = track.style
                 write_subtitle_document(
                     subtitle_file,
                     converted,
-                    **subtitle_options,
+                    **conversion_options,
                 )
                 subtitle_file = converted
             if subtitle_file is not None:
