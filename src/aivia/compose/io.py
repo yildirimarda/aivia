@@ -16,6 +16,10 @@ from typing import Any, Literal
 
 import yaml
 
+from aivia.compose.migrations import (
+    CompositionMigrationError,
+    migrate_composition,
+)
 from aivia.compose.schema import Composition
 
 __all__ = [
@@ -108,11 +112,28 @@ def _looks_like_document(value: str) -> bool:
     return ":" in stripped
 
 
+def _validate_composition(payload: Mapping[str, Any]) -> Composition:
+    """Migrate an older document to the current schema, then validate it."""
+    try:
+        migrated = migrate_composition(payload)
+    except CompositionMigrationError as exc:
+        raise CompositionIOError(str(exc)) from exc
+    return Composition.model_validate(migrated.values)
+
+
+def _ensure_supported_version(version: int) -> None:
+    """Reject an already-built composition from a newer schema release."""
+    try:
+        migrate_composition({"schema_version": version})
+    except CompositionMigrationError as exc:
+        raise CompositionIOError(str(exc)) from exc
+
+
 def _as_composition(value: Composition | Mapping[str, Any]) -> Composition:
     if isinstance(value, Composition):
         return value
     if isinstance(value, Mapping):
-        return Composition.model_validate(dict(value))
+        return _validate_composition(value)
     raise TypeError("expected a Composition or a mapping")
 
 
@@ -189,7 +210,7 @@ def loads_composition(
         raise CompositionIOError("composition document is empty")
     if not isinstance(payload, Mapping):
         raise CompositionIOError("composition document must be a mapping")
-    return Composition.model_validate(dict(payload))
+    return _validate_composition(payload)
 
 
 def composition_from_yaml(text: str) -> Composition:
@@ -222,9 +243,10 @@ def load_composition(
     format.
     """
     if isinstance(source, Composition):
+        _ensure_supported_version(source.schema_version)
         return source
     if isinstance(source, Mapping):
-        return Composition.model_validate(dict(source))
+        return _validate_composition(source)
     if isinstance(source, Path):
         return _load_file(source.expanduser(), format)
     if isinstance(source, str):
