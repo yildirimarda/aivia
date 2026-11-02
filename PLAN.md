@@ -417,7 +417,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Validate outputs against platform data for duration, resolution, size, audio presence and loudness with per type messages (tests/compose/test_output_validation.py)
 - [x] Cache renders by composition hash, asset hashes, renderer version, ffmpeg version and font fingerprint (tests/compose/test_render_cache.py)
 - [x] Add a preview render at reduced resolution and fps that is measurably faster than a full render (slow, tests/compose/test_preview.py)
-- [ ] Add a validated reversible patch language for composition edits where apply and undo restore the original hash (tests/compose/test_patch.py)
+- [x] Add a validated reversible patch language for composition edits where apply and undo restore the original hash (tests/compose/test_patch.py)
 - [ ] Convert a timeline with voice timings, beats, assets, subtitles and music into a composition per language and platform with exact duration (tests/compose/test_timeline.py)
 - [ ] Add compose render, validate and schema commands with output selection and preview (tests/cli/test_compose.py)
 - [ ] Run golden render tests with a pinned ffmpeg and bundled fonts on Linux only, including Turkish and German glyph cases (golden, tests/golden/test_render_golden.py)
