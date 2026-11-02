@@ -1,0 +1,122 @@
+# A vertical story teaser with keyframed motion and opacity.
+id: story-teaser
+schema_version: 1
+canvas:
+  width: 1080
+  height: 1920
+  background: "#020617"
+duration_seconds: 8
+fps: 30
+language: en
+layers:
+  - id: sky
+    type: shape
+    shape: rectangle
+    x: 0
+    y: 0
+    width: 1080
+    height: 1920
+    fill:
+      type: linear
+      angle: 90
+      stops:
+        - color: "#0f172a"
+          offset: 0
+        - color: "#312e81"
+          offset: 0.55
+        - color: "#7c3aed"
+          offset: 1
+    z: 0
+  - id: halo
+    type: shape
+    shape: circle
+    x: 340
+    y: 360
+    width: 400
+    height: 400
+    fill:
+      type: linear
+      angle: 45
+      stops:
+        - color: "#22d3ee"
+          offset: 0
+        - color: "#a855f7"
+          offset: 1
+    opacity: 0.9
+    keyframes:
+      rotation:
+        - time: 0
+          value: 0
+        - time: 8
+          value: 360
+      scale:
+        - time: 0
+          value: 0.85
+          easing: ease_out
+        - time: 2
+          value: 1.0
+          easing: ease_in_out
+        - time: 8
+          value: 1.05
+    z: 1
+  - id: eyebrow
+    type: text
+    text: "COMING SOON"
+    x: 120
+    y: 920
+    width: 840
+    height: 60
+    font_family: Lato
+    font_size: 32
+    font_weight: bold
+    color: "#67e8f9"
+    align: center
+    letter_spacing: 8
+    keyframes:
+      opacity:
+        - time: 0
+          value: 0
+          easing: ease_out
+        - time: 1
+          value: 1
+    z: 2
+  - id: title
+    type: text
+    text: "A quieter\nkind of\nsignal"
+    x: 120
+    y: 1020
+    width: 840
+    height: 480
+    font_family: Lato
+    font_size: 132
+    font_weight: bold
+    color: "#f8fafc"
+    align: center
+    vertical_align: middle
+    line_height: 1.0
+    keyframes:
+      position:
+        - time: 0
+          value: [0, 80]
+          easing: ease_out
+        - time: 1.5
+          value: [0, 0]
+      opacity:
+        - time: 0
+          value: 0
+          easing: ease_out
+        - time: 1.5
+          value: 1
+    z: 3
+  - id: footer
+    type: text
+    text: "Synthetic example, no real campaign"
+    x: 120
+    y: 1700
+    width: 840
+    height: 50
+    font_family: Lato
+    font_size: 28
+    color: "#c7d2fe"
+    align: center
+    z: 4
