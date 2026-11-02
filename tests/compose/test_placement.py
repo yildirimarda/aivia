@@ -318,6 +318,39 @@ def test_face_rectangles_follow_background_position_keyframes() -> None:
     assert bbox[0] < 100
 
 
+def test_face_rectangles_follow_background_rotation_keyframes() -> None:
+    layers: list[dict[str, Any]] = [
+        {
+            "type": "image",
+            "id": "bg",
+            "source": "bg",
+            "fit": "cover",
+        },
+        {
+            "type": "text",
+            "id": "caption",
+            "text": "X",
+            "font_size": 20,
+            "color": "#000000",
+            "placement": "smart",
+        },
+    ]
+    assets = {"bg": Image.new("RGB", (200, 100), (255, 255, 255))}
+    faces = {"caption": [FaceBox(x=0, y=0, width=100, height=100)]}
+
+    without_keyframe = _text_bbox(layers, assets=assets, faces=faces)
+    with_keyframe = _text_bbox(
+        [{**layers[0], "keyframes": {"rotation": [(0, 180)]}}, layers[1]],
+        assets=assets,
+        faces=faces,
+    )
+
+    assert without_keyframe is not None
+    assert with_keyframe is not None
+    assert without_keyframe[0] >= 100
+    assert with_keyframe[0] < 100
+
+
 def test_face_rectangles_follow_background_scale_keyframes() -> None:
     layers: list[dict[str, Any]] = [
         {
@@ -383,6 +416,37 @@ def test_face_scaling_applies_position_and_scale_keyframe_geometry() -> None:
 
     assert positioned[0].box == pytest.approx((25.0, 0.0, 60.0, 35.0))
     assert scaled[0].box == pytest.approx((0.0, 0.0, 60.0, 50.0))
+
+
+def test_face_scaling_applies_rotation_keyframe_geometry() -> None:
+    face = FaceBox(x=40, y=0, width=20, height=10)
+
+    quarter_turn = scale_faces_to_canvas(
+        [face],
+        (100, 100),
+        (100, 100),
+        fit="stretch",
+        rotation=90,
+    )
+    half_turn = scale_faces_to_canvas(
+        [face],
+        (100, 100),
+        (100, 100),
+        fit="stretch",
+        rotation=180,
+    )
+    shifted = scale_faces_to_canvas(
+        [face],
+        (100, 100),
+        (100, 100),
+        fit="stretch",
+        offset=(10, 0),
+        rotation=90,
+    )
+
+    assert quarter_turn[0].box == pytest.approx((0.0, 40.0, 10.0, 20.0))
+    assert half_turn[0].box == pytest.approx((40.0, 90.0, 20.0, 10.0))
+    assert shifted[0].box == pytest.approx((10.0, 40.0, 10.0, 20.0))
 
 
 def test_face_scaling_accepts_an_explicit_placement() -> None:
