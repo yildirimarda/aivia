@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import unicodedata
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -38,6 +39,7 @@ from .schema import TextStyle, TextWeight
 
 __all__ = [
     "DEFAULT_FONT_FAMILY",
+    "DEFAULT_RTL_FONT_FAMILY",
     "FONT_EXTENSIONS",
     "FontFace",
     "FontFamily",
@@ -48,6 +50,7 @@ __all__ = [
     "UnknownFontError",
     "available_fonts",
     "font_families",
+    "font_family_for_text",
     "font_manager",
     "font_path",
     "resolve_font",
@@ -59,6 +62,9 @@ FONT_EXTENSIONS = frozenset({".ttf", ".otf", ".ttc"})
 
 DEFAULT_FONT_FAMILY = RenderConfig().default_font
 """The family used when neither a layer nor the configuration names one."""
+
+DEFAULT_RTL_FONT_FAMILY = "Amiri"
+"""The bundled family used for Arabic text when no family is requested."""
 
 
 class FontStyle(StrEnum):
@@ -135,6 +141,22 @@ _LANGUAGE_NAMES = {
     "turkce": "tr",
     "tur": "tr",
 }
+
+
+def font_family_for_text(
+    text: str,
+    family: str | Path | None = None,
+) -> str | Path | None:
+    """Return *family*, or the bundled Arabic family for unset Arabic text.
+
+    An explicit family always wins. Text with no Arabic letters keeps the
+    caller's value so the configured default applies.
+    """
+    if family is not None and str(family).strip():
+        return family
+    if any(unicodedata.bidirectional(character) == "AL" for character in text):
+        return DEFAULT_RTL_FONT_FAMILY
+    return family
 
 
 def _normalize_token(value: str) -> str:

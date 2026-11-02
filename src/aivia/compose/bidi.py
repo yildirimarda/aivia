@@ -6,6 +6,11 @@ with left-to-right ones. The Unicode bidirectional algorithm supplies that
 visual order; this module keeps the call sites simple and adds the project's
 per-language direction defaults on top.
 
+Arabic letters change shape according to their neighbours, and Pillow's basic
+layout engine does not apply the font's joining substitutions. The presentation
+forms are therefore selected before the bidirectional reordering, so a bundled
+Arabic font receives one glyph per joined letter instead of isolated boxes.
+
 The direction of a layer is chosen in this order: an explicit direction, then
 the layer language, then the composition language, then the first strong
 character in the text. A language with no configured default falls back to the
@@ -17,6 +22,7 @@ from __future__ import annotations
 import unicodedata
 from collections.abc import Iterable
 
+from arabic_reshaper import ArabicReshaper  # type: ignore[import-untyped]
 from bidi.algorithm import get_display  # type: ignore[import-untyped]
 
 from aivia.core.languages import TextDirection, language_direction
@@ -27,11 +33,19 @@ __all__ = [
     "has_rtl_characters",
     "reorder_text",
     "resolve_direction",
+    "shape_arabic",
     "shape_text",
 ]
 
 _RTL_TYPES = frozenset({"R", "AL"})
 _RTL_STRONG_OR_NUMBER = frozenset({"R", "AL", "AN"})
+
+_ARABIC_RESHAFER = ArabicReshaper(
+    configuration={
+        "delete_harakat": False,
+        "shift_harakat_position": True,
+    }
+)
 
 
 def _coerce_direction(value: TextDirection | str | None) -> TextDirection | None:
@@ -57,6 +71,18 @@ def _bidi_types(text: str) -> Iterable[str]:
 def has_rtl_characters(text: str) -> bool:
     """Whether *text* contains a strong right-to-left or Arabic number run."""
     return any(kind in _RTL_STRONG_OR_NUMBER for kind in _bidi_types(text))
+
+
+def shape_arabic(text: str) -> str:
+    """Return *text* with Arabic letters joined into presentation forms.
+
+    Scripts other than Arabic, including Hebrew, are returned unchanged. The
+    text stays in logical order; call :func:`reorder_text` afterwards to obtain
+    visual order. Harakat and tatweel are preserved so user text is not lost.
+    """
+    if not text or not any(kind == "AL" for kind in _bidi_types(text)):
+        return text
+    return str(_ARABIC_RESHAFER.reshape(text))
 
 
 def first_strong_direction(text: str) -> TextDirection:
@@ -102,19 +128,20 @@ def reorder_text(
 
     Newlines are paragraph separators and are preserved. A line that stays
     left to right is returned unchanged so existing Latin output is byte for
-    byte identical; mixed or right-to-left lines are reordered by the Unicode
-    bidirectional algorithm.
+    byte identical; mixed or right-to-left lines are joined and reordered by
+    the Unicode bidirectional algorithm.
     """
     if not text:
         return text
     lines: list[str] = []
     for line in text.split("\n"):
-        resolved = resolve_direction(line, language=language, direction=direction)
-        if resolved is TextDirection.LTR and not has_rtl_characters(line):
-            lines.append(line)
+        shaped = shape_arabic(line)
+        resolved = resolve_direction(shaped, language=language, direction=direction)
+        if resolved is TextDirection.LTR and not has_rtl_characters(shaped):
+            lines.append(shaped)
             continue
         base = "R" if resolved is TextDirection.RTL else "L"
-        lines.append(get_display(line, base_dir=base))
+        lines.append(get_display(shaped, base_dir=base))
     return "\n".join(lines)
 
 

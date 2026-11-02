@@ -53,7 +53,7 @@ from .contrast import (
     parse_color,
 )
 from .errors import FontError, RenderError
-from .fonts import FontManager
+from .fonts import FontManager, font_family_for_text
 from .keyframes import AnimatedProperty, keyframes_for_layer
 from .overlays import apply_overlay_effects
 from .placement import LayerPlacement, find_text_placement, scale_faces_to_canvas
@@ -1161,7 +1161,7 @@ def layout_text(
 
     manager = _default_font_manager() if fonts is None else fonts
     path = manager.resolve(
-        font_family or None,
+        font_family_for_text(text, font_family),
         weight=font_weight,
         style=font_style,
     )
@@ -1787,9 +1787,9 @@ class PillowStillRenderer:
             layer, "font_family", "font_family", "font", "family"
         )
         if raw_family is None:
-            family = manager.default_family
+            family = ""
         elif isinstance(raw_family, str):
-            family = raw_family.strip() or manager.default_family
+            family = raw_family.strip()
         else:
             raise RenderError("font_family must be a string")
 
@@ -1942,7 +1942,11 @@ class PillowStillRenderer:
         config = _text_placement_config(layer)
         safe_area = effective_safe_area(composition)
         placement = placement_for_layer(layer, canvas, safe_area=safe_area)
-        path = manager.resolve(family or None, weight=weight, style=style)
+        path = manager.resolve(
+            font_family_for_text(raw_text, family),
+            weight=weight,
+            style=style,
+        )
 
         def _layout(max_width: int, max_height: int) -> TextLayout:
             return layout_text(

@@ -17,6 +17,7 @@ from aivia.compose import (
     TextStyle,
     TextWeight,
     available_fonts,
+    font_family_for_text,
     font_manager,
     resolve_font,
 )
@@ -58,8 +59,10 @@ def _copy_lato(root: Path, name: str = "Custom") -> Path:
 def test_bundled_families_and_faces_resolve_case_insensitively() -> None:
     manager = FontManager()
 
-    assert manager.available_families == ("Lato",)
+    assert manager.available_families == ("Amiri", "Lato")
     assert manager.resolve("Lato").name == "Lato-Regular.ttf"
+    assert manager.resolve("Amiri").name == "Amiri-Regular.ttf"
+    assert manager.resolve("Amiri", weight="bold").name == "Amiri-Bold.ttf"
     assert manager.resolve("lato", weight=TextWeight.BOLD).name == "Lato-Bold.ttf"
     assert manager.resolve("LATO", style=TextStyle.ITALIC).name == "Lato-Italic.ttf"
     assert (
@@ -68,6 +71,12 @@ def test_bundled_families_and_faces_resolve_case_insensitively() -> None:
     )
     assert manager.resolve("Lato-Bold").name == "Lato-Bold.ttf"
     assert manager.select("Lato-BoldItalic").style is FontStyle.BOLDITALIC
+
+
+def test_arabic_text_selects_the_rtl_family_only_when_none_is_set() -> None:
+    assert font_family_for_text("مرحبا") == "Amiri"
+    assert font_family_for_text("Hello") is None
+    assert font_family_for_text("مرحبا", "Lato") == "Lato"
 
 
 def test_explicit_font_file_wins_over_the_bundled_directory(tmp_path: Path) -> None:
@@ -215,7 +224,7 @@ def test_module_helpers_resolve_and_list_families() -> None:
     assert resolve_font("Lato").name == "Lato-Regular.ttf"
     assert resolve_font(manager, "Lato").name == "Lato-Regular.ttf"
     assert font_manager(manager) is manager
-    assert available_fonts(manager) == ("Lato",)
+    assert available_fonts(manager) == ("Amiri", "Lato")
 
 
 def test_the_renderer_accepts_a_custom_font_manager(tmp_path: Path) -> None:
