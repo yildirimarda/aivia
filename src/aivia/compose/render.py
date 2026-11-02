@@ -39,12 +39,14 @@ from aivia.core.config.media import (
     DEFAULT_MEDIA_MAX_BYTES,
     DEFAULT_MEDIA_MAX_PIXELS,
 )
+from aivia.core.platforms import SafeArea
 
 from .errors import FontError, RenderError
 from .fonts import FontManager
 from .keyframes import AnimatedProperty, keyframes_for_layer
 from .overlays import apply_overlay_effects
 from .placement import LayerPlacement, find_text_placement
+from .safe_area import effective_safe_area, safe_area_box
 from .schema import (
     Anchor,
     BlendMode,
@@ -241,16 +243,25 @@ def _anchor_position(
     size: tuple[int, int],
     anchor: Anchor,
     margin: tuple[float, float],
+    safe_area: SafeArea | None = None,
 ) -> tuple[int, int]:
     canvas_width, canvas_height = canvas_size
     width, height = size
     margin_x, margin_y = margin
-    left = margin_x
-    top = margin_y
-    right = canvas_width - width - margin_x
-    bottom = canvas_height - height - margin_y
-    center_x = (canvas_width - width) / 2.0
-    center_y = (canvas_height - height) / 2.0
+    if safe_area is None:
+        safe_top = safe_right = safe_bottom = safe_left = 0
+    else:
+        safe_top, safe_right, safe_bottom, safe_left = safe_area.to_pixels(
+            canvas_width, canvas_height
+        )
+    safe_width = canvas_width - safe_left - safe_right
+    safe_height = canvas_height - safe_top - safe_bottom
+    left = safe_left + margin_x
+    top = safe_top + margin_y
+    right = canvas_width - safe_right - width - margin_x
+    bottom = canvas_height - safe_bottom - height - margin_y
+    center_x = safe_left + (safe_width - width) / 2.0
+    center_y = safe_top + (safe_height - height) / 2.0
     positions = {
         Anchor.TOP_LEFT: (left, top),
         Anchor.TOP_CENTER: (center_x, top),
@@ -264,6 +275,30 @@ def _anchor_position(
     }
     x, y = positions[anchor]
     return round(x), round(y)
+
+
+def _shift_face(face: Any, dx: int, dy: int) -> dict[str, float]:
+    if isinstance(face, Mapping):
+        x = face.get("x", face.get("left", 0.0))
+        y = face.get("y", face.get("top", 0.0))
+        width = face.get("width", face.get("w", 0.0))
+        height = face.get("height", face.get("h", 0.0))
+        confidence = face.get("confidence")
+    else:
+        x = getattr(face, "x", getattr(face, "left", 0.0))
+        y = getattr(face, "y", getattr(face, "top", 0.0))
+        width = getattr(face, "width", getattr(face, "w", 0.0))
+        height = getattr(face, "height", getattr(face, "h", 0.0))
+        confidence = getattr(face, "confidence", None)
+    shifted = {
+        "x": float(x) + dx,
+        "y": float(y) + dy,
+        "width": float(width),
+        "height": float(height),
+    }
+    if confidence is not None:
+        shifted["confidence"] = float(confidence)
+    return shifted
 
 
 def _shadow_image(
@@ -294,13 +329,19 @@ def _shadow_image(
     return shadow, pad_x, pad_y
 
 
-def placement_for_layer(layer: Layer, canvas: Image.Image) -> LayerPlacement:
+def placement_for_layer(
+    layer: Layer,
+    canvas: Image.Image,
+    *,
+    safe_area: SafeArea | None = None,
+) -> LayerPlacement:
     """Return the destination rectangle for *layer* on *canvas*.
 
     Geometry is optional. Without it a layer covers the whole canvas, which is
     what a background image needs. ``x``/``y`` and ``width``/``height`` (with
     the usual aliases) may be stored on the layer envelope; a ``position`` or
-    ``size`` pair is accepted too.
+    ``size`` pair is accepted too. A *safe_area* insets the default geometry
+    while explicit coordinates are left untouched.
     """
     position = _pair(_layer_value(layer, "position", "pos", "offset"), "position")
     size = _pair(_layer_value(layer, "size", "dimensions"), "size")
@@ -318,11 +359,22 @@ def placement_for_layer(layer: Layer, canvas: Image.Image) -> LayerPlacement:
     if height is None and size is not None:
         height = size[1]
 
+    if safe_area is None:
+        default_x = default_y = 0
+        default_width = canvas.width
+        default_height = canvas.height
+    else:
+        top, right, bottom, left = safe_area.to_pixels(canvas.width, canvas.height)
+        default_x = left
+        default_y = top
+        default_width = max(1, canvas.width - left - right)
+        default_height = max(1, canvas.height - top - bottom)
+
     placement = LayerPlacement(
-        x=0 if x is None else _integer(x, "layer x"),
-        y=0 if y is None else _integer(y, "layer y"),
-        width=canvas.width if width is None else _integer(width, "layer width"),
-        height=canvas.height if height is None else _integer(height, "layer height"),
+        x=default_x if x is None else _integer(x, "layer x"),
+        y=default_y if y is None else _integer(y, "layer y"),
+        width=default_width if width is None else _integer(width, "layer width"),
+        height=default_height if height is None else _integer(height, "layer height"),
     )
     if placement.width < 1 or placement.height < 1:
         raise RenderError("layer width and height must be positive")
@@ -1283,6 +1335,7 @@ class PillowStillRenderer:
         canvas: Image.Image,
         layer: Layer,
         time_seconds: float,
+        composition: Composition,
     ) -> None:
         source = _layer_value(layer, "source", "path", "file", "asset")
         if not isinstance(source, str) or not source.strip():
@@ -1322,7 +1375,13 @@ class PillowStillRenderer:
 
         anchor = _anchor_value(_layer_value(layer, "anchor", "corner", "alignment"))
         margin = _margin_pair(_layer_value(layer, "margin", "margins", "inset"))
-        x, y = _anchor_position(canvas.size, fitted.size, anchor, margin)
+        x, y = _anchor_position(
+            canvas.size,
+            fitted.size,
+            anchor,
+            margin,
+            effective_safe_area(composition),
+        )
 
         position = _sample(layer, AnimatedProperty.POSITION, time_seconds)
         if position is not None:
@@ -1492,6 +1551,7 @@ class PillowStillRenderer:
         canvas: Image.Image,
         layer: Layer,
         time_seconds: float,
+        composition: Composition,
     ) -> None:
         raw_text = _layer_value(layer, "text", "content", "value")
         if not isinstance(raw_text, str) or not raw_text.strip():
@@ -1610,7 +1670,8 @@ class PillowStillRenderer:
         )
 
         config = _text_placement_config(layer)
-        placement = placement_for_layer(layer, canvas)
+        safe_area = effective_safe_area(composition)
+        placement = placement_for_layer(layer, canvas, safe_area=safe_area)
         manager = _default_font_manager() if self._fonts is None else self._fonts
         path = manager.resolve(family or None, weight=weight, style=style)
 
@@ -1649,16 +1710,56 @@ class PillowStillRenderer:
             pad = round(config.padding)
             box_width = min(canvas.width, max(1, box_width + pad * 2))
             box_height = min(canvas.height, max(1, box_height + pad * 2))
-            region = find_text_placement(
-                canvas,
-                (box_width, box_height),
-                faces=self._layer_faces(layer, config),
-                avoid_faces=config.avoid_faces,
-                face_padding=config.face_padding,
-                margin=config.margin,
-                step=config.step,
-            )
-            placement = LayerPlacement(region.x, region.y, box_width, box_height)
+            area_left, area_top, area_width, area_height = safe_area_box(composition)
+            if (area_left, area_top, area_width, area_height) != (
+                0,
+                0,
+                canvas.width,
+                canvas.height,
+            ):
+                working = canvas.crop(
+                    (
+                        area_left,
+                        area_top,
+                        area_left + area_width,
+                        area_top + area_height,
+                    )
+                )
+                faces = [
+                    _shift_face(face, -area_left, -area_top)
+                    for face in self._layer_faces(layer, config)
+                ]
+                region = find_text_placement(
+                    working,
+                    (box_width, box_height),
+                    faces=faces,
+                    avoid_faces=config.avoid_faces,
+                    face_padding=config.face_padding,
+                    margin=config.margin,
+                    step=config.step,
+                )
+                placement = LayerPlacement(
+                    region.x + area_left,
+                    region.y + area_top,
+                    region.width,
+                    region.height,
+                )
+            else:
+                region = find_text_placement(
+                    canvas,
+                    (box_width, box_height),
+                    faces=self._layer_faces(layer, config),
+                    avoid_faces=config.avoid_faces,
+                    face_padding=config.face_padding,
+                    margin=config.margin,
+                    step=config.step,
+                )
+                placement = LayerPlacement(
+                    region.x,
+                    region.y,
+                    region.width,
+                    region.height,
+                )
             layout = _layout(placement.width, placement.height)
         font = _load_font(str(path), layout.font_size)
         text_image = Image.new(
@@ -1741,15 +1842,16 @@ class PillowStillRenderer:
         canvas: Image.Image,
         layer: Layer,
         time_seconds: float,
+        composition: Composition,
     ) -> None:
         if layer.type is LayerType.IMAGE:
             self._draw_image_layer(canvas, layer, time_seconds)
         elif layer.type in (LayerType.STICKER, LayerType.LOGO):
-            self._draw_overlay_layer(canvas, layer, time_seconds)
+            self._draw_overlay_layer(canvas, layer, time_seconds, composition)
         elif layer.type is LayerType.SHAPE:
             self._draw_shape_layer(canvas, layer, time_seconds)
         elif layer.type is LayerType.TEXT:
-            self._draw_text_layer(canvas, layer, time_seconds)
+            self._draw_text_layer(canvas, layer, time_seconds, composition)
 
     def _active_layers(
         self,
@@ -1795,7 +1897,7 @@ class PillowStillRenderer:
                 progress = transition_progress(layer, time, transition)
                 if progress < 1.0:
                     layer_image = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-                    self._draw_layer(layer_image, layer, time)
+                    self._draw_layer(layer_image, layer, time, composition)
                     canvas = compose_transition(
                         canvas,
                         layer_image,
@@ -1803,7 +1905,7 @@ class PillowStillRenderer:
                         progress,
                     )
                     continue
-            self._draw_layer(canvas, layer, time)
+            self._draw_layer(canvas, layer, time, composition)
         return apply_overlay_effects(canvas, composition, time)
 
     def render(

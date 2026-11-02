@@ -41,6 +41,7 @@ from .output_profiles import (
     apply_output_profile,
     resolve_output_profile,
 )
+from .safe_area import effective_safe_area
 from .schema import (
     Anchor,
     Composition,
@@ -413,15 +414,24 @@ def _margin(layer: Layer) -> tuple[float, float]:
     return horizontal, vertical
 
 
-def _anchor_position(layer: Layer) -> tuple[str, str]:
+def _anchor_position(layer: Layer, composition: Composition) -> tuple[str, str]:
     anchor = _anchor(layer)
     margin_x, margin_y = _margin(layer)
-    left = f"{margin_x:g}"
-    top = f"{margin_y:g}"
-    right = f"W-w-{margin_x:g}"
-    bottom = f"H-h-{margin_y:g}"
-    center_x = "(W-w)/2"
-    center_y = "(H-h)/2"
+    safe_top, safe_right, safe_bottom, safe_left = effective_safe_area(
+        composition
+    ).to_pixels(composition.canvas.width, composition.canvas.height)
+    left = f"{safe_left + margin_x:g}"
+    top = f"{safe_top + margin_y:g}"
+    right = f"W-w-{safe_right + margin_x:g}"
+    bottom = f"H-h-{safe_bottom + margin_y:g}"
+    if safe_left == 0 and safe_right == 0:
+        center_x = "(W-w)/2"
+    else:
+        center_x = f"{safe_left}+(W-w-{safe_left + safe_right})/2"
+    if safe_top == 0 and safe_bottom == 0:
+        center_y = "(H-h)/2"
+    else:
+        center_y = f"{safe_top}+(H-h-{safe_top + safe_bottom})/2"
     positions = {
         "top_left": (left, top),
         "top_center": (center_x, top),
@@ -441,6 +451,7 @@ def _anchor_position(layer: Layer) -> tuple[str, str]:
 
 def _position(
     layer: Layer,
+    composition: Composition,
     *,
     x: int | None,
     y: int | None,
@@ -449,7 +460,7 @@ def _position(
     if x is not None or y is not None:
         return str(0 if x is None else x), str(0 if y is None else y)
     if anchored or _layer_value(layer, "anchor", "corner", "alignment") is not None:
-        return _anchor_position(layer)
+        return _anchor_position(layer, composition)
     return "0", "0"
 
 
@@ -655,6 +666,12 @@ def _layer_filters(
     filters: list[str] = []
 
     if layer.type is LayerType.TEXT:
+        if x is None or y is None:
+            safe_top, _safe_right, _safe_bottom, safe_left = effective_safe_area(
+                composition
+            ).to_pixels(composition.canvas.width, composition.canvas.height)
+            x = safe_left if x is None else x
+            y = safe_top if y is None else y
         filters.extend(_text_filters(layer, x, y))
     elif layer.type is LayerType.VIDEO:
         filters.extend(_video_filters(layer, composition))
@@ -697,6 +714,7 @@ def _layer_filters(
     node = f"[{index + 1}:v]{','.join(filters)}[{label}]"
     overlay_x, overlay_y = _position(
         layer,
+        composition,
         x=x,
         y=y,
         anchored=overlay,
