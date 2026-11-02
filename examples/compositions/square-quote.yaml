@@ -1,0 +1,65 @@
+# A square social quote card built only from shapes and text.
+id: square-quote
+schema_version: 1
+canvas:
+  width: 1080
+  height: 1080
+  background: "#0b1020"
+duration_seconds: 6
+fps: 30
+language: en
+layers:
+  - id: backdrop
+    type: shape
+    shape: rounded_rectangle
+    x: 72
+    y: 72
+    width: 936
+    height: 936
+    radius: 56
+    fill:
+      type: linear
+      angle: 35
+      stops:
+        - color: "#6d28d9"
+          offset: 0
+        - color: "#2563eb"
+          offset: 1
+    z: 0
+  - id: accent
+    type: shape
+    shape: rectangle
+    x: 156
+    y: 218
+    width: 120
+    height: 10
+    fill: "#facc15"
+    z: 1
+  - id: quote
+    type: text
+    text: "Make it\nmeaningful."
+    x: 156
+    y: 300
+    width: 768
+    height: 360
+    font_family: Lato
+    font_size: 112
+    font_weight: bold
+    color: "#ffffff"
+    align: center
+    vertical_align: middle
+    line_height: 1.05
+    letter_spacing: -1
+    z: 2
+  - id: attribution
+    type: text
+    text: "aivia synthetic example"
+    x: 156
+    y: 820
+    width: 768
+    height: 60
+    font_family: Lato
+    font_size: 34
+    color: "#e2e8f0"
+    align: center
+    z: 3

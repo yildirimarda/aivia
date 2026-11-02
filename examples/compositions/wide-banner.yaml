@@ -1,0 +1,77 @@
+# A widescreen title banner with a gradient panel and left aligned copy.
+id: wide-banner
+schema_version: 1
+canvas:
+  width: 1920
+  height: 1080
+  background: "#f8fafc"
+duration_seconds: 5
+fps: 24
+language: en
+layers:
+  - id: panel
+    type: shape
+    shape: rounded_rectangle
+    x: 96
+    y: 96
+    width: 1728
+    height: 888
+    radius: 40
+    fill:
+      type: linear
+      angle: 0
+      stops:
+        - color: "#e0f2fe"
+          offset: 0
+        - color: "#f5f3ff"
+          offset: 1
+    z: 0
+  - id: stripe
+    type: shape
+    shape: rectangle
+    x: 96
+    y: 96
+    width: 18
+    height: 888
+    fill: "#0ea5e9"
+    z: 1
+  - id: headline
+    type: text
+    text: "One composition.\nEvery output."
+    x: 220
+    y: 300
+    width: 1100
+    height: 340
+    font_family: Lato
+    font_size: 132
+    font_weight: bold
+    color: "#0f172a"
+    align: left
+    vertical_align: middle
+    line_height: 1.05
+    z: 2
+  - id: subhead
+    type: text
+    text: "Deterministic rendering with no AI and no network."
+    x: 220
+    y: 660
+    width: 1200
+    height: 80
+    font_family: Lato
+    font_size: 42
+    color: "#334155"
+    align: left
+    z: 3
+  - id: mark
+    type: text
+    text: "aivia"
+    x: 1500
+    y: 760
+    width: 260
+    height: 100
+    font_family: Lato
+    font_size: 72
+    font_weight: bold
+    color: "#0ea5e9"
+    align: right
+    z: 4
