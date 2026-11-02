@@ -149,43 +149,111 @@ def _raster_layer_data(layer: Layer) -> dict[str, Any]:
     return data
 
 
-def _shape_scale_factors(
+@dataclass(frozen=True, slots=True)
+class _RasterExpansion:
+    """How far a rasterized layer's base box must grow to cover its motion."""
+
+    scale_x: float = 1.0
+    scale_y: float = 1.0
+    rotation: tuple[float, float] | None = None
+
+
+def _shape_expansion(
     layer: Layer,
     start_seconds: float,
     end_seconds: float,
-) -> tuple[float, float]:
+) -> _RasterExpansion:
     tracks = tracks_for_layer(layer, start_seconds, end_seconds)
-    if tracks.scale is None:
-        return 1.0, 1.0
     maximum_x = maximum_y = 1.0
-    for frame in tracks.scale.keyframes:
-        value = frame.value
-        if isinstance(value, tuple):
-            scale_x, scale_y = value
-        else:
-            scale_x = scale_y = value
-        maximum_x = max(maximum_x, float(scale_x))
-        maximum_y = max(maximum_y, float(scale_y))
-    return maximum_x, maximum_y
+    if tracks.scale is not None:
+        for frame in tracks.scale.keyframes:
+            value = frame.value
+            if isinstance(value, tuple):
+                scale_x, scale_y = value
+            else:
+                scale_x = scale_y = value
+            maximum_x = max(maximum_x, float(scale_x))
+            maximum_y = max(maximum_y, float(scale_y))
+    rotation = None
+    if tracks.rotation is not None:
+        angles: list[float] = []
+        for frame in tracks.rotation.keyframes:
+            value = frame.value
+            if not isinstance(value, tuple):
+                angles.append(float(value))
+        if angles:
+            rotation = (min(angles), max(angles))
+    return _RasterExpansion(maximum_x, maximum_y, rotation)
+
+
+def _max_rotated_extent(
+    horizontal: float,
+    vertical: float,
+    low_degrees: float,
+    high_degrees: float,
+) -> float:
+    """Return the widest projection of a box over an interval of angles.
+
+    A rectangle of *horizontal* by *vertical* size projects to
+    ``horizontal * |cos(angle)| + vertical * |sin(angle)|``. The projection
+    repeats every 180 degrees, so an interval that spans a half turn already
+    covers every orientation. Otherwise only the interval ends and the angles
+    where the projection peaks can be maxima.
+    """
+    span = high_degrees - low_degrees
+    if span >= 180.0:
+        return math.hypot(horizontal, vertical)
+    period = math.pi
+    low = math.radians(low_degrees) % period
+    width = math.radians(span)
+    if low + width <= period:
+        intervals = [(low, low + width)]
+    else:
+        intervals = [(low, period), (0.0, low + width - period)]
+    critical = math.atan2(vertical, horizontal)
+    best = 0.0
+    for start, end in intervals:
+        candidates = [start, end]
+        for angle in (critical, period - critical):
+            shift = math.floor((start - angle) / period)
+            for step in (shift, shift + 1):
+                candidate = angle + step * period
+                if start - 1e-12 <= candidate <= end + 1e-12:
+                    candidates.append(candidate)
+        for candidate in candidates:
+            projection = horizontal * abs(math.cos(candidate)) + vertical * abs(
+                math.sin(candidate)
+            )
+            best = max(best, projection)
+    return best
 
 
 def _expand_box(
     box: tuple[int, int, int, int],
-    scale_x: float,
-    scale_y: float,
+    expansion: _RasterExpansion,
 ) -> tuple[int, int, int, int]:
-    if scale_x <= 1.0 and scale_y <= 1.0:
-        return box
     left, top, right, bottom = box
+    width = right - left
+    height = bottom - top
+    scaled_width = width * expansion.scale_x
+    scaled_height = height * expansion.scale_y
+    target_width = scaled_width
+    target_height = scaled_height
+    if expansion.rotation is not None:
+        low, high = expansion.rotation
+        target_width = _max_rotated_extent(scaled_width, scaled_height, low, high)
+        target_height = _max_rotated_extent(scaled_height, scaled_width, low, high)
+    target_width = max(float(width), target_width)
+    target_height = max(float(height), target_height)
+    if target_width == width and target_height == height:
+        return box
     center_x = (left + right) / 2.0
     center_y = (top + bottom) / 2.0
-    half_width = (right - left) / 2.0 * scale_x
-    half_height = (bottom - top) / 2.0 * scale_y
     return (
-        math.floor(center_x - half_width),
-        math.floor(center_y - half_height),
-        math.ceil(center_x + half_width),
-        math.ceil(center_y + half_height),
+        math.floor(center_x - target_width / 2.0),
+        math.floor(center_y - target_height / 2.0),
+        math.ceil(center_x + target_width / 2.0),
+        math.ceil(center_y + target_height / 2.0),
     )
 
 
@@ -197,8 +265,10 @@ def _rasterize_layer(
     *,
     render: RenderConfig | None = None,
     contrast_background: Image.Image | None = None,
-    expand: tuple[float, float] = (1.0, 1.0),
+    expand: _RasterExpansion | None = None,
 ) -> tuple[Path, tuple[int, int, int, int]] | None:
+    if expand is None:
+        expand = _RasterExpansion()
     static = Composition.model_validate(
         {
             "canvas": {
@@ -221,7 +291,7 @@ def _rasterize_layer(
     box = image.getchannel("A").getbbox()
     if box is None:
         return None
-    box = _expand_box(box, *expand)
+    box = _expand_box(box, expand)
     cropped = image.crop(box)
     source = directory / f"{layer.type.value}-{index}.png"
     cropped.save(source)
@@ -400,9 +470,9 @@ def _prepare_raster_layers(
                 parse_color(color),
             )
         expand = (
-            _shape_scale_factors(layer, layer.start_seconds, end)
+            _shape_expansion(layer, layer.start_seconds, end)
             if layer.type is LayerType.SHAPE
-            else (1.0, 1.0)
+            else _RasterExpansion()
         )
         raster = _rasterize_layer(
             composition,
