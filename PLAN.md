@@ -451,7 +451,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Render shape layers in video by rasterizing them to transparent overlays with sampled frame checks (slow, tests/compose/test_shape_video.py)
 - [x] Normalize intro and outro clip geometry and audio before branding concatenation so mixed sources join cleanly (tests/compose/test_cover_branding.py)
 - [x] Set image input frame rate to the composition fps so still layers are not decoded at ffmpeg defaults (tests/compose/test_ffmpeg_cmd.py)
-- [ ] Render previews on a reduced canvas by scaling layer geometry instead of compositing at full resolution (slow, tests/compose/test_preview.py)
+- [x] Render previews on a reduced canvas by scaling layer geometry instead of compositing at full resolution (slow, tests/compose/test_preview.py)
 - [ ] Resolve relative asset paths against the composition document directory in compose render and validate (tests/cli/test_compose.py)
 - [ ] Serve repeated compose render calls from the render cache and honor the global no cache flag (tests/cli/test_compose.py)
 - [ ] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
@@ -468,6 +468,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Reject SRT or VTT subtitle files in the pure FFmpeg command builder so callers convert them to ASS first (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Validate composition safe area margins are finite fractions between zero and one so bad values fail before rendering (tests/compose/test_validation.py)
 - [ ] Reject a video output whose audio codec cannot be carried by the output container before invoking ffmpeg (tests/compose/test_output_profiles.py)
+- [ ] Scale external SRT and VTT subtitle styles for reduced canvas previews so their text stays proportional (tests/compose/test_preview.py)
 
 ## Milestone 10: Research engine
 

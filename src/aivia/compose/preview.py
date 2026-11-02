@@ -1,8 +1,9 @@
 """Render a fast preview at reduced resolution and frame rate.
 
 A preview keeps the composition's exact duration, layers and audio, but renders
-fewer frames and scales the finished frame down before encoding. Every layer is
-composited once per preview frame, so the result matches the full render apart
+fewer frames on a smaller canvas. The canvas and every piece of absolute layer
+geometry are scaled before compositing, so no layer is ever rendered at the full
+source resolution and then downscaled. The result matches the full render apart
 from size and temporal resolution while doing measurably less work.
 
 The settings are derived from the source composition: a *scale* below one
@@ -34,7 +35,7 @@ from .output_profiles import (
     ffmpeg_options,
     resolve_output_profile,
 )
-from .schema import Composition
+from .schema import Composition, FilterType, LayerType
 from .video import FFmpegRunner, VideoRenderResult, render_video
 
 if TYPE_CHECKING:
@@ -47,11 +48,14 @@ __all__ = [
     "PreviewError",
     "PreviewRenderResult",
     "PreviewSettings",
+    "preview_composition",
     "preview_settings",
     "render_preview",
+    "scale_composition",
+    "scaled_composition",
 ]
 
-PREVIEW_RENDERER_VERSION = "1"
+PREVIEW_RENDERER_VERSION = "2"
 """The version of the preview render pipeline."""
 
 DEFAULT_PREVIEW_SCALE = DEFAULT_MEDIA_PREVIEW_SCALE
@@ -62,6 +66,9 @@ DEFAULT_PREVIEW_MAX_FPS = DEFAULT_MEDIA_PREVIEW_MAX_FPS
 
 _MIN_PREVIEW_DIMENSION = 2
 """The smallest even canvas dimension an encoded preview can use."""
+
+_MIN_PREVIEW_FRAME_RATE = 1
+"""The smallest frame rate a preview can use."""
 
 _AUDIO_SUFFIXES = frozenset(
     {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".oga", ".opus", ".aac"}
@@ -220,6 +227,417 @@ def preview_settings(
     )
 
 
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _scaled_length(value: Any, factor: float) -> Any:
+    number = _number(value)
+    return value if number is None else number * factor
+
+
+def _scaled_axis(
+    value: Any,
+    factor: float,
+    *,
+    minimum: int | None = None,
+) -> Any:
+    number = _number(value)
+    if number is None:
+        return value
+    scaled = round(number * factor)
+    if minimum is not None:
+        scaled = max(minimum, scaled)
+    return scaled
+
+
+def _scaled_geometry_pair(
+    value: Any,
+    x_factor: float,
+    y_factor: float,
+    *,
+    minimum: int | None = None,
+) -> Any:
+    if not isinstance(value, (tuple, list)) or len(value) != 2:
+        return value
+    x = _number(value[0])
+    y = _number(value[1])
+    if x is None or y is None:
+        return value
+    first = round(x * x_factor)
+    second = round(y * y_factor)
+    if minimum is not None:
+        first = max(minimum, first)
+        second = max(minimum, second)
+    return (first, second)
+
+
+def _scaled_length_pair(
+    value: Any,
+    x_factor: float,
+    y_factor: float,
+) -> Any:
+    if not isinstance(value, (tuple, list)) or len(value) != 2:
+        return value
+    x = _number(value[0])
+    y = _number(value[1])
+    if x is None or y is None:
+        return value
+    return (x * x_factor, y * y_factor)
+
+
+def _scaled_position_frames(
+    frames: Any,
+    x_factor: float,
+    y_factor: float,
+) -> Any:
+    if not isinstance(frames, (list, tuple)):
+        return frames
+    scaled: list[Any] = []
+    for frame in frames:
+        if not isinstance(frame, Mapping):
+            scaled.append(frame)
+            continue
+        item = dict(frame)
+        if "value" in item:
+            item["value"] = _scaled_length_pair(
+                item["value"],
+                x_factor,
+                y_factor,
+            )
+        scaled.append(item)
+    return scaled
+
+
+def _scaled_position_track(
+    track: Any,
+    x_factor: float,
+    y_factor: float,
+) -> Any:
+    if isinstance(track, Mapping):
+        data = dict(track)
+        for name in ("keyframes", "frames", "keys", "values"):
+            if name in data:
+                data[name] = _scaled_position_frames(
+                    data[name],
+                    x_factor,
+                    y_factor,
+                )
+        return data
+    return _scaled_position_frames(track, x_factor, y_factor)
+
+
+def _scaled_motion(
+    motion: Any,
+    x_factor: float,
+    y_factor: float,
+) -> Any:
+    if not isinstance(motion, Mapping):
+        return motion
+    data = dict(motion)
+    for name in ("start_pan", "end_pan", "drift"):
+        if name in data:
+            data[name] = _scaled_length_pair(
+                data[name],
+                x_factor,
+                y_factor,
+            )
+    return data
+
+
+def _scaled_animation(
+    animation: Any,
+    x_factor: float,
+    y_factor: float,
+    length_factor: float,
+) -> Any:
+    if not isinstance(animation, Mapping):
+        return animation
+    data = dict(animation)
+    if "distance" in data:
+        data["distance"] = _scaled_length(data["distance"], length_factor)
+    if "offset" in data:
+        data["offset"] = _scaled_length_pair(
+            data["offset"],
+            x_factor,
+            y_factor,
+        )
+    return data
+
+
+def _scaled_placement(
+    placement: Any,
+    x_factor: float,
+    y_factor: float,
+    length_factor: float,
+) -> Any:
+    if not isinstance(placement, Mapping):
+        return placement
+    data = dict(placement)
+    for name in ("padding", "face_padding"):
+        if name in data:
+            data[name] = _scaled_length(data[name], length_factor)
+    margin = data.get("margin")
+    if isinstance(margin, (tuple, list)):
+        data["margin"] = _scaled_length_pair(margin, x_factor, y_factor)
+    elif margin is not None:
+        data["margin"] = _scaled_length(margin, length_factor)
+    step = data.get("step")
+    if step is not None:
+        data["step"] = _scaled_axis(step, length_factor, minimum=1)
+    faces = data.get("faces")
+    if isinstance(faces, (list, tuple)):
+        scaled_faces: list[Any] = []
+        for face in faces:
+            if not isinstance(face, Mapping):
+                scaled_faces.append(face)
+                continue
+            item = dict(face)
+            for name, factor in (
+                ("x", x_factor),
+                ("y", y_factor),
+                ("width", x_factor),
+                ("height", y_factor),
+            ):
+                if name in item:
+                    item[name] = _scaled_length(item[name], factor)
+            scaled_faces.append(item)
+        data["faces"] = scaled_faces
+    return data
+
+
+def _scaled_filters(filters: Any, length_factor: float) -> Any:
+    if not isinstance(filters, (list, tuple)):
+        return filters
+    scaled: list[Any] = []
+    for item in filters:
+        if not isinstance(item, Mapping):
+            scaled.append(item)
+            continue
+        data = dict(item)
+        kind = data.get("type")
+        if data.get("radius") is not None:
+            data["radius"] = _scaled_length(data["radius"], length_factor)
+        elif (
+            kind in (FilterType.BLUR, FilterType.BOX_BLUR, "blur", "box_blur")
+            and data.get("amount") is not None
+        ):
+            data["amount"] = _scaled_length(data["amount"], length_factor)
+        scaled.append(data)
+    return scaled
+
+
+def _scaled_mask(mask: Any, length_factor: float) -> Any:
+    if not isinstance(mask, Mapping):
+        return mask
+    data = dict(mask)
+    if "feather" in data:
+        data["feather"] = _scaled_length(data["feather"], length_factor)
+    return data
+
+
+def _scaled_layer(
+    layer: Any,
+    x_factor: float,
+    y_factor: float,
+    length_factor: float,
+) -> Any:
+    if not isinstance(layer, Mapping):
+        return layer
+    data = dict(layer)
+    if "x" in data:
+        data["x"] = _scaled_axis(data["x"], x_factor)
+    if "y" in data:
+        data["y"] = _scaled_axis(data["y"], y_factor)
+    if "width" in data:
+        data["width"] = _scaled_axis(data["width"], x_factor, minimum=1)
+    if "height" in data:
+        data["height"] = _scaled_axis(data["height"], y_factor, minimum=1)
+    if "position" in data:
+        data["position"] = _scaled_geometry_pair(
+            data["position"],
+            x_factor,
+            y_factor,
+        )
+    if "size" in data:
+        data["size"] = _scaled_geometry_pair(
+            data["size"],
+            x_factor,
+            y_factor,
+            minimum=1,
+        )
+    if "position_keyframes" in data:
+        data["position_keyframes"] = _scaled_position_track(
+            data["position_keyframes"],
+            x_factor,
+            y_factor,
+        )
+    keyframes = data.get("keyframes")
+    if isinstance(keyframes, Mapping):
+        tracks = dict(keyframes)
+        if "position" in tracks:
+            tracks["position"] = _scaled_position_track(
+                tracks["position"],
+                x_factor,
+                y_factor,
+            )
+        data["keyframes"] = tracks
+    if "motion" in data:
+        data["motion"] = _scaled_motion(data["motion"], x_factor, y_factor)
+    for name in ("entrance", "exit"):
+        if name in data:
+            data[name] = _scaled_animation(
+                data[name],
+                x_factor,
+                y_factor,
+                length_factor,
+            )
+    if "filters" in data:
+        data["filters"] = _scaled_filters(data["filters"], length_factor)
+    if "mask" in data:
+        data["mask"] = _scaled_mask(data["mask"], length_factor)
+
+    layer_type = data.get("type")
+    if layer_type is LayerType.TEXT:
+        for name in (
+            "font_size",
+            "min_font_size",
+            "letter_spacing",
+            "stroke_width",
+        ):
+            if name in data:
+                data[name] = _scaled_length(data[name], length_factor)
+        if "placement" in data:
+            data["placement"] = _scaled_placement(
+                data["placement"],
+                x_factor,
+                y_factor,
+                length_factor,
+            )
+    elif layer_type is LayerType.SHAPE:
+        for name in ("stroke_width", "radius"):
+            if name in data:
+                data[name] = _scaled_length(data[name], length_factor)
+    elif layer_type in (LayerType.STICKER, LayerType.LOGO):
+        margin = data.get("margin")
+        if isinstance(margin, (tuple, list)):
+            data["margin"] = _scaled_length_pair(margin, x_factor, y_factor)
+        elif margin is not None:
+            data["margin"] = _scaled_length(margin, length_factor)
+        if "shadow_offset" in data:
+            data["shadow_offset"] = _scaled_length_pair(
+                data["shadow_offset"],
+                x_factor,
+                y_factor,
+            )
+        if "shadow_blur" in data:
+            data["shadow_blur"] = _scaled_length(
+                data["shadow_blur"],
+                length_factor,
+            )
+    return data
+
+
+def _scaled_subtitles(
+    subtitles: Any,
+    length_factor: float,
+) -> Any:
+    if not isinstance(subtitles, Mapping):
+        return subtitles
+    data = dict(subtitles)
+    style = data.get("style")
+    if style is None or isinstance(style, str):
+        from aivia.media.subtitles import resolve_style
+
+        style = resolve_style(style).model_dump(by_alias=False)
+    if isinstance(style, Mapping):
+        scaled = dict(style)
+        for name in (
+            "font_size",
+            "outline",
+            "shadow",
+            "spacing",
+            "margin_l",
+            "margin_r",
+            "margin_v",
+        ):
+            if name in scaled:
+                value = _number(scaled[name])
+                if value is not None:
+                    scaled[name] = max(1, round(value * length_factor))
+        data["style"] = scaled
+    return data
+
+
+def scale_composition(
+    composition: Composition | Mapping[str, Any],
+    width: int | PreviewSettings,
+    height: int | None = None,
+    *,
+    fps: int | None = None,
+) -> Composition:
+    """Return *composition* reduced to *width* by *height* pixels.
+
+    The canvas and every absolute layer measurement are scaled: position, size,
+    text styles, masks, filters, motion pans and position keyframes, overlay
+    margins and shadows. Relative values such as opacity, scale, rotation and
+    fractions are left untouched, so the reduced composition composites the same
+    scene at a smaller resolution instead of scaling a finished frame.
+
+    A :class:`PreviewSettings` may be passed as *width* instead of a separate
+    *height* and *fps*.
+    """
+    value = (
+        composition
+        if isinstance(composition, Composition)
+        else Composition.model_validate(dict(composition))
+    )
+    if isinstance(width, PreviewSettings):
+        target_width = width.width
+        target_height = width.height
+        target_fps = width.fps if fps is None else fps
+    else:
+        if height is None:
+            raise PreviewError("height is required when width is an integer")
+        target_width = width
+        target_height = height
+        target_fps = value.fps if fps is None else fps
+    if target_width <= 0 or target_height <= 0:
+        raise PreviewError("preview dimensions must be positive")
+    if target_fps < _MIN_PREVIEW_FRAME_RATE:
+        raise PreviewError("preview frame rate must be positive")
+
+    x_factor = target_width / value.canvas.width
+    y_factor = target_height / value.canvas.height
+    length_factor = math.sqrt(x_factor * y_factor)
+    data = value.model_dump(by_alias=False)
+    data["canvas"] = {
+        **data["canvas"],
+        "width": target_width,
+        "height": target_height,
+    }
+    data["fps"] = target_fps
+    data["layers"] = [
+        _scaled_layer(layer, x_factor, y_factor, length_factor)
+        for layer in data.get("layers", [])
+    ]
+    if "subtitles" in data:
+        data["subtitles"] = _scaled_subtitles(
+            data["subtitles"],
+            length_factor,
+        )
+    return Composition.model_validate(data)
+
+
+preview_composition = scale_composition
+"""Alias for :func:`scale_composition`."""
+
+scaled_composition = scale_composition
+"""Alias for :func:`scale_composition`."""
+
+
 @dataclass(frozen=True, slots=True)
 class PreviewRenderResult:
     """A rendered preview, its settings and the underlying video result."""
@@ -317,8 +735,9 @@ def render_preview(
     """Render *composition* to a reduced preview video at *output*.
 
     The full output profile is applied first when *output_profile*, *config*,
-    *video*, *platform* or *profile* is supplied. The remaining
-    ``command_options`` are forwarded to
+    *video*, *platform* or *profile* is supplied. The canvas and layer geometry
+    are then scaled to the preview size so compositing happens on the reduced
+    canvas. The remaining ``command_options`` are forwarded to
     :func:`~aivia.compose.ffmpeg_cmd.build_ffmpeg_command`. Animated image and
     audio destinations are rejected because a preview is a video.
     """
@@ -335,9 +754,7 @@ def render_preview(
         max_height=max_height,
         max_fps=max_fps,
     )
-    data = value.model_dump(by_alias=False)
-    data["fps"] = settings.fps
-    preview = Composition.model_validate(data)
+    preview = scale_composition(value, settings)
 
     result = render_video(
         preview,
@@ -348,8 +765,6 @@ def render_preview(
         ffprobe_timeout_seconds=ffprobe_timeout_seconds,
         ffmpeg_runner=ffmpeg_runner,
         ffprobe_runner=ffprobe_runner,
-        output_width=settings.width,
-        output_height=settings.height,
         **options,
     )
     if not isinstance(result, VideoRenderResult):
