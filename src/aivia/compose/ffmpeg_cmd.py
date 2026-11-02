@@ -226,6 +226,23 @@ def _seconds(value: float) -> str:
     return f"{value:.6f}"
 
 
+def _output_size(
+    width: Any,
+    height: Any,
+) -> tuple[int, int] | None:
+    if (width is None) != (height is None):
+        raise FFmpegCommandError(
+            "output_width and output_height must be provided together"
+        )
+    if width is None:
+        return None
+    resolved_width = _integer(width, "output_width")
+    resolved_height = _integer(height, "output_height")
+    if resolved_width <= 0 or resolved_height <= 0:
+        raise FFmpegCommandError("output dimensions must be positive")
+    return resolved_width, resolved_height
+
+
 def _ffmpeg_color(value: str) -> str:
     text = value.strip()
     if not text:
@@ -757,15 +774,20 @@ def build_ffmpeg_filtergraph(
     loudness_lufs: float | None = None,
     normalize_loudness: bool | None = None,
     ducking: Any | None = None,
+    output_width: int | None = None,
+    output_height: int | None = None,
 ) -> str:
     """Return the pure ``filter_complex`` graph for *composition*.
 
     Input zero is always the generated background. Each supported layer adds
     one input and one overlay node, in ``z_index`` order. Enabled audio tracks
     add their mix graph after the video nodes, and a written ASS file adds the
-    ``ass`` filter that burns subtitles over the final frame.
+    ``ass`` filter that burns subtitles over the final frame. When
+    *output_width* and *output_height* are given, the finished frame is scaled
+    to that size before it is mapped to ``[vout]``.
     """
     value = _composition(composition)
+    target = _output_size(output_width, output_height)
     layers = _active_layers(value)
     parts = [
         f"color=c={_ffmpeg_color(value.canvas.background)}:"
@@ -782,8 +804,14 @@ def build_ffmpeg_filtergraph(
             "subtitles need a written ASS file; pass subtitle_file"
         )
     if path is not None:
-        parts.append(f"[{video_label}]{subtitle_filter(path)}[vout]")
-    else:
+        subtitle_label = "vout" if target is None else "subbed"
+        parts.append(f"[{video_label}]{subtitle_filter(path)}[{subtitle_label}]")
+        video_label = subtitle_label
+    if target is not None:
+        parts.append(
+            f"[{video_label}]scale={target[0]}:{target[1]}:flags=lanczos[vout]"
+        )
+    elif path is None:
         parts.append(f"[{video_label}]null[vout]")
 
     if include_audio and any(track.enabled for track in value.audio_tracks):
@@ -837,6 +865,8 @@ def build_ffmpeg_command(
     video: Any | None = None,
     platform: str | None = None,
     profile: str | None = None,
+    output_width: int | None = None,
+    output_height: int | None = None,
 ) -> FFmpegCommand:
     """Build an ffmpeg argv for *composition* without executing anything.
 
@@ -850,6 +880,8 @@ def build_ffmpeg_command(
     optional *platform* and *profile* overrides and applies it to the
     composition. An explicit *output_profile* wins over configuration. Codec,
     bitrate and loudness arguments still win over the resolved profile.
+    *output_width* and *output_height* scale the finished frame to a smaller
+    size, which is how a preview renders at reduced resolution.
     """
     if not isinstance(executable, str) or not executable.strip():
         raise FFmpegCommandError("executable must be a non-empty string")
@@ -933,6 +965,8 @@ def build_ffmpeg_command(
         loudness_lufs=loudness_lufs,
         normalize_loudness=normalize_loudness,
         ducking=ducking,
+        output_width=output_width,
+        output_height=output_height,
     )
     background = _background_input(value)
 

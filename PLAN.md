@@ -416,7 +416,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Generate cover or thumbnail frames and apply watermark, intro and outro from the branding block (tests/compose/test_cover_branding.py)
 - [x] Validate outputs against platform data for duration, resolution, size, audio presence and loudness with per type messages (tests/compose/test_output_validation.py)
 - [x] Cache renders by composition hash, asset hashes, renderer version, ffmpeg version and font fingerprint (tests/compose/test_render_cache.py)
-- [ ] Add a preview render at reduced resolution and fps that is measurably faster than a full render (slow, tests/compose/test_preview.py)
+- [x] Add a preview render at reduced resolution and fps that is measurably faster than a full render (slow, tests/compose/test_preview.py)
 - [ ] Add a validated reversible patch language for composition edits where apply and undo restore the original hash (tests/compose/test_patch.py)
 - [ ] Convert a timeline with voice timings, beats, assets, subtitles and music into a composition per language and platform with exact duration (tests/compose/test_timeline.py)
 - [ ] Add compose render, validate and schema commands with output selection and preview (tests/cli/test_compose.py)
@@ -450,6 +450,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Warn when an output profile changes the aspect ratio of a composition with absolute pixel layer geometry (tests/compose/test_output_profiles.py)
 - [ ] Render shape layers in video by rasterizing them to transparent overlays with sampled frame checks (slow, tests/compose/test_shape_video.py)
 - [ ] Normalize intro and outro clip geometry and audio before branding concatenation so mixed sources join cleanly (tests/compose/test_cover_branding.py)
+- [ ] Set image input frame rate to the composition fps so still layers are not decoded at ffmpeg defaults (tests/compose/test_ffmpeg_cmd.py)
+- [ ] Render previews on a reduced canvas by scaling layer geometry instead of compositing at full resolution (slow, tests/compose/test_preview.py)
 
 ## Milestone 10: Research engine
 
