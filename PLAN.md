@@ -432,7 +432,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add typed keyframe fields to the layer schema so concrete layers keep animations and JSON schema exports them (tests/compose/test_schema.py)
 - [x] Add validated position and size fields to visual layers so renderer geometry round-trips through the schema (tests/compose/test_layers.py)
 - [x] Wrap composition text with the shared language-aware line break rules instead of splitting long words arbitrarily (tests/compose/test_text.py)
-- [ ] Resolve text layer defaults from render config instead of hardcoded family and size (tests/compose/test_text.py)
+- [x] Resolve text layer defaults from render config instead of hardcoded family and size (tests/compose/test_text.py)
 - [ ] Validate mask asset references in compositions so missing masks fail before rendering (tests/compose/test_validation.py)
 - [ ] Scale vision face rectangles to canvas coordinates when a background image is fitted (tests/compose/test_placement.py)
 - [ ] Apply the contrast utility to text and subtitle layers from render config so low contrast backgrounds get a treatment (tests/compose/test_contrast.py)
