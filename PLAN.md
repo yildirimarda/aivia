@@ -463,7 +463,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Account for background image position and scale keyframes when scaling vision face rectangles (tests/compose/test_placement.py)
 - [x] Apply the contrast utility to video text layers in the FFmpeg filtergraph so video text matches still renders (tests/compose/test_ffmpeg_cmd.py)
 - [x] Scope the ffmpeg skip marker to rendering tests so pure motion tests run offline (tests/compose/test_motion.py)
-- [ ] Honor motion presets in the still renderer so Ken Burns previews match video output (tests/compose/test_motion.py)
+- [x] Honor motion presets in the still renderer so Ken Burns previews match video output (tests/compose/test_motion.py)
 - [ ] Rasterize procedural overlay frames only across each effect window so long compositions do not write unused PNGs (slow, tests/compose/test_video_overlays.py)
 - [ ] Reject SRT or VTT subtitle files in the pure FFmpeg command builder so callers convert them to ASS first (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Validate composition safe area margins are finite fractions between zero and one so bad values fail before rendering (tests/compose/test_validation.py)
