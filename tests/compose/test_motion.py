@@ -370,6 +370,62 @@ def test_overlay_motion_builds_a_time_dependent_scale_and_pad() -> None:
     assert "zoompan" not in graph
 
 
+def _scale_keyframe_graph(
+    *,
+    layer_type: str = "video",
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> str:
+    layer: dict[str, object] = {
+        "id": "moving",
+        "type": layer_type,
+        "source": "clip.mp4" if layer_type == "video" else "badge.png",
+        "width": 40,
+        "height": 40,
+        "keyframes": {
+            "scale": [
+                {"time": 0, "value": list(start), "easing": "linear"},
+                {"time": 2, "value": list(end)},
+            ]
+        },
+    }
+    if layer_type == "video":
+        layer["fit"] = "stretch"
+    return build_ffmpeg_filtergraph(_composition(layer))
+
+
+def test_pair_scale_keyframes_keep_independent_x_and_y_axes() -> None:
+    x_only = _scale_keyframe_graph(start=(1, 1), end=(2, 1))
+    y_only = _scale_keyframe_graph(start=(1, 1), end=(1, 2))
+
+    assert "sqrt(" not in x_only
+    assert "sqrt(" not in y_only
+    assert "zoompan" not in x_only
+    assert "zoompan" not in y_only
+    assert x_only.count("(1+1*") == 2
+    assert y_only.count("(1+1*") == 2
+    assert x_only != y_only
+
+
+def test_overlay_pair_scale_keyframes_keep_independent_x_and_y_axes() -> None:
+    x_only = _scale_keyframe_graph(
+        layer_type="sticker",
+        start=(1, 1),
+        end=(2, 1),
+    )
+    y_only = _scale_keyframe_graph(
+        layer_type="sticker",
+        start=(1, 1),
+        end=(1, 2),
+    )
+
+    assert "sqrt(" not in x_only
+    assert "sqrt(" not in y_only
+    assert x_only.count("(1+1*") == 1
+    assert y_only.count("(1+1*") == 1
+    assert x_only != y_only
+
+
 def test_sticker_scale_keyframes_grow_across_sampled_frames(
     tmp_path: Path,
 ) -> None:
@@ -437,3 +493,47 @@ def test_logo_motion_preset_scales_and_pans_across_sampled_frames(
     _assert_color(start, (220, 120), BLACK)
     _assert_color(end, (160, 120), BLACK)
     _assert_color(end, (220, 120), RED)
+
+
+def test_independent_scale_keyframes_stretch_only_the_x_axis(
+    tmp_path: Path,
+) -> None:
+    source = _center_box(tmp_path / "center.png")
+    output = tmp_path / "independent-scale.mp4"
+    render_video(
+        _composition(
+            {
+                "id": "still",
+                "type": "image",
+                "source": str(source),
+                "fit": "stretch",
+                "x": 140,
+                "y": 100,
+                "width": 40,
+                "height": 40,
+                "keyframes": {
+                    "scale": [
+                        {"time": 0, "value": [1, 1], "easing": "linear"},
+                        {"time": 2, "value": [2, 1]},
+                    ]
+                },
+            }
+        ),
+        output,
+        preset="ultrafast",
+        crf=28,
+    )
+
+    start = _frame(output, 0.0, tmp_path / "start.png")
+    end = _frame(output, 1.9, tmp_path / "end.png")
+
+    _assert_color(start, (145, 120), BLUE)
+    _assert_color(start, (160, 120), RED)
+    _assert_color(start, (175, 120), BLUE)
+    _assert_color(end, (145, 120), RED)
+    _assert_color(end, (160, 120), RED)
+    _assert_color(end, (175, 120), RED)
+    _assert_color(start, (160, 105), BLUE)
+    _assert_color(end, (160, 105), BLUE)
+    _assert_color(start, (160, 135), BLUE)
+    _assert_color(end, (160, 135), BLUE)
