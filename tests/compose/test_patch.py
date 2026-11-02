@@ -44,9 +44,7 @@ def _composition(**overrides: Any) -> Composition:
                 "duration": 2.0,
             },
         ],
-        "audio_tracks": [
-            {"id": "music", "source": "music.mp3", "volume_db": -3.0}
-        ],
+        "audio_tracks": [{"id": "music", "source": "music.mp3", "volume_db": -3.0}],
         "effects": [{"id": "fade", "type": "fade", "start": 0, "end": 1}],
     }
     values.update(overrides)

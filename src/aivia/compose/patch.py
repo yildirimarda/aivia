@@ -160,9 +160,7 @@ def _tokenize(path: str) -> tuple[str, ...]:
         parts = text.split("/")
         if parts and parts[0] == "":
             parts = parts[1:]
-        return tuple(
-            part.replace("~1", "/").replace("~0", "~") for part in parts
-        )
+        return tuple(part.replace("~1", "/").replace("~0", "~") for part in parts)
     text = _BRACKET.sub(lambda match: "." + match.group("key").strip("'\""), text)
     return tuple(part for part in text.split(".") if part != "")
 
@@ -170,9 +168,7 @@ def _tokenize(path: str) -> tuple[str, ...]:
 def _path_from_tokens(tokens: Sequence[str]) -> str:
     if not tokens:
         return ""
-    escaped = [
-        str(token).replace("~", "~0").replace("/", "~1") for token in tokens
-    ]
+    escaped = [str(token).replace("~", "~0").replace("/", "~1") for token in tokens]
     return "/" + "/".join(escaped)
 
 
@@ -200,9 +196,7 @@ def _list_index(
     for index, item in enumerate(container):
         if isinstance(item, Mapping) and str(item.get("id", "")) == token:
             return index
-    raise PatchError(
-        f"path {path!r} does not exist: no list element {token!r}"
-    )
+    raise PatchError(f"path {path!r} does not exist: no list element {token!r}")
 
 
 def _locate(
@@ -456,9 +450,7 @@ def _copy_value(
                 )
             ]
         else:
-            inverse = [
-                PatchOperation(op="remove", path=_path_from_tokens(normalised))
-            ]
+            inverse = [PatchOperation(op="remove", path=_path_from_tokens(normalised))]
     return document, inverse
 
 
