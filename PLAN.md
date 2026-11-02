@@ -460,7 +460,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add an RTL capable bundled font and Arabic joining so right to left text draws real glyphs (golden, tests/compose/test_bidi.py)
 - [x] Resolve text layer font defaults in the FFmpeg filtergraph from render config (tests/compose/test_ffmpeg_cmd.py)
 - [x] Validate a composition subtitle file reference exists before rendering (tests/compose/test_validation.py)
-- [ ] Account for background image position and scale keyframes when scaling vision face rectangles (tests/compose/test_placement.py)
+- [x] Account for background image position and scale keyframes when scaling vision face rectangles (tests/compose/test_placement.py)
 - [ ] Apply the contrast utility to video text layers in the FFmpeg filtergraph so video text matches still renders (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Scope the ffmpeg skip marker to rendering tests so pure motion tests run offline (tests/compose/test_motion.py)
 - [ ] Honor motion presets in the still renderer so Ken Burns previews match video output (tests/compose/test_motion.py)
