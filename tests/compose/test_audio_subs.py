@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,8 @@ from aivia.compose import (
     AudioSubtitleError,
     Composition,
     FFmpegCommandError,
+    VideoRenderer,
+    VideoRenderError,
     audio_mix_settings,
     audio_tracks_for_mix,
     build_audio_filtergraph,
@@ -261,6 +264,86 @@ def test_a_subtitle_file_can_come_from_the_composition(tmp_path: Path) -> None:
     command = build_ffmpeg_command(composition, "out.mp4")
 
     assert f"ass=filename='{ass}'" in command.filtergraph
+
+
+def test_an_srt_file_is_converted_to_ass_with_its_cue_times(tmp_path: Path) -> None:
+    source = tmp_path / "captions.srt"
+    source.write_text(
+        "1\n"
+        "00:00:00,500 --> 00:00:01,250\n"
+        "Hello world\n"
+        "\n"
+        "2\n"
+        "00:00:02,000 --> 00:00:03,000\n"
+        "Second line\n",
+        encoding="utf-8",
+    )
+
+    ass = write_subtitle_document(source, tmp_path / "captions.ass")
+
+    document = ass.read_text(encoding="utf-8")
+    assert document.startswith("[Script Info]")
+    assert "Dialogue: 0,0:00:00.50,0:00:01.25" in document
+    assert "Hello world" in document
+    assert "Dialogue: 0,0:00:02.00,0:00:03.00" in document
+    assert "Second line" in document
+
+
+def test_a_vtt_file_is_converted_to_ass_and_ignores_cue_settings(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "captions.vtt"
+    source.write_text(
+        "WEBVTT\n"
+        "\n"
+        "NOTE generated\n"
+        "\n"
+        "cue-1\n"
+        "00:01.000 --> 00:02.500 align:center\n"
+        "Second &amp; line\n",
+        encoding="utf-8",
+    )
+
+    ass = write_subtitle_document(source, tmp_path / "captions.ass")
+
+    document = ass.read_text(encoding="utf-8")
+    assert "Dialogue: 0,0:00:01.00,0:00:02.50" in document
+    assert "Second & line" in document
+    assert "align:center" not in document
+
+
+def test_a_composition_srt_file_is_converted_before_burning(tmp_path: Path) -> None:
+    source = tmp_path / "captions.srt"
+    source.write_text(
+        "1\n"
+        "00:00:00,250 --> 00:00:01,750\n"
+        "From composition\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, str] = {}
+
+    def capture(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        graph = argv[argv.index("-filter_complex") + 1]
+        prefix = "ass=filename='"
+        start = graph.index(prefix) + len(prefix)
+        path = Path(graph[start : graph.index("'", start)])
+        captured["suffix"] = path.suffix
+        captured["document"] = path.read_text(encoding="utf-8")
+        return subprocess.CompletedProcess(list(argv), 1, stdout="", stderr="boom")
+
+    composition = _composition(subtitle_file=str(source))
+
+    with pytest.raises(VideoRenderError, match="could not render"):
+        VideoRenderer(ffmpeg_runner=capture).render(
+            composition,
+            tmp_path / "out.mp4",
+        )
+
+    assert captured["suffix"] == ".ass"
+    assert captured["document"].startswith("[Script Info]")
+    assert "From composition" in captured["document"]
+    assert "0:00:00.25,0:00:01.75" in captured["document"]
+
 
 
 def test_mixing_without_tracks_is_rejected() -> None:

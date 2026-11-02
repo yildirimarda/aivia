@@ -231,6 +231,8 @@ def _as_subtitle(
         | Composition
         | Mapping[str, Any]
         | Iterable[Any]
+        | str
+        | Path
         | None
     ),
 ) -> Subtitle | None:
@@ -238,14 +240,19 @@ def _as_subtitle(
 
     if source is None:
         return None
+    if isinstance(source, (str, Path)):
+        return Subtitle.from_file(source)
     if isinstance(source, Subtitle):
         return source
     if isinstance(source, SubtitleTrack):
         return cast(Subtitle, source.to_media())
     if isinstance(source, Composition):
-        if source.subtitles is None:
-            return None
-        return cast(Subtitle, source.subtitles.to_media())
+        if source.subtitles is not None:
+            return cast(Subtitle, source.subtitles.to_media())
+        referenced = source.subtitle_file.strip()
+        if referenced and Path(referenced).suffix.lower() in {".srt", ".vtt"}:
+            return Subtitle.from_file(referenced)
+        return None
     if isinstance(source, Mapping):
         return Subtitle.model_validate(dict(source))
     items = list(source)
@@ -257,7 +264,13 @@ def _as_subtitle(
 def subtitle_for(
     composition: Composition,
     subtitles: (
-        Subtitle | SubtitleTrack | Mapping[str, Any] | Iterable[Any] | None
+        Subtitle
+        | SubtitleTrack
+        | Mapping[str, Any]
+        | Iterable[Any]
+        | str
+        | Path
+        | None
     ) = None,
 ) -> Subtitle | None:
     """Return the explicit subtitle track or the composition's own track."""
@@ -274,6 +287,8 @@ def subtitle_document(
         | Composition
         | Mapping[str, Any]
         | Iterable[Any]
+        | str
+        | Path
         | None
     ),
     *,
@@ -347,6 +362,8 @@ def write_subtitle_document(
         | Composition
         | Mapping[str, Any]
         | Iterable[Any]
+        | str
+        | Path
         | None
     ),
     path: str | Path,

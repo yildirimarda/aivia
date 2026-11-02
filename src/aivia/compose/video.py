@@ -452,25 +452,38 @@ class VideoRenderer:
             subtitle_preset = options.pop("subtitle_preset", None)
             highlight = options.pop("highlight", True)
             track = subtitle_for(value, subtitles)
+            render_config = None
+            if config is not None:
+                render_config = getattr(config, "render", None)
+                if render_config is None and isinstance(config, Mapping):
+                    render_config = config.get("render")
+            subtitle_options: dict[str, Any] = {
+                "width": value.canvas.width,
+                "height": value.canvas.height,
+                "safe_area": (value.safe_area if safe_area is None else safe_area),
+                "platform": platform or value.platform or None,
+                "preset": subtitle_preset,
+                "highlight": highlight,
+                "background": value.canvas.background,
+                "render": render_config,
+            }
             if subtitle_file is None and track is not None:
                 subtitle_file = Path(text_directory.name) / f"{destination.stem}.ass"
-                render_config = None
-                if config is not None:
-                    render_config = getattr(config, "render", None)
-                    if render_config is None and isinstance(config, Mapping):
-                        render_config = config.get("render")
+                write_subtitle_document(track, subtitle_file, **subtitle_options)
+            elif subtitle_file is None:
+                referenced = value.subtitle_file.strip()
+                if referenced:
+                    subtitle_file = Path(referenced)
+            if subtitle_file is not None and (
+                Path(subtitle_file).suffix.lower() in {".srt", ".vtt"}
+            ):
+                converted = Path(text_directory.name) / f"{destination.stem}.ass"
                 write_subtitle_document(
-                    track,
                     subtitle_file,
-                    width=value.canvas.width,
-                    height=value.canvas.height,
-                    safe_area=(value.safe_area if safe_area is None else safe_area),
-                    platform=platform or value.platform or None,
-                    preset=subtitle_preset,
-                    highlight=highlight,
-                    background=value.canvas.background,
-                    render=render_config,
+                    converted,
+                    **subtitle_options,
                 )
+                subtitle_file = converted
             if subtitle_file is not None:
                 options["subtitle_file"] = subtitle_file
             command = build_ffmpeg_command(
