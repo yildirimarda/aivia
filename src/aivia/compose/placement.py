@@ -433,6 +433,7 @@ def scale_faces_to_canvas(
     placement: LayerPlacement | tuple[int, int, int, int] | None = None,
     offset: tuple[float, float] = (0.0, 0.0),
     scale: float | tuple[float, float] | None = None,
+    rotation: float = 0.0,
 ) -> list[FaceBox]:
     """Map face rectangles from source image pixels to canvas pixels.
 
@@ -440,9 +441,10 @@ def scale_faces_to_canvas(
     *target_size* (or *canvas_size*) is the canvas, while *placement* names the
     rectangle the background image occupies. *fit* mirrors the renderer's fit
     modes so a cover crop or a contain letterbox lands in the right place.
-    *offset* and *scale* mirror the background layer's position and scale
-    keyframes at the sampled time, so an animated background keeps its faces
-    aligned with the pixels they were detected on.
+    *offset*, *scale* and *rotation* mirror the background layer's position,
+    scale and rotation keyframes at the sampled time, so an animated background
+    keeps its faces aligned with the pixels they were detected on. Rotated
+    rectangles are returned as their axis aligned bounding box.
     """
     records = _face_records(faces)
     if not records:
@@ -493,14 +495,37 @@ def scale_faces_to_canvas(
         )
         scale_x *= local_scale_x
         scale_y *= local_scale_y
+    angle = math.radians(_finite(rotation, "rotation"))
+    cos_angle = math.cos(angle)
+    sin_angle = math.sin(angle)
+    center_x = box_left + box_width / 2.0 + offset_x
+    center_y = box_top + box_height / 2.0 + offset_y
     box_right = box_left + box_width
     box_bottom = box_top + box_height
     scaled: list[FaceBox] = []
     for rectangle, confidence in records:
-        left = rectangle[0] * scale_x + dx
-        top = rectangle[1] * scale_y + dy
-        right = left + rectangle[2] * scale_x
-        bottom = top + rectangle[3] * scale_y
+        corners = (
+            (rectangle[0], rectangle[1]),
+            (rectangle[0] + rectangle[2], rectangle[1]),
+            (rectangle[0] + rectangle[2], rectangle[1] + rectangle[3]),
+            (rectangle[0], rectangle[1] + rectangle[3]),
+        )
+        mapped = [
+            (corner_x * scale_x + dx, corner_y * scale_y + dy)
+            for corner_x, corner_y in corners
+        ]
+        if angle:
+            mapped = [
+                (
+                    center_x + (x - center_x) * cos_angle + (y - center_y) * sin_angle,
+                    center_y - (x - center_x) * sin_angle + (y - center_y) * cos_angle,
+                )
+                for x, y in mapped
+            ]
+        left = min(x for x, _ in mapped)
+        top = min(y for _, y in mapped)
+        right = max(x for x, _ in mapped)
+        bottom = max(y for _, y in mapped)
         left = max(left, box_left)
         top = max(top, box_top)
         right = min(right, box_right)
