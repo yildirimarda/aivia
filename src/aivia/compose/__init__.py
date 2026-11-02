@@ -206,6 +206,7 @@ from aivia.compose.output_profiles import (
     output_profile,
     output_profile_for,
     resolve_output_profile,
+    validate_output_audio_container,
     validate_output_container,
     warn_aspect_ratio_change,
 )
@@ -1068,6 +1069,7 @@ __all__ = [
     "validate_composition",
     "validate_composition_or_raise",
     "validate_output",
+    "validate_output_audio_container",
     "validate_output_container",
     "validate_output_or_raise",
     "validate_patch",

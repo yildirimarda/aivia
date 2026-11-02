@@ -43,6 +43,7 @@ __all__ = [
     "output_profile",
     "output_profile_for",
     "resolve_output_profile",
+    "validate_output_audio_container",
     "validate_output_container",
     "warn_aspect_ratio_change",
 ]
@@ -154,6 +155,71 @@ _CODEC_FAMILIES: dict[str, str] = {
     "xvid": "mpeg4",
 }
 
+_CONTAINER_AUDIO_CODECS: dict[str, frozenset[str] | None] = {
+    "3gp": frozenset({"aac", "amr_nb", "amr_wb", "mp3"}),
+    "avi": frozenset({"aac", "ac3", "mp2", "mp3", "pcm"}),
+    "flv": frozenset({"aac", "mp3", "speex"}),
+    "gif": frozenset(),
+    "mkv": None,
+    "mov": frozenset({"aac", "ac3", "alac", "eac3", "flac", "mp3", "opus", "pcm"}),
+    "mp4": frozenset({"aac", "ac3", "alac", "eac3", "flac", "mp3", "opus"}),
+    "mpeg": frozenset({"ac3", "mp2", "mp3"}),
+    "ogv": frozenset({"flac", "opus", "speex", "vorbis"}),
+    "ts": frozenset({"aac", "ac3", "eac3", "mp2", "mp3"}),
+    "webm": frozenset({"opus", "vorbis"}),
+    "webp": frozenset(),
+    "wmv": frozenset({"mp3", "pcm", "wmav1", "wmav2"}),
+}
+
+_AUDIO_CODEC_FAMILIES: dict[str, str] = {
+    "aac": "aac",
+    "ac3": "ac3",
+    "ac3_fixed": "ac3",
+    "alac": "alac",
+    "amr_nb": "amr_nb",
+    "amr_wb": "amr_wb",
+    "eac3": "eac3",
+    "flac": "flac",
+    "libfaac": "aac",
+    "libfdk_aac": "aac",
+    "libmp3lame": "mp3",
+    "libopus": "opus",
+    "libshine": "mp3",
+    "libspeex": "speex",
+    "libtwolame": "mp2",
+    "libvorbis": "vorbis",
+    "mp2": "mp2",
+    "mp2fixed": "mp2",
+    "mp3": "mp3",
+    "opus": "opus",
+    "speex": "speex",
+    "vorbis": "vorbis",
+    "wmav1": "wmav1",
+    "wmav2": "wmav2",
+}
+
+_AUDIO_CODEC_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("libfdk_aac", "aac"),
+    ("libmp3lame", "mp3"),
+    ("libtwolame", "mp2"),
+    ("libopus", "opus"),
+    ("libvorbis", "vorbis"),
+    ("libspeex", "speex"),
+    ("pcm_", "pcm"),
+    ("wmav", "wmav2"),
+)
+
+
+def _audio_codec_family(codec: str) -> str:
+    name = codec.strip().lower()
+    if name in _AUDIO_CODEC_FAMILIES:
+        return _AUDIO_CODEC_FAMILIES[name]
+    for prefix, family in _AUDIO_CODEC_PREFIXES:
+        if name.startswith(prefix):
+            return family
+    return name
+
+
 _CODEC_PREFIXES: tuple[tuple[str, str], ...] = (
     ("libx264", "h264"),
     ("libx265", "hevc"),
@@ -230,6 +296,37 @@ def validate_output_container(
         expected = ", ".join(sorted(allowed))
         raise OutputProfileError(
             f"output container '.{container}' cannot carry video codec "
+            f"{codec!r}; expected one of {expected}"
+        )
+
+
+def validate_output_audio_container(
+    output: str | Path,
+    codec: str | OutputProfile,
+) -> None:
+    """Reject a video container that cannot carry *codec* audio.
+
+    *codec* may be an encoder name or a resolved :class:`OutputProfile`. The
+    check is purely textual: it inspects the output suffix and the configured
+    audio encoder so an incompatible pair fails before ffmpeg is invoked.
+    """
+    if isinstance(codec, OutputProfile):
+        codec = codec.audio_codec
+    if not isinstance(codec, str) or not codec.strip():
+        raise OutputProfileError("audio_codec must be a non-empty string")
+    container = _video_container(output)
+    allowed = _CONTAINER_AUDIO_CODECS[container]
+    if allowed is None:
+        return
+    if not allowed:
+        raise OutputProfileError(
+            f"output container '.{container}' cannot carry audio codec {codec!r}"
+        )
+    family = _audio_codec_family(codec)
+    if family not in allowed:
+        expected = ", ".join(sorted(allowed))
+        raise OutputProfileError(
+            f"output container '.{container}' cannot carry audio codec "
             f"{codec!r}; expected one of {expected}"
         )
 
