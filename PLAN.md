@@ -429,7 +429,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Parse composition layers into their concrete classes so type specific fields are validated (tests/compose/test_validation.py)
 - [x] Write composition files atomically so an interrupted save cannot leave a truncated document (tests/compose/test_io.py)
 - [x] Validate keyframe times against their owning layer window so an animation cannot outlive its layer (tests/compose/test_validation.py)
-- [ ] Add typed keyframe fields to the layer schema so concrete layers keep animations and JSON schema exports them (tests/compose/test_schema.py)
+- [x] Add typed keyframe fields to the layer schema so concrete layers keep animations and JSON schema exports them (tests/compose/test_schema.py)
 - [ ] Add validated position and size fields to visual layers so renderer geometry round-trips through the schema (tests/compose/test_layers.py)
 - [ ] Wrap composition text with the shared language-aware line break rules instead of splitting long words arbitrarily (tests/compose/test_text.py)
 - [ ] Resolve text layer defaults from render config instead of hardcoded family and size (tests/compose/test_text.py)
