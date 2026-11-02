@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from collections.abc import Sequence
@@ -298,9 +299,11 @@ def test_apply_intro_outro_joins_the_branding_clips_in_order(
     from aivia.compose import cover_branding
 
     calls: list[list[Path]] = []
+    options: list[dict[str, Any]] = []
 
-    def fake_concat(sources: Sequence[Path], destination: Path, **options: Any) -> Path:
+    def fake_concat(sources: Sequence[Path], destination: Path, **kwargs: Any) -> Path:
         calls.append(list(sources))
+        options.append(dict(kwargs))
         Path(destination).write_bytes(b"joined")
         return Path(destination)
 
@@ -317,10 +320,206 @@ def test_apply_intro_outro_joins_the_branding_clips_in_order(
 
     assert isinstance(result, BrandedVideoResult)
     assert calls == [[intro, video, outro]]
+    assert options[0]["normalize"] is True
+    assert options[0]["reference"] == 1
     assert result.intro == intro
     assert result.outro == outro
     assert result.sources == (intro, video, outro)
     assert result.output.read_bytes() == b"joined"
+
+
+def test_apply_intro_outro_normalizes_mixed_clips_to_the_main_video(
+    tmp_path: Path,
+) -> None:
+    intro = tmp_path / "intro.mp4"
+    main = tmp_path / "main.mp4"
+    outro = tmp_path / "outro.mp4"
+    for clip in (intro, main, outro):
+        clip.write_bytes(b"video")
+    calls: list[list[str]] = []
+
+    def probe(
+        *,
+        audio: bool,
+        width: int,
+        height: int,
+        frame_rate: str,
+        sample_rate: int,
+        channels: int,
+        pixel_format: str,
+    ) -> str:
+        streams: list[dict[str, Any]] = [
+            {
+                "index": 0,
+                "codec_type": "video",
+                "codec_name": "h264",
+                "width": width,
+                "height": height,
+                "duration": "1.0",
+                "avg_frame_rate": frame_rate,
+                "pix_fmt": pixel_format,
+            }
+        ]
+        if audio:
+            streams.append(
+                {
+                    "index": 1,
+                    "codec_type": "audio",
+                    "codec_name": "aac",
+                    "duration": "1.0",
+                    "sample_rate": str(sample_rate),
+                    "channels": channels,
+                }
+            )
+        return json.dumps(
+            {
+                "streams": streams,
+                "format": {
+                    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+                    "format_long_name": "QuickTime / MOV",
+                    "duration": "1.0",
+                    "size": "12345",
+                },
+            }
+        )
+
+    formats = {
+        str(intro): probe(
+            audio=True,
+            width=320,
+            height=240,
+            frame_rate="24/1",
+            sample_rate=44100,
+            channels=1,
+            pixel_format="yuv444p",
+        ),
+        str(main): probe(
+            audio=True,
+            width=640,
+            height=360,
+            frame_rate="30/1",
+            sample_rate=48000,
+            channels=2,
+            pixel_format="yuv420p",
+        ),
+        str(outro): probe(
+            audio=True,
+            width=1280,
+            height=720,
+            frame_rate="25/1",
+            sample_rate=48000,
+            channels=6,
+            pixel_format="yuv420p",
+        ),
+    }
+
+    def ffprobe_runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            list(argv), 0, stdout=formats[argv[-1]], stderr=""
+        )
+
+    def ffmpeg_runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        Path(argv[-1]).write_bytes(b"joined")
+        return subprocess.CompletedProcess(list(argv), 0, stdout="", stderr="")
+
+    result = apply_intro_outro(
+        main,
+        tmp_path / "branded.mp4",
+        intro=intro,
+        outro=outro,
+        ffmpeg_runner=ffmpeg_runner,
+        ffprobe_runner=ffprobe_runner,
+    )
+
+    assert len(calls) == 1
+    graph = calls[0][calls[0].index("-filter_complex") + 1]
+    intro_filter = (
+        "scale=640:360:force_original_aspect_ratio=decrease:flags=lanczos,"
+        "pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,"
+        "fps=30.000000,format=pix_fmts=yuv420p"
+    )
+    assert f"[0:v]{intro_filter}[vn0]" in graph
+    assert f"[2:v]{intro_filter.replace(',format=pix_fmts=yuv420p', '')}[vn2]" in graph
+    assert "[vn0][1:v][vn2]concat=n=3:v=1:a=0[v]" in graph
+    assert "[0:a]aresample=48000,aformat=channel_layouts=stereo[an0]" in graph
+    assert "[2:a]aformat=channel_layouts=stereo[an2]" in graph
+    assert "[an0][1:a][an2]concat=n=3:v=0:a=1[a]" in graph
+    assert result.sources == (intro, main, outro)
+    assert result.intro == intro
+    assert result.outro == outro
+    assert result.output.read_bytes() == b"joined"
+
+
+def test_apply_intro_outro_drops_audio_when_a_clip_has_none(
+    tmp_path: Path,
+) -> None:
+    intro = tmp_path / "intro.mp4"
+    main = tmp_path / "main.mp4"
+    for clip in (intro, main):
+        clip.write_bytes(b"video")
+    calls: list[list[str]] = []
+
+    def probe(audio: bool) -> str:
+        streams: list[dict[str, Any]] = [
+            {
+                "index": 0,
+                "codec_type": "video",
+                "codec_name": "h264",
+                "width": 640,
+                "height": 360,
+                "duration": "1.0",
+                "avg_frame_rate": "30/1",
+                "pix_fmt": "yuv420p",
+            }
+        ]
+        if audio:
+            streams.append(
+                {
+                    "index": 1,
+                    "codec_type": "audio",
+                    "codec_name": "aac",
+                    "duration": "1.0",
+                    "sample_rate": "48000",
+                    "channels": 2,
+                }
+            )
+        return json.dumps(
+            {
+                "streams": streams,
+                "format": {
+                    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+                    "format_long_name": "QuickTime / MOV",
+                    "duration": "1.0",
+                    "size": "12345",
+                },
+            }
+        )
+
+    formats = {str(intro): probe(False), str(main): probe(True)}
+
+    def ffprobe_runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            list(argv), 0, stdout=formats[argv[-1]], stderr=""
+        )
+
+    def ffmpeg_runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        Path(argv[-1]).write_bytes(b"joined")
+        return subprocess.CompletedProcess(list(argv), 0, stdout="", stderr="")
+
+    apply_intro_outro(
+        main,
+        tmp_path / "branded.mp4",
+        intro=intro,
+        ffmpeg_runner=ffmpeg_runner,
+        ffprobe_runner=ffprobe_runner,
+    )
+
+    graph = calls[0][calls[0].index("-filter_complex") + 1]
+    assert "concat=n=2:v=1:a=0[v]" in graph
+    assert "concat=n=2:v=0:a=1" not in graph
+    assert "-an" in calls[0]
 
 
 def test_apply_intro_outro_copies_when_no_clip_is_configured(

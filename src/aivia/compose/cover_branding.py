@@ -1232,6 +1232,8 @@ def apply_intro_outro(
                 clips,
                 destination,
                 crossfade_seconds=crossfade_seconds,
+                normalize=True,
+                reference=1 if intro_path is not None else 0,
                 ffmpeg_executable=ffmpeg_executable,
                 ffmpeg_runner=ffmpeg_runner,
                 ffprobe_executable=ffprobe_executable,

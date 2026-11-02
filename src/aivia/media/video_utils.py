@@ -925,11 +925,107 @@ def _crossfade_graph(
     )
 
 
+def _normalized_concat_graph(
+    *,
+    with_audio: bool,
+    fmt: VideoOutputFormat,
+    quality: int,
+    post_filters: Sequence[str],
+    input_filters: Sequence[str],
+    audio_input_filters: Sequence[str],
+) -> list[str]:
+    parts: list[str] = []
+    video_inputs: list[str] = []
+    for index, normalizer in enumerate(input_filters):
+        if normalizer:
+            parts.append(f"[{index}:v]{normalizer}[vn{index}]")
+            video_inputs.append(f"[vn{index}]")
+        else:
+            video_inputs.append(f"[{index}:v]")
+    video_label = "v"
+    parts.append(
+        f"{''.join(video_inputs)}concat=n={len(input_filters)}:v=1:a=0[{video_label}]"
+    )
+    audio_label: str | None = None
+    if with_audio:
+        normalizers = list(audio_input_filters)
+        if len(normalizers) < len(input_filters):
+            normalizers.extend([""] * (len(input_filters) - len(normalizers)))
+        audio_inputs: list[str] = []
+        for index, normalizer in enumerate(normalizers):
+            if normalizer:
+                parts.append(f"[{index}:a]{normalizer}[an{index}]")
+                audio_inputs.append(f"[an{index}]")
+            else:
+                audio_inputs.append(f"[{index}:a]")
+        audio_label = "a"
+        parts.append(
+            f"{''.join(audio_inputs)}concat=n={len(normalizers)}:v=0:a=1[{audio_label}]"
+        )
+    if post_filters:
+        parts.append(f"[{video_label}]{','.join(post_filters)}[vpost]")
+        video_label = "vpost"
+    return _finalize_graph(
+        parts,
+        video_label=video_label,
+        audio_label=audio_label,
+        fmt=fmt,
+        quality=quality,
+    )
+
+
+def _reference_geometry(
+    geometries: Sequence[tuple[int | None, int | None, float | None, str | None]],
+    reference: int,
+) -> tuple[int | None, int | None, float | None, str | None]:
+    width, height, frame_rate, pixel_format = geometries[reference]
+    if width is None or height is None:
+        width, height = next(
+            (
+                (candidate_width, candidate_height)
+                for candidate_width, candidate_height, _, _ in geometries
+                if candidate_width is not None and candidate_height is not None
+            ),
+            (None, None),
+        )
+    if frame_rate is None:
+        frame_rate = next(
+            (candidate for _, _, candidate, _ in geometries if candidate is not None),
+            None,
+        )
+    if pixel_format is None:
+        pixel_format = next(
+            (candidate for _, _, _, candidate in geometries if candidate is not None),
+            None,
+        )
+    return width, height, frame_rate, pixel_format
+
+
+def _reference_audio(
+    geometries: Sequence[tuple[int | None, int | None]],
+    reference: int,
+) -> tuple[int | None, int | None]:
+    sample_rate, channels = geometries[reference]
+    if sample_rate is None:
+        sample_rate = next(
+            (candidate for candidate, _ in geometries if candidate is not None),
+            None,
+        )
+    if channels is None:
+        channels = next(
+            (candidate for _, candidate in geometries if candidate is not None),
+            None,
+        )
+    return sample_rate, channels
+
+
 def concatenate_videos(
     sources: Sequence[VideoSource],
     destination: str | Path,
     *,
     crossfade_seconds: float = 0.0,
+    normalize: bool = False,
+    reference: int = 0,
     output_format: str | VideoOutputFormat | None = None,
     ffmpeg_executable: str = "ffmpeg",
     ffmpeg_runner: FFmpegRunner | None = None,
@@ -940,15 +1036,18 @@ def concatenate_videos(
     """Join two or more clips in order, optionally crossfading between them.
 
     A zero crossfade uses ffmpeg's concat demuxer, which keeps the source
-    codecs. A positive crossfade probes each clip's duration, requires the fade
-    to be shorter than every clip and builds an ``xfade`` chain. Clips whose
-    dimensions or frame rate differ from the first clip that reports them are
-    scaled, padded and resampled to that canonical geometry so ``xfade`` gets
-    matching inputs. Clips whose pixel format differs from the first clip that
-    reports one are converted so every ``xfade`` input matches. Audio is kept
-    when every clip has an audio track; clips whose sample rate or channel
-    layout differ from the first clip that reports them are resampled and
-    remapped so ``acrossfade`` gets matching inputs.
+    codecs. Passing ``normalize=True`` instead re-encodes every clip through a
+    concat filter so mixed geometry, pixel formats and audio layouts join
+    cleanly; ``reference`` selects the clip whose format wins. A positive
+    crossfade probes each clip's duration, requires the fade to be shorter than
+    every clip and builds an ``xfade`` chain. Clips whose dimensions or frame
+    rate differ from the reference clip that reports them are scaled, padded
+    and resampled to that canonical geometry so ``xfade`` gets matching inputs.
+    Clips whose pixel format differs from the reference clip that reports one
+    are converted so every ``xfade`` input matches. Audio is kept when every
+    clip has an audio track; clips whose sample rate or channel layout differ
+    from the reference clip that reports them are resampled and remapped so
+    ``acrossfade`` gets matching inputs.
     """
     path = Path(destination)
     fmt = (
@@ -967,6 +1066,12 @@ def concatenate_videos(
         label="crossfade_seconds",
         non_negative=True,
     )
+    if not isinstance(normalize, bool):
+        raise TypeError("normalize must be a boolean")
+    if isinstance(reference, bool) or not isinstance(reference, int):
+        raise TypeError("reference must be an integer index")
+    if reference < 0 or reference >= len(sources):
+        raise ValidationError("reference must point at one of the concatenated clips")
     _check_destination(sources, path)
     attempt = _default_attempt(fmt)
     post_filters = _post_filters(attempt, width=None, height=None)
@@ -976,7 +1081,7 @@ def concatenate_videos(
             stack.enter_context(_materialize(item, prefix="aivia-video-concat-"))
             for item in sources
         ]
-        if crossfade == 0.0:
+        if crossfade == 0.0 and not normalize:
             list_path = stack.enter_context(
                 tempfile.NamedTemporaryFile(
                     mode="w",
@@ -1037,36 +1142,22 @@ def concatenate_videos(
             for item in active
         ]
         durations: list[float] = []
-        for info in infos:
-            clip_length = info.duration_seconds
-            if clip_length is None or clip_length <= 0:
+        if crossfade > 0.0:
+            for info in infos:
+                clip_length = info.duration_seconds
+                if clip_length is None or clip_length <= 0:
+                    raise ValidationError(
+                        "could not determine a clip duration for the crossfade"
+                    )
+                durations.append(clip_length)
+            if crossfade >= min(durations):
                 raise ValidationError(
-                    "could not determine a clip duration for the crossfade"
+                    "crossfade_seconds must be shorter than every clip"
                 )
-            durations.append(clip_length)
-        if crossfade >= min(durations):
-            raise ValidationError("crossfade_seconds must be shorter than every clip")
         with_audio = all(info.audio_streams for info in infos)
         geometries = [_video_geometry(info) for info in infos]
-        target_width, target_height = next(
-            (
-                (width, height)
-                for width, height, _, _ in geometries
-                if width is not None and height is not None
-            ),
-            (None, None),
-        )
-        target_rate = next(
-            (rate for _, _, rate, _ in geometries if rate is not None),
-            None,
-        )
-        target_pixel_format = next(
-            (
-                pixel_format
-                for _, _, _, pixel_format in geometries
-                if pixel_format is not None
-            ),
-            None,
+        target_width, target_height, target_rate, target_pixel_format = (
+            _reference_geometry(geometries, reference)
         )
         input_filters: list[str] = []
         if (
@@ -1083,34 +1174,44 @@ def concatenate_videos(
             input_filters = [
                 _normalize_video_filter(geometry, target) for geometry in geometries
             ]
+        else:
+            input_filters = [""] * len(geometries)
         audio_geometries = [_audio_geometry(info) for info in infos]
-        target_audio_rate = next(
-            (rate for rate, _ in audio_geometries if rate is not None),
-            None,
-        )
-        target_audio_channels = next(
-            (channels for _, channels in audio_geometries if channels is not None),
-            None,
+        target_audio_rate, target_audio_channels = _reference_audio(
+            audio_geometries, reference
         )
         audio_input_filters: list[str] = []
-        if target_audio_rate is not None or target_audio_channels is not None:
+        if with_audio and (
+            target_audio_rate is not None or target_audio_channels is not None
+        ):
             target_audio = (target_audio_rate, target_audio_channels)
             audio_input_filters = [
                 _normalize_audio_filter(geometry, target_audio)
                 for geometry in audio_geometries
             ]
-        graph = _crossfade_graph(
-            durations,
-            crossfade,
-            with_audio=with_audio and fmt.supports_audio,
-            fmt=fmt,
-            quality=attempt.quality,
-            post_filters=post_filters,
-            input_filters=input_filters,
-            audio_input_filters=audio_input_filters,
-        )
+        keep_audio = with_audio and fmt.supports_audio
+        if crossfade == 0.0:
+            graph = _normalized_concat_graph(
+                with_audio=keep_audio,
+                fmt=fmt,
+                quality=attempt.quality,
+                post_filters=post_filters,
+                input_filters=input_filters,
+                audio_input_filters=audio_input_filters,
+            )
+        else:
+            graph = _crossfade_graph(
+                durations,
+                crossfade,
+                with_audio=keep_audio,
+                fmt=fmt,
+                quality=attempt.quality,
+                post_filters=post_filters,
+                input_filters=input_filters,
+                audio_input_filters=audio_input_filters,
+            )
 
-        def build_crossfade(temporary: Path) -> list[str]:
+        def build_normalized(temporary: Path) -> list[str]:
             argv = _base(ffmpeg_executable)
             for item in active:
                 argv.extend(["-i", str(item)])
@@ -1119,7 +1220,7 @@ def concatenate_videos(
                 _encode_args(
                     fmt,
                     attempt,
-                    audio=with_audio and fmt.supports_audio,
+                    audio=keep_audio,
                     loop=0,
                     audio_bitrate_kbps=DEFAULT_AUDIO_BITRATE_KBPS,
                 )
@@ -1129,10 +1230,14 @@ def concatenate_videos(
 
         return _write_atomic(
             path,
-            build_crossfade,
+            build_normalized,
             runner=ffmpeg_runner,
             timeout_seconds=timeout_seconds,
-            failure="ffmpeg could not crossfade the videos",
+            failure=(
+                "ffmpeg could not crossfade the videos"
+                if crossfade > 0.0
+                else "ffmpeg could not concatenate the videos"
+            ),
         )
 
 
