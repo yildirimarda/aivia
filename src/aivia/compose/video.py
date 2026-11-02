@@ -171,42 +171,62 @@ def _rasterize_layer(
     return source, box
 
 
-def _has_overlay_effects(composition: Composition) -> bool:
+def _overlay_windows(composition: Composition) -> list[tuple[int, int]]:
+    fps = composition.fps
+    total = max(1, composition.frame_count)
+    windows: list[tuple[int, int]] = []
     for effect in composition.effects:
-        if not effect.enabled:
+        if not effect.enabled or overlay_from_effect(effect) is None:
             continue
+        start = effect.start_seconds
         end = (
             composition.duration_seconds
             if effect.end_seconds is None
-            else effect.end_seconds
+            else min(effect.end_seconds, composition.duration_seconds)
         )
-        if end <= effect.start_seconds:
+        if end <= start or start >= composition.duration_seconds:
             continue
-        if effect.start_seconds >= composition.duration_seconds:
+        first = max(0, math.ceil(start * fps - 1e-9))
+        last = min(total - 1, math.ceil(end * fps - 1e-9) - 1)
+        if last < first:
             continue
-        if overlay_from_effect(effect) is not None:
-            return True
-    return False
+        windows.append((first, last))
+    windows.sort()
+    merged: list[tuple[int, int]] = []
+    for first, last in windows:
+        if merged and first <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], last))
+        else:
+            merged.append((first, last))
+    return merged
 
 
 def _prepare_overlay_frames(
     composition: Composition,
     directory: Path,
-) -> FFmpegOverlayFrames | None:
-    if not _has_overlay_effects(composition):
-        return None
-    frames = directory / "overlay-frames"
-    frames.mkdir(parents=True, exist_ok=True)
+) -> tuple[FFmpegOverlayFrames, ...]:
+    windows = _overlay_windows(composition)
+    if not windows:
+        return ()
+    root = directory / "overlay-frames"
     size = composition.canvas.size
-    for index in range(max(1, composition.frame_count)):
-        frame = Image.new("RGBA", size, (0, 0, 0, 0))
-        apply_overlay_effects(frame, composition, index / composition.fps)
-        frame.save(frames / f"{index:04d}.png")
-    return FFmpegOverlayFrames(
-        pattern=str(frames / "%04d.png"),
-        fps=composition.fps,
-        duration_seconds=composition.duration_seconds,
-    )
+    sequences: list[FFmpegOverlayFrames] = []
+    for offset, (first, last) in enumerate(windows):
+        frames = root / f"{offset:04d}"
+        frames.mkdir(parents=True, exist_ok=True)
+        for index in range(first, last + 1):
+            frame = Image.new("RGBA", size, (0, 0, 0, 0))
+            apply_overlay_effects(frame, composition, index / composition.fps)
+            frame.save(frames / f"{index - first:04d}.png")
+        sequences.append(
+            FFmpegOverlayFrames(
+                pattern=str(frames / "%04d.png"),
+                fps=composition.fps,
+                duration_seconds=(last - first + 1) / composition.fps,
+                start_seconds=first / composition.fps,
+            )
+        )
+    return tuple(sequences)
 
 
 def _keyframe_mapping(
