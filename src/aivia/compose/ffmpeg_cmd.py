@@ -20,7 +20,9 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+from aivia.core.config.sections import RenderConfig
 
 from .audio_subs import (
     audio_mix_settings,
@@ -271,6 +273,43 @@ def _layer_value(layer: Layer, *names: str) -> Any:
         if value is not None:
             return value
     return None
+
+
+def _layer_value_if_set(layer: Layer, field: str, *names: str) -> Any:
+    """Return a layer value only when the composition named it explicitly."""
+    extras = layer.model_extra or {}
+    for name in names:
+        if name in extras:
+            return extras[name]
+    if field in getattr(layer, "model_fields_set", ()):
+        return getattr(layer, field, None)
+    return None
+
+
+def _as_render_config(value: Any) -> RenderConfig:
+    if value is None:
+        return RenderConfig()
+    if isinstance(value, RenderConfig):
+        return value
+    if isinstance(value, Mapping):
+        nested = value.get("render")
+        if nested is not None:
+            return _as_render_config(nested)
+        return RenderConfig.from_mapping(value)
+    nested = getattr(value, "render", None)
+    if nested is not None:
+        return _as_render_config(nested)
+    return RenderConfig.from_mapping(cast(Any, value))
+
+
+def _nested_render_config(value: Any) -> RenderConfig | None:
+    if isinstance(value, RenderConfig):
+        return value
+    if isinstance(value, Mapping):
+        nested = value.get("render")
+        return None if nested is None else _as_render_config(nested)
+    nested = getattr(value, "render", None)
+    return None if nested is None else _as_render_config(nested)
 
 
 def _seconds(value: float) -> str:
@@ -735,15 +774,30 @@ def _filter_text(value: str) -> str:
     )
 
 
-def _text_filters(layer: Layer, x: int | None, y: int | None) -> list[str]:
+def _text_filters(
+    layer: Layer,
+    x: int | None,
+    y: int | None,
+    render: RenderConfig,
+) -> list[str]:
     raw_text = _layer_value(layer, "text", "content", "value")
     if not isinstance(raw_text, str) or not raw_text.strip():
         raise FFmpegCommandError("text layer has no text")
-    raw_family = _layer_value(layer, "font_family", "font", "family") or ""
-    if not isinstance(raw_family, str):
+    raw_family = _layer_value_if_set(
+        layer, "font_family", "font_family", "font", "family"
+    )
+    if raw_family is None:
+        family = render.default_font
+    elif isinstance(raw_family, str):
+        family = raw_family.strip() or render.default_font
+    else:
         raise FFmpegCommandError("font_family must be a string")
-    raw_size = _layer_value(layer, "font_size", "size", "font_size_px") or 48.0
-    font_size = _finite(raw_size, "font_size")
+    raw_size = _layer_value_if_set(
+        layer, "font_size", "font_size", "size", "font_size_px"
+    )
+    font_size = (
+        float(render.font_size) if raw_size is None else _finite(raw_size, "font_size")
+    )
     if font_size <= 0.0:
         raise FFmpegCommandError("font_size must be positive")
     raw_color = _layer_value(layer, "color", "fill", "text_color") or "#ffffff"
@@ -751,8 +805,8 @@ def _text_filters(layer: Layer, x: int | None, y: int | None) -> list[str]:
         raise FFmpegCommandError("text colour must be a string")
     weight = _layer_value(layer, "font_weight", "weight", "font-weight")
     style = _layer_value(layer, "font_style", "style", "font-style")
-    path = font_manager().resolve(
-        raw_family.strip() or None,
+    path = font_manager(render).resolve(
+        family,
         weight=None if weight is None else TextWeight(weight),
         style=None if style is None else TextStyle(style),
     )
@@ -1056,6 +1110,7 @@ def _layer_filters(
     index: int,
     input_index: int,
     mask_index: int | None,
+    render: RenderConfig,
 ) -> tuple[str, str]:
     overlay = layer.type in _OVERLAY_TYPES
     x, y, width, height = _box(layer, composition, overlay=overlay)
@@ -1076,7 +1131,7 @@ def _layer_filters(
             ).to_pixels(composition.canvas.width, composition.canvas.height)
             x = safe_left if x is None else x
             y = safe_top if y is None else y
-        filters.extend(_text_filters(layer, x, y))
+        filters.extend(_text_filters(layer, x, y, render))
     elif layer.type is LayerType.VIDEO:
         filters.extend(_video_filters(layer, composition))
         fit = _fit_mode(layer, default=FitMode.COVER)
@@ -1262,6 +1317,8 @@ def build_ffmpeg_filtergraph(
     output_width: int | None = None,
     output_height: int | None = None,
     overlay_frames: FFmpegOverlayFrames | None = None,
+    render: RenderConfig | Mapping[str, Any] | None = None,
+    config: RenderConfig | Mapping[str, Any] | None = None,
 ) -> str:
     """Return the pure ``filter_complex`` graph for *composition*.
 
@@ -1270,8 +1327,13 @@ def build_ffmpeg_filtergraph(
     add their mix graph after the video nodes, and a written ASS file adds the
     ``ass`` filter that burns subtitles over the final frame. When
     *output_width* and *output_height* are given, the finished frame is scaled
-    to that size before it is mapped to ``[vout]``.
+    to that size before it is mapped to ``[vout]``. A render config supplies
+    the default font family and size for text layers that do not name their
+    own.
     """
+    if render is not None and config is not None:
+        raise FFmpegCommandError("pass only one of render or config")
+    render_config = _as_render_config(render if render is not None else config)
     value = _composition(composition)
     target = _output_size(output_width, output_height)
     layers = _active_layers(value)
@@ -1289,6 +1351,7 @@ def build_ffmpeg_filtergraph(
             index,
             input_index,
             mask_index,
+            render_config,
         )
         parts.extend((node, overlay))
     video_label = f"base{len(layers)}"
@@ -1381,6 +1444,7 @@ def build_ffmpeg_command(
     output_profile: OutputProfile | Mapping[str, Any] | None = None,
     config: Any | None = None,
     video: Any | None = None,
+    render: RenderConfig | Mapping[str, Any] | None = None,
     platform: str | None = None,
     profile: str | None = None,
     output_width: int | None = None,
@@ -1400,11 +1464,23 @@ def build_ffmpeg_command(
     composition. An explicit *output_profile* wins over configuration. Codec,
     bitrate and loudness arguments still win over the resolved profile.
     *output_width* and *output_height* scale the finished frame to a smaller
-    size, which is how a preview renders at reduced resolution.
+    size, which is how a preview renders at reduced resolution. Passing
+    *render* (or a root *config* with a ``render`` section) supplies the
+    default font family and size for text layers.
     """
     if not isinstance(executable, str) or not executable.strip():
         raise FFmpegCommandError("executable must be a non-empty string")
 
+    if isinstance(config, RenderConfig):
+        if render is not None:
+            raise FFmpegCommandError("pass only one of render or config")
+        render = config
+        config = None
+    render_config = (
+        _as_render_config(render)
+        if render is not None
+        else _nested_render_config(config)
+    )
     value = _composition(composition)
     if output_profile is not None or config is not None or video is not None:
         resolved = (
@@ -1494,6 +1570,7 @@ def build_ffmpeg_command(
         output_width=output_width,
         output_height=output_height,
         overlay_frames=overlay_frames,
+        render=render_config,
     )
     background = _background_input(value)
 

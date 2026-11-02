@@ -25,6 +25,7 @@ from aivia.compose import (
     ffmpeg_command,
     ffmpeg_filtergraph,
 )
+from aivia.core.config import RenderConfig
 
 
 def _composition(**overrides: Any) -> dict[str, Any]:
@@ -338,6 +339,88 @@ def test_text_layers_become_drawtext_filters() -> None:
     assert "x=20" in graph
     assert "y=30" in graph
     assert "overlay=x=0:y=0" in graph
+
+
+def test_text_default_size_comes_from_render_config() -> None:
+    config = RenderConfig.from_mapping({"font_size": 24})
+    layer = {"id": "title", "type": "text", "text": "hi", "x": 0, "y": 0}
+
+    configured = build_ffmpeg_filtergraph(
+        _composition(layers=[layer]),
+        render=config,
+    )
+    explicit = build_ffmpeg_filtergraph(
+        _composition(layers=[{**layer, "font_size": 24}]),
+    )
+
+    assert configured == explicit
+    assert "fontsize=24" in configured
+
+
+def test_text_default_family_comes_from_render_config() -> None:
+    config = RenderConfig.from_mapping({"default_font": "Amiri"})
+    layer = {"id": "title", "type": "text", "text": "hi", "x": 0, "y": 0}
+
+    configured = build_ffmpeg_filtergraph(
+        _composition(layers=[layer]),
+        render=config,
+    )
+    explicit = build_ffmpeg_filtergraph(
+        _composition(layers=[{**layer, "font_family": "Amiri"}]),
+    )
+
+    assert configured == explicit
+    assert "Amiri-Regular.ttf" in configured
+
+
+def test_explicit_text_style_overrides_render_config() -> None:
+    config = RenderConfig.from_mapping({"default_font": "Amiri", "font_size": 24})
+    layer = {
+        "id": "title",
+        "type": "text",
+        "text": "hi",
+        "x": 0,
+        "y": 0,
+        "font_family": "Lato",
+        "font_size": 32,
+    }
+
+    configured = build_ffmpeg_filtergraph(
+        _composition(layers=[layer]),
+        render=config,
+    )
+    explicit = build_ffmpeg_filtergraph(_composition(layers=[layer]))
+
+    assert configured == explicit
+    assert "fontsize=32" in configured
+    assert "Lato-Regular.ttf" in configured
+
+
+def test_build_command_forwards_render_config_to_the_filtergraph() -> None:
+    config = RenderConfig.from_mapping({"font_size": 24})
+    layer = {"id": "title", "type": "text", "text": "hi", "x": 0, "y": 0}
+
+    command = build_ffmpeg_command(
+        _composition(layers=[layer]),
+        "out.mp4",
+        render=config,
+    )
+
+    assert "fontsize=24" in command.filtergraph
+
+
+def test_build_command_accepts_a_render_config_as_config() -> None:
+    config = RenderConfig.from_mapping({"font_size": 24})
+    layer = {"id": "title", "type": "text", "text": "hi", "x": 0, "y": 0}
+
+    command = build_ffmpeg_command(
+        _composition(layers=[layer]),
+        "out.mp4",
+        config=config,
+    )
+
+    assert "fontsize=24" in command.filtergraph
+    assert "s=320x240" in command.filtergraph
 
 
 def test_shape_layers_are_reported_instead_of_silently_dropped() -> None:
