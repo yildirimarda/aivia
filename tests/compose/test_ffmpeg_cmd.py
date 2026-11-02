@@ -396,6 +396,167 @@ def test_explicit_text_style_overrides_render_config() -> None:
     assert "Lato-Regular.ttf" in configured
 
 
+def test_text_contrast_adds_an_outline_on_a_low_contrast_background() -> None:
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#808080"},
+            layers=[
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "color": "#808080",
+                }
+            ],
+        )
+    )
+
+    assert "fontcolor=0x808080" in graph
+    assert "borderw=2" in graph
+    assert "bordercolor=0x000000" in graph
+
+
+def test_text_contrast_leaves_high_contrast_text_untreated() -> None:
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#ffffff"},
+            layers=[
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "color": "#000000",
+                }
+            ],
+        )
+    )
+
+    assert "fontcolor=0x000000" in graph
+    assert "borderw=" not in graph
+    assert "shadowcolor=" not in graph
+    assert "boxcolor=" not in graph
+
+
+@pytest.mark.parametrize(
+    ("background", "expected"),
+    [("#ffffff", "0x000000"), ("#000000", "0xffffff")],
+)
+def test_text_without_an_explicit_colour_is_chosen_from_the_background(
+    background: str,
+    expected: str,
+) -> None:
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": background},
+            layers=[{"id": "title", "type": "text", "text": "hi", "x": 0, "y": 0}],
+        )
+    )
+
+    assert f"fontcolor={expected}" in graph
+
+
+def test_text_contrast_shadow_strategy_maps_to_drawtext_shadow() -> None:
+    config = RenderConfig.from_mapping({"contrast_strategy": "shadow"})
+
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#808080"},
+            layers=[
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "color": "#808080",
+                }
+            ],
+        ),
+        render=config,
+    )
+
+    assert "shadowcolor=0x000000" in graph
+    assert "shadowx=2" in graph
+    assert "shadowy=2" in graph
+    assert "borderw=" not in graph
+
+
+def test_text_contrast_box_strategy_maps_to_a_drawtext_box() -> None:
+    config = RenderConfig.from_mapping({"contrast_strategy": "box"})
+
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#808080"},
+            layers=[
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "color": "#808080",
+                }
+            ],
+        ),
+        render=config,
+    )
+
+    assert "box=1" in graph
+    assert "boxcolor=0x000000" in graph
+    assert "boxborderw=8" in graph
+
+
+def test_explicit_text_stroke_wins_over_the_contrast_outline() -> None:
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#808080"},
+            layers=[
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "color": "#808080",
+                    "stroke": "#ff0000",
+                    "stroke_width": 3,
+                }
+            ],
+        )
+    )
+
+    assert "borderw=3" in graph
+    assert "bordercolor=0xff0000" in graph
+    assert "borderw=2" not in graph
+
+
+def test_text_contrast_can_be_relaxed_through_render_config() -> None:
+    config = RenderConfig.from_mapping({"min_contrast": 1.0})
+
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#808080"},
+            layers=[
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "color": "#808080",
+                }
+            ],
+        ),
+        render=config,
+    )
+
+    assert "borderw=" not in graph
+
+
 def test_build_command_forwards_render_config_to_the_filtergraph() -> None:
     config = RenderConfig.from_mapping({"font_size": 24})
     layer = {"id": "title", "type": "text", "text": "hi", "x": 0, "y": 0}

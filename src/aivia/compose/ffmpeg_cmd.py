@@ -29,6 +29,7 @@ from .audio_subs import (
     build_audio_filtergraph,
     subtitle_filter,
 )
+from .contrast import ContrastStrategy, ensure_contrast
 from .errors import RenderError
 from .fonts import font_manager
 from .keyframes import KeyframeTrack
@@ -779,6 +780,7 @@ def _text_filters(
     x: int | None,
     y: int | None,
     render: RenderConfig,
+    background: str,
 ) -> list[str]:
     raw_text = _layer_value(layer, "text", "content", "value")
     if not isinstance(raw_text, str) or not raw_text.strip():
@@ -800,9 +802,16 @@ def _text_filters(
     )
     if font_size <= 0.0:
         raise FFmpegCommandError("font_size must be positive")
-    raw_color = _layer_value(layer, "color", "fill", "text_color") or "#ffffff"
-    if not isinstance(raw_color, str):
+    raw_color = _layer_value_if_set(layer, "color", "color", "fill", "text_color")
+    if raw_color is not None and not isinstance(raw_color, str):
         raise FFmpegCommandError("text colour must be a string")
+    if isinstance(raw_color, str) and raw_color.strip().lower() in {
+        "",
+        "none",
+        "transparent",
+    }:
+        raw_color = None
+    contrast = ensure_contrast(background, raw_color, config=render)
     weight = _layer_value(layer, "font_weight", "weight", "font-weight")
     style = _layer_value(layer, "font_style", "style", "font-style")
     path = font_manager(render).resolve(
@@ -814,18 +823,59 @@ def _text_filters(
         f"fontfile='{_filter_text(str(path))}'",
         f"text='{_filter_text(raw_text)}'",
         f"fontsize={font_size:g}",
-        f"fontcolor={_ffmpeg_color(raw_color)}",
+        f"fontcolor={_ffmpeg_color(contrast.text_color)}",
         f"x={0 if x is None else x}",
         f"y={0 if y is None else y}",
     ]
     raw_stroke = _layer_value(layer, "stroke", "stroke_color", "outline")
     raw_stroke_width = _layer_value(layer, "stroke_width", "outline_width") or 0.0
     stroke_width = _finite(raw_stroke_width, "stroke_width")
-    if isinstance(raw_stroke, str) and raw_stroke.strip() and stroke_width > 0.0:
+    has_stroke = (
+        isinstance(raw_stroke, str)
+        and bool(raw_stroke.strip())
+        and raw_stroke.strip().lower() not in {"none", "transparent"}
+    )
+    if has_stroke:
+        if stroke_width > 0.0:
+            options.extend(
+                (
+                    f"borderw={stroke_width:g}",
+                    f"bordercolor={_ffmpeg_color(raw_stroke)}",
+                )
+            )
+    elif (
+        contrast.applied
+        and contrast.strategy is ContrastStrategy.OUTLINE
+        and contrast.outline_color is not None
+    ):
         options.extend(
             (
-                f"borderw={stroke_width:g}",
-                f"bordercolor={_ffmpeg_color(raw_stroke)}",
+                f"borderw={contrast.outline_width:g}",
+                f"bordercolor={_ffmpeg_color(contrast.outline_color)}",
+            )
+        )
+    if (
+        contrast.applied
+        and contrast.strategy is ContrastStrategy.SHADOW
+        and contrast.shadow_color is not None
+    ):
+        options.extend(
+            (
+                f"shadowcolor={_ffmpeg_color(contrast.shadow_color)}",
+                f"shadowx={contrast.shadow_offset[0]:g}",
+                f"shadowy={contrast.shadow_offset[1]:g}",
+            )
+        )
+    elif (
+        contrast.applied
+        and contrast.strategy is ContrastStrategy.BOX
+        and contrast.box_color is not None
+    ):
+        options.extend(
+            (
+                "box=1",
+                f"boxcolor={_ffmpeg_color(contrast.box_color)}",
+                f"boxborderw={round(contrast.box_padding)}",
             )
         )
     return [f"drawtext={':'.join(options)}"]
@@ -1131,7 +1181,9 @@ def _layer_filters(
             ).to_pixels(composition.canvas.width, composition.canvas.height)
             x = safe_left if x is None else x
             y = safe_top if y is None else y
-        filters.extend(_text_filters(layer, x, y, render))
+        filters.extend(
+            _text_filters(layer, x, y, render, composition.canvas.background)
+        )
     elif layer.type is LayerType.VIDEO:
         filters.extend(_video_filters(layer, composition))
         fit = _fit_mode(layer, default=FitMode.COVER)
