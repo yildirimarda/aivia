@@ -52,6 +52,14 @@ def _composition(**overrides: Any) -> Composition:
     return Composition.model_validate(values)
 
 
+def _composition_with_audio(**overrides: Any) -> Composition:
+    values: dict[str, Any] = {
+        "audio_tracks": [{"id": "voice", "source": "voice.wav", "role": "voice"}]
+    }
+    values.update(overrides)
+    return _composition(**values)
+
+
 def _option(argv: list[str], name: str) -> str:
     return argv[argv.index(name) + 1]
 
@@ -328,6 +336,121 @@ def test_compatible_output_containers_are_accepted(output: str, codec: str) -> N
     command = build_ffmpeg_command(_composition(), output, video_codec=codec)
 
     assert _option(command, "-c:v") == codec
+
+
+@pytest.mark.parametrize(
+    ("output", "video_codec", "audio_codec"),
+    [
+        ("out.webm", "libvpx-vp9", "aac"),
+        ("out.webm", "libvpx-vp9", "libmp3lame"),
+        ("out.mp4", "libx264", "libvorbis"),
+        ("out.mov", "libx264", "libvorbis"),
+        ("out.ogv", "libtheora", "aac"),
+        ("out.ogv", "libtheora", "libmp3lame"),
+        ("out.ts", "libx264", "libvorbis"),
+        ("out.avi", "mpeg4", "libopus"),
+        ("out.flv", "libx264", "libvorbis"),
+        ("out.wmv", "wmv2", "aac"),
+        ("out.3gp", "h264", "libvorbis"),
+        ("out.mpeg", "mpeg2video", "aac"),
+        ("out.gif", "gif", "aac"),
+        ("out.webp", "libwebp", "aac"),
+    ],
+)
+def test_an_output_container_that_cannot_carry_the_audio_codec_is_rejected(
+    output: str, video_codec: str, audio_codec: str
+) -> None:
+    with pytest.raises(OutputProfileError, match="audio codec"):
+        build_ffmpeg_command(
+            _composition_with_audio(),
+            output,
+            video_codec=video_codec,
+            audio_codec=audio_codec,
+        )
+
+
+@pytest.mark.parametrize(
+    ("output", "video_codec", "audio_codec"),
+    [
+        ("out.mp4", "libx264", "aac"),
+        ("out.mp4", "libx264", "libmp3lame"),
+        ("out.mp4", "libx264", "libopus"),
+        ("out.mov", "libx264", "pcm_s16le"),
+        ("out.mkv", "libx264", "made-up-audio-encoder"),
+        ("out.webm", "libvpx-vp9", "libopus"),
+        ("out.webm", "libvpx-vp9", "libvorbis"),
+        ("out.ogv", "libtheora", "libvorbis"),
+        ("out.ogv", "libtheora", "libopus"),
+        ("out.ts", "libx264", "aac"),
+        ("out.avi", "mpeg4", "libmp3lame"),
+        ("out.flv", "libx264", "aac"),
+        ("out.wmv", "wmv2", "wmav2"),
+        ("out.3gp", "h264", "aac"),
+        ("out.mpeg", "mpeg2video", "mp2"),
+    ],
+)
+def test_compatible_audio_codecs_are_accepted(
+    output: str, video_codec: str, audio_codec: str
+) -> None:
+    command = build_ffmpeg_command(
+        _composition_with_audio(),
+        output,
+        video_codec=video_codec,
+        audio_codec=audio_codec,
+    )
+
+    assert _option(command, "-c:a") == audio_codec
+
+
+def test_the_configured_audio_codec_is_checked_against_the_output_container() -> None:
+    video = VideoConfig.from_mapping({"codec": "libvpx-vp9", "audio_codec": "aac"})
+
+    with pytest.raises(OutputProfileError, match="audio codec"):
+        build_ffmpeg_command(_composition_with_audio(), "out.webm", config=video)
+
+
+def test_an_explicit_audio_codec_override_can_make_the_container_compatible() -> None:
+    command = build_ffmpeg_command(
+        _composition_with_audio(),
+        "out.webm",
+        video_codec="libvpx-vp9",
+        audio_codec="libopus",
+    )
+
+    assert _option(command, "-c:a") == "libopus"
+
+
+def test_an_incompatible_audio_codec_is_ignored_without_audio_tracks() -> None:
+    command = build_ffmpeg_command(
+        _composition(),
+        "out.webm",
+        video_codec="libvpx-vp9",
+        audio_codec="aac",
+    )
+
+    assert "-an" in command.argv
+
+
+def test_render_rejects_an_incompatible_audio_codec_before_ffmpeg_runs(
+    tmp_path: Path,
+) -> None:
+    calls: list[list[str]] = []
+
+    def runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 0, stdout="", stderr="")
+
+    video = VideoConfig.from_mapping({"codec": "libvpx-vp9", "audio_codec": "aac"})
+
+    with pytest.raises(OutputProfileError, match="audio codec"):
+        render_video(
+            _composition_with_audio(),
+            tmp_path / "out.webm",
+            config=video,
+            ffmpeg_runner=runner,
+        )
+
+    assert calls == []
 
 
 def test_an_unknown_output_container_extension_is_rejected() -> None:

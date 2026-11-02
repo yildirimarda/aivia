@@ -44,6 +44,7 @@ from .output_profiles import (
     OutputProfileError,
     apply_output_profile,
     resolve_output_profile,
+    validate_output_audio_container,
     validate_output_container,
 )
 from .safe_area import effective_safe_area
@@ -1625,6 +1626,11 @@ def build_ffmpeg_command(
     inputs = _command_inputs(value)
     inputs.extend(_overlay_inputs(overlay_frames))
     audio = _audio_inputs(value) if include_audio else []
+    if audio:
+        try:
+            validate_output_audio_container(output, audio_codec)
+        except OutputProfileError as exc:
+            raise OutputContainerError(str(exc)) from exc
     settings = None
     if audio:
         if audio_settings is None:
