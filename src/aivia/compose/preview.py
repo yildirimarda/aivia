@@ -67,6 +67,9 @@ DEFAULT_PREVIEW_MAX_FPS = DEFAULT_MEDIA_PREVIEW_MAX_FPS
 _MIN_PREVIEW_DIMENSION = 2
 """The smallest even canvas dimension an encoded preview can use."""
 
+_MIN_PREVIEW_FRAME_RATE = 1
+"""The smallest frame rate a preview can use."""
+
 _AUDIO_SUFFIXES = frozenset(
     {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".oga", ".opus", ".aac"}
 )
@@ -603,7 +606,7 @@ def scale_composition(
         target_fps = value.fps if fps is None else fps
     if target_width <= 0 or target_height <= 0:
         raise PreviewError("preview dimensions must be positive")
-    if target_fps <= 0:
+    if target_fps < _MIN_PREVIEW_FRAME_RATE:
         raise PreviewError("preview frame rate must be positive")
 
     x_factor = target_width / value.canvas.width
