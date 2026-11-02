@@ -11,7 +11,13 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from aivia.compose import Composition, VideoRenderer, VideoRenderError, render_video
+from aivia.compose import (
+    Composition,
+    VideoRenderer,
+    VideoRenderError,
+    render_still,
+    render_video,
+)
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
@@ -195,6 +201,48 @@ def test_position_keyframes_move_a_shape_across_sampled_frames(
     _assert_color(start, (100, 55), BLACK)
     _assert_color(end, (20, 55), BLACK)
     _assert_color(end, (100, 55), RED)
+
+
+@pytest.mark.slow
+@requires_ffmpeg
+def test_motion_preset_pan_moves_a_shape_like_the_preview(tmp_path: Path) -> None:
+    composition = _composition(
+        [
+            {
+                "id": "box",
+                "type": "shape",
+                "shape": "rectangle",
+                "x": 80,
+                "y": 40,
+                "width": 30,
+                "height": 30,
+                "fill": "#ff0000",
+                "motion": {
+                    "type": "ken_burns",
+                    "start_scale": 1.0,
+                    "end_scale": 1.0,
+                    "start_pan": [0, 0],
+                    "end_pan": [60, 0],
+                    "easing": "linear",
+                },
+            }
+        ]
+    )
+    output = tmp_path / "shape-pan.mp4"
+    render_video(composition, output, preset="ultrafast", crf=20)
+
+    start = _frame(output, 0.0, tmp_path / "start.png")
+    end = _frame(output, 1.9, tmp_path / "end.png")
+    preview = render_still(composition, 1.9).convert("RGB")
+
+    _assert_color(start, (95, 55), RED)
+    _assert_color(start, (35, 55), BLACK)
+    _assert_color(end, (95, 55), BLACK)
+    _assert_color(end, (35, 55), RED)
+    for point in ((95, 55), (35, 55)):
+        expected = preview.getpixel(point)
+        assert isinstance(expected, tuple)
+        _assert_color(end, point, (expected[0], expected[1], expected[2]))
 
 
 @pytest.mark.slow
