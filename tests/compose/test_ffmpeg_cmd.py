@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from PIL import Image
 
 from aivia.compose import (
     DEFAULT_AUDIO_CODEC,
@@ -555,6 +556,119 @@ def test_text_contrast_can_be_relaxed_through_render_config() -> None:
     )
 
     assert "borderw=" not in graph
+
+
+def test_text_contrast_samples_the_background_image_behind_the_layer(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "white.png"
+    Image.new("RGB", (320, 240), (255, 255, 255)).save(source)
+
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#000000"},
+            layers=[
+                _image_layer(id="back", source=str(source), z=0),
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "color": "#ffffff",
+                    "z": 1,
+                },
+            ],
+        )
+    )
+
+    assert "fontcolor=0xffffff" in graph
+    assert "borderw=2" in graph
+    assert "bordercolor=0x000000" in graph
+
+
+def test_text_without_a_colour_uses_the_background_image_behind_it(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "black.png"
+    Image.new("RGB", (320, 240), (0, 0, 0)).save(source)
+
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#ffffff"},
+            layers=[
+                _image_layer(id="back", source=str(source), z=0),
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "z": 1,
+                },
+            ],
+        )
+    )
+
+    assert "fontcolor=0xffffff" in graph
+
+
+def test_text_contrast_samples_the_region_behind_the_text_not_the_whole_image(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "split.png"
+    image = Image.new("RGB", (320, 240), (0, 0, 0))
+    image.paste((255, 255, 255), (160, 0, 320, 240))
+    image.save(source)
+
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#000000"},
+            layers=[
+                _image_layer(id="back", source=str(source), z=0),
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "font_size": 10,
+                    "color": "#ffffff",
+                    "z": 1,
+                },
+            ],
+        )
+    )
+
+    assert "fontcolor=0xffffff" in graph
+    assert "borderw=" not in graph
+    assert "shadowcolor=" not in graph
+    assert "boxcolor=" not in graph
+
+
+def test_text_contrast_falls_back_to_the_canvas_when_the_image_is_missing(
+    tmp_path: Path,
+) -> None:
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            canvas={"width": 320, "height": 240, "background": "#808080"},
+            layers=[
+                _image_layer(id="back", source=str(tmp_path / "gone.png"), z=0),
+                {
+                    "id": "title",
+                    "type": "text",
+                    "text": "hi",
+                    "x": 0,
+                    "y": 0,
+                    "color": "#808080",
+                    "z": 1,
+                },
+            ],
+        )
+    )
+
+    assert "borderw=2" in graph
+    assert "bordercolor=0x000000" in graph
 
 
 def test_build_command_forwards_render_config_to_the_filtergraph() -> None:

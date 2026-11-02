@@ -1,9 +1,11 @@
 """Pure FFmpeg command construction for a composition.
 
-The builder never runs ffmpeg, touches the network or reads an asset. It turns
-a validated composition into two inspectable products: a ``filter_complex``
-string and an argv list. That separation keeps command construction testable
-without an external binary while leaving execution to the caller.
+The builder never runs ffmpeg or touches the network. It turns a validated
+composition into two inspectable products: a ``filter_complex`` string and an
+argv list. That separation keeps command construction testable without an
+external binary while leaving execution to the caller. Local image sources may
+be opened only to sample the background behind a text layer, so its contrast
+treatment matches the still renderer.
 
 Visual layers are composited over a generated colour background. Image, video,
 sticker and logo layers become inputs; their geometry, fit, opacity and time
@@ -47,6 +49,7 @@ from .output_profiles import (
     validate_output_audio_container,
     validate_output_container,
 )
+from .render import AssetResolver, PillowStillRenderer, _region_background
 from .safe_area import effective_safe_area
 from .schema import (
     Anchor,
@@ -772,6 +775,95 @@ def _text_input(layer: Layer, composition: Composition) -> FFmpegInput:
     )
 
 
+_TEXT_LAYOUT_RESET_FIELDS = (
+    "entrance",
+    "exit",
+    "entrance_animation",
+    "exit_animation",
+    "text_animation",
+    "animation",
+    "animations",
+    "keyframes",
+    "motion",
+    "mask",
+    "filters",
+    "blend_mode",
+    "transition",
+    "transition_in",
+    "enter_transition",
+    "in_transition",
+)
+
+
+def _text_layout_layer(layer: Layer) -> dict[str, Any]:
+    data = layer.model_dump(by_alias=False, exclude_none=True)
+    for key in _TEXT_LAYOUT_RESET_FIELDS:
+        data.pop(key, None)
+    data["type"] = LayerType.TEXT.value
+    data["color"] = "#000000"
+    data["start_seconds"] = 0.0
+    data["opacity"] = 1.0
+    data["visible"] = True
+    data["z_index"] = 0
+    data.pop("end_seconds", None)
+    data.pop("duration_seconds", None)
+    return data
+
+
+def _sampling_composition(
+    composition: Composition,
+    layers: Sequence[Mapping[str, Any]],
+    background: str,
+) -> Composition:
+    data = composition.model_dump(by_alias=False)
+    data["canvas"] = {**data["canvas"], "background": background}
+    data["layers"] = list(layers)
+    data["audio_tracks"] = []
+    data["effects"] = []
+    data["subtitles"] = None
+    data["subtitle_file"] = ""
+    return Composition.model_validate(data)
+
+
+def _text_background(
+    composition: Composition,
+    layer: Layer,
+    below: Sequence[Layer],
+    render: RenderConfig,
+    assets: AssetResolver | None,
+) -> str:
+    image_layers = [item for item in below if item.type is LayerType.IMAGE]
+    if not image_layers:
+        return composition.canvas.background
+    try:
+        renderer = PillowStillRenderer(assets, render=render)
+        background = renderer.render_still(
+            _sampling_composition(
+                composition,
+                [
+                    item.model_dump(by_alias=False, exclude_none=True)
+                    for item in image_layers
+                ],
+                composition.canvas.background,
+            ),
+            layer.start_seconds,
+        )
+        text = renderer.render_still(
+            _sampling_composition(
+                composition,
+                [_text_layout_layer(layer)],
+                "#00000000",
+            ),
+            0.0,
+        )
+    except (RenderError, OSError, ValueError):
+        return composition.canvas.background
+    box = text.getchannel("A").getbbox()
+    if box is None:
+        return composition.canvas.background
+    return _region_background(background, box)
+
+
 def _filter_text(value: str) -> str:
     return (
         value.replace("\\", "\\\\")
@@ -1181,6 +1273,7 @@ def _layer_filters(
     input_index: int,
     mask_index: int | None,
     render: RenderConfig,
+    background: str,
 ) -> tuple[str, str]:
     overlay = layer.type in _OVERLAY_TYPES
     x, y, width, height = _box(layer, composition, overlay=overlay)
@@ -1201,9 +1294,7 @@ def _layer_filters(
             ).to_pixels(composition.canvas.width, composition.canvas.height)
             x = safe_left if x is None else x
             y = safe_top if y is None else y
-        filters.extend(
-            _text_filters(layer, x, y, render, composition.canvas.background)
-        )
+        filters.extend(_text_filters(layer, x, y, render, background))
     elif layer.type is LayerType.VIDEO:
         filters.extend(_video_filters(layer, composition))
         fit = _fit_mode(layer, default=FitMode.COVER)
@@ -1396,6 +1487,7 @@ def build_ffmpeg_filtergraph(
     overlay_frames: OverlayFrames = None,
     render: RenderConfig | Mapping[str, Any] | None = None,
     config: RenderConfig | Mapping[str, Any] | None = None,
+    assets: AssetResolver | None = None,
 ) -> str:
     """Return the pure ``filter_complex`` graph for *composition*.
 
@@ -1407,7 +1499,9 @@ def build_ffmpeg_filtergraph(
     When *output_width* and *output_height* are given, the finished frame is scaled
     to that size before it is mapped to ``[vout]``. A render config supplies
     the default font family and size for text layers that do not name their
-    own.
+    own. *assets* resolves background image sources for text contrast sampling,
+    mirroring the still renderer; unreadable sources fall back to the canvas
+    background.
     """
     if render is not None and config is not None:
         raise FFmpegCommandError("pass only one of render or config")
@@ -1423,6 +1517,15 @@ def build_ffmpeg_filtergraph(
     ]
     for index, layer in enumerate(layers):
         input_index, mask_index = plan[index]
+        background = value.canvas.background
+        if layer.type is LayerType.TEXT:
+            background = _text_background(
+                value,
+                layer,
+                layers[:index],
+                render_config,
+                assets,
+            )
         node, overlay = _layer_filters(
             layer,
             value,
@@ -1430,6 +1533,7 @@ def build_ffmpeg_filtergraph(
             input_index,
             mask_index,
             render_config,
+            background,
         )
         parts.extend((node, overlay))
     video_label = f"base{len(layers)}"
@@ -1532,6 +1636,7 @@ def build_ffmpeg_command(
     output_width: int | None = None,
     output_height: int | None = None,
     overlay_frames: OverlayFrames = None,
+    assets: AssetResolver | None = None,
 ) -> FFmpegCommand:
     """Build an ffmpeg argv for *composition* without executing anything.
 
@@ -1548,7 +1653,8 @@ def build_ffmpeg_command(
     *output_width* and *output_height* scale the finished frame to a smaller
     size, which is how a preview renders at reduced resolution. Passing
     *render* (or a root *config* with a ``render`` section) supplies the
-    default font family and size for text layers.
+    default font family and size for text layers. *assets* resolves background
+    image sources when sampling the contrast behind a text layer.
     """
     if not isinstance(executable, str) or not executable.strip():
         raise FFmpegCommandError("executable must be a non-empty string")
@@ -1656,6 +1762,7 @@ def build_ffmpeg_command(
         output_height=output_height,
         overlay_frames=overlay_frames,
         render=render_config,
+        assets=assets,
     )
     background = _background_input(value)
 
