@@ -1,9 +1,10 @@
 """Render a composition to a deterministic video file with FFmpeg.
 
 Command construction lives in :mod:`aivia.compose.ffmpeg_cmd` and stays pure.
-This module is the thin execution layer around it: it rasterizes text layers
-and procedural overlay effects with Pillow, runs the built argv, writes
-through a temporary file so a failed render cannot leave a partial output, and
+This module is the thin execution layer around it: it rasterizes text and
+shape layers plus procedural overlay effects with Pillow, runs the built argv,
+writes through a temporary file so a failed render cannot leave a partial
+output, and
 verifies the result with ffprobe before publishing it. Both runners are
 injectable so the offline suite never needs the real binaries.
 """
@@ -109,7 +110,7 @@ def _frame_rate(value: str | None) -> float | None:
     return top / bottom
 
 
-def _text_layer_data(layer: Layer) -> dict[str, Any]:
+def _raster_layer_data(layer: Layer) -> dict[str, Any]:
     data = layer.model_dump(by_alias=False, exclude_none=True)
     for key in (
         "entrance",
@@ -130,7 +131,7 @@ def _text_layer_data(layer: Layer) -> dict[str, Any]:
         "in_transition",
     ):
         data.pop(key, None)
-    data["type"] = LayerType.TEXT.value
+    data["type"] = layer.type.value
     data["start_seconds"] = 0.0
     data["opacity"] = 1.0
     data["visible"] = True
@@ -140,7 +141,7 @@ def _text_layer_data(layer: Layer) -> dict[str, Any]:
     return data
 
 
-def _rasterize_text_layer(
+def _rasterize_layer(
     composition: Composition,
     layer: Layer,
     directory: Path,
@@ -157,7 +158,7 @@ def _rasterize_text_layer(
             "fps": composition.fps,
             "platform": composition.platform,
             "safe_area": composition.safe_area,
-            "layers": [_text_layer_data(layer)],
+            "layers": [_raster_layer_data(layer)],
         }
     )
     image = PillowStillRenderer().render_still(static, 0.0)
@@ -165,7 +166,7 @@ def _rasterize_text_layer(
     if box is None:
         return None
     cropped = image.crop(box)
-    source = directory / f"text-{index}.png"
+    source = directory / f"{layer.type.value}-{index}.png"
     cropped.save(source)
     return source, box
 
@@ -230,21 +231,24 @@ def _keyframe_mapping(
     return mapping
 
 
-def _prepare_text_layers(
+_RASTER_TYPES = frozenset({LayerType.TEXT, LayerType.SHAPE})
+
+
+def _prepare_raster_layers(
     composition: Composition,
     directory: Path,
 ) -> Composition:
-    if not any(layer.type is LayerType.TEXT for layer in composition.layers):
+    if not any(layer.type in _RASTER_TYPES for layer in composition.layers):
         return composition
     layers: list[Any] = []
     for index, layer in enumerate(composition.layers):
-        if layer.type is not LayerType.TEXT:
+        if layer.type not in _RASTER_TYPES:
             layers.append(layer)
             continue
         end = layer.end if layer.end is not None else composition.duration_seconds
         if not layer.visible or end <= layer.start_seconds:
             continue
-        raster = _rasterize_text_layer(composition, layer, directory, index)
+        raster = _rasterize_layer(composition, layer, directory, index)
         if raster is None:
             continue
         source, box = raster
@@ -441,7 +445,7 @@ class VideoRenderer:
                     options.setdefault("bitrate", resolved.bitrate)
                 if resolved.audio_bitrate is not None:
                     options.setdefault("audio_bitrate", resolved.audio_bitrate)
-            value = _prepare_text_layers(value, Path(text_directory.name))
+            value = _prepare_raster_layers(value, Path(text_directory.name))
             overlay_frames = _prepare_overlay_frames(value, Path(text_directory.name))
             subtitles = options.pop("subtitles", None)
             subtitle_file = options.pop(
