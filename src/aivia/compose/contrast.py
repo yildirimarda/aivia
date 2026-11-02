@@ -41,6 +41,7 @@ __all__ = [
     "choose_text_colour",
     "contrast",
     "contrast_ratio",
+    "contrast_subtitle_style",
     "ensure_contrast",
     "ensure_text_contrast",
     "luminance",
@@ -468,6 +469,52 @@ def ensure_contrast(
 ensure_text_contrast = ensure_contrast
 resolve_contrast = ensure_contrast
 make_readable = ensure_contrast
+
+
+def contrast_subtitle_style(
+    style: Any,
+    background: ColorInput,
+    *,
+    min_contrast: float | None = None,
+    strategy: ContrastStrategy | str | None = None,
+    config: Any | None = None,
+    render: Any | None = None,
+) -> Any:
+    """Return *style* with the configured contrast treatment applied.
+
+    Subtitle styles always carry an explicit primary colour, so a low ratio
+    keeps that colour and gains the outline, shadow or backing box named by the
+    render config. A style that already reads clearly is returned unchanged.
+    """
+    result = ensure_contrast(
+        background,
+        getattr(style, "primary_color", None),
+        min_contrast=min_contrast,
+        strategy=strategy,
+        config=config,
+        render=render,
+    )
+    if not result.applied:
+        return style
+    updates: dict[str, Any] = {"primary_color": result.text_color}
+    if result.strategy is ContrastStrategy.OUTLINE and result.outline_color:
+        updates["outline_color"] = result.outline_color
+        updates["outline"] = max(
+            float(getattr(style, "outline", 0.0)),
+            result.outline_width,
+        )
+    elif result.strategy is ContrastStrategy.SHADOW and result.shadow_color:
+        updates["back_color"] = result.shadow_color
+        updates["shadow"] = max(float(getattr(style, "shadow", 0.0)), 2.0)
+    elif result.strategy is ContrastStrategy.BOX and result.box_color:
+        updates["background"] = True
+        updates["border_style"] = 3
+        updates["back_color"] = result.box_color
+        updates["outline"] = max(
+            float(getattr(style, "outline", 0.0)),
+            result.box_padding,
+        )
+    return style.model_copy(update=updates)
 
 
 def _image(source: ImageInput) -> Image.Image:

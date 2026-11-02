@@ -412,6 +412,11 @@ class VideoRenderer:
             track = subtitle_for(value, subtitles)
             if subtitle_file is None and track is not None:
                 subtitle_file = Path(text_directory.name) / f"{destination.stem}.ass"
+                render_config = None
+                if config is not None:
+                    render_config = getattr(config, "render", None)
+                    if render_config is None and isinstance(config, Mapping):
+                        render_config = config.get("render")
                 write_subtitle_document(
                     track,
                     subtitle_file,
@@ -421,6 +426,8 @@ class VideoRenderer:
                     platform=platform or value.platform or None,
                     preset=subtitle_preset,
                     highlight=highlight,
+                    background=value.canvas.background,
+                    render=render_config,
                 )
             if subtitle_file is not None:
                 options["subtitle_file"] = subtitle_file

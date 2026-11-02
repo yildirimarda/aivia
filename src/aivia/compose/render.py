@@ -44,6 +44,14 @@ from aivia.core.platforms import SafeArea
 from aivia.core.text_breaks import line_break_opportunities
 
 from .bidi import TextDirection, resolve_direction, shape_text
+from .contrast import (
+    ContrastResult,
+    ContrastStrategy,
+    add_backing_box,
+    add_shadow,
+    ensure_contrast,
+    parse_color,
+)
 from .errors import FontError, RenderError
 from .fonts import FontManager
 from .keyframes import AnimatedProperty, keyframes_for_layer
@@ -1258,6 +1266,61 @@ def _draw_text_line(
         x += font.getlength(character) + spacing
 
 
+def _region_background(
+    image: Image.Image,
+    box: tuple[int, int, int, int] | None,
+) -> str:
+    """Return the average colour behind *box*, resolved over white."""
+    if box is None:
+        box = (0, 0, image.width, image.height)
+    left, top, right, bottom = box
+    left = max(0, min(image.width, left))
+    top = max(0, min(image.height, top))
+    right = max(left, min(image.width, right))
+    bottom = max(top, min(image.height, bottom))
+    if right == left or bottom == top:
+        return "#000000"
+    region = image.crop((left, top, right, bottom)).convert("RGBA")
+    flattened = Image.alpha_composite(
+        Image.new("RGBA", region.size, (255, 255, 255, 255)),
+        region,
+    ).convert("RGB")
+    red, green, blue = cast(
+        tuple[int, int, int],
+        flattened.resize((1, 1), Image.Resampling.BOX).getpixel((0, 0)),
+    )
+    return f"#{red:02x}{green:02x}{blue:02x}"
+
+
+def _treat_text_image(
+    image: Image.Image,
+    result: ContrastResult,
+) -> tuple[Image.Image, int, int]:
+    """Apply the contrast result treatment and return its pixel offset."""
+    if not result.applied:
+        return image, 0, 0
+    if result.strategy is ContrastStrategy.SHADOW and result.shadow_color:
+        treated = add_shadow(
+            image,
+            result.shadow_color,
+            result.shadow_offset,
+            result.shadow_blur,
+        )
+        margin = max(1, math.ceil(result.shadow_blur * 3)) + max(
+            abs(round(result.shadow_offset[0])),
+            abs(round(result.shadow_offset[1])),
+        )
+        return treated, -margin, -margin
+    if result.strategy is ContrastStrategy.BOX and result.box_color:
+        bounds = image.getchannel("A").getbbox()
+        treated = add_backing_box(image, result.box_color, result.box_padding)
+        if bounds is None:
+            return treated, 0, 0
+        padding = round(result.box_padding)
+        return treated, -max(0, padding - bounds[0]), -max(0, padding - bounds[1])
+    return image, 0, 0
+
+
 class PillowStillRenderer:
     """Render one still frame of a composition with Pillow.
 
@@ -1769,10 +1832,11 @@ class PillowStillRenderer:
         if stroke is None:
             stroke_width = 0.0
 
-        raw_color = _layer_value(layer, "color", "fill", "text_color")
-        color = _color("#ffffff" if raw_color is None else raw_color, "text colour")
-        if color is None:
+        raw_color = _layer_value_if_set(layer, "color", "color", "fill", "text_color")
+        explicit_color = None if raw_color is None else _color(raw_color, "text colour")
+        if raw_color is not None and explicit_color is None:
             return
+        color = parse_color("#ffffff") if explicit_color is None else explicit_color
 
         align = _enum_value(
             TextAlign,
@@ -1947,10 +2011,6 @@ class PillowStillRenderer:
                 )
             layout = _layout(placement.width, placement.height)
         font = _load_font(str(path), layout.font_size)
-        text_image = Image.new(
-            "RGBA", (placement.width, placement.height), (0, 0, 0, 0)
-        )
-        draw = ImageDraw.Draw(text_image)
         total_height = len(layout.lines) * layout.line_height
         if vertical_align is VerticalAlign.MIDDLE:
             top = (placement.height - total_height) / 2.0
@@ -1958,27 +2018,65 @@ class PillowStillRenderer:
             top = placement.height - total_height
         else:
             top = 0.0
-        for index, line in enumerate(layout.lines):
-            line_width = _measure_text(line, font, letter_spacing)
-            if align is TextAlign.CENTER:
-                left = (placement.width - line_width) / 2.0
-            elif align is TextAlign.RIGHT:
-                left = placement.width - line_width
-            else:
-                left = 0.0
-            _draw_text_line(
-                draw,
-                (left, top + index * layout.line_height),
-                line,
-                font,
-                color,
-                letter_spacing,
-                stroke,
-                stroke_width,
-            )
 
-        x = placement.x
-        y = placement.y
+        def _render_lines(
+            fill: tuple[int, int, int, int],
+            outline: tuple[int, int, int, int] | None,
+            outline_width: float,
+        ) -> Image.Image:
+            image = Image.new("RGBA", (placement.width, placement.height), (0, 0, 0, 0))
+            target = ImageDraw.Draw(image)
+            for index, line in enumerate(layout.lines):
+                line_width = _measure_text(line, font, letter_spacing)
+                if align is TextAlign.CENTER:
+                    left = (placement.width - line_width) / 2.0
+                elif align is TextAlign.RIGHT:
+                    left = placement.width - line_width
+                else:
+                    left = 0.0
+                _draw_text_line(
+                    target,
+                    (left, top + index * layout.line_height),
+                    line,
+                    font,
+                    fill,
+                    letter_spacing,
+                    outline,
+                    outline_width,
+                )
+            return image
+
+        text_image = _render_lines(color, stroke, stroke_width)
+        bounds = text_image.getchannel("A").getbbox()
+        sample_box = (
+            None
+            if bounds is None
+            else (
+                placement.x + bounds[0],
+                placement.y + bounds[1],
+                placement.x + bounds[2],
+                placement.y + bounds[3],
+            )
+        )
+        result = ensure_contrast(
+            _region_background(canvas, sample_box),
+            explicit_color,
+            config=self._render,
+        )
+        color = parse_color(result.text_color)
+        if (
+            result.applied
+            and result.strategy is ContrastStrategy.OUTLINE
+            and stroke is None
+            and result.outline_color is not None
+        ):
+            stroke = parse_color(result.outline_color)
+            stroke_width = result.outline_width
+        text_image = _render_lines(color, stroke, stroke_width)
+        text_image, treatment_x, treatment_y = _treat_text_image(text_image, result)
+
+        x = placement.x + treatment_x
+        y = placement.y + treatment_y
         position = _sample(layer, AnimatedProperty.POSITION, time_seconds)
         if position is not None:
             offset = _offset_pair(position, "position keyframe")

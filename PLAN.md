@@ -435,7 +435,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Resolve text layer defaults from render config instead of hardcoded family and size (tests/compose/test_text.py)
 - [x] Validate mask asset references in compositions so missing masks fail before rendering (tests/compose/test_validation.py)
 - [x] Scale vision face rectangles to canvas coordinates when a background image is fitted (tests/compose/test_placement.py)
-- [ ] Apply the contrast utility to text and subtitle layers from render config so low contrast backgrounds get a treatment (tests/compose/test_contrast.py)
+- [x] Apply the contrast utility to text and subtitle layers from render config so low contrast backgrounds get a treatment (tests/compose/test_contrast.py)
 - [ ] Apply masks, blend modes and filters to video image layers in the FFmpeg command (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Apply motion presets and scale keyframes to sticker and logo overlay layers with sampled frame checks (slow, tests/compose/test_motion.py)
 - [ ] Support independent x and y scale keyframes in video motion instead of collapsing them to one zoom (tests/compose/test_motion.py)
@@ -461,6 +461,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Resolve text layer font defaults in the FFmpeg filtergraph from render config (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Validate a composition subtitle file reference exists before rendering (tests/compose/test_validation.py)
 - [ ] Account for background image position and scale keyframes when scaling vision face rectangles (tests/compose/test_placement.py)
+- [ ] Apply the contrast utility to video text layers in the FFmpeg filtergraph so video text matches still renders (tests/compose/test_ffmpeg_cmd.py)
 
 ## Milestone 10: Research engine
 

@@ -8,8 +8,10 @@ import pytest
 from PIL import Image
 
 from aivia.compose import (
+    Composition,
     ContrastStrategy,
     ContrastUtility,
+    PillowStillRenderer,
     RenderError,
     add_backing_box,
     add_outline,
@@ -18,11 +20,14 @@ from aivia.compose import (
     apply_contrast_treatment,
     choose_text_color,
     contrast_ratio,
+    contrast_subtitle_style,
     ensure_contrast,
     parse_color,
     relative_luminance,
+    subtitle_document,
 )
 from aivia.core.config.sections import RenderConfig
+from aivia.media.subtitles import SubtitleStyle
 
 WHITE = (255, 255, 255, 255)
 BLACK = (0, 0, 0, 255)
@@ -279,3 +284,129 @@ def test_apply_contrast_dispatches_images_to_treatments() -> None:
 
     assert isinstance(result, Image.Image)
     assert result.tobytes() == add_outline(source, "#000000", 1).tobytes()
+
+
+def _composition(
+    layers: list[dict[str, Any]],
+    *,
+    background: str = "#000000",
+    width: int = 160,
+    height: int = 60,
+    subtitles: dict[str, Any] | None = None,
+) -> Composition:
+    values: dict[str, Any] = {
+        "canvas": {"width": width, "height": height, "background": background},
+        "duration_seconds": 1.0,
+        "layers": layers,
+    }
+    if subtitles is not None:
+        values["subtitles"] = subtitles
+    return Composition.model_validate(values)
+
+
+def _dark_pixels(image: Image.Image, threshold: int = 40) -> int:
+    histogram = image.convert("L").histogram()
+    return sum(histogram[:threshold])
+
+
+def test_text_layer_on_a_low_contrast_background_gets_an_outline() -> None:
+    composition = _composition(
+        [{"type": "text", "text": "MMMM", "color": "#808080", "font_size": 32}],
+        background="#808080",
+    )
+    config = RenderConfig.from_mapping(
+        {"min_contrast": 4.5, "contrast_strategy": "outline"}
+    )
+
+    image = PillowStillRenderer(render=config).render_still(composition)
+
+    assert _dark_pixels(image) > 0
+
+
+def test_text_layer_on_a_high_contrast_background_needs_no_treatment() -> None:
+    composition = _composition(
+        [{"type": "text", "text": "MMMM", "color": "#000000", "font_size": 32}],
+        background="#ffffff",
+    )
+    no_treatment = PillowStillRenderer(
+        render=RenderConfig.from_mapping({"min_contrast": 1.0})
+    ).render_still(composition)
+    configured = PillowStillRenderer(
+        render=RenderConfig.from_mapping(
+            {"min_contrast": 4.5, "contrast_strategy": "outline"}
+        )
+    ).render_still(composition)
+
+    assert configured.tobytes() == no_treatment.tobytes()
+
+
+def test_text_layer_shadow_and_box_strategies_change_the_output() -> None:
+    composition = _composition(
+        [{"type": "text", "text": "MMMM", "color": "#808080", "font_size": 32}],
+        background="#808080",
+    )
+    baseline = PillowStillRenderer(
+        render=RenderConfig.from_mapping({"min_contrast": 1.0})
+    ).render_still(composition)
+
+    for strategy in ("shadow", "box"):
+        image = PillowStillRenderer(
+            render=RenderConfig.from_mapping(
+                {"min_contrast": 4.5, "contrast_strategy": strategy}
+            )
+        ).render_still(composition)
+        assert image.tobytes() != baseline.tobytes()
+
+
+def test_text_without_an_explicit_colour_is_chosen_from_the_background() -> None:
+    composition = _composition(
+        [{"type": "text", "text": "MMMM", "font_size": 32}],
+        background="#ffffff",
+    )
+
+    image = PillowStillRenderer(render=RenderConfig()).render_still(composition)
+
+    assert _dark_pixels(image) > 0
+
+
+def test_subtitle_style_gets_an_outline_on_a_low_contrast_background() -> None:
+    style = SubtitleStyle(primary_color="#808080")
+    config = RenderConfig.from_mapping(
+        {"min_contrast": 4.5, "contrast_strategy": "outline"}
+    )
+
+    treated = contrast_subtitle_style(style, "#808080", config=config)
+
+    assert treated.primary_color == "#808080"
+    assert treated.outline_color == "#000000"
+    assert treated.outline >= 2.0
+
+
+def test_subtitle_style_on_a_high_contrast_background_is_unchanged() -> None:
+    style = SubtitleStyle(primary_color="#ffffff")
+
+    treated = contrast_subtitle_style(style, "#000000", config=RenderConfig())
+
+    assert treated is style
+
+
+def test_subtitle_document_uses_the_composition_background_and_render_config() -> None:
+    composition = _composition(
+        [],
+        background="#ffffff",
+        subtitles={
+            "style": {"primary_color": "#ffffff"},
+            "cues": [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        },
+    )
+    config = RenderConfig.from_mapping(
+        {"min_contrast": 4.5, "contrast_strategy": "box"}
+    )
+
+    document = subtitle_document(composition, render=config)
+
+    style = next(line for line in document.splitlines() if line.startswith("Style:"))
+    fields = style.split(",")
+    assert fields[15] == "3"
+    assert fields[6] == "&H00000000&"
+    assert "Hello" in document
