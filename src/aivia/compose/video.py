@@ -31,8 +31,8 @@ from aivia.core.errors import ValidationError
 from .audio_subs import subtitle_for, write_subtitle_document
 from .errors import RenderError
 from .ffmpeg_cmd import FFmpegCommand, FFmpegOverlayFrames, build_ffmpeg_command
-from .keyframes import AnimatedProperty
-from .motion import tracks_for_layer
+from .keyframes import AnimatedProperty, Easing
+from .motion import MotionTracks, tracks_for_layer
 from .output_profiles import (
     OutputProfile,
     apply_output_profile,
@@ -229,10 +229,62 @@ def _prepare_overlay_frames(
     return tuple(sequences)
 
 
+def _easing_at(tracks: MotionTracks, time_seconds: float) -> Easing:
+    for track in (tracks.position, tracks.pan, tracks.scale):
+        if track is None:
+            continue
+        for frame in track.keyframes:
+            if frame.time_seconds == time_seconds:
+                return frame.easing
+    return Easing.LINEAR
+
+
+def _pan_position_keyframes(tracks: MotionTracks) -> list[dict[str, Any]] | None:
+    pan = tracks.pan
+    if pan is None:
+        return None
+    times = sorted(
+        {
+            frame.time_seconds
+            for track in (tracks.position, pan, tracks.scale)
+            if track is not None
+            for frame in track.keyframes
+        }
+    )
+    keyframes: list[dict[str, Any]] = []
+    for time_seconds in times:
+        position = (
+            tracks.position.sample(time_seconds)
+            if tracks.position is not None
+            else (0.0, 0.0)
+        )
+        position_x, position_y = position if isinstance(position, tuple) else (0.0, 0.0)
+        scale = tracks.scale.sample(time_seconds) if tracks.scale is not None else 1.0
+        if isinstance(scale, tuple):
+            scale_x, scale_y = scale
+        else:
+            scale_x = scale_y = float(scale)
+        offset = pan.sample(time_seconds)
+        offset_x, offset_y = offset if isinstance(offset, tuple) else (0.0, 0.0)
+        keyframes.append(
+            {
+                "time": time_seconds,
+                "value": (
+                    position_x - offset_x * scale_x,
+                    position_y - offset_y * scale_y,
+                ),
+                "easing": _easing_at(tracks, time_seconds).value,
+            }
+        )
+    return keyframes
+
+
 def _keyframe_mapping(
     layer: Layer,
     start_seconds: float,
     end_seconds: float,
+    *,
+    pan_as_position: bool = False,
 ) -> dict[str, Any]:
     tracks = tracks_for_layer(layer, start_seconds, end_seconds)
     mapping: dict[str, Any] = {}
@@ -248,6 +300,10 @@ def _keyframe_mapping(
             }
             for frame in track.keyframes
         ]
+    if pan_as_position:
+        position = _pan_position_keyframes(tracks)
+        if position is not None:
+            mapping["position"] = position
     return mapping
 
 
@@ -287,7 +343,12 @@ def _prepare_raster_layers(
             "start_seconds": layer.start_seconds,
             "end_seconds": end,
         }
-        keyframes = _keyframe_mapping(layer, layer.start_seconds, end)
+        keyframes = _keyframe_mapping(
+            layer,
+            layer.start_seconds,
+            end,
+            pan_as_position=layer.type is LayerType.SHAPE,
+        )
         if keyframes:
             mapping["keyframes"] = keyframes
         if layer.transition is not None:
