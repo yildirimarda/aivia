@@ -126,6 +126,50 @@ def test_video_renderer_rasterizes_shape_layers_before_building_the_command(
     assert "drawtext=" not in graph
 
 
+def test_rotation_motion_expands_the_rasterized_shape_source(
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, Image.Image] = {}
+
+    def fail(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        source = next(Path(arg) for arg in argv if arg.endswith("shape-0.png"))
+        with Image.open(source) as image:
+            captured["raster"] = image.convert("RGBA").copy()
+        return subprocess.CompletedProcess(list(argv), 1, stdout="", stderr="boom")
+
+    composition = _composition(
+        [
+            {
+                "id": "box",
+                "type": "shape",
+                "shape": "rectangle",
+                "x": 50,
+                "y": 35,
+                "width": 60,
+                "height": 50,
+                "fill": "#ff0000",
+                "keyframes": {
+                    "rotation": [
+                        {"time": 0, "value": 0, "easing": "linear"},
+                        {"time": 2, "value": 90},
+                    ]
+                },
+            }
+        ]
+    )
+    with pytest.raises(VideoRenderError, match="could not render"):
+        VideoRenderer(ffmpeg_runner=fail).render(composition, tmp_path / "failed.mp4")
+
+    raster = captured["raster"]
+    assert raster.width > 60
+    assert raster.height > 50
+    bounds = raster.getchannel("A").getbbox()
+    assert bounds is not None
+    left, top, right, bottom = bounds
+    assert abs((left + right) / 2.0 - raster.width / 2.0) < 2.0
+    assert abs((top + bottom) / 2.0 - raster.height / 2.0) < 2.0
+
+
 @pytest.mark.slow
 @requires_ffmpeg
 def test_a_shape_is_visible_only_inside_its_window(tmp_path: Path) -> None:
@@ -334,3 +378,47 @@ def test_scale_motion_expands_a_shape_beyond_its_base_box(
         assert isinstance(expected, tuple)
         _assert_color(end, point, (expected[0], expected[1], expected[2]))
     _assert_color(end, (20, 20), BLACK)
+
+
+@pytest.mark.slow
+@requires_ffmpeg
+@pytest.mark.parametrize("end_angle", [90.0, -90.0])
+def test_rotation_motion_expands_a_shape_beyond_its_base_box(
+    tmp_path: Path,
+    end_angle: float,
+) -> None:
+    composition = _composition(
+        [
+            {
+                "id": "box",
+                "type": "shape",
+                "shape": "rectangle",
+                "x": 50,
+                "y": 35,
+                "width": 60,
+                "height": 50,
+                "fill": "#ff0000",
+                "keyframes": {
+                    "rotation": [
+                        {"time": 0, "value": 0, "easing": "linear"},
+                        {"time": 2, "value": end_angle},
+                    ]
+                },
+            }
+        ]
+    )
+    output = tmp_path / "shape-rotation.mp4"
+    render_video(composition, output, preset="ultrafast", crf=20)
+
+    start = _frame(output, 0.0, tmp_path / "start.png")
+    middle = _frame(output, 1.0, tmp_path / "middle.png")
+    preview = render_still(composition, 1.0).convert("RGB")
+
+    _assert_color(start, (80, 60), RED)
+    _assert_color(start, (80, 30), BLACK)
+    for point in ((80, 30), (80, 90)):
+        _assert_color(middle, point, RED)
+        expected = preview.getpixel(point)
+        assert isinstance(expected, tuple)
+        _assert_color(middle, point, (expected[0], expected[1], expected[2]))
+    _assert_color(middle, (50, 35), BLACK)
