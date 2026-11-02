@@ -1432,11 +1432,20 @@ class PillowStillRenderer:
         image = self._open(source.strip())
         placement = placement_for_layer(background, canvas)
         fit = _layer_value(background, "fit", "fit_mode", "mode") or FitMode.COVER
+        position = _sample(background, AnimatedProperty.POSITION, time_seconds)
+        offset = (0.0, 0.0)
+        if position is not None:
+            pair = _offset_pair(position, "position keyframe")
+            if pair is not None:
+                offset = pair
+        scale = _sample(background, AnimatedProperty.SCALE, time_seconds)
         return scale_faces_to_canvas(
             faces,
             image.size,
             fit=fit,
             placement=placement,
+            offset=offset,
+            scale=scale,
         )
 
     def _resolve(self, source: str) -> ImageSource:

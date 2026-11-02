@@ -470,6 +470,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Reject a video output whose audio codec cannot be carried by the output container before invoking ffmpeg (tests/compose/test_output_profiles.py)
 - [ ] Scale external SRT and VTT subtitle styles for reduced canvas previews so their text stays proportional (tests/compose/test_preview.py)
 - [ ] Measure rendered loudness during compose output validation so platform loudness limits are enforced (tests/cli/test_compose.py)
+- [ ] Account for background image rotation keyframes when scaling vision face rectangles (tests/compose/test_placement.py)
 
 ## Milestone 10: Research engine
 
