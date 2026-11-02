@@ -54,7 +54,8 @@ from .contrast import (
 )
 from .errors import FontError, RenderError
 from .fonts import FontManager, font_family_for_text
-from .keyframes import AnimatedProperty, keyframes_for_layer
+from .keyframes import AnimatedProperty
+from .motion import MotionTracks, tracks_for_layer
 from .overlays import apply_overlay_effects
 from .placement import LayerPlacement, find_text_placement, scale_faces_to_canvas
 from .safe_area import effective_safe_area, safe_area_box
@@ -743,8 +744,16 @@ def _apply_mask(
     return result
 
 
-def _sample(layer: Layer, property_name: AnimatedProperty, time: float) -> Any:
-    track = keyframes_for_layer(layer).track(property_name)
+def _tracks_for_layer(layer: Layer, composition: Composition) -> MotionTracks:
+    return tracks_for_layer(
+        layer,
+        layer.start_seconds,
+        _layer_visible_end(layer, composition),
+    )
+
+
+def _sample(tracks: MotionTracks, property_name: AnimatedProperty, time: float) -> Any:
+    track = getattr(tracks, property_name.value, None)
     return None if track is None else track.sample(time)
 
 
@@ -1432,13 +1441,14 @@ class PillowStillRenderer:
         image = self._open(source.strip())
         placement = placement_for_layer(background, canvas)
         fit = _layer_value(background, "fit", "fit_mode", "mode") or FitMode.COVER
-        position = _sample(background, AnimatedProperty.POSITION, time_seconds)
+        tracks = _tracks_for_layer(background, composition)
+        position = _sample(tracks, AnimatedProperty.POSITION, time_seconds)
         offset = (0.0, 0.0)
         if position is not None:
             pair = _offset_pair(position, "position keyframe")
             if pair is not None:
                 offset = pair
-        scale = _sample(background, AnimatedProperty.SCALE, time_seconds)
+        scale = _sample(tracks, AnimatedProperty.SCALE, time_seconds)
         return scale_faces_to_canvas(
             faces,
             image.size,
@@ -1474,6 +1484,7 @@ class PillowStillRenderer:
         canvas: Image.Image,
         layer: Layer,
         time_seconds: float,
+        composition: Composition,
     ) -> None:
         source = _layer_value(layer, "source", "path", "file", "asset")
         if not isinstance(source, str) or not source.strip():
@@ -1487,19 +1498,21 @@ class PillowStillRenderer:
             raise RenderError(f"unsupported fit mode {fit!r}") from exc
         fitted = _fit(image, (placement.width, placement.height), mode)
 
+        tracks = _tracks_for_layer(layer, composition)
         x = placement.x
         y = placement.y
         if mode in (FitMode.CONTAIN, FitMode.NONE):
             x += (placement.width - fitted.width) // 2
             y += (placement.height - fitted.height) // 2
-        position = _sample(layer, AnimatedProperty.POSITION, time_seconds)
+        position = _sample(tracks, AnimatedProperty.POSITION, time_seconds)
         if position is not None:
             offset = _offset_pair(position, "position keyframe")
             if offset is not None:
                 x += round(offset[0])
                 y += round(offset[1])
 
-        scale = _sample(layer, AnimatedProperty.SCALE, time_seconds)
+        scale_x = scale_y = 1.0
+        scale = _sample(tracks, AnimatedProperty.SCALE, time_seconds)
         if scale is not None:
             if isinstance(scale, tuple):
                 scale_x, scale_y = scale
@@ -1517,7 +1530,13 @@ class PillowStillRenderer:
             x += (placement.width - fitted.width) // 2
             y += (placement.height - fitted.height) // 2
 
-        rotation = _sample(layer, AnimatedProperty.ROTATION, time_seconds)
+        if tracks.pan is not None:
+            pan = _offset_pair(tracks.pan.sample(time_seconds), "motion pan")
+            if pan is not None:
+                x -= round(pan[0] * scale_x)
+                y -= round(pan[1] * scale_y)
+
+        rotation = _sample(tracks, AnimatedProperty.ROTATION, time_seconds)
         if rotation is not None:
             angle = float(rotation)
             rotated = fitted.rotate(
@@ -1534,7 +1553,7 @@ class PillowStillRenderer:
         if mask_spec is not None:
             fitted = _apply_mask(fitted, mask_spec, self._open(mask_spec.source))
 
-        opacity = _sample(layer, AnimatedProperty.OPACITY, time_seconds)
+        opacity = _sample(tracks, AnimatedProperty.OPACITY, time_seconds)
         value = layer.opacity if opacity is None else float(opacity)
         if value <= 0.0:
             return
@@ -1565,7 +1584,8 @@ class PillowStillRenderer:
             raise RenderError(f"unsupported fit mode {raw_fit!r}") from exc
         fitted = _fit(image, target, fit)
 
-        scale = _sample(layer, AnimatedProperty.SCALE, time_seconds)
+        tracks = _tracks_for_layer(layer, composition)
+        scale = _sample(tracks, AnimatedProperty.SCALE, time_seconds)
         if scale is not None:
             if isinstance(scale, tuple):
                 scale_x, scale_y = scale
@@ -1581,7 +1601,7 @@ class PillowStillRenderer:
                 ),
             )
 
-        rotation = _sample(layer, AnimatedProperty.ROTATION, time_seconds)
+        rotation = _sample(tracks, AnimatedProperty.ROTATION, time_seconds)
         if rotation is not None:
             fitted = fitted.rotate(
                 float(rotation),
@@ -1610,14 +1630,20 @@ class PillowStillRenderer:
             x = 0 if explicit_x is None else _integer(explicit_x, "layer x")
             y = 0 if explicit_y is None else _integer(explicit_y, "layer y")
 
-        position = _sample(layer, AnimatedProperty.POSITION, time_seconds)
+        position = _sample(tracks, AnimatedProperty.POSITION, time_seconds)
         if position is not None:
             offset = _offset_pair(position, "position keyframe")
             if offset is not None:
                 x += round(offset[0])
                 y += round(offset[1])
 
-        opacity = _sample(layer, AnimatedProperty.OPACITY, time_seconds)
+        if tracks.pan is not None:
+            pan = _offset_pair(tracks.pan.sample(time_seconds), "motion pan")
+            if pan is not None:
+                x += round(pan[0])
+                y += round(pan[1])
+
+        opacity = _sample(tracks, AnimatedProperty.OPACITY, time_seconds)
         value = layer.opacity if opacity is None else float(opacity)
         if value <= 0.0:
             return
@@ -1678,6 +1704,7 @@ class PillowStillRenderer:
         canvas: Image.Image,
         layer: Layer,
         time_seconds: float,
+        composition: Composition,
     ) -> None:
         raw_shape = _layer_value(layer, "shape", "shape_type", "form")
         try:
@@ -1730,14 +1757,16 @@ class PillowStillRenderer:
 
         x = placement.x
         y = placement.y
-        position = _sample(layer, AnimatedProperty.POSITION, time_seconds)
+        tracks = _tracks_for_layer(layer, composition)
+        position = _sample(tracks, AnimatedProperty.POSITION, time_seconds)
         if position is not None:
             offset = _offset_pair(position, "position keyframe")
             if offset is not None:
                 x += round(offset[0])
                 y += round(offset[1])
 
-        scale = _sample(layer, AnimatedProperty.SCALE, time_seconds)
+        scale_x = scale_y = 1.0
+        scale = _sample(tracks, AnimatedProperty.SCALE, time_seconds)
         if scale is not None:
             if isinstance(scale, tuple):
                 scale_x, scale_y = scale
@@ -1755,7 +1784,13 @@ class PillowStillRenderer:
             x += (placement.width - image.width) // 2
             y += (placement.height - image.height) // 2
 
-        rotation = _sample(layer, AnimatedProperty.ROTATION, time_seconds)
+        if tracks.pan is not None:
+            pan = _offset_pair(tracks.pan.sample(time_seconds), "motion pan")
+            if pan is not None:
+                x -= round(pan[0] * scale_x)
+                y -= round(pan[1] * scale_y)
+
+        rotation = _sample(tracks, AnimatedProperty.ROTATION, time_seconds)
         if rotation is not None:
             angle = float(rotation)
             rotated = image.rotate(
@@ -1767,7 +1802,7 @@ class PillowStillRenderer:
             y += (image.height - rotated.height) // 2
             image = rotated
 
-        opacity = _sample(layer, AnimatedProperty.OPACITY, time_seconds)
+        opacity = _sample(tracks, AnimatedProperty.OPACITY, time_seconds)
         value = layer.opacity if opacity is None else float(opacity)
         if value <= 0.0:
             return
@@ -2143,7 +2178,11 @@ class PillowStillRenderer:
             x += (placement.width - text_image.width) // 2
             y += (placement.height - text_image.height) // 2
 
-        rotation = _sample(layer, AnimatedProperty.ROTATION, time_seconds)
+        rotation = _sample(
+            _tracks_for_layer(layer, composition),
+            AnimatedProperty.ROTATION,
+            time_seconds,
+        )
         if rotation is not None:
             angle = float(rotation)
             rotated = text_image.rotate(
@@ -2175,11 +2214,11 @@ class PillowStillRenderer:
         composition: Composition,
     ) -> None:
         if layer.type is LayerType.IMAGE:
-            self._draw_image_layer(canvas, layer, time_seconds)
+            self._draw_image_layer(canvas, layer, time_seconds, composition)
         elif layer.type in (LayerType.STICKER, LayerType.LOGO):
             self._draw_overlay_layer(canvas, layer, time_seconds, composition)
         elif layer.type is LayerType.SHAPE:
-            self._draw_shape_layer(canvas, layer, time_seconds)
+            self._draw_shape_layer(canvas, layer, time_seconds, composition)
         elif layer.type is LayerType.TEXT:
             self._draw_text_layer(canvas, layer, time_seconds, composition)
 
