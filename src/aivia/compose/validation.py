@@ -23,7 +23,7 @@ from aivia.compose.overlays import (
     OverlayError,
     overlay_params_from_effect,
 )
-from aivia.compose.safe_area import warn_safe_area_violations
+from aivia.compose.safe_area import effective_safe_area, warn_safe_area_violations
 from aivia.compose.schema import Composition, Layer
 from aivia.core.errors import ValidationError
 
@@ -684,6 +684,22 @@ def _check_overlay_effects(
                 )
 
 
+def _check_safe_area(
+    composition: Composition,
+    issues: CompositionIssues,
+) -> None:
+    area = effective_safe_area(composition)
+    if area.horizontal < 1.0 and area.vertical < 1.0:
+        return
+    issues.append(
+        CompositionIssue(
+            path="safe_area",
+            message="safe area margins must leave a visible area",
+            code="safe_area",
+        )
+    )
+
+
 def _validate_loaded(
     composition: Composition,
     *,
@@ -762,6 +778,7 @@ def _validate_loaded(
     _check_keyframes(composition, issues)
     _check_transitions(composition, issues)
     _check_overlay_effects(composition, issues)
+    _check_safe_area(composition, issues)
     return issues
 
 

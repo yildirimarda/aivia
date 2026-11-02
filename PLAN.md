@@ -466,6 +466,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Honor motion presets in the still renderer so Ken Burns previews match video output (tests/compose/test_motion.py)
 - [ ] Rasterize procedural overlay frames only across each effect window so long compositions do not write unused PNGs (slow, tests/compose/test_video_overlays.py)
 - [ ] Reject SRT or VTT subtitle files in the pure FFmpeg command builder so callers convert them to ASS first (tests/compose/test_ffmpeg_cmd.py)
+- [ ] Validate composition safe area margins are finite fractions between zero and one so bad values fail before rendering (tests/compose/test_validation.py)
 
 ## Milestone 10: Research engine
 
