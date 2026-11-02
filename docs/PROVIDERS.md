@@ -53,7 +53,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `local-whisper` | `stt` | 60/min | - | - | unknown |
 | `local_music` | `music_gen` | 60/min | - | CC0-1.0 ([terms](https://creativecommons.org/publicdomain/zero/1.0/)) | yes |
 | `local_stt` | `stt` | 60/min | - | - | unknown |
-| `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
+| `mock` | `llm`, `embeddings`, `image_gen`, `image_edit`, `video_gen`, `music_gen`, `sfx`, `stock`, `tts`, `stt`, `search`, `source`, `page_fetch`, `notify`, `publish`, `delivery`, `storage`, `lipsync`, `character_trainer` | 60/min | - | - | unknown |
 | `mock-character-trainer` | `character_trainer` | 60/min | - | - | unknown |
 | `mock-delivery` | `delivery` | 60/min | - | - | unknown |
 | `mock-embeddings` | `embeddings` | 60/min | - | - | unknown |
@@ -67,6 +67,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-publish` | `publish` | 60/min | - | - | unknown |
 | `mock-search` | `search` | 60/min | - | - | unknown |
 | `mock-sfx` | `sfx` | 60/min | - | - | unknown |
+| `mock-source` | `source` | 60/min | - | - | unknown |
 | `mock-stock` | `stock` | 60/min | - | - | unknown |
 | `mock-storage` | `storage` | 60/min | - | - | unknown |
 | `mock-stt` | `stt` | 60/min | - | - | unknown |
@@ -173,6 +174,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock` | `publish` | $0 per call |
 | `mock` | `search` | $0.001 per call |
 | `mock` | `sfx` | $0.002 per call |
+| `mock` | `source` | $0 per call |
 | `mock` | `stock` | $0 per call |
 | `mock` | `storage` | $0 per call |
 | `mock` | `stt` | $0.0001 per call |
@@ -191,6 +193,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-publish` | `publish` | $0 per call |
 | `mock-search` | `search` | $0.001 per call |
 | `mock-sfx` | `sfx` | $0.002 per call |
+| `mock-source` | `source` | $0 per call |
 | `mock-stock` | `stock` | $0 per call |
 | `mock-storage` | `storage` | $0 per call |
 | `mock-stt` | `stt` | $0.0001 per call |
@@ -298,6 +301,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-publish` | - | - |
 | `mock-search` | - | - |
 | `mock-sfx` | - | - |
+| `mock-source` | - | - |
 | `mock-stock` | - | - |
 | `mock-storage` | - | - |
 | `mock-stt` | - | - |
@@ -405,6 +409,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `mock-publish` | - | unknown | no | - |
 | `mock-search` | - | unknown | no | - |
 | `mock-sfx` | - | unknown | no | - |
+| `mock-source` | - | unknown | no | - |
 | `mock-stock` | - | unknown | no | - |
 | `mock-storage` | - | unknown | no | - |
 | `mock-stt` | - | unknown | no | - |

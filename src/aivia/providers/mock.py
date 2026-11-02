@@ -35,6 +35,7 @@ from typing import Any, ClassVar
 from aivia.core.config.http import HttpClientConfig
 from aivia.core.errors import InvalidRequestError, PermanentError
 from aivia.core.models.provider import ProviderMeta, ProviderPrice, RateLimit
+from aivia.core.models.topic import TopicCandidate
 from aivia.providers.base import Provider
 from aivia.providers.protocols import (
     CAPABILITY_CHARACTER_TRAINER,
@@ -50,6 +51,7 @@ from aivia.providers.protocols import (
     CAPABILITY_PUBLISH,
     CAPABILITY_SEARCH,
     CAPABILITY_SFX,
+    CAPABILITY_SOURCE,
     CAPABILITY_STOCK,
     CAPABILITY_STORAGE,
     CAPABILITY_STT,
@@ -94,6 +96,8 @@ from aivia.providers.protocols import (
     SFXClip,
     SFXRequest,
     SFXResponse,
+    SourceRequest,
+    SourceResponse,
     StockAsset,
     StockMediaKind,
     StockRequest,
@@ -149,6 +153,8 @@ __all__ = [
     "MockSTTProvider",
     "MockSearch",
     "MockSearchProvider",
+    "MockSource",
+    "MockSourceProvider",
     "MockStock",
     "MockStockProvider",
     "MockStorage",
@@ -1086,7 +1092,44 @@ class _MockProviderBase(Provider):
             metadata=self._response_metadata(cost),
         )
 
-    async def fetch(self, request: PageFetchRequest) -> PageFetchResponse:
+    async def _discover_source(self, request: SourceRequest) -> SourceResponse:
+        self._maybe_fail("discover")
+        cost = self._record(CAPABILITY_SOURCE, "discover", 1.0, request)
+        count = min(request.limit, 3)
+        label = request.query or "mock"
+        candidates = [
+            TopicCandidate(
+                title=(
+                    f"Mock topic {index} for {request.query}"
+                    if request.query
+                    else f"Mock topic {index}"
+                ),
+                summary=f"Deterministic summary {index} for {label}",
+                source_urls=[f"https://example.com/sources/{index}"],
+                mode=request.mode,
+                category="mock",
+                keywords=[label],
+                signal=float(count - index + 1),
+                rank=index - 1,
+                created_at=MOCK_EPOCH,
+                updated_at=MOCK_EPOCH,
+            )
+            for index in range(1, count + 1)
+        ]
+        return SourceResponse(
+            query=request.query,
+            provider=self.name,
+            candidates=candidates,
+            request_id=f"mock-{_digest(self._seed, request.query)[:12]}",
+            metadata=self._response_metadata(cost),
+        )
+
+    async def fetch(
+        self,
+        request: PageFetchRequest | SourceRequest,
+    ) -> PageFetchResponse | SourceResponse:
+        if isinstance(request, SourceRequest):
+            return await self._discover_source(request)
         self._maybe_fail("fetch")
         cost = self._record(CAPABILITY_PAGE_FETCH, "fetch", 1.0, request)
         text = f"Mock page content for {request.url}"
@@ -1312,6 +1355,7 @@ class MockProvider(_MockProviderBase):
         CAPABILITY_TTS,
         CAPABILITY_STT,
         CAPABILITY_SEARCH,
+        CAPABILITY_SOURCE,
         CAPABILITY_PAGE_FETCH,
         CAPABILITY_NOTIFY,
         CAPABILITY_PUBLISH,
@@ -1332,6 +1376,7 @@ class MockProvider(_MockProviderBase):
         CAPABILITY_TTS: 0.00001,
         CAPABILITY_STT: 0.0001,
         CAPABILITY_SEARCH: 0.001,
+        CAPABILITY_SOURCE: 0.0,
         CAPABILITY_PAGE_FETCH: 0.0,
         CAPABILITY_NOTIFY: 0.0,
         CAPABILITY_PUBLISH: 0.0,
@@ -1364,6 +1409,9 @@ class MockProvider(_MockProviderBase):
         if isinstance(request, StockRequest):
             return await self._search_stock(request)
         raise TypeError(f"unsupported search request: {type(request).__name__}")
+
+    async def discover(self, request: SourceRequest) -> SourceResponse:
+        return await self._discover_source(request)
 
 
 class MockLLMProvider(_MockProviderBase):
@@ -1472,6 +1520,17 @@ class MockSearchProvider(_MockProviderBase):
         return await self._search_web(request)
 
 
+class MockSourceProvider(_MockProviderBase):
+    """A deterministic topic source mock returning synthetic candidates."""
+
+    mock_name = "mock-source"
+    capabilities = (CAPABILITY_SOURCE,)
+    prices: ClassVar[Mapping[str, float]] = {CAPABILITY_SOURCE: 0.0}
+
+    async def discover(self, request: SourceRequest) -> SourceResponse:
+        return await self._discover_source(request)
+
+
 class MockPageFetchProvider(_MockProviderBase):
     """A deterministic page fetch mock returning synthetic pages."""
 
@@ -1541,6 +1600,7 @@ MockStock = MockStockProvider
 MockTTS = MockTTSProvider
 MockSTT = MockSTTProvider
 MockSearch = MockSearchProvider
+MockSource = MockSourceProvider
 MockPageFetch = MockPageFetchProvider
 MockNotify = MockNotifier
 MockPublish = MockPublisher
@@ -1563,6 +1623,7 @@ _MOCK_PROVIDERS: dict[str, type[_MockProviderBase]] = {
     CAPABILITY_PUBLISH: MockPublisher,
     CAPABILITY_SEARCH: MockSearchProvider,
     CAPABILITY_SFX: MockSFXProvider,
+    CAPABILITY_SOURCE: MockSourceProvider,
     CAPABILITY_STOCK: MockStockProvider,
     CAPABILITY_STORAGE: MockStorageProvider,
     CAPABILITY_STT: MockSTTProvider,
