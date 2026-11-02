@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -174,6 +175,44 @@ def test_a_mapping_can_be_saved_directly(tmp_path: Path) -> None:
     save_composition_file(composition_to_mapping(_composition()), target)
 
     assert load_composition(target) == _composition()
+
+
+def test_an_interrupted_save_keeps_the_previous_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "composition.yaml"
+    save_composition(_composition(), target)
+    before = target.read_text(encoding="utf-8")
+    replacement = _composition().model_copy(update={"id": "replacement"})
+
+    def fail_replace(source: str, destination: str) -> None:
+        raise OSError("interrupted before rename")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="interrupted before rename"):
+        save_composition(replacement, target)
+
+    assert target.read_text(encoding="utf-8") == before
+    assert load_composition(target) == _composition()
+    assert [path.name for path in tmp_path.iterdir()] == [target.name]
+
+
+def test_an_interrupted_first_save_leaves_no_truncated_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "nested" / "composition.json"
+
+    def fail_replace(source: str, destination: str) -> None:
+        raise OSError("interrupted before rename")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="interrupted before rename"):
+        save_composition(_composition(), target)
+
+    assert not target.exists()
+    assert list(target.parent.iterdir()) == []
 
 
 def test_composition_to_dict_is_json_compatible_and_uses_field_names() -> None:
