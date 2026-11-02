@@ -10,6 +10,8 @@ for byte.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
@@ -269,6 +271,30 @@ read_composition_file = load_composition
 """Alias for :func:`load_composition`."""
 
 
+def _write_atomic(path: Path, text: str) -> None:
+    """Write *text* to *path* without ever exposing a partial document."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise
+
+
 def save_composition(
     composition: Composition | Mapping[str, Any],
     path: str | Path,
@@ -278,13 +304,14 @@ def save_composition(
     """Write *composition* to *path*, inferring the format from its suffix.
 
     A path without a suffix defaults to YAML unless ``format`` is given.
-    Parent directories are created when they do not exist.
+    Parent directories are created when they do not exist. The document is
+    written to a temporary file and then atomically renamed into place, so an
+    interrupted save cannot leave a truncated composition behind.
     """
     target = Path(path).expanduser()
     fmt = _normalise_format(format) if format is not None else _format_for_path(target)
     text = dump_composition(composition, format=fmt or "yaml")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8")
+    _write_atomic(target, text)
     return target
 
 
@@ -336,8 +363,7 @@ def save_composition_schema(
     path: str | Path,
     schema: Mapping[str, Any] | None = None,
 ) -> Path:
-    """Write the composition JSON Schema to *path*."""
+    """Write the composition JSON Schema to *path* atomically."""
     target = Path(path).expanduser()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(dump_composition_schema(schema), encoding="utf-8")
+    _write_atomic(target, dump_composition_schema(schema))
     return target
