@@ -128,7 +128,7 @@ def _frame(source: Path, time_seconds: float, destination: Path) -> Image.Image:
 def _assert_color(
     image: Image.Image,
     point: tuple[int, int],
-    expected: tuple[int, int, int],
+    expected: tuple[int, ...],
     *,
     tolerance: int = 20,
 ) -> None:
@@ -282,6 +282,71 @@ def test_ken_burns_zoom_is_visible_in_sampled_frames(tmp_path: Path) -> None:
     _assert_color(end, (10, 10), RED)
     _assert_color(start, (160, 120), RED)
     _assert_color(end, (160, 120), RED)
+
+
+def test_image_unit_zoom_pan_translates_the_layer_without_zoompan() -> None:
+    composition = _composition(
+        {
+            "id": "still",
+            "type": "image",
+            "source": "center.png",
+            "fit": "stretch",
+            "motion": ken_burns(
+                start_scale=1.0,
+                end_scale=1.0,
+                start_pan=(0, 0),
+                end_pan=(80, 0),
+                easing="linear",
+            ),
+        }
+    )
+
+    graph = build_ffmpeg_filtergraph(composition)
+
+    assert "zoompan" not in graph
+    assert "overlay=x='(0)-(" in graph
+    assert "80*" in graph
+
+
+@requires_ffmpeg
+def test_image_motion_pan_at_unit_zoom_matches_the_still_renderer(
+    tmp_path: Path,
+) -> None:
+    source = _center_box(tmp_path / "center.png")
+    composition = _composition(
+        {
+            "id": "still",
+            "type": "image",
+            "source": str(source),
+            "fit": "stretch",
+            "motion": ken_burns(
+                start_scale=1.0,
+                end_scale=1.0,
+                start_pan=(0, 0),
+                end_pan=(80, 0),
+                easing="linear",
+            ),
+        }
+    )
+    output = tmp_path / "unit-zoom-pan.mp4"
+    render_video(composition, output, preset="ultrafast", crf=28)
+
+    start = _frame(output, 0.0, tmp_path / "start.png")
+    end = _frame(output, 1.9, tmp_path / "end.png")
+    still_start = _still(composition, 0.0, tmp_path)
+    still_end = _still(composition, 1.9, tmp_path)
+
+    for point in ((10, 10), (100, 120), (200, 120), (300, 120)):
+        expected_start = still_start.getpixel(point)
+        expected_end = still_end.getpixel(point)
+        assert isinstance(expected_start, tuple)
+        assert isinstance(expected_end, tuple)
+        _assert_color(start, point, expected_start)
+        _assert_color(end, point, expected_end)
+
+    _assert_color(start, (200, 120), RED)
+    _assert_color(end, (200, 120), BLUE)
+    _assert_color(end, (100, 120), RED)
 
 
 @requires_ffmpeg
