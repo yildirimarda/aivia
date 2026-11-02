@@ -388,6 +388,92 @@ def test_invalid_keyframe_shapes_and_values_are_reported() -> None:
     assert any("must be a single number" in str(issue) for issue in issues)
 
 
+def test_transition_durations_must_fit_inside_their_layer_window() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "explicit_end",
+                "type": "image",
+                "source": "a.png",
+                "start": 1,
+                "end": 2,
+                "transition": {"type": "crossfade", "duration": 1.5},
+            },
+            {
+                "id": "by_duration",
+                "type": "image",
+                "source": "b.png",
+                "start": 2,
+                "duration": 1,
+                "transition": {"type": "slide", "duration": 2},
+            },
+            {
+                "id": "fits",
+                "type": "image",
+                "source": "c.png",
+                "start": 4,
+                "end": 5,
+                "transition": {"type": "crossfade", "duration": 1},
+            },
+        ]
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["transition", "transition"]
+    assert [issue.path for issue in issues] == [
+        "layers[0].transition.duration_seconds",
+        "layers[1].transition.duration_seconds",
+    ]
+    assert "after the layer window ending at 2s" in str(issues[0])
+    assert "after the layer window ending at 3s" in str(issues[1])
+
+
+def test_transition_durations_cannot_outlive_the_composition() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "late",
+                "type": "image",
+                "source": "late.png",
+                "start": 9,
+                "transition": {"type": "crossfade", "duration": 2},
+            }
+        ]
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["transition"]
+    assert [issue.path for issue in issues] == ["layers[0].transition.duration_seconds"]
+    assert "after the composition duration of 10s" in str(issues[0])
+
+
+def test_cut_transitions_ignore_their_duration_and_exact_fit_is_allowed() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "cut",
+                "type": "image",
+                "source": "cut.png",
+                "start": 1,
+                "end": 2,
+                "transition": {"type": "cut", "duration": 5},
+            },
+            {
+                "id": "exact",
+                "type": "image",
+                "source": "exact.png",
+                "start": 3,
+                "end": 4,
+                "transition": {"type": "crossfade", "duration": 1},
+            },
+        ]
+    )
+
+    assert validate_composition(composition) == []
+
+
 def test_composition_layers_are_parsed_into_their_concrete_classes() -> None:
     composition = _composition(
         layers=[

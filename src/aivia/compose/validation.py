@@ -613,6 +613,39 @@ def _check_keyframes(composition: Composition, issues: CompositionIssues) -> Non
             )
 
 
+def _check_transitions(
+    composition: Composition,
+    issues: CompositionIssues,
+) -> None:
+    duration = composition.duration_seconds
+    for index, layer in enumerate(composition.layers):
+        transition = layer.transition
+        if transition is None or transition.is_cut:
+            continue
+        window_end = layer.end
+        window_end = duration if window_end is None else min(window_end, duration)
+        transition_end = layer.start_seconds + transition.duration_seconds
+        if transition_end <= window_end + _EPSILON:
+            continue
+        if window_end < duration - _EPSILON:
+            message = (
+                f"transition ends at {transition_end:g}s, after the layer "
+                f"window ending at {window_end:g}s"
+            )
+        else:
+            message = (
+                f"transition ends at {transition_end:g}s, after the composition "
+                f"duration of {duration:g}s"
+            )
+        issues.append(
+            CompositionIssue(
+                path=f"layers[{index}].transition.duration_seconds",
+                message=message,
+                code="transition",
+            )
+        )
+
+
 def _check_overlay_effects(
     composition: Composition,
     issues: CompositionIssues,
@@ -714,6 +747,7 @@ def _validate_loaded(
         _check_assets(composition, checker, issues)
 
     _check_keyframes(composition, issues)
+    _check_transitions(composition, issues)
     _check_overlay_effects(composition, issues)
     return issues
 
