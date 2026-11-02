@@ -480,6 +480,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Expand rasterized shape bounds for scale motion so scaled shapes are not clipped to their base box (slow, tests/compose/test_shape_video.py)
 - [x] Expand rasterized shape bounds for rotation motion so rotated shapes are not clipped to their base box (slow, tests/compose/test_shape_video.py)
 - [x] Expand rasterized text bounds for scale motion so scaled text is not clipped to its base box (slow, tests/compose/test_text_video.py)
+- [ ] Align scaled text video rendering with the still renderer so off-centre text previews match (slow, tests/compose/test_text_video.py)
 
 ## Milestone 10: Research engine
 

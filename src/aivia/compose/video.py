@@ -158,7 +158,7 @@ class _RasterExpansion:
     rotation: tuple[float, float] | None = None
 
 
-def _shape_expansion(
+def _raster_expansion(
     layer: Layer,
     start_seconds: float,
     end_seconds: float,
@@ -469,11 +469,7 @@ def _prepare_raster_layers(
                 composition.canvas.size,
                 parse_color(color),
             )
-        expand = (
-            _shape_expansion(layer, layer.start_seconds, end)
-            if layer.type is LayerType.SHAPE
-            else _RasterExpansion()
-        )
+        expand = _raster_expansion(layer, layer.start_seconds, end)
         raster = _rasterize_layer(
             composition,
             layer,
