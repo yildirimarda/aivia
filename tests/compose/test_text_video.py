@@ -11,6 +11,7 @@ from PIL import Image
 
 from aivia.compose import (
     Composition,
+    PillowStillRenderer,
     TextAnimation,
     TextAnimationType,
     TextLayer,
@@ -94,6 +95,10 @@ def _brightest(image: Image.Image) -> int:
 
 def _has_white(image: Image.Image, *, threshold: int = 200) -> bool:
     return _brightest(image) >= threshold
+
+
+def _bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
+    return image.convert("RGB").getbbox()
 
 
 def test_entrance_and_exit_accept_shorthand_and_mapping() -> None:
@@ -197,6 +202,122 @@ def test_text_without_animation_generates_no_tracks() -> None:
 
     assert text_animation_for_layer(layer) is None
     assert tracks_for_layer(layer, 0.0, 2.0).is_empty
+
+
+def test_still_preview_fades_text_in_and_out() -> None:
+    renderer = PillowStillRenderer()
+    composition = _composition()
+
+    start = renderer.render_still(composition, 0.0)
+    middle = renderer.render_still(composition, 1.0)
+    end = renderer.render_still(composition, 1.95)
+
+    assert _brightest(start) < 40
+    assert _has_white(middle)
+    assert _brightest(end) < 40
+
+
+def test_still_preview_slides_text_between_entrance_and_exit() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "title",
+                "type": "text",
+                "text": "HELLO",
+                "font_size": 48,
+                "color": "#ffffff",
+                "x": 60,
+                "y": 80,
+                "width": 200,
+                "height": 80,
+                "entrance": {
+                    "type": "slide_up",
+                    "duration": 0.5,
+                    "distance": 30,
+                    "opacity_from": 1.0,
+                },
+                "exit": {
+                    "type": "slide_up",
+                    "duration": 0.5,
+                    "distance": 30,
+                    "opacity_from": 1.0,
+                },
+            }
+        ]
+    )
+    renderer = PillowStillRenderer()
+
+    start = _bbox(renderer.render_still(composition, 0.0))
+    middle = _bbox(renderer.render_still(composition, 1.0))
+    end = _bbox(renderer.render_still(composition, 1.95))
+
+    assert start is not None and middle is not None and end is not None
+    assert start[1] > middle[1] + 10
+    assert end[1] < middle[1] - 10
+
+
+def test_still_preview_scales_text_for_zoom_presets() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "title",
+                "type": "text",
+                "text": "HELLO",
+                "font_size": 48,
+                "color": "#ffffff",
+                "x": 60,
+                "y": 80,
+                "width": 200,
+                "height": 80,
+                "entrance": {
+                    "type": "zoom",
+                    "duration": 0.5,
+                    "start_scale": 0.5,
+                    "opacity_from": 1.0,
+                },
+                "exit": {
+                    "type": "zoom",
+                    "duration": 0.5,
+                    "start_scale": 0.5,
+                    "opacity_from": 1.0,
+                },
+            }
+        ]
+    )
+    renderer = PillowStillRenderer()
+
+    start = _bbox(renderer.render_still(composition, 0.0))
+    middle = _bbox(renderer.render_still(composition, 1.0))
+    end = _bbox(renderer.render_still(composition, 1.95))
+
+    assert start is not None and middle is not None and end is not None
+    middle_width = middle[2] - middle[0]
+    assert start[2] - start[0] < middle_width - 20
+    assert end[2] - end[0] < middle_width - 20
+
+
+def test_still_preview_keeps_explicit_keyframes_over_entrance() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "title",
+                "type": "text",
+                "text": "HELLO",
+                "font_size": 48,
+                "color": "#ffffff",
+                "x": 60,
+                "y": 80,
+                "width": 200,
+                "height": 80,
+                "entrance": {"type": "fade", "duration": 0.4},
+                "keyframes": {"opacity": [(0.0, 1.0), (2.0, 1.0)]},
+            }
+        ]
+    )
+
+    start = PillowStillRenderer().render_still(composition, 0.0)
+
+    assert _has_white(start)
 
 
 def test_an_unknown_text_animation_is_rejected() -> None:
