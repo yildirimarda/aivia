@@ -424,7 +424,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add three example compositions that validate and render (tests/compose/test_examples.py)
 - [x] Apply per platform safe area margins to text and sticker layers and warn when manual coordinates violate them (tests/compose/test_safe_area.py)
 - [x] Add an end to end test where mock assets become an mp4, a gif and a web card that pass output validation (slow, tests/e2e/test_assets_to_output.py)
-- [ ] Shape mixed left to right and right to left text correctly with per language direction defaults (tests/compose/test_bidi.py)
+- [x] Shape mixed left to right and right to left text correctly with per language direction defaults (tests/compose/test_bidi.py)
 - [ ] Upgrade older composition schema versions before validation and reject newer ones with a clear error (tests/compose/test_migrations.py)
 - [ ] Parse composition layers into their concrete classes so type specific fields are validated (tests/compose/test_validation.py)
 - [ ] Write composition files atomically so an interrupted save cannot leave a truncated document (tests/compose/test_io.py)
@@ -457,6 +457,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
 - [ ] Add a golden CI job that installs the pinned ffmpeg and runs the render goldens with comparisons enabled (CI)
 - [ ] Honor explicit x and y coordinates for sticker and logo layers in the still renderer so previews match video (tests/compose/test_stickers.py)
+- [ ] Add an RTL capable bundled font and Arabic joining so right to left text draws real glyphs (golden, tests/compose/test_bidi.py)
 
 ## Milestone 10: Research engine
 

@@ -14,6 +14,7 @@ dependencies = [
     "jinja2>=3.1",
     "pillow>=13.0.0",
     "pydantic>=2.9",
+    "python-bidi>=0.6.12",
     "python-multipart>=0.0.9",
     "pyyaml>=6.0.3",
     "sqlalchemy>=2.1.6",

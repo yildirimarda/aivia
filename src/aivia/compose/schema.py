@@ -36,6 +36,7 @@ from pydantic import (
 
 from aivia.core.platforms import SafeArea
 
+from .bidi import TextDirection, resolve_direction
 from .motion import Motion
 from .subtitles import SubtitleTrack
 from .text_animation import TextAnimation
@@ -1673,6 +1674,19 @@ class TextLayer(Layer):
         min_length=1,
         validation_alias=AliasChoices("text", "content", "value"),
     )
+    language: str = Field(
+        default="",
+        validation_alias=AliasChoices("language", "lang", "locale"),
+    )
+    direction: TextDirection | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "direction",
+            "text_direction",
+            "writing_direction",
+            "dir",
+        ),
+    )
     font_family: str = Field(
         default="",
         validation_alias=AliasChoices("font_family", "font", "family"),
@@ -1817,6 +1831,32 @@ class TextLayer(Layer):
             raise ValueError("text must not be empty")
         return value
 
+    @field_validator("language", mode="before")
+    @classmethod
+    def _strip_language(cls, value: Any) -> Any:
+        if value is None:
+            return ""
+        if not isinstance(value, str):
+            raise ValueError("language must be a string")
+        return value.strip()
+
+    @field_validator("direction", mode="before")
+    @classmethod
+    def _validate_direction(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, TextDirection):
+            return value
+        if not isinstance(value, str):
+            raise ValueError("direction must be ltr or rtl")
+        key = value.strip().casefold()
+        if key in ("", "auto"):
+            return None
+        try:
+            return TextDirection(key)
+        except ValueError as exc:
+            raise ValueError("direction must be ltr or rtl") from exc
+
     @field_validator("font_family", mode="before")
     @classmethod
     def _strip_font_family(cls, value: Any) -> Any:
@@ -1876,6 +1916,15 @@ class TextLayer(Layer):
         if self.shrink_to_fit and self.min_font_size > self.font_size:
             raise ValueError("min_font_size must not exceed font_size")
         return self
+
+    @property
+    def text_direction(self) -> TextDirection:
+        """The resolved direction of this layer's text."""
+        return resolve_direction(
+            self.text,
+            language=self.language,
+            direction=self.direction,
+        )
 
     @property
     def smart_placement(self) -> bool:

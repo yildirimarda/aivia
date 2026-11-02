@@ -19,15 +19,16 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any
 
+from aivia.core import languages as _languages
 from aivia.core.config.sections import (
     LanguageConfig,
     LanguagesConfig,
     WordsPerSecondConfig,
 )
 from aivia.core.errors import ConfigError, ValidationError
+from aivia.core.languages import TextDirection
 
 __all__ = [
     "DEFAULT_LANGUAGE",
@@ -52,13 +53,6 @@ DEFAULT_LANGUAGE = "en"
 """The canonical code used when no language is configured."""
 
 
-class TextDirection(StrEnum):
-    """The writing direction of a language."""
-
-    LTR = "ltr"
-    RTL = "rtl"
-
-
 _NAME_TO_CODE = {
     "english": "en",
     "eng": "en",
@@ -78,27 +72,6 @@ _ISO_639_2_TO_CODE = {
     "deu": "de",
     "tur": "tr",
 }
-
-_RTL_CODES = frozenset(
-    {
-        "ar",
-        "arc",
-        "ckb",
-        "dv",
-        "fa",
-        "ha",
-        "he",
-        "khw",
-        "ks",
-        "ku",
-        "ps",
-        "sd",
-        "syr",
-        "ug",
-        "ur",
-        "yi",
-    }
-)
 
 _ENCODING_SUFFIX = re.compile(r"\.[A-Za-z0-9_-]+$")
 _CODE_PART = re.compile(r"[a-z]{2,3}")
@@ -384,16 +357,12 @@ def normalize_languages(values: Iterable[str]) -> list[str]:
 
 def language_direction(value: str) -> TextDirection:
     """Return the default writing direction for a language."""
-    return (
-        TextDirection.RTL
-        if normalize_language_code(value) in _RTL_CODES
-        else TextDirection.LTR
-    )
+    return _languages.language_direction(normalize_language_code(value))
 
 
 def is_rtl_language(value: str) -> bool:
     """Whether a language is written right to left by default."""
-    return language_direction(value) is TextDirection.RTL
+    return _languages.is_rtl_language(normalize_language_code(value))
 
 
 def _marker_score(text: str, markers: tuple[str, ...]) -> int:
