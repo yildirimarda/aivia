@@ -1158,6 +1158,45 @@ class Subtitle(BaseModel):
         return cls.from_words(words, **kwargs)
 
     @classmethod
+    def from_srt(cls, text: str, **kwargs: Any) -> Subtitle:
+        """Parse an SRT document into a subtitle track."""
+        return cls(cues=_parse_exchange_cues(text, vtt=False), **kwargs)
+
+    @classmethod
+    def from_vtt(cls, text: str, **kwargs: Any) -> Subtitle:
+        """Parse a WebVTT document into a subtitle track."""
+        return cls(cues=_parse_exchange_cues(text, vtt=True), **kwargs)
+
+    @classmethod
+    def from_file(cls, path: str | Path, **kwargs: Any) -> Subtitle:
+        """Read an SRT or WebVTT file into a subtitle track."""
+        source = Path(path)
+        try:
+            text = source.read_text(encoding="utf-8-sig")
+        except OSError as exc:
+            raise ValidationError(
+                f"cannot read subtitle file {str(source)!r}",
+                details={"path": str(source)},
+            ) from exc
+        suffix = source.suffix.lower().lstrip(".")
+        if suffix == SubtitleFormat.VTT.value:
+            return cls.from_vtt(text, **kwargs)
+        if suffix == SubtitleFormat.SRT.value:
+            return cls.from_srt(text, **kwargs)
+        if text.lstrip().upper().startswith("WEBVTT"):
+            return cls.from_vtt(text, **kwargs)
+        if suffix == SubtitleFormat.ASS.value:
+            raise ValidationError(
+                "ASS files are burned directly; only SRT or VTT need conversion",
+                details={"path": str(source)},
+            )
+        raise ValidationError(
+            f"cannot infer a subtitle format from {source.name!r}; "
+            "expected an SRT or VTT file",
+            details={"path": str(source)},
+        )
+
+    @classmethod
     def from_alignment(cls, alignment: Any, **kwargs: Any) -> Subtitle:
         """Build a track from an alignment, keeping only timed words."""
         words = getattr(alignment, "word_timestamps", None)
@@ -1351,6 +1390,73 @@ def _milliseconds(seconds: float) -> int:
 
 def _centiseconds(seconds: float) -> int:
     return round(_milliseconds(seconds) / 10)
+
+
+def _parse_timestamp(value: str) -> float:
+    text = value.strip().replace(",", ".")
+    parts = text.split(":")
+    try:
+        if len(parts) == 3:
+            hours, minutes, seconds = parts
+        elif len(parts) == 2:
+            hours = "0"
+            minutes, seconds = parts
+        else:
+            raise ValueError
+        total = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(
+            f"invalid subtitle timestamp {value!r}",
+            details={"value": value},
+        ) from exc
+    if not math.isfinite(total) or total < 0.0:
+        raise ValidationError(
+            f"invalid subtitle timestamp {value!r}",
+            details={"value": value},
+        )
+    return total
+
+
+def _unescape_vtt_text(text: str) -> str:
+    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
+
+def _parse_exchange_cues(text: str, *, vtt: bool) -> list[SubtitleCue]:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n").lstrip("\ufeff")
+    cues: list[SubtitleCue] = []
+    for block in re.split(r"\n[ \t]*\n", normalized.strip()):
+        lines = block.split("\n")
+        if not any(line.strip() for line in lines):
+            continue
+        if vtt:
+            first = lines[0].strip().upper()
+            if first.startswith("WEBVTT"):
+                lines = lines[1:]
+            elif first.startswith(("NOTE", "STYLE", "REGION")):
+                continue
+        timing_index = next(
+            (index for index, line in enumerate(lines) if "-->" in line),
+            None,
+        )
+        if timing_index is None:
+            continue
+        before, _, after = lines[timing_index].partition("-->")
+        end_token = after.strip().split(maxsplit=1)
+        if not before.strip() or not end_token:
+            raise ValidationError("subtitle cue is missing a start or end time")
+        cue_text = "\n".join(lines[timing_index + 1 :]).strip()
+        if not cue_text:
+            continue
+        if vtt:
+            cue_text = _unescape_vtt_text(cue_text)
+        cues.append(
+            SubtitleCue(
+                start_seconds=_parse_timestamp(before),
+                end_seconds=_parse_timestamp(end_token[0]),
+                text=cue_text,
+            )
+        )
+    return cues
 
 
 def format_srt_timestamp(seconds: float) -> str:
