@@ -2,7 +2,7 @@
   "renderer": "1",
   "video_renderer": "2",
   "font_family": "Lato",
-  "font_set": "0a7c8f3d4f00121cb535c472b3846d1dd613df0f9eba1d3c3e71885d20f3ae69",
+  "font_set": "65116656ea778e5682403cfc9aef9065ae7292736077459eca304bf0652afb14",
   "ffmpeg": {
     "version": "n9.0.2-42-gd7643a0fe3-20261101",
     "source": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-01-12-49/ffmpeg-n9.0.2-42-gd7643a0fe3-linux64-gpl-9.0.tar.xz"

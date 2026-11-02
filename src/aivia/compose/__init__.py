@@ -37,6 +37,7 @@ from aivia.compose.bidi import (
     has_rtl_characters,
     reorder_text,
     resolve_direction,
+    shape_arabic,
     shape_text,
 )
 from aivia.compose.contrast import (
@@ -87,6 +88,7 @@ from aivia.compose.ffmpeg_cmd import (
 )
 from aivia.compose.fonts import (
     DEFAULT_FONT_FAMILY,
+    DEFAULT_RTL_FONT_FAMILY,
     FONT_EXTENSIONS,
     FontFace,
     FontFamily,
@@ -97,6 +99,7 @@ from aivia.compose.fonts import (
     UnknownFontError,
     available_fonts,
     font_families,
+    font_family_for_text,
     font_manager,
     font_path,
     resolve_font,
@@ -590,6 +593,7 @@ __all__ = [
     "DEFAULT_PRESET",
     "DEFAULT_PREVIEW_MAX_FPS",
     "DEFAULT_PREVIEW_SCALE",
+    "DEFAULT_RTL_FONT_FAMILY",
     "DEFAULT_THUMBNAIL_WIDTH",
     "DEFAULT_VIDEO_CODEC",
     "DEFAULT_WATERMARK_MARGIN",
@@ -926,6 +930,7 @@ __all__ = [
     "find_text_placement",
     "first_strong_direction",
     "font_families",
+    "font_family_for_text",
     "font_fingerprint",
     "font_manager",
     "font_path",
@@ -1034,6 +1039,7 @@ __all__ = [
     "schema_version_of",
     "seam_similarity",
     "select_cover_frame",
+    "shape_arabic",
     "shape_text",
     "slide",
     "slide_transition",

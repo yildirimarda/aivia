@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import unicodedata
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,6 +13,7 @@ from pydantic import ValidationError
 
 from aivia.compose import (
     Composition,
+    FontManager,
     PillowStillRenderer,
     TextDirection,
     TextLayer,
@@ -18,8 +22,14 @@ from aivia.compose import (
     layout_text,
     reorder_text,
     resolve_direction,
+    shape_arabic,
     shape_text,
 )
+
+_GOLDEN_ENV = "AIVA_COMPARE_GOLDENS"
+_ARABIC_GOLDEN = Path(__file__).resolve().parents[1] / "golden" / "bidi" / "arabic.png"
+_ARABIC_TEXT = "مرحبا بالعالم — Hello 2026"
+_ARABIC_FONT = "Amiri"
 
 
 def _composition(
@@ -329,3 +339,192 @@ def test_renderer_accepts_direction_aliases_and_rejects_unknown_values() -> None
                 }
             ]
         )
+
+
+def test_arabic_letters_are_joined_into_presentation_forms() -> None:
+    assert shape_arabic("سلام") == "\ufeb3\ufefc\ufee1"
+    assert shape_arabic("لا") == "\ufefb"
+
+
+def test_arabic_shaping_leaves_other_scripts_and_empty_text_unchanged() -> None:
+    assert shape_arabic("") == ""
+    assert shape_arabic("Hello world") == "Hello world"
+    assert shape_arabic("שלום") == "שלום"
+
+
+def test_arabic_shaping_preserves_harakat_instead_of_dropping_them() -> None:
+    original = "مَرْحَبًا"
+    shaped = shape_arabic(original)
+    marks = {character for character in original if unicodedata.combining(character)}
+
+    assert marks
+    assert marks <= set(shaped)
+    assert not (set(original) - marks) & set(shaped)
+
+
+def test_arabic_joining_happens_before_the_visual_reorder() -> None:
+    shaped = "Hello \ufe8e\ufe92\ufea3\ufeae\ufee3 world"
+
+    assert shape_text("Hello مرحبا world") == shaped
+    assert reorder_text("Hello مرحبا world") == shaped
+    assert shape_text("Hello مرحبا world", direction="rtl") == (
+        "world \ufe8e\ufe92\ufea3\ufeae\ufee3 Hello"
+    )
+
+
+def test_layout_shapes_arabic_words_into_presentation_forms() -> None:
+    layout = layout_text(
+        "مرحبا بالعالم",
+        max_width=500,
+        max_height=200,
+        font_size=40,
+        font_family=_ARABIC_FONT,
+        language="ar",
+    )
+
+    assert layout.lines == (
+        "\ufee2\ufedf\ufe8e\ufecc\ufedf\ufe8e\ufe91 \ufe8e\ufe92\ufea3\ufeae\ufee3",
+    )
+    assert not any(
+        "\u0600" <= character <= "\u06ff" for line in layout.lines for character in line
+    )
+
+
+def _missing_from_font(font: ImageFont.FreeTypeFont, text: str) -> list[str]:
+    def signature(character: str) -> tuple[tuple[int, int], bytes]:
+        mask = font.getmask(character)
+        return mask.size, bytes(mask)
+
+    notdef = signature("\U0010ffff")
+    return [
+        character
+        for character in text
+        if not character.isspace() and signature(character) == notdef
+    ]
+
+
+def test_the_bundled_rtl_font_covers_every_shaped_arabic_glyph() -> None:
+    font = ImageFont.truetype(
+        str(FontManager().resolve(_ARABIC_FONT)),
+        40,
+        layout_engine=ImageFont.Layout.BASIC,
+    )
+    shaped = shape_text(_ARABIC_TEXT, language="ar")
+
+    assert _missing_from_font(font, shaped) == []
+    assert _missing_from_font(font, "مرحبا") == []
+
+
+def test_the_renderer_draws_joined_arabic_with_the_bundled_font() -> None:
+    image = _render(
+        [
+            {
+                "type": "text",
+                "text": _ARABIC_TEXT,
+                "font_size": 40,
+                "color": "#f2f2f2",
+                "x": 16,
+                "y": 16,
+                "width": 608,
+                "height": 128,
+                "vertical_align": "middle",
+                "wrap": False,
+            }
+        ],
+        width=640,
+        height=160,
+        language="ar",
+    )
+
+    ink = ImageChops.difference(
+        image.convert("RGB"),
+        Image.new("RGB", image.size, (0, 0, 0)),
+    )
+    assert ink.getbbox() is not None
+    layout = layout_text(
+        _ARABIC_TEXT,
+        max_width=608,
+        max_height=128,
+        font_family=_ARABIC_FONT,
+        font_size=40,
+        wrap=False,
+        language="ar",
+    )
+    assert layout.lines == (
+        "Hello 2026 — \ufee2\ufedf\ufe8e\ufecc\ufedf\ufe8e\ufe91 "
+        "\ufe8e\ufe92\ufea3\ufeae\ufee3",
+    )
+
+
+def test_arabic_text_uses_the_rtl_bundled_font_without_an_explicit_family() -> None:
+    automatic = _render(
+        [
+            {
+                "type": "text",
+                "text": _ARABIC_TEXT,
+                "font_size": 40,
+                "color": "#f2f2f2",
+                "x": 16,
+                "y": 16,
+                "width": 608,
+                "height": 128,
+                "vertical_align": "middle",
+                "wrap": False,
+            }
+        ],
+        width=640,
+        height=160,
+        language="ar",
+    )
+    explicit = _render(
+        [
+            {
+                "type": "text",
+                "text": _ARABIC_TEXT,
+                "font_family": _ARABIC_FONT,
+                "font_size": 40,
+                "color": "#f2f2f2",
+                "x": 16,
+                "y": 16,
+                "width": 608,
+                "height": 128,
+                "vertical_align": "middle",
+                "wrap": False,
+            }
+        ],
+        width=640,
+        height=160,
+        language="ar",
+    )
+
+    assert not _difference(automatic, explicit)
+
+
+@pytest.mark.golden
+def test_the_arabic_render_matches_the_golden_image() -> None:
+    if os.environ.get(_GOLDEN_ENV) != "1":
+        pytest.skip(f"set {_GOLDEN_ENV}=1 to compare golden renders")
+
+    rendered = _render(
+        [
+            {
+                "type": "text",
+                "text": _ARABIC_TEXT,
+                "font_size": 40,
+                "color": "#f2f2f2",
+                "x": 16,
+                "y": 16,
+                "width": 608,
+                "height": 128,
+                "vertical_align": "middle",
+                "wrap": False,
+            }
+        ],
+        width=640,
+        height=160,
+        language="ar",
+    )
+    expected = Image.open(_ARABIC_GOLDEN).convert("RGBA")
+
+    assert rendered.size == expected.size
+    assert ImageChops.difference(rendered, expected).getbbox() is None

@@ -87,6 +87,28 @@ def test_wheel_contains_bundled_ofl_font_family_and_license(wheel: Path) -> None
         assert 'Reserved Font Name "Lato"' in license_text
 
 
+def test_wheel_contains_the_rtl_bundled_font_and_license(wheel: Path) -> None:
+    font_dir = "aivia/assets/fonts/amiri/"
+    font_files = [
+        f"{font_dir}Amiri-Regular.ttf",
+        f"{font_dir}Amiri-Bold.ttf",
+        f"{font_dir}Amiri-Italic.ttf",
+        f"{font_dir}Amiri-BoldItalic.ttf",
+    ]
+
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+
+        assert set(font_files) <= names
+        assert f"{font_dir}OFL.txt" in names
+
+        for font_file in font_files:
+            assert archive.read(font_file)[:4] == b"\x00\x01\x00\x00"
+
+        license_text = archive.read(f"{font_dir}OFL.txt").decode()
+        assert "SIL OPEN FONT LICENSE Version 1.1" in license_text
+
+
 def test_wheel_contains_default_config_prompts_and_templates(wheel: Path) -> None:
     expected = {
         "aivia/data/defaults/config.example.yaml",
