@@ -1822,6 +1822,8 @@ class PillowStillRenderer:
         layer: Layer,
         time_seconds: float,
         composition: Composition,
+        *,
+        contrast_background: Image.Image | None = None,
     ) -> None:
         raw_text = _layer_value(layer, "text", "content", "value")
         if not isinstance(raw_text, str) or not raw_text.strip():
@@ -2141,7 +2143,10 @@ class PillowStillRenderer:
             )
         )
         result = ensure_contrast(
-            _region_background(canvas, sample_box),
+            _region_background(
+                canvas if contrast_background is None else contrast_background,
+                sample_box,
+            ),
             explicit_color,
             config=self._render,
         )
@@ -2220,6 +2225,8 @@ class PillowStillRenderer:
         layer: Layer,
         time_seconds: float,
         composition: Composition,
+        *,
+        contrast_background: Image.Image | None = None,
     ) -> None:
         if layer.type is LayerType.IMAGE:
             self._draw_image_layer(canvas, layer, time_seconds, composition)
@@ -2228,7 +2235,13 @@ class PillowStillRenderer:
         elif layer.type is LayerType.SHAPE:
             self._draw_shape_layer(canvas, layer, time_seconds, composition)
         elif layer.type is LayerType.TEXT:
-            self._draw_text_layer(canvas, layer, time_seconds, composition)
+            self._draw_text_layer(
+                canvas,
+                layer,
+                time_seconds,
+                composition,
+                contrast_background=contrast_background,
+            )
 
     def _active_layers(
         self,
@@ -2253,8 +2266,15 @@ class PillowStillRenderer:
         self,
         composition: Composition,
         time_seconds: float = 0.0,
+        *,
+        contrast_background: Image.Image | None = None,
     ) -> Image.Image:
-        """Render one still frame of *composition* at *time_seconds*."""
+        """Render one still frame of *composition* at *time_seconds*.
+
+        *contrast_background* is an optional full canvas image used only to
+        choose the contrast treatment for text layers, so a text layer can be
+        drawn on a transparent canvas while sampling the real scene behind it.
+        """
         time = _finite(time_seconds, "time_seconds")
         if time < 0.0 or time > composition.duration_seconds:
             raise RenderError(
@@ -2274,7 +2294,13 @@ class PillowStillRenderer:
                 progress = transition_progress(layer, time, transition)
                 if progress < 1.0:
                     layer_image = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-                    self._draw_layer(layer_image, layer, time, composition)
+                    self._draw_layer(
+                        layer_image,
+                        layer,
+                        time,
+                        composition,
+                        contrast_background=contrast_background,
+                    )
                     canvas = compose_transition(
                         canvas,
                         layer_image,
@@ -2282,7 +2308,13 @@ class PillowStillRenderer:
                         progress,
                     )
                     continue
-            self._draw_layer(canvas, layer, time, composition)
+            self._draw_layer(
+                canvas,
+                layer,
+                time,
+                composition,
+                contrast_background=contrast_background,
+            )
         return apply_overlay_effects(canvas, composition, time)
 
     def render(
