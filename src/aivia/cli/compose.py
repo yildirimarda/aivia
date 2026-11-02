@@ -340,6 +340,7 @@ def run_validate_output(args: argparse.Namespace) -> int:
             output,
             args.platform,
             media_type=args.media_type,
+            measure=True,
         )
     except (AiviaError, OSError, ValueError) as exc:
         if getattr(args, "json_output", False):
@@ -366,7 +367,7 @@ def _validate_rendered_output(
     platform: str,
     explicit: bool,
 ) -> list[Any]:
-    issues = list(validate_output(output, platform))
+    issues = list(validate_output(output, platform, measure=True))
     if not explicit:
         issues = [issue for issue in issues if issue.code != "probe"]
     return issues
