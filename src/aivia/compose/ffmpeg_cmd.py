@@ -44,10 +44,15 @@ from .output_profiles import (
 from .safe_area import effective_safe_area
 from .schema import (
     Anchor,
+    BlendMode,
     Composition,
+    FilterType,
     FitMode,
+    ImageFilter,
+    ImageMask,
     Layer,
     LayerType,
+    MaskMode,
     TextStyle,
     TextWeight,
 )
@@ -476,6 +481,18 @@ def _image_input(layer: Layer, composition: Composition) -> FFmpegInput:
     )
 
 
+def _mask_input(layer: Layer, composition: Composition) -> FFmpegInput | None:
+    mask = None if layer.type is LayerType.TEXT else _mask_for_layer(layer)
+    if mask is None:
+        return None
+    duration = _layer_end(layer, composition) - layer.start_seconds
+    return FFmpegInput(
+        source=mask.source,
+        options=("-loop", "1", "-t", _seconds(duration)),
+        layer_id=f"{layer.id}:mask",
+    )
+
+
 def _video_input(layer: Layer) -> FFmpegInput:
     source = _layer_value(layer, "source", "path", "file", "asset", "asset_id")
     if not isinstance(source, str) or not source.strip():
@@ -651,10 +668,134 @@ def _opacity_filters(
     return []
 
 
+def _blend_mode(layer: Layer) -> BlendMode:
+    raw = _layer_value(layer, "blend_mode", "blend", "blending")
+    if raw is None:
+        return BlendMode.NORMAL
+    if isinstance(raw, BlendMode):
+        return raw
+    try:
+        return BlendMode(raw)
+    except (TypeError, ValueError) as exc:
+        raise FFmpegCommandError(f"unsupported blend mode {raw!r}") from exc
+
+
+def _ffmpeg_blend_mode(mode: BlendMode) -> str:
+    names = {
+        BlendMode.NORMAL: "normal",
+        BlendMode.MULTIPLY: "multiply",
+        BlendMode.SCREEN: "screen",
+        BlendMode.OVERLAY: "overlay",
+        BlendMode.ADD: "addition",
+        BlendMode.SUBTRACT: "subtract",
+        BlendMode.DARKEN: "darken",
+        BlendMode.LIGHTEN: "lighten",
+        BlendMode.DIFFERENCE: "difference",
+        BlendMode.HARD_LIGHT: "hardlight",
+        BlendMode.SOFT_LIGHT: "softlight",
+    }
+    try:
+        return names[mode]
+    except KeyError as exc:
+        raise FFmpegCommandError(f"unsupported blend mode {mode.value!r}") from exc
+
+
+def _image_filter_specs(layer: Layer) -> list[ImageFilter]:
+    raw = _layer_value(layer, "filters", "filter", "image_filters")
+    if raw is None:
+        return []
+    specs: list[ImageFilter] = []
+    for item in raw:
+        if isinstance(item, ImageFilter):
+            specs.append(item)
+            continue
+        try:
+            specs.append(ImageFilter.model_validate(item))
+        except ValueError as exc:
+            raise FFmpegCommandError("invalid image filter") from exc
+    return specs
+
+
+def _image_filter_filters(layer: Layer) -> list[str]:
+    filters: list[str] = []
+    for spec in _image_filter_specs(layer):
+        radius = spec.amount if spec.radius is None else spec.radius
+        if spec.type is FilterType.BLUR:
+            filters.append(f"gblur=sigma={radius:g}")
+        elif spec.type is FilterType.BOX_BLUR:
+            filters.append(f"boxblur={radius:g}")
+        elif spec.type in (FilterType.SHARPEN, FilterType.UNSHARP_MASK):
+            filters.append(f"unsharp=5:5:{spec.amount:g}")
+        elif spec.type is FilterType.BRIGHTNESS:
+            filters.append(f"eq=brightness={spec.amount - 1.0:.6f}")
+        elif spec.type is FilterType.CONTRAST:
+            filters.append(f"eq=contrast={spec.amount:.6f}")
+        elif spec.type is FilterType.SATURATION:
+            filters.append(f"eq=saturation={spec.amount:.6f}")
+        elif spec.type is FilterType.GRAYSCALE:
+            filters.append("hue=s=0")
+        elif spec.type is FilterType.INVERT:
+            filters.append("negate")
+        elif spec.type is FilterType.AUTOCONTRAST:
+            filters.append("normalize")
+    return filters
+
+
+def _mask_for_layer(layer: Layer) -> ImageMask | None:
+    raw = _layer_value(layer, "mask", "image_mask")
+    if raw is None:
+        return None
+    if isinstance(raw, ImageMask):
+        return raw
+    if isinstance(raw, str):
+        raw = {"source": raw}
+    try:
+        return ImageMask.model_validate(raw)
+    except ValueError as exc:
+        raise FFmpegCommandError("invalid image mask") from exc
+
+
+def _mask_filters(
+    mask: ImageMask,
+    width: int | None,
+    height: int | None,
+) -> list[str]:
+    filters: list[str] = []
+    if width is not None and height is not None:
+        filters.extend(_fit_filters(width, height, mask.fit))
+    if mask.mode is MaskMode.ALPHA:
+        filters.append("alphaextract")
+    else:
+        filters.append("format=gray")
+    if mask.invert:
+        filters.append("negate")
+    if mask.feather > 0.0:
+        filters.append(f"gblur=sigma={mask.feather:g}")
+    return filters
+
+
+def _input_plan(
+    layers: Sequence[Layer],
+) -> list[tuple[int, int | None]]:
+    plan: list[tuple[int, int | None]] = []
+    next_index = 1
+    for layer in layers:
+        layer_index = next_index
+        next_index += 1
+        mask_index: int | None = None
+        if layer.type is not LayerType.TEXT and _mask_for_layer(layer) is not None:
+            mask_index = next_index
+            next_index += 1
+        plan.append((layer_index, mask_index))
+    return plan
+
+
 def _layer_filters(
     layer: Layer,
     composition: Composition,
     index: int,
+    input_index: int,
+    mask_index: int | None,
 ) -> tuple[str, str]:
     overlay = layer.type in _OVERLAY_TYPES
     x, y, width, height = _box(layer, composition, overlay=overlay)
@@ -699,19 +840,32 @@ def _layer_filters(
     filters.extend(_rotation_filters(tracks, layer.start_seconds))
     filters.append("setsar=1")
     filters.append("format=rgba")
+    filters.extend(_image_filter_filters(layer))
     transition = layer_transition_for(layer)
-    filters.extend(
-        _opacity_filters(
-            layer,
-            tracks,
-            layer.start_seconds,
-            transition,
-        )
+    tail_filters = _opacity_filters(
+        layer,
+        tracks,
+        layer.start_seconds,
+        transition,
     )
-    filters.append(f"setpts=PTS-STARTPTS+{layer.start_seconds:.6f}/TB")
+    tail_filters.append(f"setpts=PTS-STARTPTS+{layer.start_seconds:.6f}/TB")
 
     label = f"v{index}"
-    node = f"[{index + 1}:v]{','.join(filters)}[{label}]"
+    mask = None if layer.type is LayerType.TEXT else _mask_for_layer(layer)
+    if mask is None:
+        node = f"[{input_index}:v]{','.join([*filters, *tail_filters])}[{label}]"
+    else:
+        if mask_index is None:
+            raise FFmpegCommandError("image mask has no ffmpeg input")
+        pre_label = f"p{index}"
+        mask_label = f"m{index}"
+        mask_filters = _mask_filters(mask, width, height)
+        node = (
+            f"[{input_index}:v]{','.join(filters)}[{pre_label}];"
+            f"[{mask_index}:v]{','.join(mask_filters)}[{mask_label}];"
+            f"[{pre_label}][{mask_label}]alphamerge,"
+            f"{','.join(tail_filters)}[{label}]"
+        )
     overlay_x, overlay_y = _position(
         layer,
         composition,
@@ -736,13 +890,36 @@ def _layer_filters(
         if offset_y != "0":
             overlay_y = f"'({overlay_y})+({offset_y})*(1-({progress}))'"
     end = _layer_end(layer, composition)
-    overlay_node = (
-        f"[base{index}][{label}]overlay="
+    overlay_options = (
         f"x={overlay_x}:y={overlay_y}:"
         "eof_action=pass:repeatlast=0:shortest=0:"
         f"enable='between(t,{layer.start_seconds:.6f},{end:.6f})'"
-        f"[base{index + 1}]"
     )
+    mode = _blend_mode(layer)
+    if mode is BlendMode.NORMAL:
+        overlay_node = (
+            f"[base{index}][{label}]overlay={overlay_options}[base{index + 1}]"
+        )
+    else:
+        base_top = f"base{index}a"
+        base_bottom = f"base{index}b"
+        layer_top = f"{label}a"
+        layer_bottom = f"{label}b"
+        blended = f"blend{index}"
+        alpha = f"alpha{index}"
+        composite = f"composite{index}"
+        overlay_node = ";".join(
+            (
+                f"[base{index}]split[{base_top}][{base_bottom}]",
+                f"[{label}]split[{layer_top}][{layer_bottom}]",
+                f"[{layer_top}][{base_top}]blend="
+                f"all_mode={_ffmpeg_blend_mode(mode)}:shortest=1[{blended}]",
+                f"[{layer_bottom}]alphaextract[{alpha}]",
+                f"[{blended}][{alpha}]alphamerge[{composite}]",
+                f"[{base_bottom}][{composite}]overlay="
+                f"{overlay_options}[base{index + 1}]",
+            )
+        )
     return node, overlay_node
 
 
@@ -807,13 +984,21 @@ def build_ffmpeg_filtergraph(
     value = _composition(composition)
     target = _output_size(output_width, output_height)
     layers = _active_layers(value)
+    plan = _input_plan(layers)
     parts = [
         f"color=c={_ffmpeg_color(value.canvas.background)}:"
         f"s={value.canvas.width}x{value.canvas.height}:"
         f"r={value.fps}:d={_seconds(value.duration_seconds)}[base0]"
     ]
     for index, layer in enumerate(layers):
-        node, overlay = _layer_filters(layer, value, index)
+        input_index, mask_index = plan[index]
+        node, overlay = _layer_filters(
+            layer,
+            value,
+            index,
+            input_index,
+            mask_index,
+        )
         parts.extend((node, overlay))
     video_label = f"base{len(layers)}"
     path = _subtitle_path(value, subtitle_file)
@@ -833,10 +1018,11 @@ def build_ffmpeg_filtergraph(
         parts.append(f"[{video_label}]null[vout]")
 
     if include_audio and any(track.enabled for track in value.audio_tracks):
+        mask_inputs = sum(1 for _index, mask_index in plan if mask_index is not None)
         audio_graph = build_audio_filtergraph(
             value,
             settings=audio_settings,
-            input_offset=1 + len(layers),
+            input_offset=1 + len(layers) + mask_inputs,
             loudness_lufs=loudness_lufs,
             normalize_loudness=normalize_loudness,
             ducking=ducking,
@@ -848,13 +1034,22 @@ def build_ffmpeg_filtergraph(
 
 def _command_inputs(composition: Composition) -> list[FFmpegInput]:
     inputs: list[FFmpegInput] = []
-    for layer in _active_layers(composition):
+    layers = _active_layers(composition)
+    for layer, (_input_index, mask_index) in zip(
+        layers,
+        _input_plan(layers),
+        strict=True,
+    ):
         if layer.type is LayerType.VIDEO:
             inputs.append(_video_input(layer))
         elif layer.type is LayerType.TEXT:
             inputs.append(_text_input(layer, composition))
         else:
             inputs.append(_image_input(layer, composition))
+        if mask_index is not None:
+            mask_input = _mask_input(layer, composition)
+            if mask_input is not None:
+                inputs.append(mask_input)
     return inputs
 
 

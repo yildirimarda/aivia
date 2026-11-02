@@ -402,3 +402,202 @@ def test_a_mapping_is_accepted_like_a_composition() -> None:
     )
 
     assert from_mapping == from_model
+
+
+def test_image_masks_add_an_input_and_composite_the_mask_channel() -> None:
+    composition = _composition(
+        layers=[
+            _image_layer(
+                id="masked",
+                source="photo.png",
+                width=100,
+                height=50,
+                mask={
+                    "source": "mask.png",
+                    "mode": "luminance",
+                    "invert": True,
+                    "feather": 1.5,
+                    "fit": "cover",
+                },
+            )
+        ]
+    )
+
+    command = build_ffmpeg_command(composition, "out.mp4")
+    graph = command.filtergraph
+
+    assert [item.source for item in command.inputs[1:]] == ["photo.png", "mask.png"]
+    assert command.inputs[2].layer_id == "masked:mask"
+    assert command.inputs[2].options == ("-loop", "1", "-t", "4.000000")
+    assert "[1:v]" in graph
+    assert "[2:v]" in graph
+    assert "format=gray" in graph
+    assert "negate" in graph
+    assert "gblur=sigma=1.5" in graph
+    assert "[p0][m0]alphamerge" in graph
+    assert "overlay=" in graph
+
+
+def test_an_alpha_mask_extracts_the_mask_alpha_channel() -> None:
+    composition = _composition(
+        layers=[
+            _image_layer(
+                source="photo.png",
+                width=100,
+                height=50,
+                mask="mask.png",
+            )
+        ]
+    )
+
+    graph = build_ffmpeg_filtergraph(composition)
+
+    assert "alphaextract" in graph
+    assert "format=gray" not in graph
+    assert "[p0][m0]alphamerge" in graph
+
+
+def test_masks_are_supported_on_video_layers_too() -> None:
+    composition = _composition(
+        layers=[
+            _video_layer(
+                source="clip.mp4",
+                width=160,
+                height=90,
+                mask={"source": "mask.png", "mode": "luminance"},
+            )
+        ]
+    )
+
+    command = build_ffmpeg_command(composition, "out.mp4")
+
+    assert [item.source for item in command.inputs[1:]] == ["clip.mp4", "mask.png"]
+    assert "alphamerge" in command.filtergraph
+
+
+def test_each_mask_input_is_indexed_next_to_its_layer() -> None:
+    composition = _composition(
+        layers=[
+            _image_layer(id="first", source="first.png", mask="first-mask.png"),
+            _image_layer(id="second", source="second.png", mask="second-mask.png"),
+        ]
+    )
+
+    command = build_ffmpeg_command(composition, "out.mp4")
+
+    assert [item.source for item in command.inputs[1:]] == [
+        "first.png",
+        "first-mask.png",
+        "second.png",
+        "second-mask.png",
+    ]
+    graph = command.filtergraph
+    assert "[1:v]" in graph
+    assert "[2:v]" in graph
+    assert "[3:v]" in graph
+    assert "[4:v]" in graph
+    assert "[p0][m0]alphamerge" in graph
+    assert "[p1][m1]alphamerge" in graph
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        ("multiply", "multiply"),
+        ("screen", "screen"),
+        ("overlay", "overlay"),
+        ("add", "addition"),
+        ("subtract", "subtract"),
+        ("darken", "darken"),
+        ("lighten", "lighten"),
+        ("difference", "difference"),
+        ("hard_light", "hardlight"),
+        ("soft_light", "softlight"),
+    ],
+)
+def test_blend_modes_map_to_ffmpeg_blend_filters(mode: str, expected: str) -> None:
+    composition = _composition(layers=[_image_layer(source="top.png", blend_mode=mode)])
+
+    graph = build_ffmpeg_filtergraph(composition)
+
+    assert f"blend=all_mode={expected}:shortest=1" in graph
+    assert "overlay=" in graph
+
+
+def test_the_normal_blend_mode_keeps_the_plain_overlay() -> None:
+    graph = build_ffmpeg_filtergraph(
+        _composition(layers=[_image_layer(source="top.png")])
+    )
+
+    assert "blend=all_mode" not in graph
+    assert "overlay=" in graph
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        ({"type": "blur", "radius": 2}, "gblur=sigma=2"),
+        ({"type": "box_blur", "radius": 1}, "boxblur=1"),
+        ({"type": "sharpen", "amount": 1}, "unsharp=5:5:1"),
+        ({"type": "brightness", "amount": 0.5}, "eq=brightness=-0.500000"),
+        ({"type": "contrast", "amount": 0.5}, "eq=contrast=0.500000"),
+        ({"type": "saturation", "amount": 0.5}, "eq=saturation=0.500000"),
+        ({"type": "grayscale"}, "hue=s=0"),
+        ({"type": "invert"}, "negate"),
+        ({"type": "autocontrast"}, "normalize"),
+    ],
+)
+def test_basic_image_filters_map_to_ffmpeg_filters(
+    spec: dict[str, Any],
+    expected: str,
+) -> None:
+    composition = _composition(layers=[_image_layer(source="top.png", filters=[spec])])
+
+    assert expected in build_ffmpeg_filtergraph(composition)
+
+
+def test_image_filters_keep_their_declared_order() -> None:
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            layers=[
+                _image_layer(
+                    source="top.png",
+                    filters={"brightness": 1.5, "invert": True},
+                )
+            ]
+        )
+    )
+
+    assert graph.index("eq=brightness=0.500000") < graph.index("negate")
+
+
+def test_filters_and_masks_apply_to_video_image_layers_in_order() -> None:
+    graph = build_ffmpeg_filtergraph(
+        _composition(
+            layers=[
+                _video_layer(
+                    source="clip.mp4",
+                    width=160,
+                    height=90,
+                    filters=[{"type": "grayscale"}],
+                    mask="mask.png",
+                    blend="screen",
+                )
+            ]
+        )
+    )
+
+    assert graph.index("hue=s=0") < graph.index("alphamerge")
+    assert graph.index("alphamerge") < graph.index("blend=all_mode=screen")
+
+
+def test_mask_inputs_shift_the_audio_input_indices() -> None:
+    composition = _composition(
+        layers=[_image_layer(source="photo.png", mask="mask.png")],
+        audio_tracks=[{"id": "voice", "source": "voice.wav"}],
+    )
+
+    graph = build_ffmpeg_filtergraph(composition)
+
+    assert "[3:a]" in graph
+    assert "[2:a]" not in graph
