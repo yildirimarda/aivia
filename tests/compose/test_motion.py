@@ -28,13 +28,12 @@ from aivia.compose import (
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
 
-pytestmark = [
-    pytest.mark.slow,
-    pytest.mark.skipif(
-        FFMPEG is None or FFPROBE is None,
-        reason="ffmpeg and ffprobe are required for a real video render",
-    ),
-]
+pytestmark = pytest.mark.slow
+
+requires_ffmpeg = pytest.mark.skipif(
+    FFMPEG is None or FFPROBE is None,
+    reason="ffmpeg and ffprobe are required for a real video render",
+)
 
 BLUE = (0, 0, 255)
 RED = (255, 0, 0)
@@ -254,6 +253,7 @@ def test_a_layer_motion_can_be_read_from_the_schema() -> None:
         motion_for_layer(Broken())
 
 
+@requires_ffmpeg
 def test_ken_burns_zoom_is_visible_in_sampled_frames(tmp_path: Path) -> None:
     source = _center_box(tmp_path / "center.png")
     output = tmp_path / "ken-burns.mp4"
@@ -283,6 +283,7 @@ def test_ken_burns_zoom_is_visible_in_sampled_frames(tmp_path: Path) -> None:
     _assert_color(end, (160, 120), RED)
 
 
+@requires_ffmpeg
 def test_parallax_moves_a_layer_across_sampled_frames(tmp_path: Path) -> None:
     source = _solid(tmp_path / "bar.png", (40, 40), RED)
     output = tmp_path / "parallax.mp4"
@@ -314,6 +315,7 @@ def test_parallax_moves_a_layer_across_sampled_frames(tmp_path: Path) -> None:
     _assert_color(end, (120, 20), RED)
 
 
+@requires_ffmpeg
 def test_position_keyframes_move_a_video_layer_in_sampled_frames(
     tmp_path: Path,
 ) -> None:
@@ -426,6 +428,7 @@ def test_overlay_pair_scale_keyframes_keep_independent_x_and_y_axes() -> None:
     assert x_only != y_only
 
 
+@requires_ffmpeg
 def test_sticker_scale_keyframes_grow_across_sampled_frames(
     tmp_path: Path,
 ) -> None:
@@ -462,6 +465,7 @@ def test_sticker_scale_keyframes_grow_across_sampled_frames(
     _assert_color(end, (185, 120), BLACK)
 
 
+@requires_ffmpeg
 def test_logo_motion_preset_scales_and_pans_across_sampled_frames(
     tmp_path: Path,
 ) -> None:
@@ -495,6 +499,7 @@ def test_logo_motion_preset_scales_and_pans_across_sampled_frames(
     _assert_color(end, (220, 120), RED)
 
 
+@requires_ffmpeg
 def test_independent_scale_keyframes_stretch_only_the_x_axis(
     tmp_path: Path,
 ) -> None:

@@ -811,3 +811,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Load every built-in adapter before provider lookup so real config types resolve outside docs (tests/cli/test_media_generate.py)
 - [ ] Include local background removal and remote ops adapters in provider docs and regenerate the matrix (tests/test_provider_docs.py)
 - [ ] Break the media probe import cycle so its test module collects without importing providers first (tests/core/test_media_probe.py)
+- [ ] Fix the placement test helper typing so mypy passes on the compose suite (tests/compose/test_placement.py)
