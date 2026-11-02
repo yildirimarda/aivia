@@ -424,14 +424,11 @@ def _margin(layer: Layer) -> tuple[float, float]:
     return horizontal, vertical
 
 
-def _max_scale(track: KeyframeTrack) -> float:
+def _max_scale(track: KeyframeTrack, index: int = 0) -> float:
     maximum = 1.0
     for frame in track.keyframes:
         value = frame.value
-        if isinstance(value, tuple):
-            magnitude = math.sqrt(max(0.0, value[0] * value[1]))
-        else:
-            magnitude = float(value)
+        magnitude = float(value[index]) if isinstance(value, tuple) else float(value)
         maximum = max(maximum, magnitude)
     return maximum
 
@@ -485,7 +482,12 @@ def _overlay_motion_filters(
     if tracks.scale is None:
         raise FFmpegCommandError("overlay motion needs a scale track")
     variable = f"(t+{_seconds(start_seconds)})"
-    scale = f"max(({_scale_expression(tracks.scale, variable)}),0.0001)"
+    scale_x_expression, scale_y_expression = _scale_expressions(
+        tracks.scale,
+        variable,
+    )
+    scale_x = f"max(({scale_x_expression}),0.0001)"
+    scale_y = f"max(({scale_y_expression}),0.0001)"
     static_scale = _overlay_static_scale(layer)
     base_width: int | None = None
     base_height: int | None = None
@@ -493,32 +495,40 @@ def _overlay_motion_filters(
         base_width = max(1, round(_integer(width, "layer width") * static_scale))
         base_height = max(1, round(_integer(height, "layer height") * static_scale))
         scale_filter = (
-            f"scale=w='{base_width}*({scale})':h='{base_height}*({scale})':eval=frame"
+            f"scale=w='{base_width}*({scale_x})':"
+            f"h='{base_height}*({scale_y})':eval=frame"
         )
     elif width is not None:
         base_width = max(1, round(_integer(width, "layer width") * static_scale))
-        scale_filter = f"scale=w='{base_width}*({scale})':h=-1:eval=frame"
+        scale_filter = (
+            f"scale=w='{base_width}*({scale_x})':"
+            f"h='ih*{base_width}/iw*({scale_y})':eval=frame"
+        )
     elif height is not None:
         base_height = max(1, round(_integer(height, "layer height") * static_scale))
-        scale_filter = f"scale=w=-1:h='{base_height}*({scale})':eval=frame"
+        scale_filter = (
+            f"scale=w='iw*{base_height}/ih*({scale_x})':"
+            f"h='{base_height}*({scale_y})':eval=frame"
+        )
     else:
         scale_filter = (
-            f"scale=w='iw*{static_scale:g}*({scale})':"
-            f"h='ih*{static_scale:g}*({scale})':eval=frame"
+            f"scale=w='iw*{static_scale:g}*({scale_x})':"
+            f"h='ih*{static_scale:g}*({scale_y})':eval=frame"
         )
 
-    maximum = _max_scale(tracks.scale)
+    maximum_x = _max_scale(tracks.scale, 0)
+    maximum_y = _max_scale(tracks.scale, 1)
     canvas_width = composition.canvas.width
     canvas_height = composition.canvas.height
     box_width = (
         canvas_width
         if base_width is None
-        else max(canvas_width, round(base_width * maximum))
+        else max(canvas_width, round(base_width * maximum_x))
     )
     box_height = (
         canvas_height
         if base_height is None
-        else max(canvas_height, round(base_height * maximum))
+        else max(canvas_height, round(base_height * maximum_y))
     )
     safe_top, safe_right, safe_bottom, safe_left = effective_safe_area(
         composition
@@ -736,12 +746,46 @@ def _video_filters(layer: Layer, composition: Composition) -> list[str]:
     ]
 
 
-def _scale_expression(track: KeyframeTrack, variable: str) -> str:
+def _scale_expressions(track: KeyframeTrack, variable: str) -> tuple[str, str]:
     first = track.keyframes[0].value
     if isinstance(first, tuple):
-        x_expression, y_expression = pair_expression(track, variable=variable)
-        return f"sqrt(({x_expression})*({y_expression}))"
-    return track_expression(track, variable=variable)
+        return pair_expression(track, variable=variable)
+    expression = track_expression(track, variable=variable)
+    return expression, expression
+
+
+def _pair_scale_motion_filters(
+    tracks: MotionTracks,
+    composition: Composition,
+    width: int | None,
+    height: int | None,
+    start_seconds: float,
+) -> list[str]:
+    if tracks.scale is None:
+        return []
+    box_width = composition.canvas.width if width is None else width
+    box_height = composition.canvas.height if height is None else height
+    variable = f"(t+{_seconds(start_seconds)})"
+    scale_x, scale_y = _scale_expressions(tracks.scale, variable)
+    scale_x = f"max(({scale_x}),0.0001)"
+    scale_y = f"max(({scale_y}),0.0001)"
+    if tracks.pan is None:
+        pan_x, pan_y = "0", "0"
+    else:
+        pan_x, pan_y = pair_expression(tracks.pan, variable=variable)
+    maximum_x = _max_scale(tracks.scale, 0)
+    maximum_y = _max_scale(tracks.scale, 1)
+    pad_width = max(1, math.ceil(box_width * maximum_x))
+    pad_height = max(1, math.ceil(box_height * maximum_y))
+    return [
+        f"fps={composition.fps}",
+        f"scale=w='{box_width}*({scale_x})':h='{box_height}*({scale_y})':eval=frame",
+        f"pad=w={pad_width}:h={pad_height}:"
+        "x='(ow-iw)/2':y='(oh-ih)/2':color=black@0:eval=frame",
+        f"crop=w={box_width}:h={box_height}:"
+        f"x='(iw-ow)/2+({pan_x})*({scale_x})':"
+        f"y='(ih-oh)/2+({pan_y})*({scale_y})'",
+    ]
 
 
 def _motion_filters(
@@ -753,10 +797,20 @@ def _motion_filters(
 ) -> list[str]:
     if tracks.scale is None and tracks.pan is None:
         return []
+    if tracks.scale is not None and isinstance(tracks.scale.keyframes[0].value, tuple):
+        return _pair_scale_motion_filters(
+            tracks,
+            composition,
+            width,
+            height,
+            start_seconds,
+        )
     box_width = composition.canvas.width if width is None else width
     box_height = composition.canvas.height if height is None else height
     variable = f"(on/{composition.fps}+{_seconds(start_seconds)})"
-    zoom = "1" if tracks.scale is None else _scale_expression(tracks.scale, variable)
+    zoom = "1"
+    if tracks.scale is not None:
+        zoom = _scale_expressions(tracks.scale, variable)[0]
     if tracks.pan is None:
         pan_x, pan_y = "0", "0"
     else:

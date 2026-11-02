@@ -438,7 +438,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Apply the contrast utility to text and subtitle layers from render config so low contrast backgrounds get a treatment (tests/compose/test_contrast.py)
 - [x] Apply masks, blend modes and filters to video image layers in the FFmpeg command (tests/compose/test_ffmpeg_cmd.py)
 - [x] Apply motion presets and scale keyframes to sticker and logo overlay layers with sampled frame checks (slow, tests/compose/test_motion.py)
-- [ ] Support independent x and y scale keyframes in video motion instead of collapsing them to one zoom (tests/compose/test_motion.py)
+- [x] Support independent x and y scale keyframes in video motion instead of collapsing them to one zoom (tests/compose/test_motion.py)
 - [ ] Honor text entrance and exit presets in the still renderer so still previews match video output (tests/compose/test_text_video.py)
 - [ ] Validate procedural overlay effect parameters during composition validation so bad effects fail before rendering (tests/compose/test_validation.py)
 - [ ] Apply procedural overlay effects to video renders so confetti, sparkles, snow and bokeh animate in the output (slow, tests/compose/test_video_overlays.py)
@@ -462,6 +462,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate a composition subtitle file reference exists before rendering (tests/compose/test_validation.py)
 - [ ] Account for background image position and scale keyframes when scaling vision face rectangles (tests/compose/test_placement.py)
 - [ ] Apply the contrast utility to video text layers in the FFmpeg filtergraph so video text matches still renders (tests/compose/test_ffmpeg_cmd.py)
+- [ ] Scope the ffmpeg skip marker to rendering tests so pure motion tests run offline (tests/compose/test_motion.py)
 
 ## Milestone 10: Research engine
 
