@@ -332,6 +332,15 @@ def _check_assets(
                     code="missing_asset",
                 )
             )
+    subtitle_file = composition.subtitle_file.strip()
+    if subtitle_file and not checker(subtitle_file):
+        issues.append(
+            CompositionIssue(
+                path="subtitle_file",
+                message=f"subtitle file {subtitle_file!r} does not exist",
+                code="missing_asset",
+            )
+        )
 
 
 def _keyframe_tracks(layer: Layer, index: int) -> Iterator[tuple[str, str, Any]]:
