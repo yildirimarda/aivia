@@ -40,6 +40,7 @@ from aivia.core.config.media import (
     DEFAULT_MEDIA_MAX_PIXELS,
 )
 from aivia.core.platforms import SafeArea
+from aivia.core.text_breaks import line_break_opportunities
 
 from .bidi import TextDirection, resolve_direction, shape_text
 from .errors import FontError, RenderError
@@ -915,23 +916,63 @@ def _measure_text(text: str, font: ImageFont.FreeTypeFont, spacing: float) -> fl
     )
 
 
+_SOFT_HYPHEN = "\u00ad"
+_BREAKING_HYPHENS = ("-", "\u2010")
+
+
+def _hyphenated_prefix(word: str, cut: int) -> str:
+    head = word[:cut].replace(_SOFT_HYPHEN, "-")
+    if not head.endswith(_BREAKING_HYPHENS):
+        head += "-"
+    return head
+
+
+def _split_word_at_width(
+    word: str,
+    font: ImageFont.FreeTypeFont,
+    max_width: int,
+    spacing: float,
+) -> tuple[int, str]:
+    prefix = ""
+    cut = 0
+    for index, character in enumerate(word):
+        candidate = f"{prefix}{character}"
+        if prefix and _measure_text(candidate, font, spacing) > max_width:
+            break
+        prefix = candidate
+        cut = index + 1
+    if cut == 0:
+        cut = 1
+        prefix = word[:1]
+    return cut, prefix.replace(_SOFT_HYPHEN, "")
+
+
 def _split_word(
     word: str,
     font: ImageFont.FreeTypeFont,
     max_width: int,
     spacing: float,
+    language: str,
 ) -> list[str]:
+    visible = word.replace(_SOFT_HYPHEN, "")
+    if _measure_text(visible, font, spacing) <= max_width:
+        return [visible]
     fragments: list[str] = []
-    current = ""
-    for character in word:
-        candidate = f"{current}{character}"
-        if current and _measure_text(candidate, font, spacing) > max_width:
-            fragments.append(current)
-            current = character
-        else:
-            current = candidate
-    if current:
-        fragments.append(current)
+    remaining = word
+    while _measure_text(remaining.replace(_SOFT_HYPHEN, ""), font, spacing) > max_width:
+        chosen: tuple[int, str] | None = None
+        for cut in line_break_opportunities(remaining, language):
+            head = _hyphenated_prefix(remaining, cut)
+            if _measure_text(head, font, spacing) <= max_width:
+                chosen = (cut, head)
+        if chosen is None:
+            chosen = _split_word_at_width(remaining, font, max_width, spacing)
+        cut, head = chosen
+        fragments.append(head)
+        remaining = remaining[cut:]
+    tail = remaining.replace(_SOFT_HYPHEN, "")
+    if tail:
+        fragments.append(tail)
     return fragments or [""]
 
 
@@ -940,6 +981,7 @@ def _wrap_paragraph(
     font: ImageFont.FreeTypeFont,
     max_width: int,
     spacing: float,
+    language: str,
 ) -> list[str]:
     words = paragraph.split()
     if not words:
@@ -947,14 +989,15 @@ def _wrap_paragraph(
     lines: list[str] = []
     current = ""
     for word in words:
-        candidate = f"{current} {word}" if current else word
+        display = word.replace(_SOFT_HYPHEN, "")
+        candidate = f"{current} {display}" if current else display
         if _measure_text(candidate, font, spacing) <= max_width:
             current = candidate
             continue
         if current:
             lines.append(current)
             current = ""
-        fragments = _split_word(word, font, max_width, spacing)
+        fragments = _split_word(word, font, max_width, spacing, language)
         lines.extend(fragments[:-1])
         current = fragments[-1]
     if current or not lines:
@@ -968,12 +1011,13 @@ def _wrap_text(
     max_width: int,
     spacing: float,
     wrap: bool,
+    language: str,
 ) -> list[str]:
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
     lines: list[str] = []
     for paragraph in normalized.split("\n"):
         if wrap:
-            lines.extend(_wrap_paragraph(paragraph, font, max_width, spacing))
+            lines.extend(_wrap_paragraph(paragraph, font, max_width, spacing, language))
         else:
             lines.append(paragraph)
     return lines
@@ -1082,7 +1126,7 @@ def layout_text(
     size = base_size
     font = _load_font(str(path), size)
     line_height_px = max(1, round(size * factor))
-    lines = _wrap_text(text, font, max_width, spacing, wrap)
+    lines = _wrap_text(text, font, max_width, spacing, wrap, language)
 
     if shrink_to_fit:
         while size > minimum and not _fits(
@@ -1091,7 +1135,7 @@ def layout_text(
             size -= 1
             font = _load_font(str(path), size)
             line_height_px = max(1, round(size * factor))
-            lines = _wrap_text(text, font, max_width, spacing, wrap)
+            lines = _wrap_text(text, font, max_width, spacing, wrap, language)
 
     limit = len(lines)
     if max_lines is not None:
