@@ -2324,6 +2324,10 @@ class Composition(_SchemaModel):
             "captions_path",
         ),
     )
+    language: str = Field(
+        default="",
+        validation_alias=AliasChoices("language", "lang", "locale"),
+    )
     platform: str = Field(
         default="",
         validation_alias=AliasChoices("platform", "target_platform"),
@@ -2365,7 +2369,7 @@ class Composition(_SchemaModel):
             return {"cues": list(value)}
         raise ValueError("subtitles must be a subtitle track, cues or mappings")
 
-    @field_validator("subtitle_file", "platform", mode="before")
+    @field_validator("subtitle_file", "language", "platform", mode="before")
     @classmethod
     def _strip_subtitle_text(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
@@ -2416,6 +2420,11 @@ class Composition(_SchemaModel):
     def version(self) -> int:
         """Alias for :attr:`schema_version`."""
         return self.schema_version
+
+    @property
+    def lang(self) -> str:
+        """Alias for :attr:`language`."""
+        return self.language
 
     @property
     def frame_rate(self) -> int:

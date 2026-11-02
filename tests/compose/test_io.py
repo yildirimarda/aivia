@@ -250,6 +250,7 @@ def test_the_json_schema_describes_every_composition_field() -> None:
         "subtitles",
         "subtitle_file",
         "platform",
+        "language",
         "safe_area",
         "loudness_lufs",
     }
