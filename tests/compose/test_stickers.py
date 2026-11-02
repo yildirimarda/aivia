@@ -500,3 +500,86 @@ def test_a_supported_overlay_without_a_source_fails_clearly() -> None:
             [{"type": "sticker", "source": "missing.png"}],
             assets={"badge.png": _solid(RED)},
         )
+
+
+@pytest.mark.parametrize("layer_type", ["sticker", "logo"])
+def test_explicit_x_and_y_override_the_anchor_and_margin(layer_type: str) -> None:
+    image = _render(
+        [
+            {
+                "type": layer_type,
+                "source": "badge.png",
+                "anchor": "bottom_right",
+                "margin": 20,
+                "x": 12,
+                "y": 7,
+                "width": STICKER_SIZE[0],
+                "height": STICKER_SIZE[1],
+            }
+        ],
+        assets={"badge.png": _solid(RED)},
+    )
+
+    _assert_color(image, 12, 7, RED)
+    _assert_color(image, 31, 16, RED)
+    _assert_color(image, 11, 7, BLUE)
+    _assert_color(image, 12, 6, BLUE)
+    _assert_color(image, 32, 7, BLUE)
+    _assert_color(image, 12, 17, BLUE)
+
+
+@pytest.mark.parametrize(
+    ("coordinates", "expected"),
+    [
+        ({"x": 30}, (30, 0)),
+        ({"y": 20}, (0, 20)),
+    ],
+)
+def test_a_single_explicit_coordinate_defaults_the_other_axis_to_zero(
+    coordinates: dict[str, int], expected: tuple[int, int]
+) -> None:
+    image = _render(
+        [
+            {
+                "type": "sticker",
+                "source": "badge.png",
+                "anchor": "center",
+                "width": STICKER_SIZE[0],
+                "height": STICKER_SIZE[1],
+                **coordinates,
+            }
+        ],
+        assets={"badge.png": _solid(RED)},
+    )
+
+    x, y = expected
+    _assert_color(image, x, y, RED)
+    _assert_color(image, x + STICKER_SIZE[0] - 1, y + STICKER_SIZE[1] - 1, RED)
+    if x > 0:
+        _assert_color(image, x - 1, y, BLUE)
+    if y > 0:
+        _assert_color(image, x, y - 1, BLUE)
+
+
+@pytest.mark.parametrize("alias", ["position", "pos", "offset"])
+def test_a_position_pair_places_the_overlay_like_explicit_coordinates(
+    alias: str,
+) -> None:
+    image = _render(
+        [
+            {
+                "type": "logo",
+                "source": "logo.png",
+                "anchor": "center",
+                alias: (12, 7),
+                "width": STICKER_SIZE[0],
+                "height": STICKER_SIZE[1],
+            }
+        ],
+        assets={"logo.png": _solid(RED)},
+    )
+
+    _assert_color(image, 12, 7, RED)
+    _assert_color(image, 31, 16, RED)
+    _assert_color(image, 11, 7, BLUE)
+    _assert_color(image, 12, 6, BLUE)
