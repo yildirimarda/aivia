@@ -11,7 +11,33 @@ from PIL import Image
 
 from aivia.cli import compose as compose_cli
 from aivia.cli import main
-from aivia.compose import dump_composition_schema
+from aivia.compose import dump_composition_schema, output_validation
+from aivia.core.media_probe import FFprobeInfo, FFprobeStream
+
+
+def _valid_video_probe() -> FFprobeInfo:
+    return FFprobeInfo(
+        format_name="mov,mp4,m4a,3gp,3g2,mj2",
+        format_long_name="QuickTime / MOV",
+        duration_seconds=30.0,
+        size_bytes=1000,
+        streams=(
+            FFprobeStream(
+                index=0,
+                codec_type="video",
+                codec_name="h264",
+                width=1080,
+                height=1920,
+            ),
+            FFprobeStream(
+                index=1,
+                codec_type="audio",
+                codec_name="aac",
+                sample_rate=48000,
+                channels=2,
+            ),
+        ),
+    )
 
 
 def _composition(**overrides: Any) -> dict[str, Any]:
@@ -483,6 +509,15 @@ def test_render_passes_platform_and_profile_options(
         Path(path).write_bytes(b"video")
 
     monkeypatch.setattr(compose_cli, "render_video", fake_video)
+    monkeypatch.setattr(
+        output_validation,
+        "measure_loudness",
+        lambda *args, **options: -14.0,
+    )
+    monkeypatch.setattr(
+        "aivia.core.media_probe.run_ffprobe",
+        lambda *args, **options: _valid_video_probe(),
+    )
 
     code, _, err = _run(
         capsys,
@@ -751,6 +786,112 @@ def test_validate_output_command_prints_every_issue_as_json(
     issues = json.loads(stdout)
     assert issues[0]["path"] == "resolution"
     assert issues[0]["media_type"] == "image"
+
+
+def test_validate_output_command_measures_rendered_loudness(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "short.mp4"
+    output.write_bytes(b"video")
+    measured: list[Path] = []
+
+    def fake_measure(path: Any, **options: Any) -> float:
+        measured.append(Path(path))
+        return -20.0
+
+    monkeypatch.setattr(output_validation, "measure_loudness", fake_measure)
+    monkeypatch.setattr(
+        "aivia.core.media_probe.run_ffprobe",
+        lambda *args, **options: _valid_video_probe(),
+    )
+
+    code, stdout, err = _run(
+        capsys,
+        "validate-output",
+        str(output),
+        "--platform",
+        "youtube",
+    )
+
+    assert code == 1
+    assert stdout == ""
+    assert measured == [output]
+    assert "loudness" in err
+    assert "-20 LUFS" in err
+
+
+def test_validate_output_command_accepts_measured_loudness_within_tolerance(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "short.mp4"
+    output.write_bytes(b"video")
+    measured: list[Path] = []
+
+    def fake_measure(path: Any, **options: Any) -> float:
+        measured.append(Path(path))
+        return -14.0
+
+    monkeypatch.setattr(output_validation, "measure_loudness", fake_measure)
+    monkeypatch.setattr(
+        "aivia.core.media_probe.run_ffprobe",
+        lambda *args, **options: _valid_video_probe(),
+    )
+
+    code, stdout, err = _run(
+        capsys,
+        "validate-output",
+        str(output),
+        "--platform",
+        "youtube",
+    )
+
+    assert code == 0
+    assert stdout == ""
+    assert err == ""
+    assert measured == [output]
+
+
+def test_render_auto_validation_measures_the_rendered_loudness(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _write(tmp_path / "composition.json", _composition())
+    output = tmp_path / "short.mp4"
+    measured: list[Path] = []
+
+    def fake_video(composition: Any, path: Any, **options: Any) -> None:
+        Path(path).write_bytes(b"video")
+
+    def fake_measure(path: Any, **options: Any) -> float:
+        measured.append(Path(path))
+        return -20.0
+
+    monkeypatch.setattr(compose_cli, "render_video", fake_video)
+    monkeypatch.setattr(output_validation, "measure_loudness", fake_measure)
+    monkeypatch.setattr(
+        "aivia.core.media_probe.run_ffprobe",
+        lambda *args, **options: _valid_video_probe(),
+    )
+
+    code, stdout, err = _run(
+        capsys,
+        "render",
+        str(source),
+        str(output),
+        "--platform",
+        "youtube",
+    )
+
+    assert code == 1
+    assert stdout == ""
+    assert measured == [output]
+    assert "loudness" in err
+    assert "-20 LUFS" in err
 
 
 def test_render_preview_skips_automatic_platform_validation(
