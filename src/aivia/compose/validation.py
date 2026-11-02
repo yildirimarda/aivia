@@ -698,6 +698,21 @@ def _check_safe_area(
     issues: CompositionIssues,
 ) -> None:
     area = effective_safe_area(composition)
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or not 0.0 <= float(value) < 1.0
+        for value in area.margins
+    ):
+        issues.append(
+            CompositionIssue(
+                path="safe_area",
+                message="safe area margins must be finite fractions between 0 and 1",
+                code="safe_area",
+            )
+        )
+        return
     if area.horizontal < 1.0 and area.vertical < 1.0:
         return
     issues.append(
@@ -819,7 +834,7 @@ def validate_composition(
     except PydanticValidationError as error:
         return CompositionIssues(_schema_issue(item) for item in error.errors())
     issues = _validate_loaded(loaded, assets=assets, asset_exists=asset_exists)
-    if warn_safe_area:
+    if warn_safe_area and all(issue.code != "safe_area" for issue in issues):
         warn_safe_area_violations(loaded, stacklevel=3)
     return issues
 
@@ -839,7 +854,7 @@ def validate_composition_or_raise(
             [_schema_issue(item) for item in error.errors()]
         ) from error
     issues = _validate_loaded(loaded, assets=assets, asset_exists=asset_exists)
-    if warn_safe_area:
+    if warn_safe_area and all(issue.code != "safe_area" for issue in issues):
         warn_safe_area_violations(loaded, stacklevel=3)
     issues.raise_for_errors()
     return loaded

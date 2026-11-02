@@ -466,7 +466,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Honor motion presets in the still renderer so Ken Burns previews match video output (tests/compose/test_motion.py)
 - [x] Rasterize procedural overlay frames only across each effect window so long compositions do not write unused PNGs (slow, tests/compose/test_video_overlays.py)
 - [x] Reject SRT or VTT subtitle files in the pure FFmpeg command builder so callers convert them to ASS first (tests/compose/test_ffmpeg_cmd.py)
-- [ ] Validate composition safe area margins are finite fractions between zero and one so bad values fail before rendering (tests/compose/test_validation.py)
+- [x] Validate composition safe area margins are finite fractions between zero and one so bad values fail before rendering (tests/compose/test_validation.py)
 - [ ] Reject a video output whose audio codec cannot be carried by the output container before invoking ffmpeg (tests/compose/test_output_profiles.py)
 - [ ] Scale external SRT and VTT subtitle styles for reduced canvas previews so their text stays proportional (tests/compose/test_preview.py)
 - [ ] Measure rendered loudness during compose output validation so platform loudness limits are enforced (tests/cli/test_compose.py)
@@ -474,6 +474,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Sample the background image behind each video text layer so contrast treatments match still renders (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Account for background image motion pan when scaling vision face rectangles (tests/compose/test_placement.py)
 - [ ] Preserve motion preset pan when rasterizing shape layers for video so previews match (tests/compose/test_shape_video.py)
+- [ ] Guard safe area pixel helpers against non-finite margins so direct callers fail cleanly (tests/compose/test_safe_area.py)
 
 ## Milestone 10: Research engine
 
