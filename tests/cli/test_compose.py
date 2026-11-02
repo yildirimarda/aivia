@@ -617,3 +617,160 @@ def test_compose_without_a_subcommand_prints_usage(
     assert code == 2
     assert output == ""
     assert "usage: aivia compose" in err
+
+
+def test_render_auto_validates_a_still_against_the_selected_platform(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = _write(tmp_path / "composition.json", _composition())
+    output = tmp_path / "frame.png"
+
+    code, stdout, err = _run(
+        capsys,
+        "render",
+        str(source),
+        str(output),
+        "--platform",
+        "instagram",
+    )
+
+    assert code == 1
+    assert stdout == ""
+    assert "Instagram Reels image resolution 64x48" in err
+
+
+def test_render_prints_every_platform_issue_returned_for_the_output(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from aivia.compose import OutputIssue, OutputIssues
+
+    source = _write(tmp_path / "composition.json", _composition())
+    output = tmp_path / "out.mp4"
+
+    def fake_video(composition: Any, path: Any, **options: Any) -> None:
+        Path(path).write_bytes(b"video")
+
+    def fake_validate(rendered: Any, platform: str, **options: Any) -> OutputIssues:
+        assert Path(rendered) == output
+        assert platform == "youtube"
+        return OutputIssues(
+            [
+                OutputIssue(
+                    path="duration",
+                    message="YouTube Shorts video duration 200s is too long",
+                    code="duration",
+                    media_type="video",
+                ),
+                OutputIssue(
+                    path="resolution",
+                    message="YouTube Shorts video resolution 1920x1080 is not allowed",
+                    code="resolution",
+                    media_type="video",
+                ),
+            ]
+        )
+
+    monkeypatch.setattr(compose_cli, "render_video", fake_video)
+    monkeypatch.setattr(compose_cli, "validate_output", fake_validate)
+
+    code, stdout, err = _run(
+        capsys,
+        "render",
+        str(source),
+        str(output),
+        "--platform",
+        "youtube",
+        "--validate",
+    )
+
+    assert code == 1
+    assert stdout == ""
+    assert "duration" in err
+    assert "YouTube Shorts video duration 200s is too long" in err
+    assert "resolution" in err
+    assert "YouTube Shorts video resolution 1920x1080 is not allowed" in err
+
+
+def test_render_passes_platform_validation_when_the_output_fits(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = _write(tmp_path / "composition.json", _composition())
+    output = tmp_path / "card.html"
+
+    code, stdout, err = _run(
+        capsys,
+        "render",
+        str(source),
+        str(output),
+        "--platform",
+        "telegram",
+    )
+
+    assert code == 0
+    assert err == ""
+    assert f"Output: {output}" in stdout
+
+
+def test_render_validate_requires_a_platform(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = _write(tmp_path / "composition.json", _composition())
+
+    code, stdout, err = _run(
+        capsys,
+        "render",
+        str(source),
+        str(tmp_path / "out.png"),
+        "--validate",
+    )
+
+    assert code == 1
+    assert stdout == ""
+    assert "output validation requires --platform" in err
+
+
+def test_validate_output_command_prints_every_issue_as_json(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output = tmp_path / "frame.png"
+    Image.new("RGBA", (64, 48), (0, 0, 0, 255)).save(output)
+
+    code, stdout, err = _run(
+        capsys,
+        "validate-output",
+        str(output),
+        "--platform",
+        "instagram",
+        "--json",
+    )
+
+    assert code == 1
+    assert err == ""
+    issues = json.loads(stdout)
+    assert issues[0]["path"] == "resolution"
+    assert issues[0]["media_type"] == "image"
+
+
+def test_render_preview_skips_automatic_platform_validation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = _write(tmp_path / "composition.json", _composition())
+    output = tmp_path / "preview.png"
+
+    code, stdout, err = _run(
+        capsys,
+        "render",
+        str(source),
+        str(output),
+        "--preview",
+        "--scale",
+        "0.5",
+        "--platform",
+        "instagram",
+    )
+
+    assert code == 0
+    assert err == ""
+    assert f"Output: {output}" in stdout
