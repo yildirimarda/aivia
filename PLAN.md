@@ -452,6 +452,9 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Normalize intro and outro clip geometry and audio before branding concatenation so mixed sources join cleanly (tests/compose/test_cover_branding.py)
 - [ ] Set image input frame rate to the composition fps so still layers are not decoded at ffmpeg defaults (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Render previews on a reduced canvas by scaling layer geometry instead of compositing at full resolution (slow, tests/compose/test_preview.py)
+- [ ] Resolve relative asset paths against the composition document directory in compose render and validate (tests/cli/test_compose.py)
+- [ ] Serve repeated compose render calls from the render cache and honor the global no cache flag (tests/cli/test_compose.py)
+- [ ] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
 
 ## Milestone 10: Research engine
 
