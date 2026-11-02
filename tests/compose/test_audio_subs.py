@@ -315,9 +315,7 @@ def test_a_vtt_file_is_converted_to_ass_and_ignores_cue_settings(
 def test_a_composition_srt_file_is_converted_before_burning(tmp_path: Path) -> None:
     source = tmp_path / "captions.srt"
     source.write_text(
-        "1\n"
-        "00:00:00,250 --> 00:00:01,750\n"
-        "From composition\n",
+        "1\n00:00:00,250 --> 00:00:01,750\nFrom composition\n",
         encoding="utf-8",
     )
     captured: dict[str, str] = {}
@@ -343,7 +341,6 @@ def test_a_composition_srt_file_is_converted_before_burning(tmp_path: Path) -> N
     assert captured["document"].startswith("[Script Info]")
     assert "From composition" in captured["document"]
     assert "0:00:00.25,0:00:01.75" in captured["document"]
-
 
 
 def test_mixing_without_tracks_is_rejected() -> None:

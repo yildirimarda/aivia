@@ -264,13 +264,7 @@ def _as_subtitle(
 def subtitle_for(
     composition: Composition,
     subtitles: (
-        Subtitle
-        | SubtitleTrack
-        | Mapping[str, Any]
-        | Iterable[Any]
-        | str
-        | Path
-        | None
+        Subtitle | SubtitleTrack | Mapping[str, Any] | Iterable[Any] | str | Path | None
     ) = None,
 ) -> Subtitle | None:
     """Return the explicit subtitle track or the composition's own track."""
