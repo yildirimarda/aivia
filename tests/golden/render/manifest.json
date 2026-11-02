@@ -1,6 +1,6 @@
 {
   "renderer": "1",
-  "video_renderer": "1",
+  "video_renderer": "2",
   "font_family": "Lato",
   "font_set": "0a7c8f3d4f00121cb535c472b3846d1dd613df0f9eba1d3c3e71885d20f3ae69",
   "ffmpeg": {

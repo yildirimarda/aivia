@@ -70,6 +70,7 @@ __all__ = [
     "FFmpegCommand",
     "FFmpegCommandError",
     "FFmpegInput",
+    "FFmpegOverlayFrames",
     "build_ffmpeg_args",
     "build_ffmpeg_command",
     "build_ffmpeg_filtergraph",
@@ -122,6 +123,41 @@ class FFmpegInput:
     def argv(self) -> list[str]:
         """Return this input as argv fragments."""
         return [*self.options, "-i", self.source]
+
+
+@dataclass(frozen=True, slots=True)
+class FFmpegOverlayFrames:
+    """A pre-rendered RGBA image sequence composited after the layers.
+
+    ``pattern`` is an image2 filename pattern such as ``frame-%04d.png`` and
+    the frames are sampled at ``fps``. The sequence covers the composition
+    duration and is overlaid in one node, so procedural effects animate in the
+    same order they have in a still render.
+    """
+
+    pattern: str
+    fps: int
+    duration_seconds: float
+    effect_id: str = ""
+
+    def input(self) -> FFmpegInput:
+        """Return the image2 input for this sequence."""
+        pattern = self.pattern.strip()
+        if not pattern:
+            raise FFmpegCommandError(
+                "overlay frames pattern must be a non-empty string"
+            )
+        rate = _integer(self.fps, "overlay frames frame rate")
+        if rate < 1:
+            raise FFmpegCommandError("overlay frames frame rate must be positive")
+        length = _finite(self.duration_seconds, "overlay frames length")
+        if length <= 0.0:
+            raise FFmpegCommandError("overlay frames length must be positive")
+        return FFmpegInput(
+            source=pattern,
+            options=("-framerate", str(rate), "-start_number", "0"),
+            layer_id=self.effect_id,
+        )
 
 
 class FFmpegCommand(list[str]):
@@ -969,6 +1005,12 @@ def _mask_filters(
     return filters
 
 
+def _overlay_input(
+    overlay_frames: FFmpegOverlayFrames | None,
+) -> FFmpegInput | None:
+    return None if overlay_frames is None else overlay_frames.input()
+
+
 def _input_plan(
     layers: Sequence[Layer],
 ) -> list[tuple[int, int | None]]:
@@ -1196,6 +1238,7 @@ def build_ffmpeg_filtergraph(
     ducking: Any | None = None,
     output_width: int | None = None,
     output_height: int | None = None,
+    overlay_frames: FFmpegOverlayFrames | None = None,
 ) -> str:
     """Return the pure ``filter_complex`` graph for *composition*.
 
@@ -1226,6 +1269,19 @@ def build_ffmpeg_filtergraph(
         )
         parts.extend((node, overlay))
     video_label = f"base{len(layers)}"
+    if overlay_frames is not None:
+        overlay_frames.input()
+        mask_inputs = sum(1 for _index, mask_index in plan if mask_index is not None)
+        overlay_index = 1 + len(layers) + mask_inputs
+        overlay_label = f"overlay{len(layers)}"
+        next_label = f"base{len(layers) + 1}"
+        parts.append(f"[{overlay_index}:v]format=rgba,setsar=1[{overlay_label}]")
+        parts.append(
+            f"[{video_label}][{overlay_label}]overlay="
+            "x=0:y=0:eof_action=pass:repeatlast=0:shortest=0"
+            f"[{next_label}]"
+        )
+        video_label = next_label
     path = _subtitle_path(value, subtitle_file)
     if value.subtitles is not None and path is None:
         raise FFmpegCommandError(
@@ -1244,10 +1300,11 @@ def build_ffmpeg_filtergraph(
 
     if include_audio and any(track.enabled for track in value.audio_tracks):
         mask_inputs = sum(1 for _index, mask_index in plan if mask_index is not None)
+        overlay_inputs = 1 if overlay_frames is not None else 0
         audio_graph = build_audio_filtergraph(
             value,
             settings=audio_settings,
-            input_offset=1 + len(layers) + mask_inputs,
+            input_offset=1 + len(layers) + mask_inputs + overlay_inputs,
             loudness_lufs=loudness_lufs,
             normalize_loudness=normalize_loudness,
             ducking=ducking,
@@ -1305,6 +1362,7 @@ def build_ffmpeg_command(
     profile: str | None = None,
     output_width: int | None = None,
     output_height: int | None = None,
+    overlay_frames: FFmpegOverlayFrames | None = None,
 ) -> FFmpegCommand:
     """Build an ffmpeg argv for *composition* without executing anything.
 
@@ -1381,6 +1439,9 @@ def build_ffmpeg_command(
         raise FFmpegCommandError("movflags must be a string or None")
 
     inputs = _command_inputs(value)
+    overlay_input = _overlay_input(overlay_frames)
+    if overlay_input is not None:
+        inputs.append(overlay_input)
     audio = _audio_inputs(value) if include_audio else []
     settings = None
     if audio:
@@ -1405,6 +1466,7 @@ def build_ffmpeg_command(
         ducking=ducking,
         output_width=output_width,
         output_height=output_height,
+        overlay_frames=overlay_frames,
     )
     background = _background_input(value)
 
