@@ -141,9 +141,7 @@ class PreviewSettings:
     @property
     def pixel_ratio(self) -> float:
         """The preview pixels divided by the source pixels."""
-        return (self.width * self.height) / (
-            self.source_width * self.source_height
-        )
+        return (self.width * self.height) / (self.source_width * self.source_height)
 
     @property
     def frame_ratio(self) -> float:
