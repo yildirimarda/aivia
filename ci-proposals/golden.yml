@@ -1,0 +1,86 @@
+name: golden
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: golden-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Golden renders are authoritative only on the pinned Linux toolchain. The
+  # exact ffmpeg build and download URL come from the manifest that produced
+  # the committed artifacts, so this job cannot drift from the goldens.
+  golden:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the pinned toolchain
+        id: pin
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads(
+              Path("tests/golden/render/manifest.json").read_text(encoding="utf-8")
+          )
+          ffmpeg = manifest["ffmpeg"]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={ffmpeg['version']}\n")
+              output.write(f"source={ffmpeg['source']}\n")
+          PY
+
+      - name: Cache the pinned ffmpeg
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ steps.pin.outputs.version }}
+
+      - name: Install the pinned ffmpeg
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/.local/ffmpeg"
+          curl -fsSL --retry 3 -o /tmp/ffmpeg.tar.xz "${{ steps.pin.outputs.source }}"
+          tar -xJf /tmp/ffmpeg.tar.xz -C "$HOME/.local/ffmpeg" --strip-components=1
+
+      - name: Verify the pinned ffmpeg
+        run: |
+          bin="$HOME/.local/ffmpeg/bin"
+          expected="${{ steps.pin.outputs.version }}"
+          found="$("$bin/ffmpeg" -version | head -1 | sed -E 's/^ffmpeg version ([^ ]+).*/\1/')"
+          test "$found" = "$expected" || {
+            echo "expected ffmpeg $expected, found $found"
+            exit 1
+          }
+          "$bin/ffprobe" -version | head -1
+          echo "$bin" >> "$GITHUB_PATH"
+          echo "AIVA_GOLDEN_FFMPEG=$bin/ffmpeg" >> "$GITHUB_ENV"
+          echo "AIVA_GOLDEN_FFPROBE=$bin/ffprobe" >> "$GITHUB_ENV"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras --dev
+
+      # Comparisons are opt-in, so the job turns them on and requires the pin
+      # to be present; a missing or mismatched ffmpeg fails instead of skipping.
+      - name: Golden render comparisons
+        env:
+          AIVA_COMPARE_GOLDENS: "1"
+          AIVA_GOLDEN_REQUIRE_FFMPEG: "1"
+        run: |
+          uv run --no-sync pytest -q tests/golden
+          uv run --no-sync pytest -q -m golden tests/compose/test_render_still.py
