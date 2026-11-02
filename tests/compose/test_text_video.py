@@ -367,8 +367,21 @@ def test_scale_motion_expands_the_rasterized_text_source(
         (content_box[0] + content_box[2]) / 2.0,
         (content_box[1] + content_box[3]) / 2.0,
     )
-    assert content_center[0] == pytest.approx(raster.width / 2.0, abs=1.5)
-    assert content_center[1] == pytest.approx(raster.height / 2.0, abs=1.5)
+    base_center = (
+        (base_box[0] + base_box[2]) / 2.0,
+        (base_box[1] + base_box[3]) / 2.0,
+    )
+    placement_center = (60.0 + 200.0 / 2.0, 80.0 + 80.0 / 2.0)
+    expected_offset = (
+        base_center[0] - placement_center[0],
+        base_center[1] - placement_center[1],
+    )
+    assert content_center[0] - raster.width / 2.0 == pytest.approx(
+        expected_offset[0], abs=1.5
+    )
+    assert content_center[1] - raster.height / 2.0 == pytest.approx(
+        expected_offset[1], abs=1.5
+    )
 
 
 def test_still_preview_keeps_explicit_keyframes_over_entrance() -> None:
@@ -545,3 +558,41 @@ def test_scale_motion_is_not_clipped_to_the_text_base_box(tmp_path: Path) -> Non
         and max(cast("tuple[int, int, int]", end.getpixel((x, y)))) >= 150
     ]
     assert outside
+
+
+@pytest.mark.slow
+@requires_ffmpeg
+def test_off_centre_scaled_text_matches_the_still_preview(tmp_path: Path) -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "title",
+                "type": "text",
+                "text": "HI",
+                "font_size": 48,
+                "color": "#ffffff",
+                "x": 100,
+                "y": 90,
+                "width": 200,
+                "height": 80,
+                "keyframes": {
+                    "scale": [
+                        {"time": 0, "value": 1.0, "easing": "linear"},
+                        {"time": 2, "value": 2.0},
+                    ]
+                },
+            }
+        ]
+    )
+    output = tmp_path / "text-scale-offset.mp4"
+
+    render_video(composition, output, preset="ultrafast", crf=20)
+
+    frame = _frame(output, 1.9, tmp_path / "frame.png")
+    preview = PillowStillRenderer().render_still(composition, 1.9).convert("RGB")
+
+    frame_box = _bbox(frame)
+    preview_box = _bbox(preview)
+    assert frame_box is not None and preview_box is not None
+    for actual, expected in zip(frame_box, preview_box, strict=True):
+        assert actual == pytest.approx(expected, abs=3)
