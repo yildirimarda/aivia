@@ -1590,6 +1590,17 @@ class PillowStillRenderer:
             effective_safe_area(composition),
         )
 
+        position = _pair(_layer_value(layer, "position", "pos", "offset"), "position")
+        explicit_x = _layer_value(layer, "x", "left")
+        explicit_y = _layer_value(layer, "y", "top")
+        if explicit_x is None and position is not None:
+            explicit_x = position[0]
+        if explicit_y is None and position is not None:
+            explicit_y = position[1]
+        if explicit_x is not None or explicit_y is not None:
+            x = 0 if explicit_x is None else _integer(explicit_x, "layer x")
+            y = 0 if explicit_y is None else _integer(explicit_y, "layer y")
+
         position = _sample(layer, AnimatedProperty.POSITION, time_seconds)
         if position is not None:
             offset = _offset_pair(position, "position keyframe")
