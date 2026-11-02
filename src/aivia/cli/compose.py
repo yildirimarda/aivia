@@ -20,6 +20,7 @@ from PIL import Image
 
 from aivia.cli.registry import register_command
 from aivia.compose import (
+    Composition,
     CompositionIOError,
     dump_composition_schema,
     load_composition,
@@ -101,7 +102,10 @@ def _configure_validate(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--assets",
         metavar="DIR",
-        help="resolve relative asset paths against DIR and report missing files",
+        help=(
+            "resolve relative asset paths against DIR and report missing files "
+            "(default: the composition's directory)"
+        ),
     )
     parser.add_argument(
         "--json",
@@ -255,12 +259,45 @@ def _print_issue(path: str, message: str) -> None:
         print(f"error: {message}", file=sys.stderr)
 
 
+def _asset_root(source: Path, assets: str | None = None) -> Path:
+    """Return the directory that relative asset references resolve against."""
+    return Path(assets).expanduser() if assets is not None else source.parent
+
+
+def _resolve_asset_path(value: str, root: Path) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        return value
+    return str((root / path).resolve())
+
+
+def _resolve_composition_assets(composition: Composition, root: Path) -> Composition:
+    """Resolve every relative asset reference in *composition* against *root*."""
+    for layer in composition.layers:
+        target: Any = layer
+        source = getattr(target, "source", None)
+        if isinstance(source, str) and source.strip():
+            target.source = _resolve_asset_path(source, root)
+        mask = getattr(target, "mask", None)
+        if mask is not None and isinstance(mask.source, str) and mask.source.strip():
+            mask.source = _resolve_asset_path(mask.source, root)
+    for track in composition.audio_tracks:
+        if isinstance(track.source, str) and track.source.strip():
+            track.source = _resolve_asset_path(track.source, root)
+    if composition.subtitle_file.strip():
+        composition.subtitle_file = _resolve_asset_path(composition.subtitle_file, root)
+    return composition
+
+
 def run_validate(args: argparse.Namespace) -> int:
     """Validate a composition and report every schema and cross-object issue."""
     source = Path(args.composition).expanduser()
     try:
         document = _read_document(source)
-        issues = validate_composition(document, assets=args.assets)
+        issues = validate_composition(
+            document,
+            assets=_asset_root(source, args.assets),
+        )
     except (AiviaError, OSError, ValueError) as exc:
         if getattr(args, "json_output", False):
             print(
@@ -440,6 +477,7 @@ def run_render(args: argparse.Namespace) -> int:
     destination = args.output if args.output is not None else args.destination
     try:
         composition = load_composition(source)
+        _resolve_composition_assets(composition, source.parent)
         issues = validate_composition(composition)
         if issues:
             for issue in issues:

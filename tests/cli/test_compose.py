@@ -147,6 +147,59 @@ def test_validate_reports_a_missing_file_without_a_traceback(
     assert "Traceback" not in err
 
 
+def test_validate_resolves_relative_assets_against_the_document_directory(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    documents = tmp_path / "documents"
+    assets = documents / "assets"
+    assets.mkdir(parents=True)
+    (assets / "present.png").write_bytes(b"image")
+    source = _write(
+        documents / "composition.json",
+        _composition(
+            layers=[{"id": "present", "type": "image", "source": "assets/present.png"}]
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    code, output, err = _run(capsys, "validate", str(source))
+
+    assert code == 0
+    assert output.strip() == "composition is valid"
+    assert err == ""
+
+
+def test_validate_reports_missing_assets_relative_to_the_document_directory(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    documents = tmp_path / "documents"
+    assets = documents / "assets"
+    assets.mkdir(parents=True)
+    (assets / "present.png").write_bytes(b"image")
+    (tmp_path / "missing.png").write_bytes(b"decoy in the working directory")
+    source = _write(
+        documents / "composition.json",
+        _composition(
+            layers=[
+                {"id": "present", "type": "image", "source": "assets/present.png"},
+                {"id": "missing", "type": "image", "source": "missing.png"},
+            ]
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    code, output, err = _run(capsys, "validate", str(source))
+
+    assert code == 1
+    assert output == ""
+    assert "missing.png" in err
+    assert "present.png" not in err
+
+
 def test_schema_prints_the_deterministic_composition_schema(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -309,6 +362,76 @@ def test_render_still_writes_the_selected_image(
     with Image.open(output) as image:
         assert image.size == (64, 48)
     assert f"Output: {output}" in stdout
+
+
+def test_render_resolves_relative_assets_against_the_document_directory(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    documents = tmp_path / "documents"
+    assets = documents / "assets"
+    assets.mkdir(parents=True)
+    Image.new("RGBA", (8, 8), (0, 128, 0, 255)).save(assets / "background.png")
+    source = _write(
+        documents / "composition.json",
+        _composition(
+            canvas={"width": 8, "height": 8, "background": "#000000"},
+            layers=[
+                {
+                    "id": "background",
+                    "type": "image",
+                    "source": "assets/background.png",
+                    "fit": "stretch",
+                }
+            ],
+        ),
+    )
+    output = tmp_path / "frame.png"
+    monkeypatch.chdir(tmp_path)
+
+    code, _, err = _run(capsys, "render", str(source), str(output))
+
+    assert code == 0
+    assert err == ""
+    with Image.open(output) as image:
+        assert image.convert("RGB").getpixel((0, 0)) == (0, 128, 0)
+
+
+def test_render_resolves_relative_assets_before_the_video_renderer(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    documents = tmp_path / "documents"
+    media = documents / "media"
+    media.mkdir(parents=True)
+    (media / "clip.mp4").write_bytes(b"clip")
+    (media / "voice.mp3").write_bytes(b"voice")
+    source = _write(
+        documents / "composition.json",
+        _composition(
+            layers=[{"id": "clip", "type": "video", "source": "media/clip.mp4"}],
+            audio_tracks=[{"id": "voice", "source": "media/voice.mp3"}],
+        ),
+    )
+    output = tmp_path / "out.mp4"
+    seen: dict[str, Any] = {}
+
+    def fake_video(composition: Any, path: Any, **options: Any) -> None:
+        seen["composition"] = composition
+        Path(path).write_bytes(b"video")
+
+    monkeypatch.setattr(compose_cli, "render_video", fake_video)
+    monkeypatch.chdir(tmp_path)
+
+    code, _, err = _run(capsys, "render", str(source), str(output))
+
+    assert code == 0
+    assert err == ""
+    resolved = seen["composition"]
+    assert resolved.layers[0].source == str((media / "clip.mp4").resolve())
+    assert resolved.audio_tracks[0].source == str((media / "voice.mp3").resolve())
 
 
 def test_render_still_preview_reduces_the_image(
