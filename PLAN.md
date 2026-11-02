@@ -455,6 +455,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Resolve relative asset paths against the composition document directory in compose render and validate (tests/cli/test_compose.py)
 - [ ] Serve repeated compose render calls from the render cache and honor the global no cache flag (tests/cli/test_compose.py)
 - [ ] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
+- [ ] Add a golden CI job that installs the pinned ffmpeg and runs the render goldens with comparisons enabled (CI)
 
 ## Milestone 10: Research engine
 
