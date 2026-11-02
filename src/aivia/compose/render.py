@@ -39,6 +39,7 @@ from aivia.core.config.media import (
     DEFAULT_MEDIA_MAX_BYTES,
     DEFAULT_MEDIA_MAX_PIXELS,
 )
+from aivia.core.config.sections import RenderConfig
 from aivia.core.platforms import SafeArea
 from aivia.core.text_breaks import line_break_opportunities
 
@@ -159,6 +160,30 @@ def _layer_value(layer: Layer, *names: str) -> Any:
         if value is not None:
             return value
     return None
+
+
+def _layer_value_if_set(layer: Layer, field: str, *names: str) -> Any:
+    """Return a layer value only when the composition named it explicitly."""
+    extras = layer.model_extra or {}
+    for name in names:
+        if name in extras:
+            return extras[name]
+    if field in getattr(layer, "model_fields_set", ()):
+        return getattr(layer, field, None)
+    return None
+
+
+def _as_render_config(value: Any) -> RenderConfig:
+    if value is None:
+        return RenderConfig()
+    if isinstance(value, RenderConfig):
+        return value
+    if isinstance(value, Mapping):
+        return RenderConfig.from_mapping(value)
+    nested = getattr(value, "render", None)
+    if nested is not None:
+        return _as_render_config(nested)
+    return RenderConfig.from_mapping(cast(Any, value))
 
 
 def _pair(value: Any, name: str) -> tuple[int, int] | None:
@@ -1242,6 +1267,8 @@ class PillowStillRenderer:
     logo layers are drawn; other kinds are skipped until their own renderer
     support lands, so adding a layer kind cannot break an existing still
     render. Active procedural overlay effects are composited after the layers.
+    A render config supplies the default font family and size for text layers
+    that do not name their own.
     """
 
     version = PILLOW_STILL_RENDERER_VERSION
@@ -1262,11 +1289,18 @@ class PillowStillRenderer:
         source_root: str | Path | None = None,
         fonts: FontManager | None = None,
         faces: FaceResolver | None = None,
+        render: RenderConfig | Mapping[str, Any] | None = None,
+        config: RenderConfig | Mapping[str, Any] | None = None,
         max_bytes: int = DEFAULT_MEDIA_MAX_BYTES,
         max_pixels: int = DEFAULT_MEDIA_MAX_PIXELS,
         max_frames: int = DEFAULT_MEDIA_MAX_ANIMATED_FRAMES,
         max_total_pixels: int = DEFAULT_MEDIA_MAX_ANIMATED_PIXELS,
     ) -> None:
+        if render is not None and config is not None:
+            raise RenderError("pass only one of render or config")
+        self._render = _as_render_config(render if render is not None else config)
+        if fonts is None and (render is not None or config is not None):
+            fonts = FontManager.from_config(self._render)
         self._assets = assets
         self._source_root = None if source_root is None else Path(source_root)
         self._fonts = fonts
@@ -1616,16 +1650,26 @@ class PillowStillRenderer:
         if not isinstance(raw_text, str) or not raw_text.strip():
             raise RenderError(f"text layer {layer.id!r} has no text")
 
-        raw_family = _layer_value(layer, "font_family", "font", "family")
+        manager = _default_font_manager() if self._fonts is None else self._fonts
+
+        raw_family = _layer_value_if_set(
+            layer, "font_family", "font_family", "font", "family"
+        )
         if raw_family is None:
-            family = ""
+            family = manager.default_family
         elif isinstance(raw_family, str):
-            family = raw_family.strip()
+            family = raw_family.strip() or manager.default_family
         else:
             raise RenderError("font_family must be a string")
 
-        raw_size = _layer_value(layer, "font_size", "size", "font_size_px")
-        font_size = 48.0 if raw_size is None else _finite(raw_size, "font_size")
+        raw_size = _layer_value_if_set(
+            layer, "font_size", "font_size", "size", "font_size_px"
+        )
+        font_size = (
+            float(self._render.font_size)
+            if raw_size is None
+            else _finite(raw_size, "font_size")
+        )
         if font_size <= 0.0:
             raise RenderError("font_size must be positive")
 
@@ -1766,7 +1810,6 @@ class PillowStillRenderer:
         config = _text_placement_config(layer)
         safe_area = effective_safe_area(composition)
         placement = placement_for_layer(layer, canvas, safe_area=safe_area)
-        manager = _default_font_manager() if self._fonts is None else self._fonts
         path = manager.resolve(family or None, weight=weight, style=style)
 
         def _layout(max_width: int, max_height: int) -> TextLayout:
@@ -1788,7 +1831,7 @@ class PillowStillRenderer:
                 ellipsis=ellipsis,
                 direction=direction,
                 language=language,
-                fonts=self._fonts,
+                fonts=manager,
             )
 
         layout = _layout(placement.width, placement.height)
@@ -2024,8 +2067,14 @@ def render_still(
     assets: AssetResolver | None = None,
     source_root: str | Path | None = None,
     faces: FaceResolver | None = None,
+    render: RenderConfig | Mapping[str, Any] | None = None,
+    config: RenderConfig | Mapping[str, Any] | None = None,
 ) -> Image.Image:
     """Render one still frame with the default Pillow renderer."""
     return PillowStillRenderer(
-        assets, source_root=source_root, faces=faces
+        assets,
+        source_root=source_root,
+        faces=faces,
+        render=render,
+        config=config,
     ).render_still(composition, time_seconds)

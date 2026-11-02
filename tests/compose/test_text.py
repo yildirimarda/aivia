@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import shutil
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -24,6 +26,10 @@ from aivia.compose import (
     VerticalAlign,
     layout_text,
 )
+from aivia.core.config import RenderConfig
+from aivia.core.paths import package_fonts_dir
+
+_FONT_SUFFIXES = ("Regular", "Bold", "Italic", "BoldItalic")
 
 
 def _composition(
@@ -81,6 +87,18 @@ def _fragment_width(*fragments: str, font_size: int = 24) -> int:
 
     font = _load_font(str(FontManager().resolve(None)), font_size)
     return max(math.ceil(font.getlength(fragment)) for fragment in fragments) + 1
+
+
+def _copy_lato_family(root: Path, name: str = "Custom") -> Path:
+    source = package_fonts_dir() / "lato"
+    directory = root / name
+    directory.mkdir(parents=True)
+    for suffix in _FONT_SUFFIXES:
+        shutil.copyfile(
+            source / f"Lato-{suffix}.ttf",
+            directory / f"{name}-{suffix}.ttf",
+        )
+    return directory
 
 
 def test_text_layer_carries_full_typography_control() -> None:
@@ -564,6 +582,54 @@ def test_text_follows_position_keyframes() -> None:
 
     assert start is not None and end is not None
     assert end[0] > start[0] + 20
+
+
+def test_text_default_size_comes_from_render_config() -> None:
+    config = RenderConfig.from_mapping({"font_size": 24})
+    layer = {"type": "text", "text": "Hello", "color": "#ff0000"}
+
+    configured = PillowStillRenderer(render=config).render_still(_composition([layer]))
+    explicit = _render([{**layer, "font_size": 24}])
+
+    assert configured.tobytes() == explicit.tobytes()
+
+
+def test_text_default_family_comes_from_render_config(tmp_path: Path) -> None:
+    _copy_lato_family(tmp_path)
+    config = RenderConfig.from_mapping(
+        {"default_font": "Custom", "fonts_dir": str(tmp_path)}
+    )
+    renderer = PillowStillRenderer(render=config)
+    layer = {"type": "text", "text": "Hello", "color": "#ff0000"}
+
+    configured = renderer.render_still(_composition([layer]))
+    explicit = renderer.render_still(_composition([{**layer, "font_family": "Custom"}]))
+
+    assert configured.tobytes() == explicit.tobytes()
+
+
+def test_explicit_text_style_overrides_render_config(tmp_path: Path) -> None:
+    _copy_lato_family(tmp_path)
+    _copy_lato_family(tmp_path, "Lato")
+    config = RenderConfig.from_mapping(
+        {
+            "default_font": "Custom",
+            "fonts_dir": str(tmp_path),
+            "font_size": 24,
+        }
+    )
+    layer = {
+        "type": "text",
+        "text": "Hello",
+        "color": "#ff0000",
+        "font_family": "Lato",
+        "font_size": 32,
+    }
+
+    configured = PillowStillRenderer(render=config).render_still(_composition([layer]))
+    explicit = _render([layer])
+
+    assert configured.tobytes() == explicit.tobytes()
 
 
 @pytest.mark.parametrize(
