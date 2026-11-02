@@ -453,7 +453,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Set image input frame rate to the composition fps so still layers are not decoded at ffmpeg defaults (tests/compose/test_ffmpeg_cmd.py)
 - [x] Render previews on a reduced canvas by scaling layer geometry instead of compositing at full resolution (slow, tests/compose/test_preview.py)
 - [x] Resolve relative asset paths against the composition document directory in compose render and validate (tests/cli/test_compose.py)
-- [ ] Serve repeated compose render calls from the render cache and honor the global no cache flag (tests/cli/test_compose.py)
+- [x] Serve repeated compose render calls from the render cache and honor the global no cache flag (tests/cli/test_compose.py)
 - [ ] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
 - [ ] Add a golden CI job that installs the pinned ffmpeg and runs the render goldens with comparisons enabled (CI)
 - [ ] Honor explicit x and y coordinates for sticker and logo layers in the still renderer so previews match video (tests/compose/test_stickers.py)
