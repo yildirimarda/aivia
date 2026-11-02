@@ -672,7 +672,14 @@ def _image_input(layer: Layer, composition: Composition) -> FFmpegInput:
     duration = _layer_end(layer, composition) - layer.start_seconds
     return FFmpegInput(
         source=source.strip(),
-        options=("-loop", "1", "-t", _seconds(duration)),
+        options=(
+            "-loop",
+            "1",
+            "-framerate",
+            str(composition.fps),
+            "-t",
+            _seconds(duration),
+        ),
         layer_id=layer.id,
     )
 
@@ -684,7 +691,14 @@ def _mask_input(layer: Layer, composition: Composition) -> FFmpegInput | None:
     duration = _layer_end(layer, composition) - layer.start_seconds
     return FFmpegInput(
         source=mask.source,
-        options=("-loop", "1", "-t", _seconds(duration)),
+        options=(
+            "-loop",
+            "1",
+            "-framerate",
+            str(composition.fps),
+            "-t",
+            _seconds(duration),
+        ),
         layer_id=f"{layer.id}:mask",
     )
 

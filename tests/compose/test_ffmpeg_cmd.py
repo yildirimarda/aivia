@@ -151,8 +151,40 @@ def test_image_layers_are_scaled_overlaid_and_limited_to_their_window() -> None:
 
     first_input = command.inputs[1]
     assert isinstance(first_input, FFmpegInput)
-    assert first_input.options == ("-loop", "1", "-t", "4.000000")
-    assert command.inputs[2].options == ("-loop", "1", "-t", "2.000000")
+    assert first_input.options == (
+        "-loop",
+        "1",
+        "-framerate",
+        "24",
+        "-t",
+        "4.000000",
+    )
+    assert command.inputs[2].options == (
+        "-loop",
+        "1",
+        "-framerate",
+        "24",
+        "-t",
+        "2.000000",
+    )
+
+
+def test_image_inputs_use_the_composition_frame_rate() -> None:
+    composition = _composition(
+        fps=30,
+        layers=[_image_layer(source="still.png")],
+    )
+
+    command = build_ffmpeg_command(composition, "out.mp4")
+
+    assert command.inputs[1].options == (
+        "-loop",
+        "1",
+        "-framerate",
+        "30",
+        "-t",
+        "4.000000",
+    )
 
 
 def test_video_layers_are_trimmed_scaled_and_rate_adjusted() -> None:
@@ -428,7 +460,14 @@ def test_image_masks_add_an_input_and_composite_the_mask_channel() -> None:
 
     assert [item.source for item in command.inputs[1:]] == ["photo.png", "mask.png"]
     assert command.inputs[2].layer_id == "masked:mask"
-    assert command.inputs[2].options == ("-loop", "1", "-t", "4.000000")
+    assert command.inputs[2].options == (
+        "-loop",
+        "1",
+        "-framerate",
+        "24",
+        "-t",
+        "4.000000",
+    )
     assert "[1:v]" in graph
     assert "[2:v]" in graph
     assert "format=gray" in graph
