@@ -159,6 +159,42 @@ def test_missing_assets_are_reported_for_layers_and_audio_tracks() -> None:
     assert "voice.mp3" in str(issues[1])
 
 
+def test_missing_subtitle_file_reference_is_reported() -> None:
+    composition = _composition(subtitle_file="missing.ass")
+
+    issues = validate_composition(composition, assets=set())
+
+    assert _codes(issues) == ["missing_asset"]
+    assert [issue.path for issue in issues] == ["subtitle_file"]
+    assert "subtitle file 'missing.ass' does not exist" in str(issues[0])
+
+
+def test_subtitle_file_reference_uses_the_same_resolver_as_assets(
+    tmp_path: Path,
+) -> None:
+    composition = _composition(subtitle_file="captions.ass")
+
+    assert _codes(validate_composition(composition, assets=tmp_path)) == [
+        "missing_asset"
+    ]
+    assert (
+        validate_composition(
+            composition, asset_exists=lambda source: source == "captions.ass"
+        )
+        == []
+    )
+
+    (tmp_path / "captions.ass").write_text("[Script Info]\n", encoding="utf-8")
+
+    assert validate_composition(composition, assets=tmp_path) == []
+
+
+def test_a_blank_subtitle_file_reference_is_not_checked() -> None:
+    composition = _composition(subtitle_file="   ")
+
+    assert validate_composition(composition, assets=set()) == []
+
+
 def test_asset_existence_can_use_a_callable_mapping_or_directory(
     tmp_path: Path,
 ) -> None:
