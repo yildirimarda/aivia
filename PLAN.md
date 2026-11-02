@@ -445,7 +445,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Validate transition durations stay inside each layer window and report every violation (tests/compose/test_validation.py)
 - [x] Validate subtitle cue spans against the composition duration so a cue cannot outlive the video (tests/compose/test_validation.py)
 - [x] Convert an SRT or VTT subtitle file referenced by a composition to ASS before burning (tests/compose/test_audio_subs.py)
-- [ ] Validate composition safe area margins leave a visible area before subtitles are burned (tests/compose/test_validation.py)
+- [x] Validate composition safe area margins leave a visible area before subtitles are burned (tests/compose/test_validation.py)
 - [ ] Reject an output container whose extension cannot carry the configured codec before invoking ffmpeg (tests/compose/test_output_profiles.py)
 - [ ] Warn when an output profile changes the aspect ratio of a composition with absolute pixel layer geometry (tests/compose/test_output_profiles.py)
 - [ ] Render shape layers in video by rasterizing them to transparent overlays with sampled frame checks (slow, tests/compose/test_shape_video.py)
@@ -466,6 +466,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Honor motion presets in the still renderer so Ken Burns previews match video output (tests/compose/test_motion.py)
 - [ ] Rasterize procedural overlay frames only across each effect window so long compositions do not write unused PNGs (slow, tests/compose/test_video_overlays.py)
 - [ ] Reject SRT or VTT subtitle files in the pure FFmpeg command builder so callers convert them to ASS first (tests/compose/test_ffmpeg_cmd.py)
+- [ ] Validate composition safe area margins are finite fractions between zero and one so bad values fail before rendering (tests/compose/test_validation.py)
 
 ## Milestone 10: Research engine
 

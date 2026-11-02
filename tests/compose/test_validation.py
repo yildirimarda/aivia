@@ -547,6 +547,43 @@ def test_subtitle_cues_derived_from_words_are_validated() -> None:
     assert "subtitle cue ends at 11s" in str(issues[0])
 
 
+def test_safe_area_margins_must_leave_visible_width_before_burning_subtitles() -> None:
+    composition = _composition(
+        safe_area={"left": 0.6, "right": 0.6},
+        subtitles={"cues": [{"start": 0, "end": 1, "text": "Hello"}]},
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["safe_area"]
+    assert issues[0].path == "safe_area"
+    assert "leave a visible area" in str(issues[0])
+
+
+def test_safe_area_margins_must_leave_visible_height_before_burning_subtitles() -> None:
+    composition = _composition(
+        safe_area={"top": 0.7, "bottom": 0.4},
+        subtitles={"cues": [{"start": 0, "end": 1, "text": "Hello"}]},
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["safe_area"]
+    assert issues[0].path == "safe_area"
+    assert "leave a visible area" in str(issues[0])
+    with pytest.raises(CompositionValidationError):
+        validate_composition_or_raise(composition)
+
+
+def test_safe_area_margins_that_leave_visible_space_are_allowed() -> None:
+    composition = _composition(
+        safe_area={"top": 0.1, "right": 0.2, "bottom": 0.3, "left": 0.4},
+        subtitles={"cues": [{"start": 0, "end": 1, "text": "Hello"}]},
+    )
+
+    assert validate_composition(composition) == []
+
+
 def test_composition_layers_are_parsed_into_their_concrete_classes() -> None:
     composition = _composition(
         layers=[
