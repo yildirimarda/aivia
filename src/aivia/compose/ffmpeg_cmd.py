@@ -1371,9 +1371,14 @@ def _subtitle_path(
     subtitle_file: str | Path | None,
 ) -> str | None:
     if subtitle_file is not None:
-        path = str(subtitle_file).strip()
-        return path or None
-    return composition.subtitle_file.strip() or None
+        path = str(subtitle_file).strip() or None
+    else:
+        path = composition.subtitle_file.strip() or None
+    if path is not None and Path(path).suffix.lower() in {".srt", ".vtt"}:
+        raise FFmpegCommandError(
+            f"subtitle file {path!r} is not ASS; convert SRT or VTT to ASS first"
+        )
+    return path
 
 
 def build_ffmpeg_filtergraph(
@@ -1396,8 +1401,9 @@ def build_ffmpeg_filtergraph(
     Input zero is always the generated background. Each supported layer adds
     one input and one overlay node, in ``z_index`` order. Enabled audio tracks
     add their mix graph after the video nodes, and a written ASS file adds the
-    ``ass`` filter that burns subtitles over the final frame. When
-    *output_width* and *output_height* are given, the finished frame is scaled
+    ``ass`` filter that burns subtitles over the final frame. An SRT or VTT
+    subtitle file is rejected because the caller must convert it to ASS first.
+    When *output_width* and *output_height* are given, the finished frame is scaled
     to that size before it is mapped to ``[vout]``. A render config supplies
     the default font family and size for text layers that do not name their
     own.
