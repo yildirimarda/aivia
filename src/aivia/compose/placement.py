@@ -365,6 +365,22 @@ def _target_box(
     return 0.0, 0.0, width, height
 
 
+def _fitted_size(
+    source_size: tuple[float, float],
+    target_box: tuple[float, float, float, float],
+    fit: FitMode,
+) -> tuple[float, float]:
+    source_width, source_height = source_size
+    _, _, width, height = target_box
+    if fit in (FitMode.STRETCH, FitMode.COVER):
+        return width, height
+    if fit is FitMode.CONTAIN:
+        if source_width / source_height > width / height:
+            return width, round(source_height / source_width * width)
+        return round(source_width / source_height * height), height
+    return source_width, source_height
+
+
 def _fit_transform(
     source_size: tuple[float, float],
     target_box: tuple[float, float, float, float],
@@ -382,15 +398,8 @@ def _fit_transform(
             x + (width - source_width * scale) / 2.0,
             y + (height - source_height * scale) / 2.0,
         )
+    fitted_width, fitted_height = _fitted_size(source_size, target_box, fit)
     if fit is FitMode.CONTAIN:
-        fitted_width: float
-        fitted_height: float
-        if source_width / source_height > width / height:
-            fitted_width = width
-            fitted_height = round(source_height / source_width * width)
-        else:
-            fitted_height = height
-            fitted_width = round(source_width / source_height * height)
         return (
             fitted_width / source_width,
             fitted_height / source_height,
@@ -405,6 +414,15 @@ def _fit_transform(
     )
 
 
+def _scale_pair(value: Any) -> tuple[float, float]:
+    if isinstance(value, (tuple, list)):
+        return _size_pair(value, "scale")
+    scale = _finite(value, "scale")
+    if scale <= 0.0:
+        raise RenderError("scale must be positive")
+    return scale, scale
+
+
 def scale_faces_to_canvas(
     faces: Any,
     source_size: tuple[int, int],
@@ -414,6 +432,7 @@ def scale_faces_to_canvas(
     canvas_size: tuple[int, int] | None = None,
     placement: LayerPlacement | tuple[int, int, int, int] | None = None,
     offset: tuple[float, float] = (0.0, 0.0),
+    scale: float | tuple[float, float] | None = None,
 ) -> list[FaceBox]:
     """Map face rectangles from source image pixels to canvas pixels.
 
@@ -421,6 +440,9 @@ def scale_faces_to_canvas(
     *target_size* (or *canvas_size*) is the canvas, while *placement* names the
     rectangle the background image occupies. *fit* mirrors the renderer's fit
     modes so a cover crop or a contain letterbox lands in the right place.
+    *offset* and *scale* mirror the background layer's position and scale
+    keyframes at the sampled time, so an animated background keeps its faces
+    aligned with the pixels they were detected on.
     """
     records = _face_records(faces)
     if not records:
@@ -435,10 +457,42 @@ def scale_faces_to_canvas(
         mode = FitMode(fit)
     except (TypeError, ValueError) as exc:
         raise RenderError(f"unsupported fit mode {fit!r}") from exc
-    scale_x, scale_y, dx, dy = _fit_transform(source, box, mode)
-    dx += _finite(offset[0], "offset")
-    dy += _finite(offset[1], "offset")
     box_left, box_top, box_width, box_height = box
+    scale_x, scale_y, dx, dy = _fit_transform(source, box, mode)
+    offset_x = _finite(offset[0], "offset")
+    offset_y = _finite(offset[1], "offset")
+    if scale is None:
+        dx += offset_x
+        dy += offset_y
+    else:
+        raw_scale_x, raw_scale_y = _scale_pair(scale)
+        fitted_width, fitted_height = _fitted_size(source, box, mode)
+        if fitted_width <= 0.0 or fitted_height <= 0.0:
+            return []
+        if mode in (FitMode.STRETCH, FitMode.COVER):
+            initial_left = box_left
+            initial_top = box_top
+        else:
+            initial_left = box_left + (box_width - fitted_width) // 2
+            initial_top = box_top + (box_height - fitted_height) // 2
+        scaled_width = max(1, round(fitted_width * raw_scale_x))
+        scaled_height = max(1, round(fitted_height * raw_scale_y))
+        local_scale_x = scaled_width / fitted_width
+        local_scale_y = scaled_height / fitted_height
+        dx = (
+            (dx - initial_left) * local_scale_x
+            + initial_left
+            + (box_width - scaled_width) // 2
+            + offset_x
+        )
+        dy = (
+            (dy - initial_top) * local_scale_y
+            + initial_top
+            + (box_height - scaled_height) // 2
+            + offset_y
+        )
+        scale_x *= local_scale_x
+        scale_y *= local_scale_y
     box_right = box_left + box_width
     box_bottom = box_top + box_height
     scaled: list[FaceBox] = []

@@ -291,6 +291,65 @@ def test_face_rectangles_are_scaled_to_canvas_when_the_background_is_fitted() ->
     assert bbox[0] >= 100
 
 
+def test_face_rectangles_follow_background_position_keyframes() -> None:
+    bbox = _text_bbox(
+        [
+            {
+                "type": "image",
+                "id": "bg",
+                "source": "bg",
+                "fit": "cover",
+                "keyframes": {"position": [(0, (100, 0))]},
+            },
+            {
+                "type": "text",
+                "id": "caption",
+                "text": "X",
+                "font_size": 20,
+                "color": "#000000",
+                "placement": "smart",
+            },
+        ],
+        assets={"bg": Image.new("RGB", (400, 200), (255, 255, 255))},
+        faces={"caption": [FaceBox(x=0, y=0, width=200, height=200)]},
+    )
+
+    assert bbox is not None
+    assert bbox[0] < 100
+
+
+def test_face_rectangles_follow_background_scale_keyframes() -> None:
+    layers = [
+        {
+            "type": "image",
+            "id": "bg",
+            "source": "bg",
+            "fit": "cover",
+        },
+        {
+            "type": "text",
+            "id": "caption",
+            "text": "XXXX",
+            "font_size": 20,
+            "color": "#000000",
+            "placement": "smart",
+        },
+    ]
+    assets = {"bg": Image.new("RGB", (400, 200), (255, 255, 255))}
+    faces = {"caption": [FaceBox(x=260, y=0, width=140, height=200)]}
+
+    without_keyframe = _text_bbox(layers, assets=assets, faces=faces)
+    with_keyframe = _text_bbox(
+        [{**layers[0], "keyframes": {"scale": [(0, 0.5)]}}, layers[1]],
+        assets=assets,
+        faces=faces,
+    )
+
+    assert without_keyframe is not None
+    assert with_keyframe is not None
+    assert with_keyframe[0] < without_keyframe[0]
+
+
 def test_face_scaling_follows_stretch_cover_and_contain_geometry() -> None:
     face = FaceBox(x=10, y=20, width=30, height=40, confidence=0.9)
 
@@ -302,6 +361,28 @@ def test_face_scaling_follows_stretch_cover_and_contain_geometry() -> None:
     assert covered[0].box == (20.0, 0.0, 60.0, 45.0)
     assert contained[0].box == (80.0, 10.0, 15.0, 20.0)
     assert covered[0].confidence == 0.9
+
+
+def test_face_scaling_applies_position_and_scale_keyframe_geometry() -> None:
+    face = FaceBox(x=10, y=20, width=30, height=40)
+
+    positioned = scale_faces_to_canvas(
+        [face],
+        (100, 100),
+        (200, 50),
+        "cover",
+        offset=(5, -10),
+    )
+    scaled = scale_faces_to_canvas(
+        [face],
+        (100, 100),
+        (200, 50),
+        "cover",
+        scale=2.0,
+    )
+
+    assert positioned[0].box == pytest.approx((25.0, 0.0, 60.0, 35.0))
+    assert scaled[0].box == pytest.approx((0.0, 0.0, 60.0, 50.0))
 
 
 def test_face_scaling_accepts_an_explicit_placement() -> None:
