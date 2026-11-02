@@ -463,6 +463,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Account for background image position and scale keyframes when scaling vision face rectangles (tests/compose/test_placement.py)
 - [ ] Apply the contrast utility to video text layers in the FFmpeg filtergraph so video text matches still renders (tests/compose/test_ffmpeg_cmd.py)
 - [ ] Scope the ffmpeg skip marker to rendering tests so pure motion tests run offline (tests/compose/test_motion.py)
+- [ ] Honor motion presets in the still renderer so Ken Burns previews match video output (tests/compose/test_motion.py)
 
 ## Milestone 10: Research engine
 

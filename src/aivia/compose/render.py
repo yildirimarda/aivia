@@ -81,6 +81,7 @@ from .schema import (
 from .schema import (
     ImageFilter as ImageFilterSpec,
 )
+from .text_animation import text_tracks_for_layer
 from .transitions import (
     compose_transition,
     layer_transition_for,
@@ -745,6 +746,14 @@ def _apply_mask(
 def _sample(layer: Layer, property_name: AnimatedProperty, time: float) -> Any:
     track = keyframes_for_layer(layer).track(property_name)
     return None if track is None else track.sample(time)
+
+
+def _layer_visible_end(layer: Layer, composition: Composition) -> float:
+    end = layer.end if layer.end is not None else composition.duration_seconds
+    extended = outgoing_transition_end(layer, composition)
+    if extended is not None:
+        end = max(end, extended)
+    return min(max(end, layer.start_seconds), composition.duration_seconds)
 
 
 def _color(value: Any, name: str) -> tuple[int, int, int, int] | None:
@@ -1755,6 +1764,12 @@ class PillowStillRenderer:
         if not isinstance(raw_text, str) or not raw_text.strip():
             raise RenderError(f"text layer {layer.id!r} has no text")
 
+        tracks = text_tracks_for_layer(
+            layer,
+            layer.start_seconds,
+            _layer_visible_end(layer, composition),
+        )
+
         manager = _default_font_manager() if self._fonts is None else self._fonts
 
         raw_family = _layer_value_if_set(
@@ -2077,14 +2092,16 @@ class PillowStillRenderer:
 
         x = placement.x + treatment_x
         y = placement.y + treatment_y
-        position = _sample(layer, AnimatedProperty.POSITION, time_seconds)
+        position = (
+            None if tracks.position is None else tracks.position.sample(time_seconds)
+        )
         if position is not None:
             offset = _offset_pair(position, "position keyframe")
             if offset is not None:
                 x += round(offset[0])
                 y += round(offset[1])
 
-        scale = _sample(layer, AnimatedProperty.SCALE, time_seconds)
+        scale = None if tracks.scale is None else tracks.scale.sample(time_seconds)
         if scale is not None:
             if isinstance(scale, tuple):
                 scale_x, scale_y = scale
@@ -2114,8 +2131,14 @@ class PillowStillRenderer:
             y += (text_image.height - rotated.height) // 2
             text_image = rotated
 
-        opacity = _sample(layer, AnimatedProperty.OPACITY, time_seconds)
-        value = layer.opacity if opacity is None else float(opacity)
+        opacity = (
+            None if tracks.opacity is None else tracks.opacity.sample(time_seconds)
+        )
+        value = layer.opacity
+        if opacity is not None:
+            if isinstance(opacity, tuple):
+                raise RenderError("opacity keyframe must be a scalar")
+            value = float(opacity)
         if value <= 0.0:
             return
         _composite(canvas, _opacity(text_image, min(1.0, value)), x, y)
