@@ -18,6 +18,11 @@ from typing import Any
 from pydantic import ValidationError as PydanticValidationError
 
 from aivia.compose.keyframes import Easing, KeyframeTrack, LayerKeyframes
+from aivia.compose.overlays import (
+    Overlay,
+    OverlayError,
+    overlay_params_from_effect,
+)
 from aivia.compose.safe_area import warn_safe_area_violations
 from aivia.compose.schema import Composition, Layer
 from aivia.core.errors import ValidationError
@@ -608,6 +613,44 @@ def _check_keyframes(composition: Composition, issues: CompositionIssues) -> Non
             )
 
 
+def _check_overlay_effects(
+    composition: Composition,
+    issues: CompositionIssues,
+) -> None:
+    for index, effect in enumerate(composition.effects):
+        base = f"effects[{index}].params"
+        try:
+            resolved = overlay_params_from_effect(effect)
+        except OverlayError as error:
+            issues.append(
+                CompositionIssue(
+                    path=base,
+                    message=str(error),
+                    code="overlay",
+                )
+            )
+            continue
+        if resolved is None:
+            continue
+        overlay_type, params = resolved
+        data = dict(params)
+        data["type"] = overlay_type
+        try:
+            Overlay.model_validate(data)
+        except PydanticValidationError as error:
+            for item in error.errors():
+                loc = item.get("loc", ())
+                suffix = _location(loc) if isinstance(loc, Sequence) else str(loc)
+                path = f"{base}.{suffix}" if suffix else base
+                issues.append(
+                    CompositionIssue(
+                        path=path,
+                        message=str(item.get("msg", "invalid value")),
+                        code="overlay",
+                    )
+                )
+
+
 def _validate_loaded(
     composition: Composition,
     *,
@@ -671,6 +714,7 @@ def _validate_loaded(
         _check_assets(composition, checker, issues)
 
     _check_keyframes(composition, issues)
+    _check_overlay_effects(composition, issues)
     return issues
 
 

@@ -527,3 +527,79 @@ def test_validate_or_raise_returns_the_loaded_composition() -> None:
 
     assert isinstance(composition, Composition)
     assert composition.duration_seconds == 5.0
+
+
+def test_invalid_procedural_overlay_effect_parameters_are_reported() -> None:
+    composition = _composition(
+        effects=[
+            {"id": "bad-snow", "type": "snow", "params": {"count": -1}},
+            {
+                "id": "bad-bokeh",
+                "type": "overlay",
+                "params": {"type": "bokeh", "opacity": 2},
+            },
+            {"id": "bad-type", "type": "overlay", "params": {"type": "fireworks"}},
+            {
+                "id": "bad-colour",
+                "type": "confetti",
+                "params": {"colors": ["not-a-colour"]},
+            },
+        ]
+    )
+
+    issues = validate_composition(composition)
+
+    assert _codes(issues) == ["overlay", "overlay", "overlay", "overlay"]
+    assert [issue.path for issue in issues] == [
+        "effects[0].params.count",
+        "effects[1].params.opacity",
+        "effects[2].params",
+        "effects[3].params.colors",
+    ]
+    assert "greater than or equal to 0" in str(issues[0])
+    assert "less than or equal to 1" in str(issues[1])
+    assert "unknown overlay type 'fireworks'" in str(issues[2])
+    assert "unknown overlay colour 'not-a-colour'" in str(issues[3])
+
+
+def test_valid_procedural_overlay_effects_pass_validation() -> None:
+    composition = _composition(
+        effects=[
+            {
+                "id": "snow",
+                "type": "snowfall",
+                "params": {
+                    "seed": "winter",
+                    "particles": 12,
+                    "size": [0.01, 0.02],
+                    "colour": "#ffffff",
+                },
+            },
+            {
+                "id": "bokeh",
+                "type": "overlay",
+                "params": {"preset": "lights", "count": 3},
+            },
+            {"id": "fade", "type": "fade", "params": {"anything": 1}},
+        ]
+    )
+
+    assert validate_composition(composition) == []
+
+
+def test_validate_or_raise_reports_overlay_parameter_issues() -> None:
+    composition = _composition(
+        effects=[{"id": "bad-snow", "type": "snow", "params": {"count": -1}}]
+    )
+
+    with pytest.raises(CompositionValidationError) as raised:
+        validate_composition_or_raise(composition)
+
+    assert [issue.code for issue in raised.value.issues] == ["overlay"]
+    assert raised.value.details["errors"] == [
+        {
+            "path": "effects[0].params.count",
+            "message": "Input should be greater than or equal to 0",
+            "code": "overlay",
+        }
+    ]

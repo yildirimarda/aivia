@@ -614,6 +614,31 @@ def render_overlay(
     return frame
 
 
+def overlay_params_from_effect(
+    effect: Effect,
+) -> tuple[OverlayType, dict[str, Any]] | None:
+    """Return the overlay type and parameters declared by *effect*.
+
+    ``None`` means *effect* is not a procedural overlay, including a generic
+    ``overlay`` effect without a type, which the renderer treats as a no-op.
+    An unknown generic overlay type raises :class:`OverlayError`.
+    """
+    key = _normalise(effect.type)
+    if key in _ALIASES:
+        return _ALIASES[key], dict(effect.params)
+    if key not in _GENERIC_EFFECTS:
+        return None
+    params = dict(effect.params)
+    raw = params.pop("type", params.pop("kind", params.pop("preset", None)))
+    if raw is None:
+        return None
+    try:
+        overlay_type = OverlayType(raw)
+    except ValueError as exc:
+        raise OverlayError(f"unknown overlay type {raw!r}") from exc
+    return overlay_type, params
+
+
 def overlay_from_effect(effect: Effect) -> Overlay | None:
     """Return the overlay declared by *effect*, or ``None`` for another effect.
 
@@ -621,22 +646,10 @@ def overlay_from_effect(effect: Effect) -> Overlay | None:
     ``overlay`` with a ``type``/``preset`` in its params. Unknown effect types
     are ignored so other effects keep working.
     """
-    key = _normalise(effect.type)
-    if key in _ALIASES:
-        overlay_type = _ALIASES[key]
-        params = dict(effect.params)
-    elif key in _GENERIC_EFFECTS:
-        params = dict(effect.params)
-        raw = params.pop("type", params.pop("kind", params.pop("preset", None)))
-        if raw is None:
-            return None
-        try:
-            overlay_type = OverlayType(raw)
-        except ValueError as exc:
-            raise OverlayError(f"unknown overlay type {raw!r}") from exc
-    else:
+    resolved = overlay_params_from_effect(effect)
+    if resolved is None:
         return None
-
+    overlay_type, params = resolved
     data = dict(params)
     data["type"] = overlay_type
     try:
