@@ -1,0 +1,47 @@
+{
+  "renderer": "1",
+  "video_renderer": "1",
+  "font_family": "Lato",
+  "font_set": "0a7c8f3d4f00121cb535c472b3846d1dd613df0f9eba1d3c3e71885d20f3ae69",
+  "ffmpeg": {
+    "version": "n9.0.2-42-gd7643a0fe3-20261101",
+    "source": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-01-12-49/ffmpeg-n9.0.2-42-gd7643a0fe3-linux64-gpl-9.0.tar.xz"
+  },
+  "tolerance": {
+    "max_channel_difference": 0
+  },
+  "cases": {
+    "german": {
+      "composition_id": "golden_german_glyphs",
+      "still": {
+        "file": "still_german.png",
+        "width": 640,
+        "height": 160,
+        "tolerance": 0
+      },
+      "video": {
+        "file": "video_german.png",
+        "width": 320,
+        "height": 120,
+        "time_seconds": 0.25,
+        "tolerance": 2
+      }
+    },
+    "turkish": {
+      "composition_id": "golden_turkish_glyphs",
+      "still": {
+        "file": "still_turkish.png",
+        "width": 640,
+        "height": 160,
+        "tolerance": 0
+      },
+      "video": {
+        "file": "video_turkish.png",
+        "width": 320,
+        "height": 120,
+        "time_seconds": 0.25,
+        "tolerance": 2
+      }
+    }
+  }
+}

@@ -420,7 +420,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a validated reversible patch language for composition edits where apply and undo restore the original hash (tests/compose/test_patch.py)
 - [x] Convert a timeline with voice timings, beats, assets, subtitles and music into a composition per language and platform with exact duration (tests/compose/test_timeline.py)
 - [x] Add compose render, validate and schema commands with output selection and preview (tests/cli/test_compose.py)
-- [ ] Run golden render tests with a pinned ffmpeg and bundled fonts on Linux only, including Turkish and German glyph cases (golden, tests/golden/test_render_golden.py)
+- [x] Run golden render tests with a pinned ffmpeg and bundled fonts on Linux only, including Turkish and German glyph cases (golden, tests/golden/test_render_golden.py)
 - [ ] Add three example compositions that validate and render (tests/compose/test_examples.py)
 - [ ] Apply per platform safe area margins to text and sticker layers and warn when manual coordinates violate them (tests/compose/test_safe_area.py)
 - [ ] Add an end to end test where mock assets become an mp4, a gif and a web card that pass output validation (slow, tests/e2e/test_assets_to_output.py)
@@ -455,6 +455,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Resolve relative asset paths against the composition document directory in compose render and validate (tests/cli/test_compose.py)
 - [ ] Serve repeated compose render calls from the render cache and honor the global no cache flag (tests/cli/test_compose.py)
 - [ ] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
+- [ ] Add a golden CI job that installs the pinned ffmpeg and runs the render goldens with comparisons enabled (CI)
 
 ## Milestone 10: Research engine
 
