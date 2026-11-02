@@ -454,7 +454,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Render previews on a reduced canvas by scaling layer geometry instead of compositing at full resolution (slow, tests/compose/test_preview.py)
 - [x] Resolve relative asset paths against the composition document directory in compose render and validate (tests/cli/test_compose.py)
 - [x] Serve repeated compose render calls from the render cache and honor the global no cache flag (tests/cli/test_compose.py)
-- [ ] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
+- [x] Validate compose render outputs against platform limits and print every per type issue (tests/cli/test_compose.py)
 - [ ] Add a golden CI job that installs the pinned ffmpeg and runs the render goldens with comparisons enabled (CI)
 - [ ] Honor explicit x and y coordinates for sticker and logo layers in the still renderer so previews match video (tests/compose/test_stickers.py)
 - [ ] Add an RTL capable bundled font and Arabic joining so right to left text draws real glyphs (golden, tests/compose/test_bidi.py)
@@ -469,6 +469,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Validate composition safe area margins are finite fractions between zero and one so bad values fail before rendering (tests/compose/test_validation.py)
 - [ ] Reject a video output whose audio codec cannot be carried by the output container before invoking ffmpeg (tests/compose/test_output_profiles.py)
 - [ ] Scale external SRT and VTT subtitle styles for reduced canvas previews so their text stays proportional (tests/compose/test_preview.py)
+- [ ] Measure rendered loudness during compose output validation so platform loudness limits are enforced (tests/cli/test_compose.py)
 
 ## Milestone 10: Research engine
 

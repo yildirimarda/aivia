@@ -34,6 +34,7 @@ from aivia.compose import (
     render_video,
     render_web_card,
     validate_composition,
+    validate_output,
 )
 from aivia.core import paths
 from aivia.core.errors import AiviaError
@@ -47,6 +48,7 @@ __all__ = [
     "run_render",
     "run_schema",
     "run_validate",
+    "run_validate_output",
 ]
 
 _VIDEO_SUFFIXES = {".mp4", ".m4v"}
@@ -131,6 +133,28 @@ def _configure_schema(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_compose_handler=run_schema)
 
 
+def _configure_validate_output(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("output", metavar="PATH", help="rendered output to validate")
+    parser.add_argument(
+        "--platform",
+        metavar="NAME",
+        required=True,
+        help="platform whose limits the output must satisfy",
+    )
+    parser.add_argument(
+        "--media-type",
+        metavar="TYPE",
+        help="media type to check instead of inferring it from the suffix",
+    )
+    parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="print every issue as JSON instead of text",
+    )
+    parser.set_defaults(_compose_handler=run_validate_output)
+
+
 def _configure_render(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "composition", metavar="PATH", help="composition file to render"
@@ -201,6 +225,19 @@ def _configure_render(parser: argparse.ArgumentParser) -> None:
         metavar="NAME",
         help="apply a configured output profile",
     )
+    parser.add_argument(
+        "--validate",
+        "--check",
+        dest="validate_output",
+        action="store_true",
+        help="validate the rendered output against the platform limits",
+    )
+    parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="print validation issues as JSON instead of text",
+    )
     parser.set_defaults(_compose_handler=run_render)
 
 
@@ -213,6 +250,13 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="Validate a composition and print every problem",
     )
     _configure_validate(validate)
+    validate_output = subparsers.add_parser(
+        "validate-output",
+        aliases=["validate_output"],
+        help="Validate a rendered output against the platform limits",
+        description="Validate a rendered output against the platform limits",
+    )
+    _configure_validate_output(validate_output)
     schema = subparsers.add_parser(
         "schema",
         help="Export the composition JSON Schema",
@@ -232,7 +276,10 @@ def run_compose(args: argparse.Namespace) -> int:
     handler = getattr(args, "_compose_handler", None)
     if handler is None:
         print("error: missing compose command", file=sys.stderr)
-        print("usage: aivia compose {validate, schema, render}", file=sys.stderr)
+        print(
+            "usage: aivia compose {validate, validate-output, schema, render}",
+            file=sys.stderr,
+        )
         return 2
     return int(handler(args))
 
@@ -262,6 +309,67 @@ def _print_issue(path: str, message: str) -> None:
         print(f"error: {path}: {message}", file=sys.stderr)
     else:
         print(f"error: {message}", file=sys.stderr)
+
+
+def _print_output_issues(
+    issues: list[Any],
+    *,
+    json_output: bool = False,
+) -> None:
+    if json_output:
+        print(
+            json.dumps(
+                [issue.to_dict() for issue in issues],
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+    for issue in issues:
+        _print_issue(issue.path, issue.message)
+
+
+def run_validate_output(args: argparse.Namespace) -> int:
+    """Validate one rendered output and print every platform limit it violates."""
+    output = Path(args.output).expanduser()
+    if not output.is_file():
+        print(f"error: output file not found: {output}", file=sys.stderr)
+        return 1
+    try:
+        issues = validate_output(
+            output,
+            args.platform,
+            media_type=args.media_type,
+        )
+    except (AiviaError, OSError, ValueError) as exc:
+        if getattr(args, "json_output", False):
+            print(
+                json.dumps(
+                    [{"path": "", "message": str(exc), "code": "io"}],
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+        else:
+            print(f"error: {exc}", file=sys.stderr)
+        return 1
+    _print_output_issues(
+        list(issues),
+        json_output=bool(getattr(args, "json_output", False)),
+    )
+    return 1 if issues else 0
+
+
+def _validate_rendered_output(
+    output: Path,
+    *,
+    platform: str,
+    explicit: bool,
+) -> list[Any]:
+    issues = list(validate_output(output, platform))
+    if not explicit:
+        issues = [issue for issue in issues if issue.code != "probe"]
+    return issues
 
 
 def _asset_root(source: Path, assets: str | None = None) -> Path:
@@ -587,6 +695,26 @@ def run_render(args: argparse.Namespace) -> int:
             else:
                 render_video(composition, output, **profile_options)
             cache.store(composition, output, metadata={"kind": kind})
+
+        platform = getattr(args, "platform", None)
+        explicit = bool(getattr(args, "validate_output", False))
+        if explicit and not platform:
+            raise ValueError("output validation requires --platform")
+        if platform and (explicit or not preview):
+            output_issues = _validate_rendered_output(
+                output,
+                platform=platform,
+                explicit=explicit,
+            )
+            if output_issues:
+                _print_output_issues(
+                    output_issues,
+                    json_output=bool(getattr(args, "json_output", False)),
+                )
+                return 1
+            if getattr(args, "json_output", False):
+                _print_output_issues([], json_output=True)
+                return 0
     except (AiviaError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
