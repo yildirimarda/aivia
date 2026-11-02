@@ -32,6 +32,7 @@ from aivia.providers.mock import (
     MockPublisher,
     MockSearchProvider,
     MockSFXProvider,
+    MockSourceProvider,
     MockStockProvider,
     MockStorageProvider,
     MockSTTProvider,
@@ -54,6 +55,7 @@ from aivia.providers.protocols import (
     CAPABILITY_PUBLISH,
     CAPABILITY_SEARCH,
     CAPABILITY_SFX,
+    CAPABILITY_SOURCE,
     CAPABILITY_STOCK,
     CAPABILITY_STORAGE,
     CAPABILITY_STT,
@@ -77,9 +79,11 @@ from aivia.providers.protocols import (
     MusicRequest,
     NotificationMessage,
     PageFetchRequest,
+    PageFetchResponse,
     PublishRequest,
     SearchRequest,
     SFXRequest,
+    SourceRequest,
     StockRequest,
     StoragePutRequest,
     STTRequest,
@@ -108,6 +112,7 @@ _ALL_CAPABILITIES = (
     CAPABILITY_PUBLISH,
     CAPABILITY_SEARCH,
     CAPABILITY_SFX,
+    CAPABILITY_SOURCE,
     CAPABILITY_STOCK,
     CAPABILITY_STORAGE,
     CAPABILITY_STT,
@@ -131,6 +136,7 @@ _PROVIDER_CLASSES = (
     MockSFXProvider,
     MockSTTProvider,
     MockSearchProvider,
+    MockSourceProvider,
     MockStockProvider,
     MockStorageProvider,
     MockTTSProvider,
@@ -505,7 +511,10 @@ def test_search_and_page_fetch_are_deterministic() -> None:
 
     first = asyncio.run(search.search(SearchRequest(query="topic", max_results=2)))
     second = asyncio.run(search.search(SearchRequest(query="topic", max_results=2)))
-    page = asyncio.run(fetch.fetch(PageFetchRequest(url="https://example.com/a")))
+    page = cast(
+        PageFetchResponse,
+        asyncio.run(fetch.fetch(PageFetchRequest(url="https://example.com/a"))),
+    )
 
     assert first == second
     assert len(first.results) == 2
@@ -652,6 +661,7 @@ def _request_factories() -> list[tuple[str, Callable[[Any], Any]]]:
         (CAPABILITY_TTS, lambda p: p.synthesize(TTSRequest(text="hi", voice="v"))),
         (CAPABILITY_STT, lambda p: p.transcribe(STTRequest(audio=b"audio"))),
         (CAPABILITY_SEARCH, lambda p: p.search(SearchRequest(query="x"))),
+        (CAPABILITY_SOURCE, lambda p: p.discover(SourceRequest(query="x"))),
         (
             CAPABILITY_PAGE_FETCH,
             lambda p: p.fetch(PageFetchRequest(url="https://example.com")),

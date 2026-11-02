@@ -137,6 +137,14 @@ from aivia.providers.protocols.sfx import (
     SFXRequest,
     SFXResponse,
 )
+from aivia.providers.protocols.source import (
+    CAPABILITY_SOURCE,
+    SourceCandidate,
+    SourceProvider,
+    SourceRequest,
+    SourceResponse,
+    SourceResult,
+)
 from aivia.providers.protocols.stock import (
     CAPABILITY_STOCK,
     StockAsset,
@@ -204,6 +212,7 @@ __all__ = [
     "CAPABILITY_PUBLISH",
     "CAPABILITY_SEARCH",
     "CAPABILITY_SFX",
+    "CAPABILITY_SOURCE",
     "CAPABILITY_STOCK",
     "CAPABILITY_STORAGE",
     "CAPABILITY_STT",
@@ -297,6 +306,11 @@ __all__ = [
     "SearchRequest",
     "SearchResponse",
     "SearchResult",
+    "SourceCandidate",
+    "SourceProvider",
+    "SourceRequest",
+    "SourceResponse",
+    "SourceResult",
     "StockAsset",
     "StockMediaKind",
     "StockOrientation",
