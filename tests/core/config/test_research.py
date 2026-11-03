@@ -225,3 +225,189 @@ def test_example_config_has_no_research_section_until_the_module_registers_it() 
 
     assert "research" not in payload
     AppConfig.from_mapping(payload)
+
+
+def test_research_sensitivity_defaults_are_empty_and_enabled() -> None:
+    config = ResearchConfig.from_mapping({})
+
+    assert config.sensitivity.enabled is True
+    assert config.sensitivity.rules == []
+    assert config.sensitivity.blocked_terms == []
+    assert config.sensitivity.review_terms == []
+    assert config.sensitivity.disabled_rules == []
+    assert config.sensitivity_enabled is True
+    assert config.sensitivity_rules == []
+    assert config.sensitivity_options() == {
+        "enabled": True,
+        "rules": [],
+        "blocked_terms": [],
+        "review_terms": [],
+        "disabled_rules": [],
+    }
+
+
+def test_research_sensitivity_accepts_nested_and_flat_overrides() -> None:
+    nested = ResearchConfig.from_mapping(
+        {
+            "sensitivity": {
+                "enabled": False,
+                "blocked_terms": ["lottery"],
+                "review_terms": ["gambling"],
+                "disabled_rules": ["tragedy"],
+                "rules": [
+                    {
+                        "id": "politics",
+                        "matches": ["election"],
+                        "decision": "manual",
+                        "category": "politics",
+                    }
+                ],
+            }
+        }
+    )
+    flat = ResearchConfig.from_mapping(
+        {
+            "sensitivity_enabled": False,
+            "sensitivity_blocked_terms": ["lottery"],
+            "sensitivity_review_terms": ["gambling"],
+            "sensitivity_disabled_rules": ["tragedy"],
+            "sensitivity_rules": [
+                {"name": "politics", "terms": ["election"], "action": "review"}
+            ],
+        }
+    )
+
+    for config in (nested, flat):
+        assert config.sensitivity.enabled is False
+        assert config.sensitivity.blocked_terms == ["lottery"]
+        assert config.sensitivity.review_terms == ["gambling"]
+        assert config.sensitivity.disabled_rules == ["tragedy"]
+        assert config.sensitivity.rules[0].name == "politics"
+        assert config.sensitivity.rules[0].action == "manual_review"
+        assert config.sensitivity_options()["blocked_terms"] == ["lottery"]
+
+
+def test_a_boolean_sensitivity_override_disables_the_whole_filter() -> None:
+    config = ResearchConfig.from_mapping({"sensitivity": False})
+
+    assert config.sensitivity.enabled is False
+    assert config.sensitivity_enabled is False
+
+
+def test_profile_overrides_add_and_disable_sensitivity_topics(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+schema_version: 1
+research:
+  sensitivity:
+    blocked_terms: [lottery]
+    review_terms: [gambling]
+    disabled_rules: [tragedy]
+profiles:
+  news:
+    overrides:
+      research:
+        sensitivity:
+          blocked_terms: [celebrity]
+          disabled_rules: [graphic-violence]
+          rules:
+            - name: politics
+              terms: [election, referendum]
+              action: blocked
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_config(config_file=config_file, profile="news")
+    config = ResearchConfig.from_resolved(resolved)
+
+    assert config.sensitivity.blocked_terms == ["celebrity"]
+    assert config.sensitivity.review_terms == ["gambling"]
+    assert config.sensitivity.disabled_rules == ["graphic-violence"]
+    assert config.sensitivity.rules[0].terms == ["election", "referendum"]
+    assert config.sensitivity.rules[0].action == "blocked"
+
+
+def test_sensitivity_overrides_add_replace_and_disable_default_rules() -> None:
+    from aivia.research import DEFAULT_RULES, SensitivityStage
+
+    config = ResearchConfig.from_mapping(
+        {
+            "sensitivity": {
+                "blocked_terms": ["lottery"],
+                "review_terms": ["gambling"],
+                "disabled_rules": ["tragedy"],
+                "rules": [
+                    {
+                        "name": "self-harm",
+                        "terms": ["suicide"],
+                        "action": "allow",
+                    },
+                    {
+                        "name": "politics",
+                        "terms": ["election"],
+                        "action": "blocked",
+                    },
+                ],
+            }
+        }
+    )
+
+    resolved = config.resolve_sensitivity_rules(DEFAULT_RULES)
+    names = [rule.name for rule in resolved]
+
+    assert names.count("self-harm") == 1
+    assert "tragedy" not in names
+    assert "politics" in names
+    assert config.sensitivity_rule_overrides()["self-harm"].action == "allow"
+
+    stage = SensitivityStage(**config.sensitivity_stage_options(DEFAULT_RULES))
+    assert stage.classify({"title": "Suicide prevention helpline"}).allowed
+    assert stage.classify({"title": "Election results"}).blocked
+    assert stage.classify({"title": "Lottery winner"}).blocked
+    assert stage.classify({"title": "Gambling regulation"}).review
+    assert stage.classify({"title": "A natural disaster"}).allowed
+
+
+def test_invalid_sensitivity_overrides_fail_clearly() -> None:
+    with pytest.raises(ConfigError, match="at least one term"):
+        ResearchConfig.from_mapping(
+            {"sensitivity": {"rules": [{"name": "empty", "terms": []}]}}
+        )
+    with pytest.raises(ConfigError, match="unknown sensitivity action"):
+        ResearchConfig.from_mapping(
+            {
+                "sensitivity": {
+                    "rules": [{"name": "bad", "terms": ["x"], "action": "explode"}]
+                }
+            }
+        )
+    with pytest.raises(ConfigError, match="duplicate sensitivity rule"):
+        ResearchConfig.from_mapping(
+            {
+                "sensitivity": {
+                    "rules": [
+                        {"name": "same", "terms": ["a"]},
+                        {"name": "SAME", "terms": ["b"]},
+                    ]
+                }
+            }
+        )
+    with pytest.raises(ConfigError, match="must contain only strings"):
+        ResearchConfig.from_mapping({"sensitivity": {"blocked_terms": [1]}})
+    with pytest.raises(ConfigError, match="must be a mapping or boolean"):
+        ResearchConfig.from_mapping({"sensitivity": "blocked"})
+
+
+def test_a_single_sensitivity_rule_mapping_is_accepted() -> None:
+    config = ResearchConfig.from_mapping(
+        {
+            "sensitivity": {
+                "rules": {"name": "politics", "terms": ["election"], "action": "block"}
+            }
+        }
+    )
+
+    assert len(config.sensitivity.rules) == 1
+    assert config.sensitivity.rules[0].action == "blocked"
