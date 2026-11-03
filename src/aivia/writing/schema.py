@@ -572,9 +572,18 @@ class Script(CoreScript):
     Beats, dialogue lines and media prompts are the core models, so the writing
     stage shares one representation with the rest of the pipeline. The payload
     is validated against the selected mode and kept as its concrete class, which
-    makes a round trip through canonical JSON lossless.
+    makes a round trip through canonical JSON lossless. A custom mode that has
+    been registered or loaded is accepted by name as well.
     """
 
+    mode: WritingMode | str = Field(  # type: ignore[assignment]
+        default=WritingMode.FACTS,
+        validation_alias=AliasChoices(
+            "mode",
+            "writing_mode",
+            "script_mode",
+        ),
+    )
     payload: SerializeAsAny[ModePayload] = Field(  # type: ignore[assignment]
         default_factory=FactsPayload,
         validation_alias=AliasChoices(
@@ -585,6 +594,23 @@ class Script(CoreScript):
             "options",
         ),
     )
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _accept_registered_custom_mode(cls, value: Any) -> Any:
+        if isinstance(value, WritingMode):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            try:
+                return WritingMode(text.lower())
+            except ValueError:
+                from aivia.writing.modes import is_known_writing_mode
+
+                if is_known_writing_mode(text):
+                    return text
+                raise ValueError(f"unknown writing mode: {value!r}") from None
+        return value
 
     @model_validator(mode="before")
     @classmethod

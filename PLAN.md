@@ -559,6 +559,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Guard the writer against injection by wrapping sources and labels as data, verified with five hostile fixtures (tests/writing/test_injection.py)
 - [ ] Add a write command that runs the stage for an existing run with a language filter and prints cost and tokens (tests/cli/test_write.py)
 - [ ] Load a per language brand glossary from user or packaged files and apply it to scripts, captions and media prompts, reporting violations (tests/writing/test_glossary.py)
+- [ ] Resolve custom writing mode aliases and reject alias collisions with registered names (tests/writing/test_mode_registry.py)
+- [ ] Load every custom writing mode from a configured directory and reject duplicate names and aliases (tests/writing/test_mode_registry.py)
 
 ## Milestone 12: Voice, subtitles and timeline
 
