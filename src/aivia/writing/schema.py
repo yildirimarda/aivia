@@ -292,6 +292,21 @@ class PoemPayload(ModePayload):
         validation_alias=AliasChoices("rhyme_scheme", "rhyme", "scheme"),
     )
     syllable_budget: int | None = Field(default=None, ge=1)
+    length: str = Field(
+        default="",
+        validation_alias=AliasChoices("length", "target_length", "size"),
+    )
+    min_seconds: float | None = Field(default=None, ge=0.0)
+    max_seconds: float | None = Field(default=None, ge=0.0)
+    reading_time_seconds: float | None = Field(
+        default=None,
+        gt=0.0,
+        validation_alias=AliasChoices(
+            "reading_time_seconds",
+            "reading_time",
+            "duration_seconds",
+        ),
+    )
 
     @field_validator("lines", mode="before")
     @classmethod
@@ -309,15 +324,34 @@ class PoemPayload(ModePayload):
             return [_text_list(stanza) for stanza in value]
         return value
 
-    @field_validator("form", "tone", "rhyme_scheme", mode="before")
+    @field_validator("form", "tone", "rhyme_scheme", "length", mode="before")
     @classmethod
     def _strip_text(cls, value: Any) -> Any:
         return _strip(value)
 
+    @model_validator(mode="after")
+    def _ordered_reading_time(self) -> PoemPayload:
+        if (
+            self.min_seconds is not None
+            and self.max_seconds is not None
+            and self.max_seconds < self.min_seconds
+        ):
+            raise ValueError("max_seconds must not be below min_seconds")
+        return self
+
+    @property
+    def reading_time(self) -> float | None:
+        """Alias for :attr:`reading_time_seconds`."""
+        return self.reading_time_seconds
+
 
 class StoryPayload(ModePayload):
-    """Payload for the story mode: tone, scenes and narrative choices."""
+    """Payload for the story mode: form, tone, scenes and narrative choices."""
 
+    form: str = Field(
+        default="",
+        validation_alias=AliasChoices("form", "style", "kind", "story_form"),
+    )
     tone: str = Field(
         default="",
         validation_alias=AliasChoices("tone", "mood", "voice"),
@@ -330,6 +364,21 @@ class StoryPayload(ModePayload):
         validation_alias=AliasChoices("point_of_view", "pov", "perspective"),
     )
     moral: str = ""
+    length: str = Field(
+        default="",
+        validation_alias=AliasChoices("length", "target_length", "size"),
+    )
+    min_seconds: float | None = Field(default=None, ge=0.0)
+    max_seconds: float | None = Field(default=None, ge=0.0)
+    reading_time_seconds: float | None = Field(
+        default=None,
+        gt=0.0,
+        validation_alias=AliasChoices(
+            "reading_time_seconds",
+            "reading_time",
+            "duration_seconds",
+        ),
+    )
 
     @field_validator("scenes", "characters", mode="before")
     @classmethod
@@ -337,15 +386,32 @@ class StoryPayload(ModePayload):
         return _text_list(value)
 
     @field_validator(
+        "form",
         "tone",
         "setting",
         "point_of_view",
         "moral",
+        "length",
         mode="before",
     )
     @classmethod
     def _strip_text(cls, value: Any) -> Any:
         return _strip(value)
+
+    @model_validator(mode="after")
+    def _ordered_reading_time(self) -> StoryPayload:
+        if (
+            self.min_seconds is not None
+            and self.max_seconds is not None
+            and self.max_seconds < self.min_seconds
+        ):
+            raise ValueError("max_seconds must not be below min_seconds")
+        return self
+
+    @property
+    def reading_time(self) -> float | None:
+        """Alias for :attr:`reading_time_seconds`."""
+        return self.reading_time_seconds
 
 
 class JokePayload(ModePayload):
