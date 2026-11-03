@@ -44,15 +44,20 @@ from aivia.providers.protocols.source import (
 )
 from aivia.providers.registry import register_provider
 from aivia.providers.sources.base import SourceProviderBase, register_source
-from aivia.providers.sources.wikipedia import (
+from aivia.providers.sources.wikimedia import (
     DEFAULT_USER_AGENT,
-    _article_url,
-    _raise_api_error,
-    _raise_for_response,
-    _strip_html,
-    _validate_base_url,
+    article_url,
+    fetch_json,
     normalize_language,
+    raise_api_error,
+    strip_html,
+    validate_base_url,
 )
+
+_article_url = article_url
+_raise_api_error = raise_api_error
+_strip_html = strip_html
+_validate_base_url = validate_base_url
 
 __all__ = [
     "DEFAULT_OTD_BASE_URL",
@@ -595,25 +600,15 @@ class WikipediaOnThisDaySourceProvider(SourceProviderBase):
             month=month,
             day=day,
         )
-        response = await self.http.get(
+        body, response = await fetch_json(
+            self.http,
             endpoint,
+            provider=self.name,
+            language=language,
             headers=self._headers(),
             timeout=request.timeout_seconds,
+            label="wikipedia on this day",
         )
-        _raise_for_response(response, language, self.name)
-
-        try:
-            body = response.json()
-        except ValueError as exc:
-            raise ValidationError(
-                "wikipedia on this day returned a non-JSON response",
-                details={"provider": self.name, "language": language},
-            ) from exc
-        if not isinstance(body, Mapping):
-            raise ValidationError(
-                "wikipedia on this day returned a malformed response",
-                details={"provider": self.name, "language": language},
-            )
         return self._to_response(body, request, language, response, categories)
 
 

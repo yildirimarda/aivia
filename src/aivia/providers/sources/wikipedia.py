@@ -19,25 +19,15 @@ error taxonomy.
 
 from __future__ import annotations
 
-import html
-import re
 from collections.abc import Mapping, Sequence
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import ValidationError as PydanticValidationError
 
 from aivia.core.config.http import HttpClientConfig
-from aivia.core.errors import (
-    ConfigError,
-    InvalidRequestError,
-    RateLimitError,
-    RetryableError,
-    TimeoutError,
-    ValidationError,
-)
-from aivia.core.http import error_for_response
+from aivia.core.errors import ValidationError
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.models.topic import TopicCandidate
 from aivia.providers.protocols.source import (
@@ -47,6 +37,21 @@ from aivia.providers.protocols.source import (
 )
 from aivia.providers.registry import register_provider
 from aivia.providers.sources.base import SourceProviderBase, register_source
+from aivia.providers.sources.wikimedia import (
+    DEFAULT_LANGUAGE,
+    DEFAULT_USER_AGENT,
+    article_url,
+    fetch_json,
+    normalize_language,
+    raise_api_error,
+    strip_html,
+    validate_base_url,
+)
+
+_article_url = article_url
+_raise_api_error = raise_api_error
+_strip_html = strip_html
+_validate_base_url = validate_base_url
 
 __all__ = [
     "DEFAULT_BASE_URL",
@@ -62,77 +67,16 @@ __all__ = [
     "normalize_language",
 ]
 
-DEFAULT_LANGUAGE = "en"
-"""The language edition used when neither the provider nor request sets one."""
-
 DEFAULT_BASE_URL = "https://{language}.wikipedia.org/w/api.php"
 """The Action API template; ``{language}`` becomes the edition code."""
-
-DEFAULT_USER_AGENT = "aivia/0.1 (https://github.com/yildirimarda/aivia)"
-"""A descriptive User-Agent, as the Wikimedia API etiquette requests."""
 
 MAX_RESULTS = 50
 """The largest number of search results requested from one call."""
 
-_LANGUAGE_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-_TAG_PATTERN = re.compile(r"<[^>]+>")
 _DEFAULT_METADATA = ProviderMeta(
     name="wikipedia",
     capabilities=[CAPABILITY_SOURCE],
 )
-_EDITION_HINTS = (
-    "edition",
-    "language",
-    "wiki",
-    "not found",
-    "missing",
-    "does not exist",
-)
-
-
-def normalize_language(value: str | None) -> str:
-    """Return a lower-case Wikipedia edition code or raise :class:`ConfigError`.
-
-    An underscore is accepted as a separator because request aliases use it,
-    but the host name Wikipedia expects uses hyphens.
-    """
-    if value is None:
-        return DEFAULT_LANGUAGE
-    if not isinstance(value, str):
-        raise TypeError("language must be a string")
-    text = value.strip().lower().replace("_", "-")
-    if not text:
-        return DEFAULT_LANGUAGE
-    if len(text) > 30 or not _LANGUAGE_PATTERN.fullmatch(text):
-        raise ConfigError(
-            f"invalid Wikipedia language edition: {value!r}",
-            details={"field": "language"},
-        )
-    return text
-
-
-def _validate_base_url(value: str) -> str:
-    if not isinstance(value, str):
-        raise TypeError("base_url must be a string")
-    text = value.strip()
-    if not text:
-        raise ConfigError(
-            "base_url must be a non-empty URL",
-            details={"field": "base_url"},
-        )
-    # Validate the concrete form; a template is filled before this check.
-    parsed = urlsplit(text.replace("{language}", DEFAULT_LANGUAGE))
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
-        raise ConfigError(
-            f"base_url must be an absolute http(s) URL: {value!r}",
-            details={"field": "base_url"},
-        )
-    if parsed.username is not None or parsed.password is not None:
-        raise ConfigError(
-            "base_url must not contain credentials",
-            details={"field": "base_url"},
-        )
-    return text
 
 
 def _endpoint_for(language: str, base_url: str) -> str:
@@ -147,17 +91,6 @@ def edition_url(language: str | None = None, base_url: str | None = None) -> str
     code = normalize_language(language)
     template = DEFAULT_BASE_URL if base_url is None else _validate_base_url(base_url)
     return _endpoint_for(code, template)
-
-
-def _strip_html(value: str) -> str:
-    return html.unescape(_TAG_PATTERN.sub("", value)).strip()
-
-
-def _article_url(language: str, title: str) -> str:
-    return (
-        f"https://{language}.wikipedia.org/wiki/"
-        f"{quote(title.replace(' ', '_'), safe='')}"
-    )
 
 
 def _page_url(page: Mapping[str, Any], language: str, title: str) -> str:
@@ -198,81 +131,6 @@ def _page_items(body: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if isinstance(search, Sequence) and not isinstance(search, (str, bytes)):
         return [item for item in search if isinstance(item, Mapping)]
     return []
-
-
-def _error_details(
-    response: httpx.Response,
-    language: str,
-    provider: str,
-) -> dict[str, Any]:
-    details: dict[str, Any] = {
-        "provider": provider,
-        "language": language,
-        "status": response.status_code,
-    }
-    request_id = response.headers.get("x-request-id")
-    if request_id:
-        details["request_id"] = request_id
-    return details
-
-
-def _missing_edition(
-    language: str,
-    response: httpx.Response,
-    provider: str,
-) -> RetryableError:
-    return RetryableError(
-        f"Wikipedia edition not found: {language}",
-        details=_error_details(response, language, provider),
-    )
-
-
-def _raise_for_response(
-    response: httpx.Response,
-    language: str,
-    provider: str,
-) -> None:
-    status = response.status_code
-    if status == 404:
-        raise _missing_edition(language, response, provider)
-    if 300 <= status < 400:
-        location = response.headers.get("location", "").lower()
-        if "incubator" in location or "missing.php" in location:
-            raise _missing_edition(language, response, provider)
-
-    fallback = error_for_response(response)
-    if fallback is None:
-        return
-    details = _error_details(response, language, provider)
-    if isinstance(fallback, RateLimitError):
-        raise RateLimitError(
-            fallback.message,
-            retry_after=fallback.retry_after,
-            details=details,
-        )
-    if isinstance(fallback, TimeoutError):
-        raise TimeoutError(fallback.message, details=details)
-    raise type(fallback)(fallback.message, details=details)
-
-
-def _raise_api_error(
-    error: Mapping[str, Any],
-    language: str,
-    provider: str,
-) -> None:
-    code = str(error.get("code", "")).strip()
-    info = str(error.get("info", "")).strip()
-    text = info or code or "Wikipedia API error"
-    lowered = text.lower()
-    if any(hint in lowered for hint in _EDITION_HINTS):
-        raise RetryableError(
-            f"Wikipedia edition not found: {language}",
-            details={"provider": provider, "language": language, "error": text},
-        )
-    raise InvalidRequestError(
-        f"Wikipedia rejected the request: {text}",
-        details={"provider": provider, "language": language, "code": code},
-    )
 
 
 class WikipediaSourceProvider(SourceProviderBase):
@@ -446,26 +304,15 @@ class WikipediaSourceProvider(SourceProviderBase):
                 metadata={"language": language, "total": 0},
             )
 
-        response = await self.http.get(
+        body, response = await fetch_json(
+            self.http,
             self.endpoint_for(language),
+            provider=self.name,
+            language=language,
             headers=self._headers(),
             params=self._build_params(request),
             timeout=request.timeout_seconds,
         )
-        _raise_for_response(response, language, self.name)
-
-        try:
-            body = response.json()
-        except ValueError as exc:
-            raise ValidationError(
-                "wikipedia returned a non-JSON response",
-                details={"provider": self.name, "language": language},
-            ) from exc
-        if not isinstance(body, Mapping):
-            raise ValidationError(
-                "wikipedia returned a malformed response",
-                details={"provider": self.name, "language": language},
-            )
         return self._to_response(body, request, language, response)
 
 
