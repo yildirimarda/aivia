@@ -46,14 +46,18 @@ from aivia.providers.protocols.source import (
 )
 from aivia.providers.registry import register_provider
 from aivia.providers.sources.base import SourceProviderBase, register_source
-from aivia.providers.sources.wikipedia import (
+from aivia.providers.sources.wikimedia import (
     DEFAULT_USER_AGENT,
-    _article_url,
-    _raise_api_error,
-    _raise_for_response,
-    _validate_base_url,
+    article_url,
+    fetch_json,
     normalize_language,
+    raise_api_error,
+    validate_base_url,
 )
+
+_article_url = article_url
+_raise_api_error = raise_api_error
+_validate_base_url = validate_base_url
 
 __all__ = [
     "ACCESS_LEVELS",
@@ -593,25 +597,15 @@ class WikipediaPageviewsSourceProvider(SourceProviderBase):
             ) from exc
 
         endpoint = self.endpoint_for(language, access=access, date=target)
-        response = await self.http.get(
+        body, response = await fetch_json(
+            self.http,
             endpoint,
+            provider=self.name,
+            language=language,
             headers=self._headers(),
             timeout=request.timeout_seconds,
+            label="wikipedia pageviews",
         )
-        _raise_for_response(response, language, self.name)
-
-        try:
-            body = response.json()
-        except ValueError as exc:
-            raise ValidationError(
-                "wikipedia pageviews returned a non-JSON response",
-                details={"provider": self.name, "language": language},
-            ) from exc
-        if not isinstance(body, Mapping):
-            raise ValidationError(
-                "wikipedia pageviews returned a malformed response",
-                details={"provider": self.name, "language": language},
-            )
         return self._to_response(body, request, language, access, target, response)
 
 
