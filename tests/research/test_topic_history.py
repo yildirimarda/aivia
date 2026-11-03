@@ -91,9 +91,7 @@ def test_a_restart_still_suppresses_titles_inside_the_dedupe_window(
 ) -> None:
     path = tmp_path / "topic_history.json"
     clock = Clock()
-    source = FakeSource(
-        [_candidate("Apollo 11"), _candidate("Moon landing", "events")]
-    )
+    source = FakeSource([_candidate("Apollo 11"), _candidate("Moon landing", "events")])
 
     first_mode = OnThisDayMode(
         source,
