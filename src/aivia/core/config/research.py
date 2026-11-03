@@ -1,4 +1,4 @@
-"""Research configuration: how long repeats are suppressed and how close is close.
+"""Research configuration: repeat suppression and topic sensitivity rules.
 
 The research module owns the ``research`` section. It is not part of the core
 section set, so a configuration without the module still validates and a
@@ -12,17 +12,31 @@ strings such as ``30d`` or ``2 weeks`` are accepted for readability.
 ``embedding_threshold`` is the cosine similarity at or above which two titles
 are the same topic; ``None`` disables embedding matching while keeping the
 normalized-title check.
+
+``sensitivity`` holds overrides for the research sensitivity filter. Profiles
+can add blocked or review terms, add whole rules, and disable a default rule by
+name without restating the defaults. Flat ``sensitivity_*`` keys are accepted
+as aliases for the nested mapping, so both of these are equivalent::
+
+    research:
+      sensitivity:
+        blocked_terms: [lottery]
+        disabled_rules: [tragedy]
+
+    research:
+      sensitivity_blocked_terms: [lottery]
+      sensitivity_disabled_rules: [tragedy]
 """
 
 from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import timedelta
 from typing import Any, ClassVar, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.reference import DEFAULT_TEXT_SIMILARITY_THRESHOLD
@@ -38,6 +52,10 @@ __all__ = [
     "ResearchConfig",
     "ResearchSettings",
     "ResearchSettingsConfig",
+    "SensitivityConfig",
+    "SensitivityRuleConfig",
+    "SensitivityRuleSettings",
+    "SensitivitySettings",
     "register_research_config",
     "register_research_section",
     "research_config",
@@ -187,8 +205,380 @@ def _accept_aliases(data: Any) -> Any:
     return values
 
 
+_SENSITIVITY_ACTION_ALIASES: dict[str, str] = {
+    "allow": "allow",
+    "allowed": "allow",
+    "pass": "allow",
+    "ok": "allow",
+    "review": "manual_review",
+    "manual": "manual_review",
+    "manual_review": "manual_review",
+    "manualreview": "manual_review",
+    "flag": "manual_review",
+    "hold": "manual_review",
+    "pending": "manual_review",
+    "block": "blocked",
+    "blocked": "blocked",
+    "deny": "blocked",
+    "reject": "blocked",
+    "exclude": "blocked",
+}
+
+_SENSITIVITY_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "enabled": ("enable", "active", "screening"),
+    "rules": (
+        "rule",
+        "overrides",
+        "rule_overrides",
+        "sensitivity_rules",
+        "topic_rules",
+        "custom_rules",
+    ),
+    "blocked_terms": (
+        "blocked",
+        "block_terms",
+        "blocked_topics",
+        "block_topics",
+        "deny_terms",
+        "blocked_keywords",
+    ),
+    "review_terms": (
+        "review",
+        "review_topics",
+        "manual_review",
+        "manual_review_terms",
+        "manual_review_topics",
+        "hold_terms",
+    ),
+    "disabled_rules": (
+        "disabled",
+        "disable_rules",
+        "disabled_sensitivity_rules",
+        "ignored_rules",
+        "allowed_rules",
+        "exclude_rules",
+        "skip_rules",
+    ),
+}
+
+_SENSITIVITY_ROOT_ALIASES: dict[str, tuple[str, ...]] = {
+    "sensitivity_enabled": (
+        "sensitivity_enable",
+        "screen_sensitive_topics",
+    ),
+    "sensitivity_rules": (
+        "rules",
+        "rule",
+        "sensitivity_rule_overrides",
+        "rule_overrides",
+        "topic_rules",
+        "custom_rules",
+    ),
+    "sensitivity_blocked_terms": (
+        "blocked_terms",
+        "blocked_topics",
+        "block_terms",
+        "block_topics",
+        "deny_terms",
+        "blocked_keywords",
+    ),
+    "sensitivity_review_terms": (
+        "review_terms",
+        "review_topics",
+        "manual_review_terms",
+        "manual_review_topics",
+        "hold_terms",
+    ),
+    "sensitivity_disabled_rules": (
+        "disabled_rules",
+        "disabled_sensitivity_rules",
+        "disable_rules",
+        "ignored_rules",
+        "allowed_rules",
+        "exclude_rules",
+        "skip_rules",
+    ),
+}
+
+
+def _clean_terms(value: Any, *, label: str) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw: Iterable[Any] = value.replace(";", ",").replace("\n", ",").split(",")
+    elif isinstance(value, Iterable) and not isinstance(
+        value, (bytes, bytearray, Mapping)
+    ):
+        raw = value
+    else:
+        raise ConfigError(f"{label} must be a string or a list of strings")
+    terms: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            raise ConfigError(f"{label} must contain only strings")
+        text = item.strip()
+        if not text:
+            continue
+        key = text.casefold()
+        if key not in seen:
+            seen.add(key)
+            terms.append(text)
+    return terms
+
+
+def _coerce_sensitivity_action(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ConfigError("sensitivity action must be a string")
+    key = value.strip().lower().replace("-", "_").replace(" ", "_")
+    try:
+        return _SENSITIVITY_ACTION_ALIASES[key]
+    except KeyError:
+        allowed = ", ".join(sorted(set(_SENSITIVITY_ACTION_ALIASES.values())))
+        raise ConfigError(
+            f"unknown sensitivity action: {value!r} (allowed: {allowed})"
+        ) from None
+
+
+def _accept_field_aliases(
+    data: Any,
+    aliases: Mapping[str, tuple[str, ...]],
+) -> Any:
+    if not isinstance(data, Mapping):
+        return data
+    values = dict(data)
+    for canonical, names in aliases.items():
+        if canonical in values:
+            for alias in names:
+                values.pop(alias, None)
+            continue
+        for alias in names:
+            if alias in values:
+                values[canonical] = values.pop(alias)
+                break
+    return values
+
+
+class SensitivityRuleConfig(ConfigModel):
+    """One sensitivity rule override loaded from research configuration."""
+
+    name: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices("name", "id", "rule", "rule_id", "label"),
+    )
+    terms: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices(
+            "terms",
+            "keywords",
+            "matches",
+            "phrases",
+            "blocked_terms",
+        ),
+    )
+    action: str = Field(
+        default="manual_review",
+        validation_alias=AliasChoices("action", "decision", "outcome"),
+    )
+    category: str = ""
+    reason: str = ""
+    enabled: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("sensitivity rule name must not be empty")
+        return name
+
+    @field_validator("terms", mode="before")
+    @classmethod
+    def _validate_terms(cls, value: Any) -> list[str]:
+        terms = _clean_terms(value, label="sensitivity terms")
+        if not terms:
+            raise ValueError("sensitivity rule must have at least one term")
+        return terms
+
+    @field_validator("action", mode="before")
+    @classmethod
+    def _validate_action(cls, value: Any) -> str:
+        return _coerce_sensitivity_action(value)
+
+    @field_validator("category", "reason", mode="before")
+    @classmethod
+    def _strip_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable representation of the rule."""
+        return {
+            "name": self.name,
+            "terms": list(self.terms),
+            "action": self.action,
+            "category": self.category,
+            "reason": self.reason,
+            "enabled": self.enabled,
+        }
+
+
+class SensitivityConfig(ConfigModel):
+    """Sensitivity overrides that add, replace or disable research rules."""
+
+    enabled: bool = True
+    rules: list[SensitivityRuleConfig] = Field(default_factory=list)
+    blocked_terms: list[str] = Field(default_factory=list)
+    review_terms: list[str] = Field(default_factory=list)
+    disabled_rules: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_field_aliases(cls, data: Any) -> Any:
+        return _accept_field_aliases(data, _SENSITIVITY_FIELD_ALIASES)
+
+    @field_validator("blocked_terms", "review_terms", mode="before")
+    @classmethod
+    def _validate_terms(cls, value: Any) -> list[str]:
+        return _clean_terms(value, label="sensitivity terms")
+
+    @field_validator("disabled_rules", mode="before")
+    @classmethod
+    def _validate_disabled(cls, value: Any) -> list[str]:
+        return _clean_terms(value, label="disabled sensitivity rule names")
+
+    @field_validator("rules", mode="before")
+    @classmethod
+    def _coerce_rules(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        if isinstance(value, (Mapping, SensitivityRuleConfig)):
+            return [value]
+        return value
+
+    @field_validator("rules")
+    @classmethod
+    def _unique_rules(
+        cls, value: list[SensitivityRuleConfig]
+    ) -> list[SensitivityRuleConfig]:
+        seen: set[str] = set()
+        for rule in value:
+            key = rule.name.casefold()
+            if key in seen:
+                raise ValueError(f"duplicate sensitivity rule name: {rule.name!r}")
+            seen.add(key)
+        return value
+
+    def options(self) -> dict[str, Any]:
+        """Return the configured sensitivity override values."""
+        return {
+            "enabled": self.enabled,
+            "rules": [rule.to_dict() for rule in self.rules],
+            "blocked_terms": list(self.blocked_terms),
+            "review_terms": list(self.review_terms),
+            "disabled_rules": list(self.disabled_rules),
+        }
+
+    def stage_options(self, defaults: Iterable[Any] = ()) -> dict[str, Any]:
+        """Return keyword arguments for a sensitivity stage.
+
+        Unlike :meth:`options`, this resolves the overrides over *defaults* and
+        omits ``disabled_rules`` because those rules have already been removed.
+        """
+        return {
+            "enabled": self.enabled,
+            "rules": [rule.to_dict() for rule in self.resolve_rules(defaults)],
+            "blocked_terms": list(self.blocked_terms),
+            "review_terms": list(self.review_terms),
+        }
+
+    def rule_overrides(self) -> dict[str, SensitivityRuleConfig]:
+        """Return rule overrides keyed by their case-insensitive name."""
+        return {rule.name.casefold(): rule for rule in self.rules}
+
+    def resolve_rules(
+        self,
+        defaults: Iterable[Any] = (),
+    ) -> tuple[SensitivityRuleConfig, ...]:
+        """Merge overrides over *defaults*, dropping disabled rules.
+
+        A configured rule replaces the default with the same name, keeping its
+        position. New rules are appended in configuration order. A rule named
+        in ``disabled_rules`` or an override with ``enabled: false`` is removed.
+        """
+        overrides = self.rule_overrides()
+        disabled = {name.casefold() for name in self.disabled_rules}
+        merged: list[SensitivityRuleConfig] = []
+        seen: set[str] = set()
+        for item in defaults:
+            rule = _coerce_rule_config(item)
+            key = rule.name.casefold()
+            if key in disabled or key in seen:
+                continue
+            override = overrides.get(key)
+            if override is not None:
+                if override.enabled:
+                    merged.append(override)
+                seen.add(key)
+                continue
+            merged.append(rule)
+            seen.add(key)
+        for rule in self.rules:
+            key = rule.name.casefold()
+            if key in disabled or key in seen or not rule.enabled:
+                continue
+            merged.append(rule)
+            seen.add(key)
+        return tuple(merged)
+
+
+SensitivityRuleSettings = SensitivityRuleConfig
+"""Alias for :class:`SensitivityRuleConfig`."""
+
+SensitivitySettings = SensitivityConfig
+"""Alias for :class:`SensitivityConfig`."""
+
+
+def _coerce_rule_config(value: Any) -> SensitivityRuleConfig:
+    if isinstance(value, SensitivityRuleConfig):
+        return value
+    if isinstance(value, BaseModel):
+        value = value.model_dump()
+    if isinstance(value, Mapping):
+        return SensitivityRuleConfig.model_validate(dict(value))
+    raise ConfigError("sensitivity rule must be a mapping or model")
+
+
+def _normalise_sensitivity(data: Any) -> Any:
+    if not isinstance(data, Mapping):
+        return data
+    values = dict(data)
+    nested = values.pop("sensitivity", None)
+    overrides: dict[str, Any] = {}
+    if nested is not None:
+        if isinstance(nested, bool):
+            overrides["enabled"] = nested
+        elif isinstance(nested, Mapping):
+            overrides.update(nested)
+        else:
+            raise ConfigError("sensitivity must be a mapping or boolean")
+    for canonical, aliases in _SENSITIVITY_ROOT_ALIASES.items():
+        key = canonical.removeprefix("sensitivity_")
+        if canonical in values:
+            overrides.setdefault(key, values.pop(canonical))
+            for alias in aliases:
+                values.pop(alias, None)
+            continue
+        for alias in aliases:
+            if alias in values:
+                overrides.setdefault(key, values.pop(alias))
+                break
+    if overrides or nested is not None:
+        values["sensitivity"] = overrides
+    return values
+
+
 class ResearchConfig(ConfigModel):
-    """Repeat suppression settings owned by the research module."""
+    """Repeat suppression and sensitivity settings owned by the research module."""
 
     dedupe_window: timedelta = Field(default=DEFAULT_DEDUPE_WINDOW)
     embedding_threshold: float | None = Field(
@@ -196,13 +586,14 @@ class ResearchConfig(ConfigModel):
         ge=0,
         le=1,
     )
+    sensitivity: SensitivityConfig = Field(default_factory=SensitivityConfig)
 
     _section_key: ClassVar[str] = RESEARCH_SECTION_KEY
 
     @model_validator(mode="before")
     @classmethod
     def _accept_field_aliases(cls, data: Any) -> Any:
-        return _accept_aliases(data)
+        return _accept_aliases(_normalise_sensitivity(data))
 
     @field_validator("dedupe_window", mode="before")
     @classmethod
@@ -244,6 +635,31 @@ class ResearchConfig(ConfigModel):
         """Alias for :attr:`embedding_threshold`."""
         return self.embedding_threshold
 
+    @property
+    def sensitivity_enabled(self) -> bool:
+        """Whether the sensitivity filter is active."""
+        return self.sensitivity.enabled
+
+    @property
+    def sensitivity_rules(self) -> list[SensitivityRuleConfig]:
+        """Sensitivity rule overrides and additions."""
+        return self.sensitivity.rules
+
+    @property
+    def sensitivity_blocked_terms(self) -> list[str]:
+        """Terms that add a blocked rule."""
+        return self.sensitivity.blocked_terms
+
+    @property
+    def sensitivity_review_terms(self) -> list[str]:
+        """Terms that add a manual-review rule."""
+        return self.sensitivity.review_terms
+
+    @property
+    def sensitivity_disabled_rules(self) -> list[str]:
+        """Names of default or configured rules to disable."""
+        return self.sensitivity.disabled_rules
+
     def dedupe_options(self) -> dict[str, Any]:
         """Return the keywords accepted by the dedupe stage."""
         return {
@@ -254,6 +670,32 @@ class ResearchConfig(ConfigModel):
     def to_dedupe_options(self) -> dict[str, Any]:
         """Alias for :meth:`dedupe_options`."""
         return self.dedupe_options()
+
+    def sensitivity_options(self) -> dict[str, Any]:
+        """Return the keywords accepted by the sensitivity stage."""
+        return self.sensitivity.options()
+
+    def to_sensitivity_options(self) -> dict[str, Any]:
+        """Alias for :meth:`sensitivity_options`."""
+        return self.sensitivity_options()
+
+    def sensitivity_rule_overrides(self) -> dict[str, SensitivityRuleConfig]:
+        """Return sensitivity rule overrides keyed by their case-insensitive name."""
+        return self.sensitivity.rule_overrides()
+
+    def sensitivity_stage_options(
+        self,
+        defaults: Iterable[Any] = (),
+    ) -> dict[str, Any]:
+        """Return sensitivity stage keyword arguments resolved over *defaults*."""
+        return self.sensitivity.stage_options(defaults)
+
+    def resolve_sensitivity_rules(
+        self,
+        defaults: Iterable[Any] = (),
+    ) -> tuple[SensitivityRuleConfig, ...]:
+        """Merge sensitivity overrides over *defaults*, dropping disabled rules."""
+        return self.sensitivity.resolve_rules(defaults)
 
     @classmethod
     def from_config(cls, config: Any) -> Self:
