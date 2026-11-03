@@ -1500,6 +1500,7 @@ def run_preview(args: argparse.Namespace) -> int:
         candidates, source_store = _preview_candidates(args)
         if not candidates:
             raise ConfigError("no topics to preview")
+        history = None if source_store is not None else _store_for(args).history()
         min_score = getattr(args, "min_score", None)
         rubric_options = {} if min_score is None else {"min_score": min_score}
         rubric = ScoringRubric.from_config(
@@ -1515,6 +1516,7 @@ def run_preview(args: argparse.Namespace) -> int:
             derivation=derivation,
             rubric=rubric,
             config=config,
+            history=history,
         )
         result = replace(result, source_store=source_store)
     except (ConfigError, OSError, ValidationError, yaml.YAMLError) as exc:
