@@ -58,12 +58,8 @@ def test_the_store_reuses_a_derivation_until_the_brief_changes(tmp_path: Path) -
         {"brief": "Explain stars.", "niche": "astronomy", "keywords": ["space"]}
     )
 
-    first = _run(
-        ensure_derivation("sky", profile, store=store, deriver=deriver)
-    )
-    second = _run(
-        ensure_derivation("sky", profile, store=store, deriver=deriver)
-    )
+    first = _run(ensure_derivation("sky", profile, store=store, deriver=deriver))
+    second = _run(ensure_derivation("sky", profile, store=store, deriver=deriver))
 
     assert deriver.calls == ["Explain stars."]
     assert first.cache_hit is False
@@ -74,9 +70,7 @@ def test_the_store_reuses_a_derivation_until_the_brief_changes(tmp_path: Path) -
     changed = ContentProfileConfig.from_mapping(
         {"brief": "Explain planets.", "niche": "astronomy", "keywords": ["space"]}
     )
-    third = _run(
-        ensure_derivation("sky", changed, store=store, deriver=deriver)
-    )
+    third = _run(ensure_derivation("sky", changed, store=store, deriver=deriver))
 
     assert deriver.calls == ["Explain stars.", "Explain planets."]
     assert third.cache_hit is False
@@ -92,9 +86,7 @@ def test_changing_keywords_reuses_the_persisted_derivation(tmp_path: Path) -> No
     _run(ensure_derivation("sky", profile, store=store, deriver=deriver))
 
     changed = profile.model_copy(update={"keywords": ["telescopes"]})
-    result = _run(
-        ensure_derivation("sky", changed, store=store, deriver=deriver)
-    )
+    result = _run(ensure_derivation("sky", changed, store=store, deriver=deriver))
 
     assert deriver.calls == ["Explain stars."]
     assert result.cache_hit is True

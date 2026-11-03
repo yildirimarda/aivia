@@ -125,10 +125,7 @@ def save_derivations(
     entries: Mapping[str, BriefDerivation],
 ) -> None:
     """Write *entries* to *path* deterministically and atomically."""
-    validated = {
-        _profile_name(name): value
-        for name, value in entries.items()
-    }
+    validated = {_profile_name(name): value for name, value in entries.items()}
     _write_store(Path(path).expanduser(), validated)
 
 
@@ -218,14 +215,10 @@ def _without_keywords(
                 term for term in derivation.queries if term.casefold() not in keys
             ],
             "include_terms": [
-                term
-                for term in derivation.include_terms
-                if term.casefold() not in keys
+                term for term in derivation.include_terms if term.casefold() not in keys
             ],
             "exclude_terms": [
-                term
-                for term in derivation.exclude_terms
-                if term.casefold() not in keys
+                term for term in derivation.exclude_terms if term.casefold() not in keys
             ],
             "keywords": [],
         }
@@ -274,8 +267,8 @@ async def ensure_derivation(
                 }
             )
 
-    active_cache = cache if cache is not None else BriefDerivationCache(
-        no_cache=no_cache
+    active_cache = (
+        cache if cache is not None else BriefDerivationCache(no_cache=no_cache)
     )
     if deriver is not None:
         result = await deriver.derive(
