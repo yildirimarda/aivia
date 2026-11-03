@@ -501,7 +501,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the niche mode with query expansion, concurrent discovery and a relevance gate (tests/research/test_mode_niche.py)
 - [x] Implement the keyword and feeds modes, the latter ignoring all other sources (tests/research/test_mode_kw_feeds.py)
 - [x] Implement the evergreen ideas mode with a maintained backlog, replenishment trigger and dedupe against past topics (tests/research/test_mode_evergreen.py)
-- [ ] Implement the trending and manual modes with signal ordering and an ordered queue (tests/research/test_mode_trending_manual.py)
+- [x] Implement the trending and manual modes with signal ordering and an ordered queue (tests/research/test_mode_trending_manual.py)
 - [ ] Combine modes by weight with seeded determinism and tag each candidate with its mode (tests/research/test_mode_mix.py)
 - [ ] Add the collection stage running sources concurrently with per source timeouts and a failure report (tests/research/test_collect.py)
 - [ ] Dedupe candidates by normalized title and embedding similarity inside the window and across profiles, returning the reason (tests/research/test_dedupe.py)
