@@ -489,7 +489,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the source provider protocol and registry returning topic candidates with a passing mock (tests/providers/sources/test_base.py)
 - [x] Add the Wikipedia source for extracts and links per language with a retryable error for missing editions (tests/providers/sources/test_wikipedia.py)
 - [x] Add the Wikipedia on this day source with structured year and category plus cross year dedupe (tests/providers/sources/test_wikipedia_otd.py)
-- [ ] Add the Wikipedia pageviews source ranking top pages as candidates with a traffic signal (tests/providers/sources/test_pageviews.py)
+- [x] Add the Wikipedia pageviews source ranking top pages as candidates with a traffic signal (tests/providers/sources/test_pageviews.py)
 - [ ] Add Reddit and Hacker News sources with configurable subreddits, thresholds, windows and rate limit handling (tests/providers/sources/test_reddit_hn.py)
 - [ ] Add generic RSS and optional Google Trends sources that degrade to empty results instead of failing (tests/providers/sources/test_rss_trends.py)
 - [ ] Resolve per profile sources with weights and language filters, failing clearly on unknown sources (tests/research/test_source_selection.py)
