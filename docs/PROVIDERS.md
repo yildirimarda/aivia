@@ -12,6 +12,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | `image_edit` | 60/min | - | - | unknown |
 | `aggregator-image-edit` | `image_edit` | 60/min | - | - | unknown |
 | `anthropic` | `llm` | 60/min | - | - | unknown |
+| `atom` | `source` | 60/min | - | - | unknown |
 | `azure` | `tts` | 60/min | - | - | unknown |
 | `azure-tts` | `tts` | 60/min | - | - | unknown |
 | `azure_speech` | `tts` | 60/min | - | - | unknown |
@@ -28,15 +29,19 @@ This matrix is generated from the metadata every registered provider declares. C
 | `fal_video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `faster-whisper` | `stt` | 60/min | - | - | unknown |
 | `faster_whisper` | `stt` | 60/min | - | - | unknown |
+| `feed` | `source` | 60/min | - | - | unknown |
 | `gemini` | `llm` | 60/min | - | - | unknown |
 | `google` | `image_gen` | 60/min | - | - | unknown |
 | `google-image` | `image_gen` | 60/min | - | - | unknown |
 | `google-speech` | `tts` | 60/min | - | - | unknown |
+| `google-trends` | `source` | 60/min | - | - | unknown |
 | `google-tts` | `tts` | 60/min | - | - | unknown |
 | `google-veo` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `google_image` | `image_gen` | 60/min | - | - | unknown |
+| `google_trends` | `source` | 60/min | - | - | unknown |
 | `google_tts` | `tts` | 60/min | - | - | unknown |
 | `google_veo` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
+| `googletrends` | `source` | 60/min | - | - | unknown |
 | `hacker-news` | `source` | 60/min | - | - | unknown |
 | `hacker_news` | `source` | 60/min | - | - | unknown |
 | `hackernews` | `source` | 60/min | - | - | unknown |
@@ -106,12 +111,15 @@ This matrix is generated from the metadata every registered provider declares. C
 | `replicate` | `image_gen` | 60/min | - | - | unknown |
 | `replicate-video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `replicate_video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
+| `rss` | `source` | 60/min | - | - | unknown |
+| `rss-source` | `source` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
 | `stable-audio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `stable_audio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `stableaudio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `tavily` | `search` | 60/min | - | - | unknown |
+| `trends` | `source` | 60/min | - | - | unknown |
 | `veo` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `veo-video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `veo_video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
@@ -131,6 +139,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | - | - |
 | `aggregator-image-edit` | - | - |
 | `anthropic` | - | - |
+| `atom` | - | - |
 | `azure` | `tts` | $0.000016 per character |
 | `azure-tts` | `tts` | $0.000016 per character |
 | `azure_speech` | `tts` | $0.000016 per character |
@@ -147,15 +156,19 @@ This matrix is generated from the metadata every registered provider declares. C
 | `fal_video` | - | - |
 | `faster-whisper` | `stt` | $0 per minute |
 | `faster_whisper` | `stt` | $0 per minute |
+| `feed` | - | - |
 | `gemini` | - | - |
 | `google` | - | - |
 | `google-image` | - | - |
 | `google-speech` | `tts` | $0.000016 per character |
+| `google-trends` | - | - |
 | `google-tts` | `tts` | $0.000016 per character |
 | `google-veo` | - | - |
 | `google_image` | - | - |
+| `google_trends` | - | - |
 | `google_tts` | `tts` | $0.000016 per character |
 | `google_veo` | - | - |
+| `googletrends` | - | - |
 | `hacker-news` | - | - |
 | `hacker_news` | - | - |
 | `hackernews` | - | - |
@@ -243,12 +256,15 @@ This matrix is generated from the metadata every registered provider declares. C
 | `replicate` | - | - |
 | `replicate-video` | - | - |
 | `replicate_video` | - | - |
+| `rss` | - | - |
+| `rss-source` | - | - |
 | `s3` | `storage` | $0 per call |
 | `serpapi` | - | - |
 | `stable-audio` | - | - |
 | `stable_audio` | - | - |
 | `stableaudio` | - | - |
 | `tavily` | - | - |
+| `trends` | - | - |
 | `veo` | - | - |
 | `veo-video` | - | - |
 | `veo_video` | - | - |
@@ -268,6 +284,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | - | - |
 | `aggregator-image-edit` | - | - |
 | `anthropic` | - | - |
+| `atom` | - | - |
 | `azure` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `speed` |
 | `azure-tts` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `speed` |
 | `azure_speech` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `speed` |
@@ -284,15 +301,19 @@ This matrix is generated from the metadata every registered provider declares. C
 | `fal_video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `fps`, `seed`, `duration`, `count`, `model`, `generate_audio`, `audio_prompt` |
 | `faster-whisper` | - | - |
 | `faster_whisper` | - | - |
+| `feed` | - | - |
 | `gemini` | - | - |
 | `google` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `seed`, `count`, `model` |
 | `google-image` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `seed`, `count`, `model` |
 | `google-speech` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `sample_rate`, `speed` |
+| `google-trends` | - | - |
 | `google-tts` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `sample_rate`, `speed` |
 | `google-veo` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
 | `google_image` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `seed`, `count`, `model` |
+| `google_trends` | - | - |
 | `google_tts` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `sample_rate`, `speed` |
 | `google_veo` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
+| `googletrends` | - | - |
 | `hacker-news` | - | - |
 | `hacker_news` | - | - |
 | `hackernews` | - | - |
@@ -362,12 +383,15 @@ This matrix is generated from the metadata every registered provider declares. C
 | `replicate` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `quality`, `style`, `seed`, `count`, `model` |
 | `replicate-video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `fps`, `seed`, `duration`, `count`, `model`, `generate_audio`, `audio_prompt` |
 | `replicate_video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `fps`, `seed`, `duration`, `count`, `model`, `generate_audio`, `audio_prompt` |
+| `rss` | - | - |
+| `rss-source` | - | - |
 | `s3` | - | - |
 | `serpapi` | - | - |
 | `stable-audio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
 | `stable_audio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
 | `stableaudio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
 | `tavily` | - | - |
+| `trends` | - | - |
 | `veo` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
 | `veo-video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
 | `veo_video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
@@ -387,6 +411,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `aggregator` | - | unknown | no | - |
 | `aggregator-image-edit` | - | unknown | no | - |
 | `anthropic` | - | unknown | no | - |
+| `atom` | - | unknown | no | - |
 | `azure` | - | unknown | no | - |
 | `azure-tts` | - | unknown | no | - |
 | `azure_speech` | - | unknown | no | - |
@@ -403,15 +428,19 @@ This matrix is generated from the metadata every registered provider declares. C
 | `fal_video` | - | unknown | no | - |
 | `faster-whisper` | - | unknown | no | - |
 | `faster_whisper` | - | unknown | no | - |
+| `feed` | - | unknown | no | - |
 | `gemini` | - | unknown | no | - |
 | `google` | - | unknown | no | - |
 | `google-image` | - | unknown | no | - |
 | `google-speech` | - | unknown | no | - |
+| `google-trends` | - | unknown | no | - |
 | `google-tts` | - | unknown | no | - |
 | `google-veo` | - | unknown | no | - |
 | `google_image` | - | unknown | no | - |
+| `google_trends` | - | unknown | no | - |
 | `google_tts` | - | unknown | no | - |
 | `google_veo` | - | unknown | no | - |
+| `googletrends` | - | unknown | no | - |
 | `hacker-news` | - | unknown | no | - |
 | `hacker_news` | - | unknown | no | - |
 | `hackernews` | - | unknown | no | - |
@@ -481,12 +510,15 @@ This matrix is generated from the metadata every registered provider declares. C
 | `replicate` | - | unknown | no | - |
 | `replicate-video` | - | unknown | no | - |
 | `replicate_video` | - | unknown | no | - |
+| `rss` | - | unknown | no | - |
+| `rss-source` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
 | `serpapi` | - | unknown | no | - |
 | `stable-audio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
 | `stable_audio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
 | `stableaudio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
 | `tavily` | - | unknown | no | - |
+| `trends` | - | unknown | no | - |
 | `veo` | - | unknown | no | - |
 | `veo-video` | - | unknown | no | - |
 | `veo_video` | - | unknown | no | - |
