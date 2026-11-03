@@ -508,7 +508,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Gate candidates by relevance against the brief with a test set of at least ten on theme and ten off theme examples (tests/research/test_relevance.py)
 - [x] Score candidates with a versioned rubric, configured weights, per dimension scores and a minimum score filter (tests/research/test_scoring.py)
 - [x] Score each topic on its weakest rubric dimension as well as the weighted mean so one dead dimension blocks selection (tests/research/test_weakest_link.py)
-- [ ] Filter sensitive topics into blocked or manual review with the matched rule recorded (tests/research/test_sensitivity.py)
+- [x] Filter sensitive topics into blocked or manual review with the matched rule recorded (tests/research/test_sensitivity.py)
 - [ ] Verify each selected topic against at least two independent domains, marking single source topics unverified (tests/research/test_verify.py)
 - [ ] Produce a compact fact list with source urls implementing the core fact contract without importing any core code from this module (tests/research/test_factbase.py)
 - [ ] Select topics per run above the minimum score with a diversity constraint on category (tests/research/test_select.py)
@@ -522,6 +522,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Persist topic history so the on this day dedupe window applies across process restarts (tests/research/test_topic_history.py)
 - [ ] Prune dedupe history outside the window before matching so long runs do not grow without bound (tests/research/test_dedupe.py)
 - [ ] Expose the dedupe window and embedding threshold through research config so profiles can tune repeats (tests/core/config/test_research.py)
+- [ ] Expose sensitivity rule overrides through research config so profiles can add or disable blocked and review topics (tests/core/config/test_research.py)
 
 ## Milestone 11: Writing
 
