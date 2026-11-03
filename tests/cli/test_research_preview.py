@@ -1,0 +1,244 @@
+"""``aivia research preview``: scores, reasons, brief matches and cost."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, cast
+
+from aivia.cli import main
+from aivia.cli.research import preview_topics, topic_store_path
+from aivia.core.config.profile import ContentProfileConfig
+from aivia.research.brief import BriefDerivation
+
+_FIRST = "https://example.com/story"
+_SECOND = "https://other.test/background"
+
+
+def _write_config(path: Path) -> Path:
+    path.write_text(
+        """
+schema_version: 1
+profiles:
+  briefed:
+    brief: Explain bridge engineering and history.
+    niche: civil engineering
+    keywords: [bridge, engineering]
+    sources: [wikipedia]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _run(
+    capsys: Any,
+    *arguments: str,
+) -> tuple[int, dict[str, Any], str]:
+    code = main(list(arguments))
+    captured = capsys.readouterr()
+    payload = (
+        cast(dict[str, Any], json.loads(captured.out)) if captured.out.strip() else {}
+    )
+    return code, payload, captured.err
+
+
+def test_preview_prints_scores_reasons_matched_brief_parts_and_cost(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    config = _write_config(tmp_path / "config.yaml")
+
+    code, data, err = _run(
+        capsys,
+        "research",
+        "preview",
+        "Bridge history",
+        "--source",
+        _FIRST,
+        "--source",
+        _SECOND,
+        "--profile",
+        "briefed",
+        "--config",
+        str(config),
+        "--json",
+    )
+
+    assert code == 0, err
+    assert err == ""
+    assert data["profile"] == "briefed"
+    assert data["brief"] == "Explain bridge engineering and history."
+    assert data["counts"]["topics"] == 1
+
+    topic = data["topics"][0]
+    assert topic["title"] == "Bridge history"
+    assert 0.0 <= topic["score"] <= 1.0
+    assert set(topic["dimensions"]) == {
+        "relevance",
+        "originality",
+        "accuracy",
+        "engagement",
+    }
+    assert topic["scores"] == topic["dimensions"]
+    assert topic["matched_brief_parts"]["keywords"] == ["bridge"]
+    assert topic["matched_brief_parts"]["include_terms"] == ["bridge"]
+    assert "bridge" in topic["matched"]
+    assert "bridge" in topic["reason"]
+    assert topic["cost_usd"] > 0.0
+    assert data["cost_usd"] == topic["cost_usd"]
+    assert data["cost"]["paid_usd"] == 0.0
+    assert data["cost"]["estimated"] is True
+    assert data["rubric"]["version"] == "1"
+    assert data["rubric"]["min_score"] == 0.6
+
+    assert not topic_store_path().exists()
+
+
+def test_preview_text_output_names_every_requested_section(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    config = _write_config(tmp_path / "config.yaml")
+
+    code = main(
+        [
+            "research",
+            "preview",
+            "Bridge engineering history",
+            "--source",
+            _FIRST,
+            "--source",
+            _SECOND,
+            "--profile",
+            "briefed",
+            "--config",
+            str(config),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert captured.err == ""
+    assert "Topic: Bridge engineering history" in captured.out
+    assert "Score:" in captured.out
+    assert "Reason:" in captured.out
+    assert "Matched brief parts:" in captured.out
+    assert "Cost: $" in captured.out
+    assert "Total cost: $" in captured.out
+
+
+def test_preview_reads_topics_from_the_store_when_none_are_given(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    store = tmp_path / "topics.json"
+    add_code = main(
+        [
+            "research",
+            "add",
+            "Bridge history",
+            "--source",
+            _FIRST,
+            "--source",
+            _SECOND,
+            "--store",
+            str(store),
+        ]
+    )
+    assert add_code == 0
+    capsys.readouterr()
+
+    code, data, err = _run(
+        capsys,
+        "research",
+        "preview",
+        "--store",
+        str(store),
+        "--json",
+    )
+
+    assert code == 0, err
+    assert data["store"] == str(store)
+    assert [topic["title"] for topic in data["topics"]] == ["Bridge history"]
+    assert data["topics"][0]["cost_usd"] > 0.0
+
+
+def test_preview_rejects_an_empty_store(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    code, data, err = _run(
+        capsys,
+        "research",
+        "preview",
+        "--store",
+        str(tmp_path / "missing.json"),
+        "--json",
+    )
+
+    assert code == 1
+    assert data == {}
+    assert "no topics to preview" in err
+
+
+def test_preview_honours_an_explicit_minimum_score(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    config = _write_config(tmp_path / "config.yaml")
+
+    code, data, err = _run(
+        capsys,
+        "research",
+        "preview",
+        "Bridge history",
+        "--source",
+        _FIRST,
+        "--source",
+        _SECOND,
+        "--profile",
+        "briefed",
+        "--config",
+        str(config),
+        "--min-score",
+        "1.0",
+        "--json",
+    )
+
+    assert code == 0, err
+    assert data["rubric"]["min_score"] == 1.0
+    assert data["topics"][0]["passed"] is False
+    assert data["counts"]["failed"] == 1
+
+
+def test_preview_library_reports_excluded_brief_terms() -> None:
+    derivation = BriefDerivation(
+        include_terms=["bridge"],
+        exclude_terms=["celebrity"],
+        brief="Bridge engineering.",
+        brief_hash="hash",
+    )
+    profile = ContentProfileConfig(
+        brief="Bridge engineering.",
+        niche="civil engineering",
+        keywords=["bridge"],
+    )
+
+    result = preview_topics(
+        [
+            {
+                "title": "Celebrity bridge scandal",
+                "source_urls": [_FIRST, _SECOND],
+            }
+        ],
+        profile=profile,
+        derivation=derivation,
+        cost_usd=0.0,
+    )
+
+    topic = result.topics[0]
+    assert topic.score.dimensions["relevance"] == 0.0
+    assert topic.excluded_terms == ("celebrity",)
+    assert "excluded brief terms" in topic.score.reason
+    assert result.to_dict()["topics"][0]["excluded_terms"] == ["celebrity"]
