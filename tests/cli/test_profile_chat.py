@@ -161,6 +161,70 @@ def test_flags_skip_the_questions_and_yes_skips_the_approval(
     assert profile["format"] == "narrated_still"
 
 
+def test_an_unknown_format_is_rejected_before_saving(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = tmp_path / "config.yaml"
+
+    code, output, err = _run(
+        capsys,
+        monkeypatch,
+        "profile",
+        "create",
+        "space",
+        "--config",
+        str(config),
+        "--niche",
+        "Space",
+        "--brief",
+        "Explain space.",
+        "--format",
+        "quote_card_typo",
+        "--yes",
+    )
+
+    assert code == 1
+    assert "unknown format" in err
+    assert "quote_card_typo" in err
+    assert "narrated_still" in err
+    assert _topics(output) == []
+    assert not config.exists()
+
+
+def test_a_format_from_the_resolved_config_is_accepted(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "schema_version: 1\nformats:\n  custom_card: {}\n",
+        encoding="utf-8",
+    )
+
+    code, _, err = _run(
+        capsys,
+        monkeypatch,
+        "profile",
+        "create",
+        "cards",
+        "--config",
+        str(config),
+        "--niche",
+        "Cards",
+        "--brief",
+        "Explain cards.",
+        "--format",
+        "custom_card",
+        "--yes",
+    )
+
+    assert code == 0, err
+    assert _load(config)["profiles"]["cards"]["format"] == "custom_card"
+
+
 def test_a_missing_name_is_derived_from_the_niche(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

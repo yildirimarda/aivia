@@ -332,6 +332,35 @@ def _approve(name: str, *, stdin: TextIO, stdout: TextIO) -> bool:
     return stdin.readline().strip().lower() in _YES_ANSWERS
 
 
+def _available_formats(config: Any) -> set[str] | None:
+    section = getattr(config, "formats", None)
+    formats = getattr(section, "formats", None)
+    if not isinstance(formats, Mapping):
+        return None
+    return {str(name) for name in formats}
+
+
+def _validate_profile_format(
+    name: str,
+    profile: ContentProfileConfig,
+    config: Any,
+) -> None:
+    format_name = profile.format
+    formats = _available_formats(config)
+    if not format_name or formats is None or format_name in formats:
+        return
+    available = ", ".join(sorted(formats)) or "none"
+    raise ConfigError(
+        f"profile {name} references unknown format: {format_name} "
+        f"(available: {available})",
+        details={
+            "profile": name,
+            "format": format_name,
+            "available": sorted(formats),
+        },
+    )
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Chat through a new profile, show sample topics and save on approval."""
     try:
@@ -346,9 +375,19 @@ def run_create(args: argparse.Namespace) -> int:
                 details={"profile": requested},
             )
 
+        resolved = resolve_config(
+            config_file=getattr(args, "config", None),
+            environment=getattr(args, "environment", None),
+            profile=getattr(args, "profile", None),
+            preset=getattr(args, "preset", None),
+            set_values=getattr(args, "set_values", None),
+        )
+        config = resolved.to_app_config()
+
         answers = _answers_from_args(args, stdin=sys.stdin, stdout=sys.stdout)
         profile = build_profile(answers)
         name = requested or _available_name(_derived_name(profile), profiles)
+        _validate_profile_format(name, profile, config)
         topics = generate_sample_topics(profile, SAMPLE_TOPIC_COUNT)
         _print_samples(name, profile, topics)
 
