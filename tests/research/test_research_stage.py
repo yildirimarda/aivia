@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -21,6 +22,7 @@ from aivia.research import (
     ResearchResult,
     ResearchStage,
     ScoringRubric,
+    SeenTopic,
     SensitivityStage,
     TopicInput,
     build_research_stage,
@@ -482,6 +484,111 @@ def test_scoring_rejections_are_not_recorded_and_can_be_reconsidered() -> None:
     ).run_sync()
 
     assert "Battery storage guide" in second.selected_titles
+
+
+def test_the_stage_reads_the_dedupe_window_from_research_config() -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+
+    def history() -> DedupeHistory:
+        return DedupeHistory(
+            [
+                SeenTopic(
+                    title="Solar panel costs",
+                    seen_at=now - timedelta(days=10),
+                    profile="earlier",
+                )
+            ],
+            now=now,
+        )
+
+    short = _stage(
+        history=history(),
+        now=now,
+        config={"research": {"dedupe_window": 7}},
+        record=False,
+    ).run_sync()
+    long = _stage(
+        history=history(),
+        now=now,
+        config={"research": {"dedupe_window": 30}},
+        record=False,
+    ).run_sync()
+
+    assert short.dedupe is not None
+    assert short.dedupe.window == timedelta(days=7)
+    assert "Solar panel costs" not in short.dedupe.duplicate_titles
+    assert long.dedupe is not None
+    assert long.dedupe.window == timedelta(days=30)
+    assert "Solar panel costs" in long.dedupe.duplicate_titles
+
+
+def test_the_stage_reads_the_embedding_threshold_from_research_config() -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+
+    def history() -> DedupeHistory:
+        return DedupeHistory(
+            [
+                SeenTopic(
+                    title="Earlier angle",
+                    seen_at=now - timedelta(hours=1),
+                    profile="earlier",
+                    embedding=(1.0, 0.0),
+                )
+            ],
+            now=now,
+        )
+
+    def stage(threshold: float) -> ResearchStage:
+        source = FakeSource(
+            "alpha",
+            [
+                _candidate(
+                    "A new angle",
+                    "https://alpha.example/angle",
+                    "https://other.example/angle",
+                )
+            ],
+        )
+        return _stage(
+            sources=[source],
+            history=history(),
+            embeddings={"A new angle": (0.98, 0.1)},
+            now=now,
+            config={"research": {"embedding_threshold": threshold}},
+            gate=RelevanceGate(relevance=lambda candidate: 1.0, min_relevance=0.0),
+            scores={"A new angle": {"relevance": 0.9, "novelty": 0.9}},
+            limit=None,
+            max_per_category=None,
+            record=False,
+        )
+
+    low = stage(0.9).run_sync()
+    high = stage(0.999).run_sync()
+
+    assert low.dedupe is not None
+    assert low.dedupe.embedding_threshold == 0.9
+    assert low.dedupe.embedding_duplicates == 1
+    assert low.selected_titles == []
+    assert high.dedupe is not None
+    assert high.dedupe.embedding_threshold == 0.999
+    assert high.dedupe.embedding_duplicates == 0
+    assert high.selected_titles == ["A new angle"]
+
+
+def test_explicit_dedupe_options_override_the_research_config() -> None:
+    stage = _stage(
+        config={"research": {"dedupe_window": 7, "embedding_threshold": 0.95}},
+        window=30,
+        embedding_threshold=0.8,
+    )
+
+    result = stage.run_sync()
+
+    assert stage.window == timedelta(days=30)
+    assert stage.embedding_threshold == 0.8
+    assert result.dedupe is not None
+    assert result.dedupe.window == timedelta(days=30)
+    assert result.dedupe.embedding_threshold == 0.8
 
 
 def test_the_async_entry_point_and_sync_wrapper_agree() -> None:
