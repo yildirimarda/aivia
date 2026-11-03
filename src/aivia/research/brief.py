@@ -34,6 +34,7 @@ from aivia.core.errors import ConfigError
 from aivia.core.models.base import canonical_json
 from aivia.llm.structured import StructuredOutputHelper
 from aivia.providers.protocols.llm import ChatMessage, LLMRequest, MessageRole
+from aivia.research.feedback import FeedbackGuidance
 
 __all__ = [
     "BRIEF_OPERATION",
@@ -833,10 +834,23 @@ def _prompt_purpose(value: str) -> str:
     return purpose
 
 
+def _feedback_payload(
+    feedback: FeedbackGuidance | Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if feedback is None:
+        return None
+    if isinstance(feedback, FeedbackGuidance):
+        return feedback.to_prompt_dict()
+    if isinstance(feedback, Mapping):
+        return dict(feedback)
+    raise TypeError("feedback must be a FeedbackGuidance, mapping or None")
+
+
 def brief_prompt_context(
     profile: ContentProfileConfig | Mapping[str, Any] | str,
     *,
     derivation: BriefDerivation | None = None,
+    feedback: FeedbackGuidance | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return the profile and brief settings every prompt should carry.
 
@@ -853,7 +867,7 @@ def brief_prompt_context(
         active = derivation.with_explicit_keywords(explicit).model_copy(
             update={"brief": config.brief, "brief_hash": digest}
         )
-    return {
+    context = {
         "brief": config.brief,
         "brief_hash": digest,
         "niche": config.niche,
@@ -866,15 +880,22 @@ def brief_prompt_context(
         "exclude_terms": list(active.exclude_terms),
         "rubric": active.rubric.model_dump(mode="json"),
     }
+    payload = _feedback_payload(feedback)
+    if payload is not None:
+        context["topic_feedback"] = payload
+    return context
 
 
 def render_brief_context(
     profile: ContentProfileConfig | Mapping[str, Any] | str,
     *,
     derivation: BriefDerivation | None = None,
+    feedback: FeedbackGuidance | Mapping[str, Any] | None = None,
 ) -> str:
     """Render the brief context as deterministic, safely encoded JSON."""
-    payload = canonical_json(brief_prompt_context(profile, derivation=derivation))
+    payload = canonical_json(
+        brief_prompt_context(profile, derivation=derivation, feedback=feedback)
+    )
     return f"{_BRIEF_DATA_INSTRUCTION}\n{payload}"
 
 
@@ -884,6 +905,7 @@ def build_brief_prompt(
     *,
     prompt: str | None = None,
     derivation: BriefDerivation | None = None,
+    feedback: FeedbackGuidance | Mapping[str, Any] | None = None,
 ) -> str:
     """Build a prompt for *purpose* with the profile brief appended as data.
 
@@ -898,7 +920,11 @@ def build_brief_prompt(
     base = text.strip()
     if not base:
         raise ConfigError(f"{kind} prompt must be non-empty")
-    context = render_brief_context(profile, derivation=derivation)
+    context = render_brief_context(
+        profile,
+        derivation=derivation,
+        feedback=feedback,
+    )
     return f"{base}\n\n{context}"
 
 
@@ -907,6 +933,7 @@ def build_relevance_prompt(
     *,
     prompt: str | None = None,
     derivation: BriefDerivation | None = None,
+    feedback: FeedbackGuidance | Mapping[str, Any] | None = None,
 ) -> str:
     """Build a relevance prompt steered by the profile brief."""
     return build_brief_prompt(
@@ -914,6 +941,7 @@ def build_relevance_prompt(
         profile,
         prompt=prompt,
         derivation=derivation,
+        feedback=feedback,
     )
 
 
@@ -922,6 +950,7 @@ def build_scoring_prompt(
     *,
     prompt: str | None = None,
     derivation: BriefDerivation | None = None,
+    feedback: FeedbackGuidance | Mapping[str, Any] | None = None,
 ) -> str:
     """Build a scoring prompt steered by the profile brief."""
     return build_brief_prompt(
@@ -929,6 +958,7 @@ def build_scoring_prompt(
         profile,
         prompt=prompt,
         derivation=derivation,
+        feedback=feedback,
     )
 
 
@@ -937,6 +967,7 @@ def build_tone_prompt(
     *,
     prompt: str | None = None,
     derivation: BriefDerivation | None = None,
+    feedback: FeedbackGuidance | Mapping[str, Any] | None = None,
 ) -> str:
     """Build a tone prompt steered by the profile brief."""
     return build_brief_prompt(
@@ -944,6 +975,7 @@ def build_tone_prompt(
         profile,
         prompt=prompt,
         derivation=derivation,
+        feedback=feedback,
     )
 
 
@@ -952,6 +984,7 @@ def build_style_prompt(
     *,
     prompt: str | None = None,
     derivation: BriefDerivation | None = None,
+    feedback: FeedbackGuidance | Mapping[str, Any] | None = None,
 ) -> str:
     """Build a style prompt steered by the profile brief."""
     return build_brief_prompt(
@@ -959,6 +992,7 @@ def build_style_prompt(
         profile,
         prompt=prompt,
         derivation=derivation,
+        feedback=feedback,
     )
 
 
@@ -968,6 +1002,7 @@ def build_brief_prompt_request(
     *,
     prompt: str | None = None,
     derivation: BriefDerivation | None = None,
+    feedback: FeedbackGuidance | Mapping[str, Any] | None = None,
     model: str | None = None,
     role: str = "default",
     prompt_version: str = "1",
@@ -984,6 +1019,7 @@ def build_brief_prompt_request(
         config,
         prompt=prompt,
         derivation=derivation,
+        feedback=feedback,
     )
     request_metadata = dict(metadata or {})
     request_metadata.setdefault("brief_hash", brief_hash(config.brief))
