@@ -21,9 +21,7 @@ __all__ = [
     "register_installed_sections",
 ]
 
-INSTALLED_MODULE_REGISTRARS: dict[
-    str, Callable[[SectionRegistry], SectionRegistry]
-] = {
+INSTALLED_MODULE_REGISTRARS: dict[str, Callable[[SectionRegistry], SectionRegistry]] = {
     "research": register_research_section,
 }
 
