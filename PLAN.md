@@ -488,7 +488,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 - [x] Add the source provider protocol and registry returning topic candidates with a passing mock (tests/providers/sources/test_base.py)
 - [x] Add the Wikipedia source for extracts and links per language with a retryable error for missing editions (tests/providers/sources/test_wikipedia.py)
-- [ ] Add the Wikipedia on this day source with structured year and category plus cross year dedupe (tests/providers/sources/test_wikipedia_otd.py)
+- [x] Add the Wikipedia on this day source with structured year and category plus cross year dedupe (tests/providers/sources/test_wikipedia_otd.py)
 - [ ] Add the Wikipedia pageviews source ranking top pages as candidates with a traffic signal (tests/providers/sources/test_pageviews.py)
 - [ ] Add Reddit and Hacker News sources with configurable subreddits, thresholds, windows and rate limit handling (tests/providers/sources/test_reddit_hn.py)
 - [ ] Add generic RSS and optional Google Trends sources that degrade to empty results instead of failing (tests/providers/sources/test_rss_trends.py)
@@ -518,6 +518,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add a profile create chat command asking at most three questions, writing the profile and showing ten sample topics for approval before saving (tests/cli/test_profile_chat.py)
 - [ ] Add the research stage chaining collection, dedupe, gating, scoring, verification and selection into a topic input (tests/research/test_research_stage.py)
 - [ ] Add a research end to end test where one failing source is tolerated (tests/e2e/test_research.py)
+- [ ] Extract shared Wikimedia REST request and error helpers so search, on this day and pageviews sources reuse one layer (tests/providers/sources/test_wikimedia_common.py)
 
 ## Milestone 11: Writing
 
