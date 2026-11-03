@@ -586,6 +586,7 @@ Everything a run needs to produce content for one audience or brand.
 | `languages` | array of string |  |  |  |
 | `niche` | string | `""` |  |  |
 | `overrides` | object |  |  |  |
+| `source_options` | map of [ProfileSourceConfig](#profilesourceconfig) |  |  |  |
 | `sources` | array of string |  |  |  |
 | `style_bible` | string | `""` |  |  |
 | `tone` | string | `""` |  |  |
@@ -835,6 +836,17 @@ A named set of configuration overrides selected by the CLI or a profile. A prese
 | `overrides` | object |  |  |  |
 | `profile` | string | `""` |  |  |
 | `profiles` | array of string |  |  |  |
+
+### ProfileSourceConfig
+
+One topic source with a relative weight and an optional language filter. ``weight`` is relative rather than a share, so an unweighted list gives every source the same weight of ``1.0``. An empty ``languages`` list means the source is not restricted and accepts every profile language.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `enabled` | boolean | `true` |  |  |
+| `languages` | array of string |  |  |  |
+| `name` | string | `""` |  |  |
+| `weight` | number | `1.0` | >= 0 |  |
 
 ### PromptVersionSource
 
