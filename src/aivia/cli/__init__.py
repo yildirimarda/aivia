@@ -18,6 +18,7 @@ from aivia.cli import (
     research,
     resume,
     run,
+    topics,
     worker,
 )
 from aivia.cli.globals import GlobalOptions
@@ -56,6 +57,7 @@ __all__ = [
     "research",
     "resume",
     "run",
+    "topics",
     "version_string",
     "worker",
 ]
