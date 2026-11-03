@@ -112,12 +112,8 @@ def test_metadata_registration_and_aliases() -> None:
     assert provider_registry.resolve("wikipedia_pageviews") is (
         WikipediaPageviewsSourceProvider
     )
-    assert resolve_source("wikipedia-pageviews") is (
-        WikipediaPageviewsSourceProvider
-    )
-    assert resolve_source("wikipedia_pageviews") is (
-        WikipediaPageviewsSourceProvider
-    )
+    assert resolve_source("wikipedia-pageviews") is (WikipediaPageviewsSourceProvider)
+    assert resolve_source("wikipedia_pageviews") is (WikipediaPageviewsSourceProvider)
     assert resolve_source("pageviews") is WikipediaPageviewsSourceProvider
     assert WikipediaPageviewsSource is WikipediaPageviewsSourceProvider
     assert WikipediaPageviewsProvider is WikipediaPageviewsSourceProvider
@@ -209,9 +205,7 @@ def test_year_month_and_day_metadata_select_a_date() -> None:
     provider = _provider(handler)
 
     response = asyncio.run(
-        provider.discover(
-            SourceRequest(metadata={"year": 2026, "month": 7, "day": 8})
-        )
+        provider.discover(SourceRequest(metadata={"year": 2026, "month": 7, "day": 8}))
     )
 
     assert requests[0].url.path.endswith("/2026/07/08")
@@ -275,9 +269,7 @@ def test_duplicate_titles_are_removed_and_the_limit_applies_after_filtering() ->
     _requests, handler = _capture(body)
     provider = _provider(handler)
 
-    response = asyncio.run(
-        provider.discover(SourceRequest(window_start=DATE, limit=2))
-    )
+    response = asyncio.run(provider.discover(SourceRequest(window_start=DATE, limit=2)))
 
     assert response.titles == ["Moon landing", "Second topic"]
     assert [candidate.signal for candidate in response.candidates] == [
@@ -351,9 +343,7 @@ def test_a_missing_edition_is_a_retryable_error() -> None:
     provider = _provider(handler)
 
     with pytest.raises(RetryableError) as error:
-        asyncio.run(
-            provider.discover(SourceRequest(window_start=DATE, language="zz"))
-        )
+        asyncio.run(provider.discover(SourceRequest(window_start=DATE, language="zz")))
 
     assert error.value.retryable is True
     assert "zz" in str(error.value)

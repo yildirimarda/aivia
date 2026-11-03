@@ -151,11 +151,7 @@ def _date_from_parts(
     *,
     field: str = "date",
 ) -> date_cls:
-    if (
-        isinstance(year, bool)
-        or isinstance(month, bool)
-        or isinstance(day, bool)
-    ):
+    if isinstance(year, bool) or isinstance(month, bool) or isinstance(day, bool):
         raise ConfigError(
             f"{field} year, month and day must be integers",
             details={"field": field},
@@ -417,9 +413,7 @@ class WikipediaPageviewsSourceProvider(SourceProviderBase):
             transport, httpx.AsyncBaseTransport
         ):
             raise TypeError("transport must be an httpx.AsyncBaseTransport")
-        if date is not None and any(
-            value is not None for value in (year, month, day)
-        ):
+        if date is not None and any(value is not None for value in (year, month, day)):
             raise ConfigError(
                 "use either date or year, month and day, not both",
                 details={"field": "date"},
