@@ -396,13 +396,92 @@ def test_dedupe_history_is_shared_between_runs() -> None:
     stage = _stage(history=history, record=True)
 
     first = stage.run_sync()
+    assert history.titles == tuple(first.selected_titles)
+
     second = stage.run_sync()
 
     assert first.selected_titles == ["Solar panel costs", "Battery storage guide"]
-    assert second.selected_titles == []
     assert second.dedupe is not None
-    assert second.dedupe.duplicate_count == 7
-    assert second.metadata["counts"]["deduped"] == 0
+    assert {"Solar panel costs", "Battery storage guide"} <= set(
+        second.dedupe.duplicate_titles
+    )
+    assert not set(second.selected_titles) & set(first.selected_titles)
+
+
+def test_only_selected_topics_are_recorded_in_dedupe_history() -> None:
+    history = DedupeHistory()
+    stage = _stage(history=history, record=True, limit=1, max_per_category=None)
+
+    result = stage.run_sync()
+
+    assert result.selected_titles == ["Solar panel costs"]
+    assert history.titles == ("Solar panel costs",)
+    assert result.dedupe is not None
+    assert result.dedupe.metadata["recorded"] is True
+    assert result.dedupe.metadata["recorded_count"] == 1
+
+
+def test_gating_rejections_are_not_recorded_and_can_be_reconsidered() -> None:
+    history = DedupeHistory()
+    gate = RelevanceGate(
+        relevance=lambda candidate: (
+            0.1 if candidate.title == "Battery storage guide" else 1.0
+        ),
+        min_relevance=0.5,
+    )
+
+    first = _stage(
+        history=history,
+        record=True,
+        gate=gate,
+        limit=None,
+        max_per_category=None,
+    ).run_sync()
+
+    assert first.gating is not None
+    assert "Battery storage guide" in first.gating.rejected_titles
+    assert "Battery storage guide" not in history.titles
+    assert history.titles == tuple(first.selected_titles)
+
+    second = _stage(
+        history=history,
+        record=True,
+        limit=None,
+        max_per_category=None,
+    ).run_sync()
+
+    assert "Battery storage guide" in second.selected_titles
+
+
+def test_scoring_rejections_are_not_recorded_and_can_be_reconsidered() -> None:
+    history = DedupeHistory()
+    low_scores = {
+        **SCORES,
+        "Battery storage guide": {"relevance": 0.1, "novelty": 0.1},
+    }
+
+    first = _stage(
+        history=history,
+        record=True,
+        scores=low_scores,
+        limit=None,
+        max_per_category=None,
+    ).run_sync()
+
+    assert first.scoring is not None
+    assert "Battery storage guide" in [
+        candidate.title for candidate in first.scoring.dropped
+    ]
+    assert "Battery storage guide" not in history.titles
+
+    second = _stage(
+        history=history,
+        record=True,
+        limit=None,
+        max_per_category=None,
+    ).run_sync()
+
+    assert "Battery storage guide" in second.selected_titles
 
 
 def test_the_async_entry_point_and_sync_wrapper_agree() -> None:
