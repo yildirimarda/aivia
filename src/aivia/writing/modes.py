@@ -677,9 +677,7 @@ class WritingModeRegistry:
         """Load a mode file and register it under *name* or its own name."""
         mode = self.load_file(path)
         target = _validate_name(name) if name is not None else _mode_name(mode)
-        return self.register(
-            target, mode, module=str(path), source=source or str(path)
-        )
+        return self.register(target, mode, module=str(path), source=source or str(path))
 
     def resolve(self, name: str) -> WritingModeLike:
         """Return the mode for a registered *name*, file path or built in."""
@@ -876,9 +874,7 @@ class WritingModeRegistry:
             )
 
         def candidate_name(candidate: WritingModeLike) -> str:
-            return str(
-                getattr(candidate, "__name__", type(candidate).__name__)
-            )
+            return str(getattr(candidate, "__name__", type(candidate).__name__))
 
         selected = candidates[0]
         if len(candidates) > 1:

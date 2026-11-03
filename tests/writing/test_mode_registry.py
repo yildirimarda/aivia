@@ -368,9 +368,7 @@ def test_registry_loads_several_modes_from_one_data_file(tmp_path: Path) -> None
 
 def test_registry_register_file_registers_the_file_mode(tmp_path: Path) -> None:
     path = tmp_path / "file_mode.yaml"
-    path.write_text(
-        "name: file-mode\ninstructions: From a file.\n", encoding="utf-8"
-    )
+    path.write_text("name: file-mode\ninstructions: From a file.\n", encoding="utf-8")
     registry = WritingModeRegistry()
 
     registration = registry.register_file(path)
