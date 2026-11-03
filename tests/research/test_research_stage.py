@@ -21,6 +21,7 @@ from aivia.research import (
     ResearchResult,
     ResearchStage,
     ScoringRubric,
+    SensitivityStage,
     TopicInput,
     build_research_stage,
     collect_sources,
@@ -205,6 +206,7 @@ def test_the_stage_chains_every_step_into_a_verified_topic_input() -> None:
         "deduped": 6,
         "gated": 5,
         "scored": 4,
+        "screened": 4,
         "verified": 3,
         "selected": 2,
     }
@@ -255,6 +257,129 @@ def test_single_source_topics_are_excluded_until_verification_is_optional() -> N
         for topic in optional.selected
         if topic.title == "Wind turbine guide"
     )
+
+
+def test_blocked_and_review_topics_never_reach_verification_or_selection() -> None:
+    source = FakeSource(
+        "alpha",
+        [
+            _candidate(
+                "Solar panel costs",
+                "https://alpha.example/solar",
+                "https://grid.example/solar",
+                category="energy",
+            ),
+            _candidate(
+                "School shooting survivor speaks",
+                "https://alpha.example/violence",
+                "https://news.example/violence",
+                category="violence",
+            ),
+            _candidate(
+                "Suicide prevention helpline",
+                "https://alpha.example/health",
+                "https://health.example/helpline",
+                category="health",
+            ),
+        ],
+    )
+    stage = _stage(
+        sources=[source],
+        gate=RelevanceGate(relevance=lambda candidate: 1.0, min_relevance=0.0),
+        scores={
+            **SCORES,
+            "School shooting survivor speaks": {"relevance": 0.9, "novelty": 0.9},
+            "Suicide prevention helpline": {"relevance": 0.9, "novelty": 0.9},
+        },
+        limit=None,
+        max_per_category=None,
+    )
+
+    result = stage.run_sync()
+
+    assert result.sensitivity is not None
+    assert result.sensitivity.blocked_titles == ["School shooting survivor speaks"]
+    assert result.sensitivity.review_titles == ["Suicide prevention helpline"]
+    assert result.screened == [result.scored[0]]
+    assert result.blocked_titles == ["School shooting survivor speaks"]
+    assert result.review_titles == ["Suicide prevention helpline"]
+
+    assert result.verification is not None
+    assert result.verification.input_count == 1
+    assert result.verification.verified_titles == ["Solar panel costs"]
+    assert result.selected_titles == ["Solar panel costs"]
+    assert result.metadata["counts"]["scored"] == 3
+    assert result.metadata["counts"]["screened"] == 1
+    assert result.metadata["counts"]["verified"] == 1
+    assert result.metadata["sensitivity"] == {
+        "input_count": 3,
+        "allowed": 1,
+        "blocked": 1,
+        "manual_review": 1,
+        "blocked_titles": ["School shooting survivor speaks"],
+        "review_titles": ["Suicide prevention helpline"],
+    }
+
+
+def test_a_custom_sensitivity_stage_can_replace_the_default_rules() -> None:
+    source = FakeSource(
+        "alpha",
+        [
+            _candidate(
+                "Solar panel costs",
+                "https://alpha.example/solar",
+                "https://grid.example/solar",
+                category="energy",
+            )
+        ],
+    )
+    stage = _stage(
+        sources=[source],
+        sensitivity=SensitivityStage(
+            [{"name": "solar", "terms": ["solar"], "action": "blocked"}]
+        ),
+        limit=None,
+        max_per_category=None,
+    )
+
+    result = stage.run_sync()
+
+    assert result.sensitivity is not None
+    assert result.sensitivity.blocked_titles == ["Solar panel costs"]
+    assert result.selected_titles == []
+    assert result.verification is not None
+    assert result.verification.input_count == 0
+
+
+def test_the_sensitivity_filter_can_be_disabled() -> None:
+    source = FakeSource(
+        "alpha",
+        [
+            _candidate(
+                "School shooting survivor speaks",
+                "https://alpha.example/violence",
+                "https://news.example/violence",
+                category="violence",
+            )
+        ],
+    )
+    stage = _stage(
+        sources=[source],
+        sensitivity_enabled=False,
+        gate=RelevanceGate(relevance=lambda candidate: 1.0, min_relevance=0.0),
+        scores={
+            "School shooting survivor speaks": {"relevance": 0.9, "novelty": 0.9},
+        },
+        limit=None,
+        max_per_category=None,
+    )
+
+    result = stage.run_sync()
+
+    assert result.sensitivity is not None
+    assert result.sensitivity.metadata["enabled"] is False
+    assert result.blocked_titles == []
+    assert result.selected_titles == ["School shooting survivor speaks"]
 
 
 def test_selection_applies_the_run_limit_after_scoring_and_verification() -> None:
@@ -357,6 +482,7 @@ def test_an_empty_source_set_produces_an_empty_topic_input() -> None:
         "deduped": 0,
         "gated": 0,
         "scored": 0,
+        "screened": 0,
         "verified": 0,
         "selected": 0,
     }
@@ -375,6 +501,7 @@ def test_the_result_serializes_every_stage_summary() -> None:
         "dedupe",
         "gating",
         "scoring",
+        "sensitivity",
         "verification",
         "selection",
     ):

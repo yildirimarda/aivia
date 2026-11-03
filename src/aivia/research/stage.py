@@ -3,18 +3,22 @@
 This is the deterministic control flow the rest of the pipeline uses. One call
 runs the research stages in their fixed order:
 
-    collection -> dedupe -> relevance gating -> scoring -> verification -> selection
+    collection -> dedupe -> relevance gating -> scoring -> sensitivity
+    -> verification -> selection
 
 Each step is the stage already defined for that job; this module only chains
 them, passes the candidates from one to the next and keeps every intermediate
-result for auditing. The output is a :class:`TopicInput`: the selected topics a
-writing stage can consume plus the collection, dedupe, gating, scoring,
-verification and selection records that explain how they were chosen.
+result for auditing. Sensitivity runs after scoring and before verification, so
+a blocked or held topic is never verified or selected. The output is a
+:class:`TopicInput`: the selected topics a writing stage can consume plus the
+collection, dedupe, gating, scoring, sensitivity, verification and selection
+records that explain how they were chosen.
 
 The stage is offline by default. Collection may call configured source
-providers, but dedupe, gating, scoring, verification and selection are local
-and deterministic; an injected scorer or embedder is the only way to introduce
-a model call, and it is awaited when the caller runs the async entry point.
+providers, but dedupe, gating, scoring, sensitivity, verification and selection
+are local and deterministic; an injected scorer or embedder is the only way to
+introduce a model call, and it is awaited when the caller runs the async entry
+point.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, cast
 
+from aivia.core.config.research import ResearchConfig
 from aivia.core.errors import ConfigError
 from aivia.core.models.topic import TopicCandidate
 from aivia.providers.protocols.source import SourceRequest
@@ -51,6 +56,11 @@ from aivia.research.scoring import (
     score_candidates_async,
 )
 from aivia.research.select import SelectionResult, select_topics
+from aivia.research.sensitivity import (
+    DEFAULT_SENSITIVITY_RULES,
+    SensitivityResult,
+    SensitivityStage,
+)
 from aivia.research.verify import (
     DEFAULT_MIN_DOMAINS,
     VerificationResult,
@@ -241,6 +251,7 @@ class TopicInput:
     dedupe: DedupeResult | None = None
     gating: GatingResult | None = None
     scoring: ScoringResult | None = None
+    sensitivity: SensitivityResult | None = None
     verification: VerificationResult | None = None
     selection: SelectionResult | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -284,6 +295,51 @@ class TopicInput:
     def scored(self) -> list[TopicCandidate]:
         """The candidates that cleared the scoring rubric."""
         return [] if self.scoring is None else self.scoring.candidates
+
+    @property
+    def screened(self) -> list[TopicCandidate]:
+        """The candidates allowed past the sensitivity filter."""
+        return [] if self.sensitivity is None else self.sensitivity.candidates
+
+    @property
+    def allowed(self) -> list[TopicCandidate]:
+        """Alias for :attr:`screened`."""
+        return self.screened
+
+    @property
+    def sensitivity_candidates(self) -> list[TopicCandidate]:
+        """Alias for :attr:`screened`."""
+        return self.screened
+
+    @property
+    def blocked(self) -> list[TopicCandidate]:
+        """The candidates the sensitivity filter blocked."""
+        return [] if self.sensitivity is None else self.sensitivity.blocked_candidates
+
+    @property
+    def review(self) -> list[TopicCandidate]:
+        """The candidates the sensitivity filter held for manual review."""
+        return [] if self.sensitivity is None else self.sensitivity.review_candidates
+
+    @property
+    def manual_review(self) -> list[TopicCandidate]:
+        """Alias for :attr:`review`."""
+        return self.review
+
+    @property
+    def blocked_titles(self) -> list[str]:
+        """The titles of the candidates the sensitivity filter blocked."""
+        return [candidate.title for candidate in self.blocked]
+
+    @property
+    def review_titles(self) -> list[str]:
+        """The titles of the candidates held for manual review."""
+        return [candidate.title for candidate in self.review]
+
+    @property
+    def manual_review_titles(self) -> list[str]:
+        """Alias for :attr:`review_titles`."""
+        return self.review_titles
 
     @property
     def verified(self) -> list[TopicCandidate]:
@@ -366,6 +422,9 @@ class TopicInput:
             "dedupe": None if self.dedupe is None else self.dedupe.to_dict(),
             "gating": None if self.gating is None else self.gating.to_dict(),
             "scoring": None if self.scoring is None else self.scoring.to_dict(),
+            "sensitivity": (
+                None if self.sensitivity is None else self.sensitivity.to_dict()
+            ),
             "verification": (
                 None if self.verification is None else self.verification.to_dict()
             ),
@@ -374,11 +433,14 @@ class TopicInput:
                 candidate.model_dump(mode="json") for candidate in self.selected
             ],
             "titles": self.selected_titles,
+            "blocked": self.blocked_titles,
+            "manual_review": self.review_titles,
             "counts": {
                 "candidates": self.input_count,
                 "deduped": len(self.deduped),
                 "gated": len(self.gated),
                 "scored": len(self.scored),
+                "screened": len(self.screened),
                 "verified": len(self.verified),
                 "selected": self.selected_count,
             },
@@ -528,6 +590,28 @@ def _gating_result(
     )
 
 
+def _rule_name(value: Any) -> str:
+    if isinstance(value, Mapping):
+        for key in ("name", "id", "rule", "rule_id", "label"):
+            if key in value:
+                return str(value[key]).strip().casefold()
+        return ""
+    for key in ("name", "id", "rule", "rule_id", "label"):
+        name = getattr(value, key, None)
+        if name is not None:
+            return str(name).strip().casefold()
+    return ""
+
+
+def _without_disabled_rules(rules: Any, disabled: Any) -> Any:
+    names = {str(name).strip().casefold() for name in disabled if str(name).strip()}
+    if not names:
+        return rules
+    if isinstance(rules, (str, bytes, bytearray)) or not isinstance(rules, Sequence):
+        return rules
+    return [rule for rule in rules if _rule_name(rule) not in names]
+
+
 class ResearchStage:
     """Chain collection, dedupe, gating, scoring, verification and selection.
 
@@ -570,6 +654,12 @@ class ResearchStage:
         min_dimension_score: Any = _UNSET,
         min_domains: int = DEFAULT_MIN_DOMAINS,
         require_verified: bool = DEFAULT_REQUIRE_VERIFIED,
+        sensitivity: Any = None,
+        sensitivity_rules: Any = None,
+        sensitivity_blocked_terms: Any = None,
+        sensitivity_review_terms: Any = None,
+        sensitivity_disabled_rules: Any = None,
+        sensitivity_enabled: bool | None = None,
         limit: int | None = None,
         max_per_category: int | None = 1,
         history: Any = None,
@@ -611,6 +701,12 @@ class ResearchStage:
         self._min_dimension_score = min_dimension_score
         self._min_domains = min_domains
         self._require_verified = _validate_bool(require_verified, "require verified")
+        self._sensitivity = sensitivity
+        self._sensitivity_rules = sensitivity_rules
+        self._sensitivity_blocked_terms = sensitivity_blocked_terms
+        self._sensitivity_review_terms = sensitivity_review_terms
+        self._sensitivity_disabled_rules = sensitivity_disabled_rules
+        self._sensitivity_enabled = sensitivity_enabled
         self._limit = limit
         self._max_per_category = max_per_category
         self._history = history if history is not None else DedupeHistory(now=now)
@@ -684,6 +780,11 @@ class ResearchStage:
         return self._require_verified
 
     @property
+    def sensitivity(self) -> Any:
+        """The sensitivity filter configured on this stage, if any."""
+        return self._sensitivity
+
+    @property
     def limit(self) -> int | None:
         """The per-run topic limit."""
         return self._limit
@@ -699,6 +800,76 @@ class ResearchStage:
         if self._request is not None:
             return self._request
         return SourceRequest(query=self._brief)
+
+    def _research_config(self) -> ResearchConfig | None:
+        if self._config is None:
+            return None
+        try:
+            return ResearchConfig.from_config(self._config)
+        except (AttributeError, ConfigError, TypeError, ValueError):
+            return None
+
+    def _sensitivity_for(self) -> SensitivityStage:
+        source = self._sensitivity
+        options: dict[str, Any] = {}
+        base_rules: Any = None
+        if isinstance(source, SensitivityStage):
+            if (
+                self._sensitivity_rules is None
+                and self._sensitivity_blocked_terms is None
+                and self._sensitivity_review_terms is None
+                and self._sensitivity_disabled_rules is None
+                and self._sensitivity_enabled is None
+            ):
+                return source
+            base_rules = source.rules
+            options["enabled"] = source.enabled
+        elif isinstance(source, Mapping):
+            options = dict(source)
+            base_rules = options.pop("rules", options.pop("rule", None))
+        elif source is not None:
+            base_rules = source
+
+        if self._sensitivity_rules is not None:
+            base_rules = self._sensitivity_rules
+        blocked = self._sensitivity_blocked_terms
+        review = self._sensitivity_review_terms
+        disabled = self._sensitivity_disabled_rules
+        enabled = self._sensitivity_enabled
+        if blocked is None:
+            blocked = options.get("blocked_terms")
+        if review is None:
+            review = options.get("review_terms")
+        if disabled is None:
+            disabled = options.get("disabled_rules")
+        if enabled is None:
+            enabled = options.get("enabled")
+
+        if base_rules is None:
+            config = self._research_config()
+            if config is not None and source is None:
+                config_options = config.sensitivity_stage_options(
+                    DEFAULT_SENSITIVITY_RULES
+                )
+                base_rules = config_options["rules"]
+                if enabled is None:
+                    enabled = config_options["enabled"]
+                if blocked is None:
+                    blocked = config_options["blocked_terms"]
+                if review is None:
+                    review = config_options["review_terms"]
+            else:
+                base_rules = DEFAULT_SENSITIVITY_RULES
+
+        if disabled:
+            base_rules = _without_disabled_rules(base_rules, disabled)
+
+        return SensitivityStage(
+            base_rules,
+            blocked_terms=blocked,
+            review_terms=review,
+            enabled=True if enabled is None else bool(enabled),
+        )
 
     def _gate_for(self, derivation: Any = None) -> Any:
         if self._gate is not None:
@@ -796,12 +967,16 @@ class ResearchStage:
         dedupe: DedupeResult,
         gating: GatingResult,
         scoring: ScoringResult,
+        sensitivity: SensitivityResult,
     ) -> TopicInput:
         verification = verify_candidates(
-            scoring.candidates,
+            sensitivity.candidates,
             min_domains=self._min_domains,
         )
-        scores = scoring.scores
+        allowed_ids = {id(candidate) for candidate in sensitivity.candidates}
+        scores = tuple(
+            score for score in scoring.scores if id(score.candidate) in allowed_ids
+        )
         if self._require_verified:
             scores = tuple(score for score in scores if score.candidate.verified)
         selection_source = ScoringResult(
@@ -830,8 +1005,17 @@ class ResearchStage:
                 "deduped": len(dedupe.candidates),
                 "gated": len(gating.candidates),
                 "scored": len(scoring.candidates),
+                "screened": len(sensitivity.candidates),
                 "verified": len(verification.verified),
                 "selected": len(selection.candidates),
+            },
+            "sensitivity": {
+                "input_count": sensitivity.input_count,
+                "allowed": len(sensitivity.candidates),
+                "blocked": len(sensitivity.blocked_candidates),
+                "manual_review": len(sensitivity.review_candidates),
+                "blocked_titles": sensitivity.blocked_titles,
+                "review_titles": sensitivity.review_titles,
             },
             "require_verified": self._require_verified,
             "min_domains": self._min_domains,
@@ -844,6 +1028,7 @@ class ResearchStage:
             dedupe=dedupe,
             gating=gating,
             scoring=scoring,
+            sensitivity=sensitivity,
             verification=verification,
             selection=selection,
             metadata=metadata,
@@ -881,6 +1066,7 @@ class ResearchStage:
             gating.candidates,
             **self._scoring_options(derivation),
         )
+        sensitivity = self._sensitivity_for().run(scoring.candidates)
         return self._assemble(
             request=active_request,
             profile=active_profile,
@@ -889,6 +1075,7 @@ class ResearchStage:
             dedupe=dedupe,
             gating=gating,
             scoring=scoring,
+            sensitivity=sensitivity,
         )
 
     async def run_collected_async(
@@ -923,6 +1110,7 @@ class ResearchStage:
             gating.candidates,
             **self._scoring_options(derivation),
         )
+        sensitivity = self._sensitivity_for().run(scoring.candidates)
         return self._assemble(
             request=active_request,
             profile=active_profile,
@@ -931,6 +1119,7 @@ class ResearchStage:
             dedupe=dedupe,
             gating=gating,
             scoring=scoring,
+            sensitivity=sensitivity,
         )
 
     async def run(
