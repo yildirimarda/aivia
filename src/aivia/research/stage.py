@@ -59,7 +59,12 @@ from aivia.research.scoring import (
     score_candidates,
     score_candidates_async,
 )
-from aivia.research.select import SelectionResult, select_topics
+from aivia.research.select import (
+    DEFAULT_MAX_PER_CATEGORY,
+    DEFAULT_MAX_TOPICS,
+    SelectionResult,
+    select_topics,
+)
 from aivia.research.sensitivity import (
     DEFAULT_SENSITIVITY_RULES,
     SensitivityResult,
@@ -665,8 +670,8 @@ class ResearchStage:
         sensitivity_review_terms: Any = None,
         sensitivity_disabled_rules: Any = None,
         sensitivity_enabled: bool | None = None,
-        limit: int | None = None,
-        max_per_category: int | None = 1,
+        limit: int | None = _UNSET,
+        max_per_category: int | None = _UNSET,
         history: Any = None,
         window: timedelta | int | float | None = _UNSET,
         embedding_threshold: float | None = _UNSET,
@@ -791,13 +796,18 @@ class ResearchStage:
 
     @property
     def limit(self) -> int | None:
-        """The per-run topic limit."""
-        return self._limit
+        """The per-run topic limit, read from config unless explicitly supplied."""
+        options = self._selection_options()
+        return cast(int | None, options.get("limit", DEFAULT_MAX_TOPICS))
 
     @property
     def max_per_category(self) -> int | None:
-        """The per-category diversity limit."""
-        return self._max_per_category
+        """The per-category limit, read from config unless explicitly supplied."""
+        options = self._selection_options()
+        return cast(
+            int | None,
+            options.get("max_per_category", DEFAULT_MAX_PER_CATEGORY),
+        )
 
     @property
     def window(self) -> timedelta:
@@ -840,6 +850,17 @@ class ResearchStage:
             options["window"] = self._window
         if self._embedding_threshold is not _UNSET:
             options["embedding_threshold"] = self._embedding_threshold
+        return options
+
+    def _selection_options(self) -> dict[str, Any]:
+        options: dict[str, Any] = {}
+        config = self._research_config()
+        if config is not None:
+            options.update(config.selection_options())
+        if self._limit is not _UNSET:
+            options["limit"] = self._limit
+        if self._max_per_category is not _UNSET:
+            options["max_per_category"] = self._max_per_category
         return options
 
     def _sensitivity_for(self) -> SensitivityStage:
@@ -1088,8 +1109,7 @@ class ResearchStage:
         )
         selection = select_topics(
             selection_source,
-            limit=self._limit,
-            max_per_category=self._max_per_category,
+            **self._selection_options(),
         )
         metadata: dict[str, Any] = {
             "query": request.query,
@@ -1293,8 +1313,8 @@ class ResearchStage:
             "brief": self._brief,
             "min_domains": self._min_domains,
             "require_verified": self._require_verified,
-            "limit": self._limit,
-            "max_per_category": self._max_per_category,
+            "limit": self.limit,
+            "max_per_category": self.max_per_category,
             "window_seconds": self.window.total_seconds(),
             "embedding_threshold": self.embedding_threshold,
             "record": self._record,
