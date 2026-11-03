@@ -184,6 +184,7 @@ class TopicCandidate(ModelBase):
         default="",
         validation_alias=AliasChoices("reason", "rationale", "explanation"),
     )
+    verified: bool = False
     category: str = ""
     keywords: list[str] = Field(
         default_factory=list,
@@ -239,6 +240,7 @@ class TopicCandidate(ModelBase):
             mode=self.mode,
             keywords=list(self.keywords),
             year=self.year,
+            verified=self.verified,
             candidate=self,
         )
 
@@ -272,6 +274,7 @@ class Topic(ModelBase):
         default_factory=list,
         validation_alias=_SOURCE_URL_ALIASES,
     )
+    verified: bool = False
     category: str = ""
     mode: str = Field(
         default="",
@@ -348,6 +351,7 @@ class Topic(ModelBase):
             mode=candidate.mode,
             keywords=list(candidate.keywords),
             year=candidate.year,
+            verified=candidate.verified,
             candidate=candidate,
         )
 
