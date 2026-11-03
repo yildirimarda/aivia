@@ -173,6 +173,20 @@ def _stage(**overrides: Any) -> ResearchStage:
     return ResearchStage(**options)
 
 
+def _stage_with_config(**overrides: Any) -> ResearchStage:
+    options: dict[str, Any] = {
+        "sources": _sources(),
+        "request": SourceRequest(query="renewable energy"),
+        "derivation": _derivation(),
+        "min_relevance": 0.3,
+        "rubric": _rubric(),
+        "scores": SCORES,
+        "record": False,
+    }
+    options.update(overrides)
+    return ResearchStage(**options)
+
+
 def test_the_stage_chains_every_step_into_a_verified_topic_input() -> None:
     stage = _stage()
 
@@ -589,6 +603,63 @@ def test_explicit_dedupe_options_override_the_research_config() -> None:
     assert result.dedupe is not None
     assert result.dedupe.window == timedelta(days=30)
     assert result.dedupe.embedding_threshold == 0.8
+
+
+def test_the_stage_reads_the_selection_limits_from_research_config() -> None:
+    stage = _stage_with_config(
+        config={"research": {"max_topics": 1, "max_per_category": 2}}
+    )
+
+    result = stage.run_sync()
+
+    assert stage.limit == 1
+    assert stage.max_per_category == 2
+    assert result.selection is not None
+    assert result.selection.limit == 1
+    assert result.selection.max_per_category == 2
+    assert result.selected_titles == ["Solar panel costs"]
+    assert result.metadata["counts"]["selected"] == 1
+    assert stage.to_dict()["limit"] == 1
+    assert stage.to_dict()["max_per_category"] == 2
+
+
+def test_the_stage_reads_the_per_category_limit_from_research_config() -> None:
+    def stage(max_per_category: int) -> ResearchStage:
+        return _stage_with_config(
+            config={"research": {"max_per_category": max_per_category}},
+            require_verified=False,
+        )
+
+    one = stage(1).run_sync()
+    two = stage(2).run_sync()
+
+    assert one.selection is not None
+    assert one.selection.max_per_category == 1
+    assert one.selected_titles == ["Solar panel costs", "Battery storage guide"]
+    assert two.selection is not None
+    assert two.selection.max_per_category == 2
+    assert two.selected_titles == [
+        "Solar panel costs",
+        "Duplicate solar guide",
+        "Battery storage guide",
+    ]
+
+
+def test_explicit_selection_options_override_the_research_config() -> None:
+    stage = _stage(
+        config={"research": {"max_topics": 5, "max_per_category": 2}},
+        limit=1,
+        max_per_category=None,
+    )
+
+    result = stage.run_sync()
+
+    assert stage.limit == 1
+    assert stage.max_per_category is None
+    assert result.selection is not None
+    assert result.selection.limit == 1
+    assert result.selection.max_per_category is None
+    assert result.selected_titles == ["Solar panel costs"]
 
 
 def test_the_async_entry_point_and_sync_wrapper_agree() -> None:

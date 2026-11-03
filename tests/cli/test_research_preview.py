@@ -12,6 +12,7 @@ from aivia.cli.research import preview_topics, topic_store_path
 from aivia.core.config.profile import ContentProfileConfig
 from aivia.core.config.research import ResearchConfig
 from aivia.research.brief import BriefDerivation
+from aivia.research.scoring import ScoringRubric
 
 _FIRST = "https://example.com/story"
 _SECOND = "https://other.test/background"
@@ -318,3 +319,73 @@ profiles:
     assert data["counts"]["duplicates"] == 1
     assert data["dedupe"]["metadata"]["window_seconds"] == 7 * 86400
     assert data["dedupe"]["metadata"]["embedding_threshold"] == 0.9
+
+
+def test_preview_reads_the_research_config_selection_limits() -> None:
+    config = ResearchConfig.from_mapping({"max_topics": 1, "max_per_category": 2})
+
+    result = preview_topics(
+        [
+            {"title": "Bridge history", "category": "history"},
+            {"title": "Bridge engineering", "category": "engineering"},
+            {"title": "Bridge design", "category": "design"},
+        ],
+        config=config,
+        rubric=ScoringRubric(min_score=0.0),
+        cost_usd=0.0,
+    )
+
+    assert result.selection is not None
+    assert result.selection.limit == 1
+    assert result.selection.max_per_category == 2
+    assert result.selection.selected_count == 1
+    assert sum(1 for topic in result.topics if topic.selected) == 1
+    payload = result.to_dict()
+    assert payload["selection"]["limit"] == 1
+    assert payload["selection"]["max_per_category"] == 2
+    assert payload["counts"]["selected"] == 1
+
+
+def test_preview_reads_the_per_category_limit_from_research_config() -> None:
+    config = ResearchConfig.from_mapping({"max_per_category": 1})
+
+    result = preview_topics(
+        [
+            {"title": "Bridge history", "category": "history"},
+            {"title": "Bridge engineering", "category": "history"},
+            {"title": "Bridge design", "category": "history"},
+        ],
+        config=config,
+        rubric=ScoringRubric(min_score=0.0),
+        cost_usd=0.0,
+    )
+
+    assert result.selection is not None
+    assert result.selection.max_per_category == 1
+    assert result.selection.selected_count == 1
+    assert [topic.title for topic in result.topics if topic.selected] == [
+        result.selection.selected_titles[0]
+    ]
+
+
+def test_explicit_selection_options_override_the_preview_config() -> None:
+    config = ResearchConfig.from_mapping({"max_topics": 1, "max_per_category": 1})
+
+    result = preview_topics(
+        [
+            {"title": "Bridge history", "category": "history"},
+            {"title": "Bridge engineering", "category": "engineering"},
+            {"title": "Bridge design", "category": "design"},
+        ],
+        config=config,
+        limit=None,
+        max_per_category=None,
+        rubric=ScoringRubric(min_score=0.0),
+        cost_usd=0.0,
+    )
+
+    assert result.selection is not None
+    assert result.selection.limit is None
+    assert result.selection.max_per_category is None
+    assert result.selection.selected_count == 3
+    assert all(topic.selected for topic in result.topics)

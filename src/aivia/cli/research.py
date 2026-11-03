@@ -57,6 +57,7 @@ from aivia.research.scoring import (
     ScoringRubric,
     score_candidates,
 )
+from aivia.research.select import SelectionResult, select_topics
 from aivia.research.verify import (
     DEFAULT_MIN_DOMAINS,
     VerificationDecision,
@@ -708,6 +709,7 @@ class PreviewTopic:
     matched_terms: tuple[str, ...] = ()
     excluded_terms: tuple[str, ...] = ()
     cost_usd: float = 0.0
+    selected: bool | None = None
 
     @property
     def candidate(self) -> TopicCandidate:
@@ -742,6 +744,8 @@ class PreviewTopic:
                 },
             }
         )
+        if self.selected is not None:
+            payload["selected"] = self.selected
         return payload
 
 
@@ -758,6 +762,7 @@ class PreviewResult:
     cost: dict[str, Any] = field(default_factory=dict)
     source_store: Path | None = None
     dedupe: DedupeResult | None = None
+    selection: SelectionResult | None = None
 
     def __len__(self) -> int:
         return len(self.topics)
@@ -796,9 +801,14 @@ class PreviewResult:
             "cost_usd": self.cost_usd,
             "store": None if self.source_store is None else str(self.source_store),
             "dedupe": None if self.dedupe is None else self.dedupe.to_dict(),
+            "selection": (None if self.selection is None else self.selection.to_dict()),
             "counts": {
                 "topics": len(self.topics),
-                "selected": sum(1 for topic in self.topics if topic.score.selected),
+                "selected": (
+                    sum(1 for topic in self.topics if topic.score.selected)
+                    if self.selection is None
+                    else self.selection.selected_count
+                ),
                 "passed": sum(1 for topic in self.topics if topic.score.passed),
                 "failed": sum(1 for topic in self.topics if not topic.score.passed),
                 "duplicates": (
@@ -829,6 +839,8 @@ def preview_topics(
     derivation: BriefDerivation | None = None,
     rubric: ScoringRubric | Any = None,
     config: Any = None,
+    limit: int | None = _PREVIEW_UNSET,
+    max_per_category: int | None = _PREVIEW_UNSET,
     cost: Mapping[str, Any] | None = None,
     cost_usd: float | None = None,
     window: timedelta | int | float | None = _PREVIEW_UNSET,
@@ -936,6 +948,19 @@ def preview_topics(
         )
         matches.append((matched_parts, matched_terms, excluded))
     scored = score_candidates(values, scores=payloads, rubric=active_rubric)
+    selection_options: dict[str, Any] = {}
+    if settings is not None:
+        selection_options.update(settings.selection_options())
+    if limit is not _PREVIEW_UNSET:
+        selection_options["limit"] = limit
+    if max_per_category is not _PREVIEW_UNSET:
+        selection_options["max_per_category"] = max_per_category
+    selection = select_topics(scored, **selection_options)
+    selected_scores = {
+        id(decision.candidate_score)
+        for decision in selection.decisions
+        if decision.selected
+    }
     if cost_usd is None and cost is not None:
         cost_usd = float(cost.get("usd", 0.0))
     if cost_usd is None:
@@ -956,6 +981,7 @@ def preview_topics(
             matched_terms=matched_terms,
             excluded_terms=excluded,
             cost_usd=share,
+            selected=id(score) in selected_scores,
         )
         for score, (matched_parts, matched_terms, excluded) in zip(
             scored.scores,
@@ -972,6 +998,7 @@ def preview_topics(
         cost_usd=total_cost,
         cost=cost_payload,
         dedupe=deduped,
+        selection=selection,
     )
 
 
