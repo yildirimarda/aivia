@@ -503,7 +503,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the evergreen ideas mode with a maintained backlog, replenishment trigger and dedupe against past topics (tests/research/test_mode_evergreen.py)
 - [x] Implement the trending and manual modes with signal ordering and an ordered queue (tests/research/test_mode_trending_manual.py)
 - [x] Combine modes by weight with seeded determinism and tag each candidate with its mode (tests/research/test_mode_mix.py)
-- [ ] Add the collection stage running sources concurrently with per source timeouts and a failure report (tests/research/test_collect.py)
+- [x] Add the collection stage running sources concurrently with per source timeouts and a failure report (tests/research/test_collect.py)
 - [ ] Dedupe candidates by normalized title and embedding similarity inside the window and across profiles, returning the reason (tests/research/test_dedupe.py)
 - [ ] Gate candidates by relevance against the brief with a test set of at least ten on theme and ten off theme examples (tests/research/test_relevance.py)
 - [ ] Score candidates with a versioned rubric, configured weights, per dimension scores and a minimum score filter (tests/research/test_scoring.py)
