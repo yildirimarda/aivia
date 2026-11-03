@@ -188,6 +188,7 @@ _BUILTIN_MODES: dict[str, type[WritingModeBase]] = {}
 _BUILTIN_IMPLEMENTATIONS: dict[str, type[WritingModeBase]] = {}
 _BUILTIN_IMPLEMENTATION_MODULES: dict[str, str] = {
     "facts": "aivia.writing.facts",
+    "quote": "aivia.writing.quote",
 }
 _KNOWN_CUSTOM_MODES: set[str] = set()
 
