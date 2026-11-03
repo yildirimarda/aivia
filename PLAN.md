@@ -511,7 +511,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Filter sensitive topics into blocked or manual review with the matched rule recorded (tests/research/test_sensitivity.py)
 - [x] Verify each selected topic against at least two independent domains, marking single source topics unverified (tests/research/test_verify.py)
 - [x] Produce a compact fact list with source urls implementing the core fact contract without importing any core code from this module (tests/research/test_factbase.py)
-- [ ] Select topics per run above the minimum score with a diversity constraint on category (tests/research/test_select.py)
+- [x] Select topics per run above the minimum score with a diversity constraint on category (tests/research/test_select.py)
 - [ ] Add a research add command that skips collection but still verifies and rejects duplicates (tests/cli/test_research_add.py)
 - [ ] Add a research preview command printing scores, reasons, matched brief parts and cost with a JSON output option (tests/cli/test_research_preview.py)
 - [ ] Add a topics feedback command storing likes, dislikes and comments and summarizing them into guidance used by later prompts (tests/cli/test_topic_feedback.py)
@@ -523,6 +523,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Prune dedupe history outside the window before matching so long runs do not grow without bound (tests/research/test_dedupe.py)
 - [ ] Expose the dedupe window and embedding threshold through research config so profiles can tune repeats (tests/core/config/test_research.py)
 - [ ] Expose sensitivity rule overrides through research config so profiles can add or disable blocked and review topics (tests/core/config/test_research.py)
+- [ ] Expose the per-run topic limit and per-category diversity through research config so profiles can tune selection (tests/core/config/test_research.py)
 
 ## Milestone 11: Writing
 
