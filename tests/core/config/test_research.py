@@ -13,6 +13,8 @@ from aivia.core import paths
 from aivia.core.config import (
     DEFAULT_DEDUPE_WINDOW,
     DEFAULT_EMBEDDING_THRESHOLD,
+    DEFAULT_MAX_PER_CATEGORY,
+    DEFAULT_MAX_TOPICS,
     AppConfig,
     ConfigModel,
     DedupeWindow,
@@ -411,3 +413,138 @@ def test_a_single_sensitivity_rule_mapping_is_accepted() -> None:
 
     assert len(config.sensitivity.rules) == 1
     assert config.sensitivity.rules[0].action == "blocked"
+
+
+def test_research_selection_defaults_match_the_selection_stage() -> None:
+    config = ResearchConfig.from_mapping({})
+
+    assert config.max_topics == DEFAULT_MAX_TOPICS
+    assert config.max_topics is None
+    assert config.max_per_category == DEFAULT_MAX_PER_CATEGORY
+    assert config.max_per_category == 1
+    assert config.limit is None
+    assert config.topics_per_run is None
+    assert config.per_run is None
+    assert config.topic_limit is None
+    assert config.per_category == 1
+    assert config.diversity == 1
+    assert config.category_limit == 1
+    assert config.max_category == 1
+    assert config.selection_options() == {
+        "limit": None,
+        "max_per_category": 1,
+    }
+    assert config.to_selection_options() == config.selection_options()
+    assert config.selection_stage_options() == config.selection_options()
+
+
+def test_research_selection_aliases_are_accepted_and_canonical_wins() -> None:
+    aliased = ResearchConfig.from_mapping({"limit": 3, "per_category": 2})
+    canonical = ResearchConfig.from_mapping(
+        {
+            "max_topics": 5,
+            "topics_per_run": 4,
+            "max_per_category": 2,
+            "per_category": 3,
+            "diversity": True,
+        }
+    )
+
+    assert aliased.max_topics == 3
+    assert aliased.max_per_category == 2
+    assert aliased.selection_options() == {"limit": 3, "max_per_category": 2}
+    assert canonical.max_topics == 5
+    assert canonical.max_per_category == 2
+    assert canonical.selection_options() == {"limit": 5, "max_per_category": 2}
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (True, 1),
+        (False, None),
+        (None, None),
+        (0, None),
+        (1, 1),
+        (3, 3),
+    ],
+)
+def test_research_diversity_accepts_booleans_and_integers(
+    value: object, expected: int | None
+) -> None:
+    config = ResearchConfig.from_mapping({"diversity": value})
+
+    assert config.max_per_category == expected
+    assert config.diversity == expected
+
+
+def test_a_zero_category_limit_disables_diversity() -> None:
+    config = ResearchConfig.from_mapping({"max_per_category": 0})
+
+    assert config.max_per_category is None
+    assert config.selection_options()["max_per_category"] is None
+
+
+@pytest.mark.parametrize("value", [-1, 1.5, float("inf"), True, "3", []])
+def test_invalid_max_topics_are_rejected(value: object) -> None:
+    with pytest.raises(ConfigError) as caught:
+        ResearchConfig.from_mapping({"max_topics": value})
+
+    assert "max_topics" in str(caught.value)
+
+
+@pytest.mark.parametrize("value", [-1, 1.5, float("inf"), "one", []])
+def test_invalid_category_limits_are_rejected(value: object) -> None:
+    with pytest.raises(ConfigError) as caught:
+        ResearchConfig.from_mapping({"max_per_category": value})
+
+    assert "max_per_category" in str(caught.value)
+
+
+def test_profile_overrides_tune_research_selection(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+schema_version: 1
+research:
+  max_topics: 5
+  max_per_category: 2
+profiles:
+  news:
+    overrides:
+      research:
+        max_topics: 2
+        max_per_category: 0
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_config(config_file=config_file, profile="news")
+    config = ResearchConfig.from_resolved(resolved)
+
+    assert config.max_topics == 2
+    assert config.max_per_category is None
+    assert config.selection_options() == {"limit": 2, "max_per_category": None}
+
+
+def test_research_config_helper_reads_selection_limits() -> None:
+    config = research_config({"research": {"topics_per_run": 4, "per_category": 2}})
+
+    assert config.max_topics == 4
+    assert config.max_per_category == 2
+    assert config.selection_options() == {"limit": 4, "max_per_category": 2}
+
+
+def test_research_selection_accepts_a_nested_mapping() -> None:
+    config = ResearchConfig.from_mapping(
+        {"selection": {"max_topics": 3, "per_category": 2}}
+    )
+
+    assert config.max_topics == 3
+    assert config.max_per_category == 2
+    assert config.selection_options() == {"limit": 3, "max_per_category": 2}
+
+
+def test_a_non_mapping_selection_section_fails_clearly() -> None:
+    with pytest.raises(ConfigError, match="selection must be a mapping"):
+        ResearchConfig.from_mapping({"selection": 3})
