@@ -519,7 +519,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the research stage chaining collection, dedupe, gating, scoring, verification and selection into a topic input (tests/research/test_research_stage.py)
 - [x] Add a research end to end test where one failing source is tolerated (tests/e2e/test_research.py)
 - [x] Extract shared Wikimedia REST request and error helpers so search, on this day and pageviews sources reuse one layer (tests/providers/sources/test_wikimedia_common.py)
-- [ ] Persist topic history so the on this day dedupe window applies across process restarts (tests/research/test_topic_history.py)
+- [x] Persist topic history so the on this day dedupe window applies across process restarts (tests/research/test_topic_history.py)
 - [ ] Prune dedupe history outside the window before matching so long runs do not grow without bound (tests/research/test_dedupe.py)
 - [ ] Expose the dedupe window and embedding threshold through research config so profiles can tune repeats (tests/core/config/test_research.py)
 - [ ] Expose sensitivity rule overrides through research config so profiles can add or disable blocked and review topics (tests/core/config/test_research.py)
