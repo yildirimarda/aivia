@@ -34,6 +34,7 @@ from pydantic import ValidationError
 from aivia.cli.registry import register_command
 from aivia.core import paths
 from aivia.core.config.profile import ContentProfileConfig
+from aivia.core.config.research import ResearchConfig
 from aivia.core.config.resolve import resolve_config
 from aivia.core.errors import ConfigError
 from aivia.core.models.base import canonical_json, utcnow
@@ -41,6 +42,7 @@ from aivia.core.models.topic import TopicCandidate
 from aivia.research.brief import BriefDerivation, brief_hash
 from aivia.research.dedupe import (
     DEFAULT_DEDUPE_WINDOW,
+    DEFAULT_EMBEDDING_THRESHOLD,
     DedupeDecision,
     DedupeHistory,
     dedupe_candidates,
@@ -348,6 +350,7 @@ def add_topics(
     profile: str = "",
     min_domains: int = DEFAULT_MIN_DOMAINS,
     window: timedelta | int | float | None = DEFAULT_DEDUPE_WINDOW,
+    embedding_threshold: float | None = DEFAULT_EMBEDDING_THRESHOLD,
     now: datetime | None = None,
     record: bool = True,
 ) -> AddResult:
@@ -367,6 +370,7 @@ def add_topics(
         values,
         history=store.history(now=current),
         window=window,
+        embedding_threshold=embedding_threshold,
         profile=profile,
         now=current,
         record=False,
@@ -982,9 +986,18 @@ def _configure_add(parser: argparse.ArgumentParser) -> None:
         "--window",
         dest="dedupe_window",
         type=float,
-        default=DEFAULT_DEDUPE_WINDOW.total_seconds() / 86400,
+        default=None,
         metavar="DAYS",
         help="days of topic history to check for duplicates",
+    )
+    parser.add_argument(
+        "--embedding-threshold",
+        "--similarity-threshold",
+        dest="embedding_threshold",
+        type=float,
+        default=None,
+        metavar="SCORE",
+        help="cosine similarity at or above which two topics are duplicates",
     )
     parser.add_argument(
         "--json",
@@ -1236,19 +1249,42 @@ def _print_result(result: AddResult) -> None:
     )
 
 
+def _research_settings(args: argparse.Namespace) -> ResearchConfig:
+    """Resolve the research section, including the selected profile overrides."""
+    resolved = resolve_config(
+        config_file=getattr(args, "config", None),
+        environment=getattr(args, "environment", None),
+        profile=getattr(args, "profile", None),
+        preset=getattr(args, "preset", None),
+        set_values=getattr(args, "set_values", None),
+    )
+    return ResearchConfig.from_resolved(resolved)
+
+
 def run_add(args: argparse.Namespace) -> int:
     """Add, dedupe and verify hand-picked topics without collecting sources."""
     try:
         candidates = _collect_candidates(args)
         if not candidates:
             raise ConfigError("no topics to add")
-        window = timedelta(days=float(getattr(args, "dedupe_window", 365)))
+        settings = _research_settings(args)
+        cli_window = getattr(args, "dedupe_window", None)
+        window = (
+            settings.dedupe_window
+            if cli_window is None
+            else timedelta(days=float(cli_window))
+        )
+        cli_threshold = getattr(args, "embedding_threshold", None)
+        threshold = (
+            settings.embedding_threshold if cli_threshold is None else cli_threshold
+        )
         result = add_topics(
             candidates,
             store=_store_for(args),
             profile=_profile_name(args),
             min_domains=int(getattr(args, "min_domains", DEFAULT_MIN_DOMAINS)),
             window=window,
+            embedding_threshold=threshold,
             record=not bool(getattr(args, "dry_run", False)),
         )
     except (ConfigError, OSError, ValidationError, yaml.YAMLError) as exc:
