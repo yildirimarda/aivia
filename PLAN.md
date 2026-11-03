@@ -507,7 +507,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Dedupe candidates by normalized title and embedding similarity inside the window and across profiles, returning the reason (tests/research/test_dedupe.py)
 - [x] Gate candidates by relevance against the brief with a test set of at least ten on theme and ten off theme examples (tests/research/test_relevance.py)
 - [x] Score candidates with a versioned rubric, configured weights, per dimension scores and a minimum score filter (tests/research/test_scoring.py)
-- [ ] Score each topic on its weakest rubric dimension as well as the weighted mean so one dead dimension blocks selection (tests/research/test_weakest_link.py)
+- [x] Score each topic on its weakest rubric dimension as well as the weighted mean so one dead dimension blocks selection (tests/research/test_weakest_link.py)
 - [ ] Filter sensitive topics into blocked or manual review with the matched rule recorded (tests/research/test_sensitivity.py)
 - [ ] Verify each selected topic against at least two independent domains, marking single source topics unverified (tests/research/test_verify.py)
 - [ ] Produce a compact fact list with source urls implementing the core fact contract without importing any core code from this module (tests/research/test_factbase.py)
