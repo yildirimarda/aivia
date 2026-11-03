@@ -4,6 +4,8 @@ The module is optional: the core never imports it, and it consumes the core
 topic models and the provider source registry instead of duplicating either.
 """
 
+from typing import Any
+
 from aivia.research.brief import (
     BRIEF_OPERATION,
     BRIEF_PROMPT_PURPOSES,
@@ -277,7 +279,6 @@ from aivia.research.modes import (
     relevance_score,
     resolve_mode,
     resolve_topic_mode,
-    score_candidate,
     score_relevance,
     seeded_order,
     signal_order,
@@ -287,6 +288,41 @@ from aivia.research.modes import (
     weighted_interleave,
     weighted_mix,
     weighted_order,
+)
+from aivia.research.modes import (
+    score_candidate as _relevance_score_candidate,
+)
+from aivia.research.scoring import (
+    DEFAULT_MIN_DIMENSION_SCORE,
+    DEFAULT_RUBRIC_VERSION,
+    DEFAULT_SCORING_MIN_SCORE,
+    DEFAULT_SCORING_WEIGHTS,
+    CandidateScore,
+    Dimension,
+    Rubric,
+    RubricDimension,
+    ScoredCandidate,
+    Scorer,
+    ScoreResult,
+    ScoringResult,
+    ScoringRubric,
+    ScoringStage,
+    TopicScore,
+    TopicScorer,
+    build_scoring_rubric,
+    filter_scored,
+    filter_scores,
+    score,
+    score_candidates,
+    score_candidates_async,
+    score_one,
+    score_topic,
+    score_topics,
+    scored_candidates,
+    scoring,
+)
+from aivia.research.scoring import (
+    score_candidate as _topic_score_candidate,
 )
 from aivia.research.sources import (
     DEFAULT_SOURCE_WEIGHT,
@@ -309,6 +345,37 @@ from aivia.research.sources import (
     source_selection,
 )
 
+_SCORING_SCORE_KEYS = frozenset(
+    {
+        "scores",
+        "dimension_scorer",
+        "rubric",
+        "config",
+        "weights",
+        "version",
+        "min_score",
+        "threshold",
+        "min_dimension_score",
+        "dimensions",
+        "criteria",
+        "metadata",
+    }
+)
+
+
+def score_candidate(candidate: Any, *args: Any, **values: Any) -> Any:
+    """Score one candidate with relevance terms or a weighted rubric.
+
+    A call that carries any scoring-only keyword, such as ``rubric``,
+    ``scores`` or ``min_score``, is routed to the scoring stage and returns a
+    :class:`CandidateScore`. A call with relevance terms keeps the original
+    relevance behaviour and returns a float.
+    """
+    if args or any(key in values for key in _SCORING_SCORE_KEYS):
+        return _topic_score_candidate(candidate, *args, **values)
+    return _relevance_score_candidate(candidate, *args, **values)
+
+
 __all__ = [
     "BRIEF_OPERATION",
     "BRIEF_PROMPT_PURPOSES",
@@ -330,6 +397,7 @@ __all__ = [
     "DEFAULT_MAX_CONCURRENCY",
     "DEFAULT_MAX_QUERIES",
     "DEFAULT_MIN_BACKLOG",
+    "DEFAULT_MIN_DIMENSION_SCORE",
     "DEFAULT_MIN_IMPORTANCE",
     "DEFAULT_MIN_RELEVANCE",
     "DEFAULT_MIN_SCORE",
@@ -350,7 +418,10 @@ __all__ = [
     "DEFAULT_REPLENISH_THRESHOLD",
     "DEFAULT_REQUEUE",
     "DEFAULT_REQUIRE_SIGNAL",
+    "DEFAULT_RUBRIC_VERSION",
+    "DEFAULT_SCORING_MIN_SCORE",
     "DEFAULT_SCORING_PROMPT",
+    "DEFAULT_SCORING_WEIGHTS",
     "DEFAULT_SEED",
     "DEFAULT_SIGNAL_ORDER",
     "DEFAULT_SIMILARITY_THRESHOLD",
@@ -372,6 +443,7 @@ __all__ = [
     "BriefDerivationStore",
     "BriefDeriver",
     "BriefOutput",
+    "CandidateScore",
     "Collect",
     "CollectedSource",
     "Collection",
@@ -389,6 +461,7 @@ __all__ = [
     "DedupeStage",
     "Deduper",
     "Deduplicator",
+    "Dimension",
     "Duplicate",
     "DuplicateReason",
     "Evergreen",
@@ -476,7 +549,15 @@ __all__ = [
     "ResolvedSources",
     "RssFeeds",
     "RssMode",
+    "Rubric",
     "RubricCriterion",
+    "RubricDimension",
+    "ScoreResult",
+    "ScoredCandidate",
+    "Scorer",
+    "ScoringResult",
+    "ScoringRubric",
+    "ScoringStage",
     "SeenTopic",
     "SourceConfig",
     "SourceFailure",
@@ -496,6 +577,8 @@ __all__ = [
     "TopicModeResponse",
     "TopicModeResult",
     "TopicQueue",
+    "TopicScore",
+    "TopicScorer",
     "Trending",
     "TrendingMode",
     "TrendingModeProvider",
@@ -525,6 +608,7 @@ __all__ = [
     "build_relevance_request",
     "build_scoring_prompt",
     "build_scoring_request",
+    "build_scoring_rubric",
     "build_style_prompt",
     "build_style_request",
     "build_tone_prompt",
@@ -552,6 +636,8 @@ __all__ = [
     "feed_brief",
     "filter_candidates",
     "filter_relevant",
+    "filter_scored",
+    "filter_scores",
     "gate_candidates",
     "interleave_modes",
     "is_relevant",
@@ -586,8 +672,16 @@ __all__ = [
     "resolve_sources",
     "resolve_topic_mode",
     "save_derivations",
+    "score",
     "score_candidate",
+    "score_candidates",
+    "score_candidates_async",
+    "score_one",
     "score_relevance",
+    "score_topic",
+    "score_topics",
+    "scored_candidates",
+    "scoring",
     "scoring_prompt",
     "seeded_order",
     "select_profile_sources",
