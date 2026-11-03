@@ -51,6 +51,7 @@ __all__ = [
     "load_writing_mode",
     "load_writing_mode_file",
     "mode_registry",
+    "register_builtin_writing_mode",
     "register_mode",
     "register_writing_mode",
     "resolve_mode",
@@ -184,7 +185,50 @@ class BuiltinWritingMode(WritingModeBase):
 
 
 _BUILTIN_MODES: dict[str, type[WritingModeBase]] = {}
+_BUILTIN_IMPLEMENTATIONS: dict[str, type[WritingModeBase]] = {}
+_BUILTIN_IMPLEMENTATION_MODULES: dict[str, str] = {
+    "facts": "aivia.writing.facts",
+}
 _KNOWN_CUSTOM_MODES: set[str] = set()
+
+
+def register_builtin_writing_mode(
+    name: WritingMode | str,
+    mode: type[WritingModeBase],
+) -> type[WritingModeBase]:
+    """Register the full implementation of a built in writing mode.
+
+    The registry resolves a built in name to a placeholder until a mode module
+    registers its real class. Re-registering the same class is idempotent so a
+    module import never fails; a different class for the same name is rejected.
+    """
+    selected = name if isinstance(name, WritingMode) else WritingMode(name)
+    existing = _BUILTIN_IMPLEMENTATIONS.get(selected.value)
+    if existing is not None and existing is not mode:
+        raise ConfigError(
+            f"writing mode already has an implementation: {selected.value}",
+            details={
+                "mode": selected.value,
+                "existing": existing.__name__,
+                "new": mode.__name__,
+            },
+        )
+    _BUILTIN_IMPLEMENTATIONS[selected.value] = mode
+    _BUILTIN_MODES.pop(selected.value, None)
+    return mode
+
+
+def _load_builtin_implementation(
+    mode: WritingMode,
+) -> type[WritingModeBase] | None:
+    cached = _BUILTIN_IMPLEMENTATIONS.get(mode.value)
+    if cached is not None:
+        return cached
+    module_name = _BUILTIN_IMPLEMENTATION_MODULES.get(mode.value)
+    if module_name is None:
+        return None
+    importlib.import_module(module_name)
+    return _BUILTIN_IMPLEMENTATIONS.get(mode.value)
 
 
 def is_known_writing_mode(name: str) -> bool:
@@ -202,8 +246,11 @@ def is_known_writing_mode(name: str) -> bool:
 
 
 def builtin_writing_mode(name: WritingMode | str) -> type[WritingModeBase]:
-    """Return the placeholder class for a built in mode name."""
+    """Return the implementation class for a built in mode name."""
     mode = name if isinstance(name, WritingMode) else WritingMode(name)
+    implementation = _load_builtin_implementation(mode)
+    if implementation is not None:
+        return implementation
     cached = _BUILTIN_MODES.get(mode.value)
     if cached is not None:
         return cached
