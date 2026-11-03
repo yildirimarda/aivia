@@ -12,9 +12,11 @@ and :meth:`ScoringStage.run_async`. This module never calls a provider itself;
 the caller decides whether the dimension scores come from a model, a heuristic
 or a fixture.
 
-The configured minimum score filters the result. ``min_dimension_score`` is
-carried on the rubric for the weakest-link stage but is deliberately not
-enforced here, so the weighted mean remains the only filter in this stage.
+The configured minimum score filters the result. Each score also records its
+weakest rubric dimension and weakest dimension score, and ``min_dimension_score``
+is carried on the rubric and every score. This stage deliberately keeps the
+weighted mean as its only filter; :mod:`aivia.research.weakest_link` enforces
+the weakest-dimension floor so one dead dimension blocks selection.
 """
 
 from __future__ import annotations
@@ -714,6 +716,13 @@ class CandidateScore(BaseModel):
             "threshold",
         ),
     )
+    min_dimension_score: float = Field(
+        default=DEFAULT_MIN_DIMENSION_SCORE,
+        validation_alias=AliasChoices(
+            "min_dimension_score",
+            "min_weakest_dimension",
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -803,6 +812,11 @@ class CandidateScore(BaseModel):
     def _validate_min_score(cls, value: Any) -> Any:
         return _validate_optional_unit(value, "minimum score")
 
+    @field_validator("min_dimension_score", mode="before")
+    @classmethod
+    def _validate_min_dimension_score(cls, value: Any) -> Any:
+        return _validate_unit(value, "minimum dimension score")
+
     @model_validator(mode="after")
     def _fill_overall(self) -> CandidateScore:
         dimensions = dict(self.dimensions)
@@ -839,6 +853,54 @@ class CandidateScore(BaseModel):
     def dimension_scores(self) -> dict[str, float]:
         """A copy of the per-dimension scores."""
         return dict(self.dimensions)
+
+    @property
+    def dimension_order(self) -> tuple[str, ...]:
+        """The scored dimensions in rubric weight order, then any extras."""
+        ordered = [name for name in self.weights if name in self.dimensions]
+        ordered.extend(name for name in self.dimensions if name not in ordered)
+        return tuple(ordered)
+
+    @property
+    def weakest_dimension(self) -> str | None:
+        """The name of the lowest-scoring dimension, or ``None`` when unscored."""
+        order = self.dimension_order
+        if not order:
+            return None
+        return min(order, key=lambda name: (self.dimensions[name], order.index(name)))
+
+    @property
+    def weakest_score(self) -> float | None:
+        """The lowest dimension score, or ``None`` when there are no dimensions."""
+        name = self.weakest_dimension
+        return None if name is None else self.dimensions[name]
+
+    @property
+    def weakest_link(self) -> tuple[str, float] | None:
+        """The weakest dimension name and score as a pair, or ``None``."""
+        name = self.weakest_dimension
+        if name is None:
+            return None
+        return (name, self.dimensions[name])
+
+    @property
+    def meets_min_dimension(self) -> bool:
+        """Whether the weakest dimension clears the configured floor."""
+        value = self.weakest_score
+        return True if value is None else value >= self.min_dimension_score
+
+    passes_weakest_link = meets_min_dimension
+    """Alias for :attr:`meets_min_dimension`."""
+
+    @property
+    def blocked_by_weakest_link(self) -> bool:
+        """Whether the mean passes but a single dead dimension blocks selection."""
+        return self.passed and not self.meets_min_dimension
+
+    @property
+    def selected(self) -> bool:
+        """Whether both the weighted mean and the weakest dimension pass."""
+        return self.passed and self.meets_min_dimension
 
     @property
     def title(self) -> str:
@@ -892,6 +954,11 @@ class CandidateScore(BaseModel):
             "rubric_version": self.rubric_version,
             "weights": dict(self.weights),
             "min_score": self.min_score,
+            "min_dimension_score": self.min_dimension_score,
+            "weakest_dimension": self.weakest_dimension,
+            "weakest_score": self.weakest_score,
+            "meets_min_dimension": self.meets_min_dimension,
+            "selected": self.selected,
         }
 
 
@@ -994,6 +1061,11 @@ class ScoringResult:
     def min_score(self) -> float | None:
         """The minimum score the result was filtered with."""
         return self.rubric.min_score
+
+    @property
+    def min_dimension_score(self) -> float:
+        """The weakest-dimension floor carried by the rubric."""
+        return self.rubric.min_dimension_score
 
     @property
     def weights(self) -> dict[str, float]:
@@ -1099,6 +1171,10 @@ def _extract_score_payload(
                 "min_score",
                 values.get("minimum_score", values.get("threshold")),
             ),
+            "min_dimension_score": values.get(
+                "min_dimension_score",
+                values.get("min_weakest_dimension"),
+            ),
         }
         return payload
     if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -1133,13 +1209,19 @@ def _build_candidate_score(
             return value
         return value.model_copy(update={"candidate": candidate})
     payload = _extract_score_payload(value, rubric)
-    for key in ("rubric_version", "weights", "min_score"):
+    for key in (
+        "rubric_version",
+        "weights",
+        "min_score",
+        "min_dimension_score",
+    ):
         if payload.get(key) is None:
             payload.pop(key, None)
     payload.setdefault("reason", reason)
     payload.setdefault("rubric_version", rubric.version)
     payload.setdefault("weights", dict(rubric.weights))
     payload.setdefault("min_score", rubric.min_score)
+    payload.setdefault("min_dimension_score", rubric.min_dimension_score)
     payload["candidate"] = candidate
     try:
         return CandidateScore.model_validate(payload)
@@ -1573,6 +1655,16 @@ class ScoringStage:
     def threshold(self) -> float | None:
         """Alias for :attr:`min_score`."""
         return self.min_score
+
+    @property
+    def min_dimension_score(self) -> float:
+        """The weakest-dimension floor carried by the rubric."""
+        return self._rubric.min_dimension_score
+
+    @property
+    def min_weakest_dimension(self) -> float:
+        """Alias for :attr:`min_dimension_score`."""
+        return self.min_dimension_score
 
     @property
     def scorer(self) -> Any:
