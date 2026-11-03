@@ -376,6 +376,20 @@ def _coerce_history(
     )
 
 
+def _prune_history(
+    history: Any,
+    *,
+    window: timedelta,
+    now: datetime,
+) -> int:
+    """Forget entries the next match would ignore, keeping the history bounded."""
+    prune = getattr(history, "prune", None)
+    if not callable(prune):
+        return 0
+    removed = prune(window, now=now)
+    return removed if isinstance(removed, int) else 0
+
+
 def _history_entries(
     history: Any,
     *,
@@ -742,6 +756,7 @@ def dedupe_candidates(
     span = _validate_window(window)
     current = _resolve_now(now)
     active_history = _coerce_history(history, now)
+    _prune_history(active_history, window=span, now=current)
     entries = _history_entries(
         active_history,
         window=span,

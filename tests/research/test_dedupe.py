@@ -164,6 +164,45 @@ def test_history_outside_the_window_is_ignored() -> None:
     assert result.duplicates == []
 
 
+def test_history_outside_the_window_is_pruned_before_matching() -> None:
+    history = DedupeHistory(
+        [
+            {"title": "Old topic", "seen_at": NOW - timedelta(days=10)},
+            {"title": "Recent topic", "seen_at": NOW - timedelta(days=2)},
+        ],
+        now=NOW,
+    )
+
+    result = dedupe_candidates(
+        [_candidate("Old topic"), _candidate("Recent topic")],
+        history=history,
+        window=7,
+        now=NOW,
+        record=False,
+    )
+
+    assert history.titles == ("Recent topic",)
+    assert result.titles == ["Old topic"]
+    assert result.duplicates[0].matched_title == "Recent topic"
+
+
+def test_long_runs_keep_the_history_bounded_to_the_window() -> None:
+    clock = [NOW]
+    history = DedupeHistory(now=lambda: clock[0])
+
+    for day in range(20):
+        clock[0] = NOW + timedelta(days=day)
+        dedupe_candidates(
+            [_candidate(f"Topic {day}")],
+            history=history,
+            window=7,
+            now=lambda: clock[0],
+            profile="long-run",
+        )
+
+    assert history.titles == tuple(f"Topic {day}" for day in range(13, 20))
+
+
 def test_a_zero_window_disables_history_but_not_batch_dedupe() -> None:
     history = DedupeHistory(
         [{"title": "Old topic", "seen_at": NOW}],
