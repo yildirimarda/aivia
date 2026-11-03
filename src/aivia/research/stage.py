@@ -45,10 +45,14 @@ from aivia.research.dedupe import (
     DEFAULT_EMBEDDING_THRESHOLD,
     DedupeHistory,
     DedupeResult,
+    _candidate_vector,
+    _embed_candidates_async,
+    _record_seen,
     dedupe_candidates,
     dedupe_candidates_async,
 )
 from aivia.research.modes.niche import DEFAULT_MIN_RELEVANCE, RelevanceGate
+from aivia.research.modes.otd import SeenTopic, _resolve_now
 from aivia.research.scoring import (
     CandidateScore,
     ScoringResult,
@@ -623,9 +627,10 @@ class ResearchStage:
     candidate's own dimension scores or ``score`` field are used.
 
     By default only verified topics are eligible for selection. Pass
-    ``require_verified=False`` to let single-source topics compete. Dedupe
-    records survivors in the stage's history so a second run does not repeat
-    them; pass ``record=False`` or a per-call history to change that.
+    ``require_verified=False`` to let single-source topics compete. The stage
+    records only the selected topics in its history so a second run does not
+    repeat them while topics dropped by gating or scoring stay eligible; pass
+    ``record=False`` or a per-call history to change that.
     """
 
     def __init__(
@@ -929,7 +934,7 @@ class ResearchStage:
             profile=profile,
             across_profiles=self._across_profiles,
             now=self._now if now is None else now,
-            record=self._record if record is None else record,
+            record=False,
             mode=self._mode,
         )
 
@@ -953,9 +958,80 @@ class ResearchStage:
             profile=profile,
             across_profiles=self._across_profiles,
             now=self._now if now is None else now,
-            record=self._record if record is None else record,
+            record=False,
             mode=self._mode,
         )
+
+    def _should_record(self, record: bool | None) -> bool:
+        return self._record if record is None else _validate_bool(record, "record")
+
+    def _selected_records(
+        self,
+        selected: Sequence[TopicCandidate],
+        *,
+        profile: str,
+        now: datetime | Callable[[], datetime] | None,
+        embeddings: Mapping[str, Any] | None = None,
+        embedder: Any = _UNSET,
+    ) -> list[SeenTopic]:
+        current = _resolve_now(self._now if now is None else now)
+        vectors = self._embeddings if embeddings is None else embeddings
+        active_embedder = self._embedder if embedder is _UNSET else embedder
+        return [
+            SeenTopic(
+                title=candidate.title,
+                seen_at=current,
+                mode=self._mode or "research",
+                profile=profile,
+                embedding=_candidate_vector(
+                    candidate,
+                    vectors,
+                    active_embedder,
+                )
+                or (),
+            )
+            for candidate in selected
+        ]
+
+    def _record_selected(
+        self,
+        selected: Sequence[TopicCandidate],
+        *,
+        profile: str,
+        now: datetime | Callable[[], datetime] | None,
+        record: bool | None,
+        history: Any = None,
+    ) -> int:
+        if not self._should_record(record) or not selected:
+            return 0
+        records = self._selected_records(selected, profile=profile, now=now)
+        _record_seen(self._history if history is None else history, records)
+        return len(records)
+
+    async def _record_selected_async(
+        self,
+        selected: Sequence[TopicCandidate],
+        *,
+        profile: str,
+        now: datetime | Callable[[], datetime] | None,
+        record: bool | None,
+        history: Any = None,
+    ) -> int:
+        if not self._should_record(record) or not selected:
+            return 0
+        vectors = dict(self._embeddings or {})
+        produced = await _embed_candidates_async(selected, self._embedder)
+        for title, vector in produced.items():
+            vectors.setdefault(title, vector)
+        records = self._selected_records(
+            selected,
+            profile=profile,
+            now=now,
+            embeddings=vectors,
+            embedder=None,
+        )
+        _record_seen(self._history if history is None else history, records)
+        return len(records)
 
     def _assemble(
         self,
@@ -1067,7 +1143,7 @@ class ResearchStage:
             **self._scoring_options(derivation),
         )
         sensitivity = self._sensitivity_for().run(scoring.candidates)
-        return self._assemble(
+        result = self._assemble(
             request=active_request,
             profile=active_profile,
             brief=active_brief,
@@ -1077,6 +1153,17 @@ class ResearchStage:
             scoring=scoring,
             sensitivity=sensitivity,
         )
+        recorded = self._record_selected(
+            result.selected,
+            profile=active_profile,
+            now=now,
+            record=record,
+            history=history,
+        )
+        if result.dedupe is not None:
+            result.dedupe.metadata["recorded"] = self._should_record(record)
+            result.dedupe.metadata["recorded_count"] = recorded
+        return result
 
     async def run_collected_async(
         self,
@@ -1111,7 +1198,7 @@ class ResearchStage:
             **self._scoring_options(derivation),
         )
         sensitivity = self._sensitivity_for().run(scoring.candidates)
-        return self._assemble(
+        result = self._assemble(
             request=active_request,
             profile=active_profile,
             brief=active_brief,
@@ -1121,6 +1208,17 @@ class ResearchStage:
             scoring=scoring,
             sensitivity=sensitivity,
         )
+        recorded = await self._record_selected_async(
+            result.selected,
+            profile=active_profile,
+            now=now,
+            record=record,
+            history=history,
+        )
+        if result.dedupe is not None:
+            result.dedupe.metadata["recorded"] = self._should_record(record)
+            result.dedupe.metadata["recorded_count"] = recorded
+        return result
 
     async def run(
         self,
