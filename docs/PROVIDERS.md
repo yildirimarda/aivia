@@ -37,6 +37,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `google_image` | `image_gen` | 60/min | - | - | unknown |
 | `google_tts` | `tts` | 60/min | - | - | unknown |
 | `google_veo` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
+| `hacker-news` | `source` | 60/min | - | - | unknown |
+| `hacker_news` | `source` | 60/min | - | - | unknown |
+| `hackernews` | `source` | 60/min | - | - | unknown |
+| `hn` | `source` | 60/min | - | - | unknown |
 | `http` | `page_fetch` | 60/min | - | - | unknown |
 | `kokoro` | `tts` | 60/min | - | - | unknown |
 | `kokoro-tts` | `tts` | 60/min | - | - | unknown |
@@ -89,6 +93,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `piper` | `tts` | 60/min | - | - | unknown |
 | `piper-tts` | `tts` | 60/min | - | - | unknown |
 | `pixabay` | `stock` | 60/min | - | Pixabay Content License ([terms](https://pixabay.com/service/license-summary/)) | yes |
+| `reddit` | `source` | 60/min | - | - | unknown |
+| `reddit-source` | `source` | 60/min | - | - | unknown |
 | `rembg` | `image_edit` | 60/min | - | - | unknown |
 | `remote-background-removal` | `image_edit` | 60/min | - | - | unknown |
 | `remote-image-edit` | `image_edit` | 60/min | - | - | unknown |
@@ -150,6 +156,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `google_image` | - | - |
 | `google_tts` | `tts` | $0.000016 per character |
 | `google_veo` | - | - |
+| `hacker-news` | - | - |
+| `hacker_news` | - | - |
+| `hackernews` | - | - |
+| `hn` | - | - |
 | `http` | `page_fetch` | $0 per call |
 | `kokoro` | `tts` | $0 per character |
 | `kokoro-tts` | `tts` | $0 per character |
@@ -220,6 +230,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `piper` | `tts` | $0 per character |
 | `piper-tts` | `tts` | $0 per character |
 | `pixabay` | - | - |
+| `reddit` | - | - |
+| `reddit-source` | - | - |
 | `rembg` | `image_edit` | $0 per image |
 | `remote-background-removal` | - | - |
 | `remote-image-edit` | - | - |
@@ -281,6 +293,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `google_image` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `seed`, `count`, `model` |
 | `google_tts` | `tts` | `pronunciation`, `text`, `model`, `language`, `format`, `sample_rate`, `speed` |
 | `google_veo` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
+| `hacker-news` | - | - |
+| `hacker_news` | - | - |
+| `hackernews` | - | - |
+| `hn` | - | - |
 | `http` | - | - |
 | `kokoro` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
 | `kokoro-tts` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
@@ -333,6 +349,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `piper` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
 | `piper-tts` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
 | `pixabay` | - | - |
+| `reddit` | - | - |
+| `reddit-source` | - | - |
 | `rembg` | - | - |
 | `remote-background-removal` | - | - |
 | `remote-image-edit` | - | - |
@@ -394,6 +412,10 @@ This matrix is generated from the metadata every registered provider declares. C
 | `google_image` | - | unknown | no | - |
 | `google_tts` | - | unknown | no | - |
 | `google_veo` | - | unknown | no | - |
+| `hacker-news` | - | unknown | no | - |
+| `hacker_news` | - | unknown | no | - |
+| `hackernews` | - | unknown | no | - |
+| `hn` | - | unknown | no | - |
 | `http` | - | unknown | no | - |
 | `kokoro` | - | unknown | no | - |
 | `kokoro-tts` | - | unknown | no | - |
@@ -446,6 +468,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `piper` | - | unknown | no | - |
 | `piper-tts` | - | unknown | no | - |
 | `pixabay` | Pixabay Content License ([terms](https://pixabay.com/service/license-summary/)) | yes | no | Free to use under the Pixabay Content License; a credit line is recorded but not required. |
+| `reddit` | - | unknown | no | - |
+| `reddit-source` | - | unknown | no | - |
 | `rembg` | - | unknown | no | - |
 | `remote-background-removal` | - | unknown | no | - |
 | `remote-image-edit` | - | unknown | no | - |
