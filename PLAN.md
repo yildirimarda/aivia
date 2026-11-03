@@ -524,7 +524,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Expose the dedupe window and embedding threshold through research config so profiles can tune repeats (tests/core/config/test_research.py)
 - [x] Expose sensitivity rule overrides through research config so profiles can add or disable blocked and review topics (tests/core/config/test_research.py)
 - [x] Expose the per-run topic limit and per-category diversity through research config so profiles can tune selection (tests/core/config/test_research.py)
-- [ ] Validate profile create answers against the resolved config so unknown formats are rejected before saving (tests/cli/test_profile_chat.py)
+- [x] Validate profile create answers against the resolved config so unknown formats are rejected before saving (tests/cli/test_profile_chat.py)
 - [ ] Chain the sensitivity filter into the research stage before verification so blocked topics never reach selection (tests/research/test_research_stage.py)
 - [ ] Record only selected topics in dedupe history so gating and scoring rejections can be reconsidered later (tests/research/test_research_stage.py)
 - [ ] Read the research config dedupe window and embedding threshold in the research stage and preview (tests/research/test_research_stage.py)
