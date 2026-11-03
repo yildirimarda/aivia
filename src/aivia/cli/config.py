@@ -10,11 +10,14 @@ from typing import Any
 
 from aivia.cli.registry import register_command
 from aivia.core import config_show, model_ids, paths
-from aivia.core.config import AppConfig, parse_app_config
 from aivia.core.config import docs as config_docs
 from aivia.core.config import migrations as config_migrations
+from aivia.core.config import parse_app_config
 from aivia.core.config import schema as config_schema
+from aivia.core.config.installed import register_installed_sections
+from aivia.core.config.registry import SectionRegistry
 from aivia.core.config.resolve import load_config_file
+from aivia.core.config.sections import register_core_sections
 from aivia.core.errors import ConfigError
 from aivia.llm import PromptLibrary
 
@@ -441,7 +444,8 @@ def run_validate(args: argparse.Namespace) -> int:
         issues.append(schema_issue)
     values.pop("schema_version", None)
 
-    registered = set(AppConfig.model_fields)
+    sections = register_installed_sections(register_core_sections(SectionRegistry()))
+    registered = set(sections.keys())
     unknown = sorted(str(key) for key in values if key not in registered)
     if unknown:
         available = ", ".join(sorted(registered)) or "none"
@@ -452,7 +456,11 @@ def run_validate(args: argparse.Namespace) -> int:
             values.pop(key)
 
     try:
-        parsed = parse_app_config(values, context=resolved.error_context())
+        parsed = parse_app_config(
+            values,
+            sections=sections,
+            context=resolved.error_context(),
+        )
     except ConfigError as exc:
         issues.extend(_error_items(exc))
     else:

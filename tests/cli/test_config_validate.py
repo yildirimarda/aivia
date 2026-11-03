@@ -308,3 +308,72 @@ def test_validate_resolves_the_default_models_file_beside_the_explicit_config(
     assert code == 0
     assert output.strip() == "configuration is valid"
     assert err == ""
+
+
+def test_validate_accepts_the_research_section_from_an_installed_module(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path / "config.yaml",
+        """
+schema_version: 1
+research:
+  dedupe_window_days: 7
+  embedding_threshold: 0.9
+  max_topics: 3
+  max_per_category: 1
+  sensitivity:
+    blocked_terms: [spoilers]
+""".lstrip(),
+    )
+
+    code, output, err = validate(config, capsys)
+
+    assert code == 0
+    assert output.strip() == "configuration is valid"
+    assert err == ""
+
+
+def test_validate_accepts_research_settings_from_a_profile_override(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path / "config.yaml",
+        """
+schema_version: 1
+research:
+  dedupe_window_days: 365
+profiles:
+  news:
+    overrides:
+      research:
+        dedupe_window_days: 7
+""".lstrip(),
+    )
+
+    code, output, err = validate(config, capsys, "--profile", "news")
+
+    assert code == 0
+    assert output.strip() == "configuration is valid"
+    assert err == ""
+
+
+def test_validate_reports_an_invalid_key_inside_the_research_section(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path / "config.yaml",
+        """
+schema_version: 1
+research:
+  dedupe_window_days: 7
+  bogus: true
+""".lstrip(),
+    )
+
+    code, output, err = validate(config, capsys)
+
+    assert code == 1
+    assert output == ""
+    assert "research.bogus" in err
+    assert err.count("error:") == 1

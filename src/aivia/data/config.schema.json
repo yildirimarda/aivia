@@ -2398,6 +2398,60 @@
       "title": "RenderConfig",
       "type": "object"
     },
+    "ResearchConfig": {
+      "additionalProperties": false,
+      "description": "Repeat suppression, selection limits and sensitivity settings.",
+      "properties": {
+        "dedupe_window": {
+          "format": "duration",
+          "title": "Dedupe Window",
+          "type": "string"
+        },
+        "embedding_threshold": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.85,
+          "title": "Embedding Threshold"
+        },
+        "max_per_category": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1,
+          "title": "Max Per Category"
+        },
+        "max_topics": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Topics"
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/SensitivityConfig"
+        }
+      },
+      "title": "ResearchConfig",
+      "type": "object"
+    },
     "RetentionConfig": {
       "additionalProperties": false,
       "description": "How long intermediates, cache, logs and personal data are kept.\n\nFinal outputs are pinned and are never removed unless\n``delete_final_outputs`` is explicitly enabled.",
@@ -2693,6 +2747,90 @@
         }
       },
       "title": "ScoringConfig",
+      "type": "object"
+    },
+    "SensitivityConfig": {
+      "additionalProperties": false,
+      "description": "Sensitivity overrides that add, replace or disable research rules.",
+      "properties": {
+        "blocked_terms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocked Terms",
+          "type": "array"
+        },
+        "disabled_rules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Disabled Rules",
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "review_terms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Review Terms",
+          "type": "array"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/SensitivityRuleConfig"
+          },
+          "title": "Rules",
+          "type": "array"
+        }
+      },
+      "title": "SensitivityConfig",
+      "type": "object"
+    },
+    "SensitivityRuleConfig": {
+      "additionalProperties": false,
+      "description": "One sensitivity rule override loaded from research configuration.",
+      "properties": {
+        "action": {
+          "default": "manual_review",
+          "title": "Action",
+          "type": "string"
+        },
+        "category": {
+          "default": "",
+          "title": "Category",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "reason": {
+          "default": "",
+          "title": "Reason",
+          "type": "string"
+        },
+        "terms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Terms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SensitivityRuleConfig",
       "type": "object"
     },
     "SimilarityLevel": {
@@ -3624,6 +3762,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/RenderConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "research": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResearchConfig"
         },
         {
           "type": "null"
