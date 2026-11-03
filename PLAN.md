@@ -523,6 +523,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Prune dedupe history outside the window before matching so long runs do not grow without bound (tests/research/test_dedupe.py)
 - [ ] Expose the dedupe window and embedding threshold through research config so profiles can tune repeats (tests/core/config/test_research.py)
 - [ ] Expose sensitivity rule overrides through research config so profiles can add or disable blocked and review topics (tests/core/config/test_research.py)
+- [ ] Expose the per-run topic limit and per-category diversity through research config so profiles can tune selection (tests/core/config/test_research.py)
 
 ## Milestone 11: Writing
 
