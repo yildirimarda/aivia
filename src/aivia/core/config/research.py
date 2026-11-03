@@ -26,6 +26,11 @@ as aliases for the nested mapping, so both of these are equivalent::
     research:
       sensitivity_blocked_terms: [lottery]
       sensitivity_disabled_rules: [tragedy]
+
+``max_topics`` caps how many topics a run may select; ``None`` means no cap.
+``max_per_category`` is the diversity limit, so one category cannot crowd out
+the rest; ``0`` or ``None`` disables the category limit. ``diversity`` is
+accepted as a boolean or integer alias for ``max_per_category``.
 """
 
 from __future__ import annotations
@@ -47,6 +52,9 @@ __all__ = [
     "DEFAULT_DEDUPE_WINDOW",
     "DEFAULT_DEDUPE_WINDOW_DAYS",
     "DEFAULT_EMBEDDING_THRESHOLD",
+    "DEFAULT_MAX_PER_CATEGORY",
+    "DEFAULT_MAX_TOPICS",
+    "DEFAULT_TOPICS_PER_RUN",
     "RESEARCH_SECTION_KEY",
     "DedupeWindow",
     "ResearchConfig",
@@ -70,6 +78,15 @@ DEFAULT_DEDUPE_WINDOW_DAYS = 365.0
 DEFAULT_EMBEDDING_THRESHOLD = DEFAULT_TEXT_SIMILARITY_THRESHOLD
 """Cosine similarity at or above this marks two topics as the same story."""
 
+DEFAULT_MAX_TOPICS: int | None = None
+"""No per-run topic limit is applied unless the profile sets one."""
+
+DEFAULT_TOPICS_PER_RUN = DEFAULT_MAX_TOPICS
+"""Alias for :data:`DEFAULT_MAX_TOPICS`."""
+
+DEFAULT_MAX_PER_CATEGORY: int | None = 1
+"""At most one topic from each category is selected by default."""
+
 _FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "dedupe_window": (
         "dedupe_window_days",
@@ -84,6 +101,26 @@ _FIELD_ALIASES: dict[str, tuple[str, ...]] = {
         "dedupe_threshold",
         "cosine_threshold",
         "threshold",
+    ),
+    "max_topics": (
+        "limit",
+        "topics_per_run",
+        "per_run",
+        "topic_limit",
+        "per_run_limit",
+        "count",
+        "size",
+        "max_results",
+        "max_count",
+    ),
+    "max_per_category": (
+        "per_category",
+        "diversity",
+        "category_limit",
+        "max_category",
+        "max_per_category_count",
+        "max_per_category_size",
+        "category_cap",
     ),
 }
 
@@ -187,6 +224,44 @@ def _coerce_threshold(value: Any) -> float | None:
     if not 0.0 <= number <= 1.0:
         raise ConfigError("embedding_threshold must be between zero and one")
     return number
+
+
+def _coerce_max_topics(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError("max_topics must be a non-negative integer or null")
+    if value < 0:
+        raise ConfigError("max_topics must not be negative")
+    return value
+
+
+def _coerce_max_per_category(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return DEFAULT_MAX_PER_CATEGORY if value else None
+    if not isinstance(value, int):
+        raise ConfigError(
+            "max_per_category must be a non-negative integer, boolean or null"
+        )
+    if value < 0:
+        raise ConfigError("max_per_category must not be negative")
+    return None if value == 0 else value
+
+
+def _normalise_selection(data: Any) -> Any:
+    if not isinstance(data, Mapping):
+        return data
+    values = dict(data)
+    nested = values.pop("selection", None)
+    if nested is None:
+        return values
+    if not isinstance(nested, Mapping):
+        raise ConfigError("selection must be a mapping")
+    merged = dict(nested)
+    merged.update(values)
+    return merged
 
 
 def _accept_aliases(data: Any) -> Any:
@@ -578,7 +653,7 @@ def _normalise_sensitivity(data: Any) -> Any:
 
 
 class ResearchConfig(ConfigModel):
-    """Repeat suppression and sensitivity settings owned by the research module."""
+    """Repeat suppression, selection limits and sensitivity settings."""
 
     dedupe_window: timedelta = Field(default=DEFAULT_DEDUPE_WINDOW)
     embedding_threshold: float | None = Field(
@@ -586,6 +661,8 @@ class ResearchConfig(ConfigModel):
         ge=0,
         le=1,
     )
+    max_topics: int | None = Field(default=DEFAULT_MAX_TOPICS)
+    max_per_category: int | None = Field(default=DEFAULT_MAX_PER_CATEGORY)
     sensitivity: SensitivityConfig = Field(default_factory=SensitivityConfig)
 
     _section_key: ClassVar[str] = RESEARCH_SECTION_KEY
@@ -593,7 +670,7 @@ class ResearchConfig(ConfigModel):
     @model_validator(mode="before")
     @classmethod
     def _accept_field_aliases(cls, data: Any) -> Any:
-        return _accept_aliases(_normalise_sensitivity(data))
+        return _accept_aliases(_normalise_sensitivity(_normalise_selection(data)))
 
     @field_validator("dedupe_window", mode="before")
     @classmethod
@@ -604,6 +681,16 @@ class ResearchConfig(ConfigModel):
     @classmethod
     def _validate_threshold(cls, value: Any) -> float | None:
         return _coerce_threshold(value)
+
+    @field_validator("max_topics", mode="before")
+    @classmethod
+    def _validate_max_topics(cls, value: Any) -> int | None:
+        return _coerce_max_topics(value)
+
+    @field_validator("max_per_category", mode="before")
+    @classmethod
+    def _validate_max_per_category(cls, value: Any) -> int | None:
+        return _coerce_max_per_category(value)
 
     @property
     def window(self) -> timedelta:
@@ -634,6 +721,46 @@ class ResearchConfig(ConfigModel):
     def similarity_threshold(self) -> float | None:
         """Alias for :attr:`embedding_threshold`."""
         return self.embedding_threshold
+
+    @property
+    def limit(self) -> int | None:
+        """Alias for :attr:`max_topics`."""
+        return self.max_topics
+
+    @property
+    def topics_per_run(self) -> int | None:
+        """Alias for :attr:`max_topics`."""
+        return self.max_topics
+
+    @property
+    def per_run(self) -> int | None:
+        """Alias for :attr:`max_topics`."""
+        return self.max_topics
+
+    @property
+    def topic_limit(self) -> int | None:
+        """Alias for :attr:`max_topics`."""
+        return self.max_topics
+
+    @property
+    def per_category(self) -> int | None:
+        """Alias for :attr:`max_per_category`."""
+        return self.max_per_category
+
+    @property
+    def diversity(self) -> int | None:
+        """Alias for :attr:`max_per_category`."""
+        return self.max_per_category
+
+    @property
+    def category_limit(self) -> int | None:
+        """Alias for :attr:`max_per_category`."""
+        return self.max_per_category
+
+    @property
+    def max_category(self) -> int | None:
+        """Alias for :attr:`max_per_category`."""
+        return self.max_per_category
 
     @property
     def sensitivity_enabled(self) -> bool:
@@ -670,6 +797,21 @@ class ResearchConfig(ConfigModel):
     def to_dedupe_options(self) -> dict[str, Any]:
         """Alias for :meth:`dedupe_options`."""
         return self.dedupe_options()
+
+    def selection_options(self) -> dict[str, Any]:
+        """Return the keywords accepted by the selection stage."""
+        return {
+            "limit": self.max_topics,
+            "max_per_category": self.max_per_category,
+        }
+
+    def to_selection_options(self) -> dict[str, Any]:
+        """Alias for :meth:`selection_options`."""
+        return self.selection_options()
+
+    def selection_stage_options(self) -> dict[str, Any]:
+        """Alias for :meth:`selection_options`."""
+        return self.selection_options()
 
     def sensitivity_options(self) -> dict[str, Any]:
         """Return the keywords accepted by the sensitivity stage."""

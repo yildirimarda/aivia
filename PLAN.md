@@ -523,12 +523,13 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Prune dedupe history outside the window before matching so long runs do not grow without bound (tests/research/test_dedupe.py)
 - [x] Expose the dedupe window and embedding threshold through research config so profiles can tune repeats (tests/core/config/test_research.py)
 - [x] Expose sensitivity rule overrides through research config so profiles can add or disable blocked and review topics (tests/core/config/test_research.py)
-- [ ] Expose the per-run topic limit and per-category diversity through research config so profiles can tune selection (tests/core/config/test_research.py)
+- [x] Expose the per-run topic limit and per-category diversity through research config so profiles can tune selection (tests/core/config/test_research.py)
 - [ ] Validate profile create answers against the resolved config so unknown formats are rejected before saving (tests/cli/test_profile_chat.py)
 - [ ] Chain the sensitivity filter into the research stage before verification so blocked topics never reach selection (tests/research/test_research_stage.py)
 - [ ] Record only selected topics in dedupe history so gating and scoring rejections can be reconsidered later (tests/research/test_research_stage.py)
 - [ ] Read the research config dedupe window and embedding threshold in the research stage and preview (tests/research/test_research_stage.py)
 - [ ] Register installed module config sections before config validate and schema so research settings are accepted (tests/cli/test_config_validate.py)
+- [ ] Read the research config selection limits in the research stage and preview (tests/research/test_research_stage.py)
 
 ## Milestone 11: Writing
 
