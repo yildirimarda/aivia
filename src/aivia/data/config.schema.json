@@ -444,6 +444,13 @@
           "title": "Overrides",
           "type": "object"
         },
+        "source_options": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ProfileSourceConfig"
+          },
+          "title": "Source Options",
+          "type": "object"
+        },
         "sources": {
           "items": {
             "type": "string"
@@ -1950,6 +1957,37 @@
         }
       },
       "title": "PrivacyConfig",
+      "type": "object"
+    },
+    "ProfileSourceConfig": {
+      "additionalProperties": false,
+      "description": "One topic source with a relative weight and an optional language filter.\n\n``weight`` is relative rather than a share, so an unweighted list gives\nevery source the same weight of ``1.0``. An empty ``languages`` list means\nthe source is not restricted and accepts every profile language.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages",
+          "type": "array"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "weight": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "title": "ProfileSourceConfig",
       "type": "object"
     },
     "ProfilesConfig": {
