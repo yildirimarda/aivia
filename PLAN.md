@@ -497,7 +497,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Derive search queries, subtopics, include and exclude terms and a relevance rubric from the profile brief, cached by brief hash with explicit keywords taking precedence (tests/research/test_brief.py)
 - [x] Regenerate derived settings only when the brief changes and expose them through profile show with a derived flag (tests/cli/test_profile_derived.py)
 - [x] Feed the brief into relevance, scoring, tone and style prompts (tests/research/test_brief_propagation.py)
-- [ ] Implement the on this day mode with an importance filter and no repetition within the dedupe window (tests/research/test_mode_otd.py)
+- [x] Implement the on this day mode with an importance filter and no repetition within the dedupe window (tests/research/test_mode_otd.py)
 - [ ] Implement the niche mode with query expansion, concurrent discovery and a relevance gate (tests/research/test_mode_niche.py)
 - [ ] Implement the keyword and feeds modes, the latter ignoring all other sources (tests/research/test_mode_kw_feeds.py)
 - [ ] Implement the evergreen ideas mode with a maintained backlog, replenishment trigger and dedupe against past topics (tests/research/test_mode_evergreen.py)
@@ -519,6 +519,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add the research stage chaining collection, dedupe, gating, scoring, verification and selection into a topic input (tests/research/test_research_stage.py)
 - [ ] Add a research end to end test where one failing source is tolerated (tests/e2e/test_research.py)
 - [ ] Extract shared Wikimedia REST request and error helpers so search, on this day and pageviews sources reuse one layer (tests/providers/sources/test_wikimedia_common.py)
+- [ ] Persist topic history so the on this day dedupe window applies across process restarts (tests/research/test_topic_history.py)
 
 ## Milestone 11: Writing
 
