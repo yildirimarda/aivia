@@ -603,9 +603,7 @@ class SensitivityResult:
     @property
     def matched_rules(self) -> list[str]:
         """The primary matched rule for every non-allowed decision."""
-        return [
-            decision.rule for decision in self.decisions if not decision.allowed
-        ]
+        return [decision.rule for decision in self.decisions if not decision.allowed]
 
     @property
     def count(self) -> int:
@@ -658,9 +656,7 @@ class SensitivityResult:
                 candidate.model_dump(mode="json") for candidate in self.candidates
             ],
             "blocked": [candidate.title for candidate in self.blocked_candidates],
-            "manual_review": [
-                candidate.title for candidate in self.review_candidates
-            ],
+            "manual_review": [candidate.title for candidate in self.review_candidates],
             "metadata": dict(self.metadata),
         }
 
@@ -810,9 +806,7 @@ class SensitivityStage:
             "input_count": len(decisions),
             "allowed": sum(1 for decision in decisions if decision.allowed),
             "blocked": sum(1 for decision in decisions if decision.blocked),
-            "manual_review": sum(
-                1 for decision in decisions if decision.review
-            ),
+            "manual_review": sum(1 for decision in decisions if decision.review),
         }
         if metadata:
             result_metadata.update(metadata)
