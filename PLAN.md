@@ -516,7 +516,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a research preview command printing scores, reasons, matched brief parts and cost with a JSON output option (tests/cli/test_research_preview.py)
 - [x] Add a topics feedback command storing likes, dislikes and comments and summarizing them into guidance used by later prompts (tests/cli/test_topic_feedback.py)
 - [x] Add a profile create chat command asking at most three questions, writing the profile and showing ten sample topics for approval before saving (tests/cli/test_profile_chat.py)
-- [ ] Add the research stage chaining collection, dedupe, gating, scoring, verification and selection into a topic input (tests/research/test_research_stage.py)
+- [x] Add the research stage chaining collection, dedupe, gating, scoring, verification and selection into a topic input (tests/research/test_research_stage.py)
 - [ ] Add a research end to end test where one failing source is tolerated (tests/e2e/test_research.py)
 - [ ] Extract shared Wikimedia REST request and error helpers so search, on this day and pageviews sources reuse one layer (tests/providers/sources/test_wikimedia_common.py)
 - [ ] Persist topic history so the on this day dedupe window applies across process restarts (tests/research/test_topic_history.py)
