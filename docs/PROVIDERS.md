@@ -114,7 +114,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `whisper-api` | `stt` | 60/min | - | - | unknown |
 | `wikipedia` | `source` | 60/min | - | - | unknown |
 | `wikipedia-otd` | `source` | 60/min | - | - | unknown |
+| `wikipedia-pageviews` | `source` | 60/min | - | - | unknown |
 | `wikipedia_otd` | `source` | 60/min | - | - | unknown |
+| `wikipedia_pageviews` | `source` | 60/min | - | - | unknown |
 
 ## Pricing
 
@@ -243,7 +245,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `whisper-api` | `stt` | $0.006 per minute |
 | `wikipedia` | - | - |
 | `wikipedia-otd` | - | - |
+| `wikipedia-pageviews` | - | - |
 | `wikipedia_otd` | - | - |
+| `wikipedia_pageviews` | - | - |
 
 ## Supported options
 
@@ -354,7 +358,9 @@ This matrix is generated from the metadata every registered provider declares. C
 | `whisper-api` | - | - |
 | `wikipedia` | - | - |
 | `wikipedia-otd` | - | - |
+| `wikipedia-pageviews` | - | - |
 | `wikipedia_otd` | - | - |
+| `wikipedia_pageviews` | - | - |
 
 ## Licensing
 
@@ -465,4 +471,6 @@ This matrix is generated from the metadata every registered provider declares. C
 | `whisper-api` | - | unknown | no | - |
 | `wikipedia` | - | unknown | no | - |
 | `wikipedia-otd` | - | unknown | no | - |
+| `wikipedia-pageviews` | - | unknown | no | - |
 | `wikipedia_otd` | - | unknown | no | - |
+| `wikipedia_pageviews` | - | unknown | no | - |
