@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import math
 import unicodedata
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -69,6 +69,28 @@ def normalize_title(title: str) -> str:
         raise ConfigError("topic title must be a string")
     text = unicodedata.normalize("NFKC", title).replace("_", " ")
     return " ".join(text.split()).casefold()
+
+
+def _coerce_embedding(value: Any) -> tuple[float, ...]:
+    """Return *value* as a tuple of finite floats, or an empty tuple."""
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes, bytearray)):
+        raise ConfigError("embedding must be a sequence of numbers")
+    if not isinstance(value, Sequence):
+        vector = getattr(value, "vector", None)
+        if vector is None:
+            vector = getattr(value, "embedding", None)
+        if vector is None:
+            raise ConfigError("embedding must be a sequence of numbers")
+        value = vector
+    try:
+        components = tuple(float(component) for component in value)
+    except (TypeError, ValueError):
+        raise ConfigError("embedding must be a sequence of numbers") from None
+    if not all(math.isfinite(component) for component in components):
+        raise ConfigError("embedding components must be finite")
+    return components
 
 
 def _ensure_utc(value: datetime) -> datetime:
@@ -173,11 +195,21 @@ class SeenTopic:
     seen_at: datetime
     mode: str = ""
     key: str = ""
+    profile: str = ""
+    embedding: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "seen_at", _ensure_utc(self.seen_at))
         if not self.key:
             object.__setattr__(self, "key", normalize_title(self.title))
+        if not isinstance(self.profile, str):
+            raise ConfigError("history profile must be a string")
+        object.__setattr__(self, "profile", self.profile.strip())
+        object.__setattr__(
+            self,
+            "embedding",
+            _coerce_embedding(self.embedding),
+        )
 
 
 class TopicHistory:
@@ -190,7 +222,8 @@ class TopicHistory:
 
     def __init__(
         self,
-        entries: Iterable[SeenTopic | str | Mapping[str, Any]] | None = None,
+        entries: Iterable[SeenTopic | TopicCandidate | str | Mapping[str, Any]]
+        | None = None,
         *,
         now: datetime | Callable[[], datetime] | None = None,
     ) -> None:
@@ -211,19 +244,36 @@ class TopicHistory:
 
     def add(
         self,
-        entry: SeenTopic | str | Mapping[str, Any],
+        entry: SeenTopic | TopicCandidate | str | Mapping[str, Any],
         *,
         seen_at: datetime | None = None,
         mode: str = "",
+        profile: str = "",
+        embedding: Any = None,
     ) -> SeenTopic:
         """Remember *entry*, keeping the newest timestamp for its title."""
         if isinstance(entry, SeenTopic):
             record = entry
+        elif isinstance(entry, TopicCandidate):
+            raw_embedding = getattr(entry, "embedding", None)
+            if raw_embedding is None:
+                raw_embedding = getattr(entry, "vector", None)
+            record = SeenTopic(
+                title=entry.title,
+                seen_at=seen_at or utcnow(),
+                mode=mode or entry.mode,
+                profile=profile,
+                embedding=_coerce_embedding(
+                    raw_embedding if raw_embedding is not None else embedding
+                ),
+            )
         elif isinstance(entry, str):
             record = SeenTopic(
                 title=entry,
                 seen_at=seen_at or utcnow(),
                 mode=mode,
+                profile=profile,
+                embedding=_coerce_embedding(embedding),
             )
         elif isinstance(entry, Mapping):
             title = entry.get("title") or entry.get("name")
@@ -231,10 +281,14 @@ class TopicHistory:
                 raise ConfigError("history entry needs a title")
             raw_at = entry.get("seen_at") or entry.get("at")
             timestamp = raw_at if isinstance(raw_at, datetime) else seen_at
+            raw_embedding = entry.get("embedding", entry.get("vector", embedding))
+            raw_profile = entry.get("profile", entry.get("profile_name", profile))
             record = SeenTopic(
                 title=title,
                 seen_at=timestamp or utcnow(),
                 mode=str(entry.get("mode", mode)),
+                profile=str(raw_profile or ""),
+                embedding=_coerce_embedding(raw_embedding),
             )
         else:
             raise ConfigError("history entries must be titles, records or mappings")
@@ -250,15 +304,33 @@ class TopicHistory:
         *,
         at: datetime | None = None,
         mode: str = "",
+        profile: str = "",
+        embeddings: Mapping[str, Any] | None = None,
     ) -> list[SeenTopic]:
         """Remember every candidate title as seen at *at*."""
         timestamp = _ensure_utc(at) if at is not None else utcnow()
+        vectors = embeddings or {}
         records: list[SeenTopic] = []
         for candidate in candidates:
             title = (
                 candidate.title if isinstance(candidate, TopicCandidate) else candidate
             )
-            records.append(self.add(title, seen_at=timestamp, mode=mode))
+            vector = None
+            if isinstance(candidate, TopicCandidate):
+                vector = getattr(candidate, "embedding", None)
+                if vector is None:
+                    vector = getattr(candidate, "vector", None)
+            if vector is None:
+                vector = vectors.get(title, vectors.get(normalize_title(title)))
+            records.append(
+                self.add(
+                    title,
+                    seen_at=timestamp,
+                    mode=mode,
+                    profile=profile,
+                    embedding=vector,
+                )
+            )
         return records
 
     def seen_within(
