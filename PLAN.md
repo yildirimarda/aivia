@@ -496,7 +496,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the topic mode protocol and registry including custom modes loaded by dotted path (tests/research/test_modes_base.py)
 - [x] Derive search queries, subtopics, include and exclude terms and a relevance rubric from the profile brief, cached by brief hash with explicit keywords taking precedence (tests/research/test_brief.py)
 - [x] Regenerate derived settings only when the brief changes and expose them through profile show with a derived flag (tests/cli/test_profile_derived.py)
-- [ ] Feed the brief into relevance, scoring, tone and style prompts (tests/research/test_brief_propagation.py)
+- [x] Feed the brief into relevance, scoring, tone and style prompts (tests/research/test_brief_propagation.py)
 - [ ] Implement the on this day mode with an importance filter and no repetition within the dedupe window (tests/research/test_mode_otd.py)
 - [ ] Implement the niche mode with query expansion, concurrent discovery and a relevance gate (tests/research/test_mode_niche.py)
 - [ ] Implement the keyword and feeds modes, the latter ignoring all other sources (tests/research/test_mode_kw_feeds.py)
