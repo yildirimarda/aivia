@@ -52,7 +52,7 @@ from aivia.research.dedupe import (
     dedupe_candidates_async,
 )
 from aivia.research.modes.niche import DEFAULT_MIN_RELEVANCE, RelevanceGate
-from aivia.research.modes.otd import SeenTopic, _resolve_now
+from aivia.research.modes.otd import SeenTopic, _resolve_now, _validate_window
 from aivia.research.scoring import (
     CandidateScore,
     ScoringResult,
@@ -668,8 +668,8 @@ class ResearchStage:
         limit: int | None = None,
         max_per_category: int | None = 1,
         history: Any = None,
-        window: timedelta | int | float | None = DEFAULT_DEDUPE_WINDOW,
-        embedding_threshold: float | None = DEFAULT_EMBEDDING_THRESHOLD,
+        window: timedelta | int | float | None = _UNSET,
+        embedding_threshold: float | None = _UNSET,
         title_threshold: float | None = None,
         embeddings: Mapping[str, Any] | None = None,
         embedder: Any = None,
@@ -799,6 +799,21 @@ class ResearchStage:
         """The per-category diversity limit."""
         return self._max_per_category
 
+    @property
+    def window(self) -> timedelta:
+        """The dedupe window, read from config unless explicitly supplied."""
+        options = self._dedupe_options()
+        return _validate_window(options.get("window", DEFAULT_DEDUPE_WINDOW))
+
+    @property
+    def embedding_threshold(self) -> float | None:
+        """The embedding threshold, read from config unless explicitly supplied."""
+        options = self._dedupe_options()
+        return cast(
+            float | None,
+            options.get("embedding_threshold", DEFAULT_EMBEDDING_THRESHOLD),
+        )
+
     def _request_for(self, value: Any = None) -> SourceRequest:
         if value is not None:
             return _coerce_request(value)
@@ -809,10 +824,23 @@ class ResearchStage:
     def _research_config(self) -> ResearchConfig | None:
         if self._config is None:
             return None
+        if isinstance(self._config, ResearchConfig):
+            return self._config
         try:
             return ResearchConfig.from_config(self._config)
         except (AttributeError, ConfigError, TypeError, ValueError):
             return None
+
+    def _dedupe_options(self) -> dict[str, Any]:
+        options: dict[str, Any] = {}
+        config = self._research_config()
+        if config is not None:
+            options.update(config.dedupe_options())
+        if self._window is not _UNSET:
+            options["window"] = self._window
+        if self._embedding_threshold is not _UNSET:
+            options["embedding_threshold"] = self._embedding_threshold
+        return options
 
     def _sensitivity_for(self) -> SensitivityStage:
         source = self._sensitivity
@@ -926,8 +954,7 @@ class ResearchStage:
         return dedupe_candidates(
             candidates,
             history=self._history if history is None else history,
-            window=self._window,
-            embedding_threshold=self._embedding_threshold,
+            **self._dedupe_options(),
             title_threshold=self._title_threshold,
             embeddings=self._embeddings,
             embedder=self._embedder,
@@ -952,8 +979,7 @@ class ResearchStage:
             embedder=self._embedder,
             embeddings=self._embeddings,
             history=self._history if history is None else history,
-            window=self._window,
-            embedding_threshold=self._embedding_threshold,
+            **self._dedupe_options(),
             title_threshold=self._title_threshold,
             profile=profile,
             across_profiles=self._across_profiles,
@@ -1269,6 +1295,8 @@ class ResearchStage:
             "require_verified": self._require_verified,
             "limit": self._limit,
             "max_per_category": self._max_per_category,
+            "window_seconds": self.window.total_seconds(),
+            "embedding_threshold": self.embedding_threshold,
             "record": self._record,
             "across_profiles": self._across_profiles,
         }

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
 
 from aivia.cli import main
 from aivia.cli.research import preview_topics, topic_store_path
 from aivia.core.config.profile import ContentProfileConfig
+from aivia.core.config.research import ResearchConfig
 from aivia.research.brief import BriefDerivation
 
 _FIRST = "https://example.com/story"
@@ -242,3 +244,77 @@ def test_preview_library_reports_excluded_brief_terms() -> None:
     assert topic.excluded_terms == ("celebrity",)
     assert "excluded brief terms" in topic.score.reason
     assert result.to_dict()["topics"][0]["excluded_terms"] == ["celebrity"]
+
+
+def test_preview_reads_the_research_config_dedupe_settings() -> None:
+    config = ResearchConfig.from_mapping(
+        {"dedupe_window": 7, "embedding_threshold": 0.9}
+    )
+
+    result = preview_topics(
+        [
+            {"title": "Bridge history"},
+            {"title": "Bridge past"},
+        ],
+        config=config,
+        embeddings={
+            "Bridge history": (1.0, 0.0),
+            "Bridge past": (0.99, 0.1),
+        },
+        cost_usd=0.0,
+    )
+
+    assert result.dedupe is not None
+    assert result.dedupe.window == timedelta(days=7)
+    assert result.dedupe.embedding_threshold == 0.9
+    assert result.dedupe.embedding_duplicates == 1
+    assert [topic.title for topic in result.topics] == ["Bridge history"]
+    payload = result.to_dict()
+    assert payload["counts"]["duplicates"] == 1
+    assert payload["dedupe"]["metadata"]["window_seconds"] == 7 * 86400
+    assert payload["dedupe"]["metadata"]["embedding_threshold"] == 0.9
+
+
+def test_preview_reads_the_research_config_dedupe_settings_from_a_file(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        """
+schema_version: 1
+research:
+  dedupe_window: 7
+  embedding_threshold: 0.9
+profiles:
+  briefed:
+    brief: Explain bridge engineering and history.
+    niche: civil engineering
+    keywords: [bridge, engineering]
+    sources: [wikipedia]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    code, data, err = _run(
+        capsys,
+        "research",
+        "preview",
+        "Bridge history",
+        "bridge HISTORY",
+        "--source",
+        _FIRST,
+        "--source",
+        _SECOND,
+        "--profile",
+        "briefed",
+        "--config",
+        str(config),
+        "--json",
+    )
+
+    assert code == 0, err
+    assert data["counts"]["topics"] == 1
+    assert data["counts"]["duplicates"] == 1
+    assert data["dedupe"]["metadata"]["window_seconds"] == 7 * 86400
+    assert data["dedupe"]["metadata"]["embedding_threshold"] == 0.9

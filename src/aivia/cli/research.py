@@ -21,7 +21,7 @@ import os
 import re
 import sys
 import tempfile
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -34,7 +34,8 @@ from pydantic import ValidationError
 from aivia.cli.registry import register_command
 from aivia.core import paths
 from aivia.core.config.profile import ContentProfileConfig
-from aivia.core.config.research import ResearchConfig
+from aivia.core.config.registry import SectionRegistry
+from aivia.core.config.research import ResearchConfig, register_research_section
 from aivia.core.config.resolve import resolve_config
 from aivia.core.errors import ConfigError
 from aivia.core.models.base import canonical_json, utcnow
@@ -45,6 +46,7 @@ from aivia.research.dedupe import (
     DEFAULT_EMBEDDING_THRESHOLD,
     DedupeDecision,
     DedupeHistory,
+    DedupeResult,
     dedupe_candidates,
 )
 from aivia.research.derived import BriefDerivationStore
@@ -82,6 +84,7 @@ DEFAULT_STORE_FILENAME = "topics.json"
 """The file under ``data/research`` that holds manually added topics."""
 
 _STORE_VERSION = 1
+_PREVIEW_UNSET: Any = object()
 
 
 def topic_store_path(
@@ -754,6 +757,7 @@ class PreviewResult:
     cost_usd: float = 0.0
     cost: dict[str, Any] = field(default_factory=dict)
     source_store: Path | None = None
+    dedupe: DedupeResult | None = None
 
     def __len__(self) -> int:
         return len(self.topics)
@@ -791,13 +795,28 @@ class PreviewResult:
             "cost": dict(self.cost),
             "cost_usd": self.cost_usd,
             "store": None if self.source_store is None else str(self.source_store),
+            "dedupe": None if self.dedupe is None else self.dedupe.to_dict(),
             "counts": {
                 "topics": len(self.topics),
                 "selected": sum(1 for topic in self.topics if topic.score.selected),
                 "passed": sum(1 for topic in self.topics if topic.score.passed),
                 "failed": sum(1 for topic in self.topics if not topic.score.passed),
+                "duplicates": (
+                    0 if self.dedupe is None else self.dedupe.duplicate_count
+                ),
             },
         }
+
+
+def _preview_research_config(config: Any) -> ResearchConfig | None:
+    if config is None:
+        return None
+    if isinstance(config, ResearchConfig):
+        return config
+    try:
+        return ResearchConfig.from_config(config)
+    except (AttributeError, ConfigError, TypeError, ValueError):
+        return None
 
 
 def preview_topics(
@@ -812,6 +831,12 @@ def preview_topics(
     config: Any = None,
     cost: Mapping[str, Any] | None = None,
     cost_usd: float | None = None,
+    window: timedelta | int | float | None = _PREVIEW_UNSET,
+    embedding_threshold: float | None = _PREVIEW_UNSET,
+    embeddings: Mapping[str, Any] | None = None,
+    history: Any = None,
+    now: datetime | Callable[[], datetime] | None = None,
+    dedupe: bool = True,
 ) -> PreviewResult:
     """Score *candidates* against the brief without calling a provider.
 
@@ -827,6 +852,29 @@ def preview_topics(
         else TopicCandidate.model_validate(candidate)
         for candidate in candidates
     ]
+    settings = _preview_research_config(config)
+    dedupe_options: dict[str, Any] = {}
+    if settings is not None:
+        dedupe_options.update(settings.dedupe_options())
+    if window is not _PREVIEW_UNSET:
+        dedupe_options["window"] = window
+    if embedding_threshold is not _PREVIEW_UNSET:
+        dedupe_options["embedding_threshold"] = embedding_threshold
+    deduped = (
+        dedupe_candidates(
+            values,
+            history=history,
+            embeddings=embeddings,
+            profile=profile_name,
+            now=now,
+            record=False,
+            **dedupe_options,
+        )
+        if dedupe
+        else None
+    )
+    if deduped is not None:
+        values = deduped.candidates
     active_profile = profile if profile is not None else ContentProfileConfig()
     active_brief = (
         brief.strip()
@@ -923,6 +971,7 @@ def preview_topics(
         rubric=active_rubric,
         cost_usd=total_cost,
         cost=cost_payload,
+        dedupe=deduped,
     )
 
 
@@ -1327,7 +1376,9 @@ def _preview_context(
         preset=getattr(args, "preset", None),
         set_values=getattr(args, "set_values", None),
     )
-    config = resolved.to_app_config()
+    config = resolved.to_app_config(
+        sections=register_research_section(SectionRegistry())
+    )
     profiles = _profiles(config)
     selected = _profile_name(args)
     if selected:
