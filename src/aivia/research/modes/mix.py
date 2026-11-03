@@ -336,8 +336,7 @@ def _parse_pair(
             return name, first, _validate_weight(name, third)
         return _validate_mode_name(third), first, _validate_weight(name, second)
     raise ConfigError(
-        "a topic mode entry must have two or three values "
-        "(name, mode, weight)"
+        "a topic mode entry must have two or three values (name, mode, weight)"
     )
 
 
@@ -407,8 +406,7 @@ def _resolve_weights(
         weights, (str, bytes, bytearray, Mapping)
     ):
         values = [
-            _validate_weight(str(index), weight)
-            for index, weight in enumerate(weights)
+            _validate_weight(str(index), weight) for index, weight in enumerate(weights)
         ]
         if len(values) != len(entries):
             raise ConfigError(
@@ -416,11 +414,7 @@ def _resolve_weights(
                 details={"modes": len(entries), "weights": len(values)},
             )
         return {
-            name: (
-                values[index]
-                if entry_weight is None
-                else entry_weight
-            )
+            name: (values[index] if entry_weight is None else entry_weight)
             for index, (name, _mode, entry_weight) in enumerate(entries)
         }
 
@@ -534,9 +528,7 @@ def _interleave(
     limit: int | None = None,
 ) -> list[TopicCandidate]:
     names = [
-        name
-        for name in streams
-        if streams[name] and weights.get(name, DEFAULT_WEIGHT)
+        name for name in streams if streams[name] and weights.get(name, DEFAULT_WEIGHT)
     ]
     if not names:
         return []
@@ -873,9 +865,7 @@ class ModeMix(TopicModeBase):
             ]
 
         weights = {
-            entry.name: entry.weight
-            for entry in active
-            if entry.name in streams
+            entry.name: entry.weight for entry in active if entry.name in streams
         }
         combined = weighted_interleave(
             streams,
@@ -898,9 +888,7 @@ class ModeMix(TopicModeBase):
                 "limit": self._limit,
                 "dedupe": self._dedupe,
                 "mode_counts": {
-                    name: sum(
-                        1 for candidate in combined if candidate.mode == name
-                    )
+                    name: sum(1 for candidate in combined if candidate.mode == name)
                     for name in streams
                 },
                 "found_count": found,
