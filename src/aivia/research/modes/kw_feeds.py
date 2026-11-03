@@ -1,0 +1,51 @@
+"""Convenience re-exports for the keyword and feeds topic modes."""
+
+from aivia.research.modes.feeds import (
+    FEED_SOURCE_NAMES,
+    Feed,
+    FeedMode,
+    Feeds,
+    FeedsMode,
+    FeedSourceMode,
+    FeedsTopicMode,
+    FeedTopicMode,
+    RSSFeedsMode,
+    RSSMode,
+    RssMode,
+)
+from aivia.research.modes.keywords import (
+    Keyword,
+    KeywordGate,
+    KeywordMode,
+    KeywordModeProvider,
+    Keywords,
+    KeywordsMode,
+    KeywordSourceMode,
+    KeywordsTopicMode,
+    KeywordTopicMode,
+    WikipediaKeywordsMode,
+)
+
+__all__ = [
+    "FEED_SOURCE_NAMES",
+    "Feed",
+    "FeedMode",
+    "FeedSourceMode",
+    "FeedTopicMode",
+    "Feeds",
+    "FeedsMode",
+    "FeedsTopicMode",
+    "Keyword",
+    "KeywordGate",
+    "KeywordMode",
+    "KeywordModeProvider",
+    "KeywordSourceMode",
+    "KeywordTopicMode",
+    "Keywords",
+    "KeywordsMode",
+    "KeywordsTopicMode",
+    "RSSFeedsMode",
+    "RSSMode",
+    "RssMode",
+    "WikipediaKeywordsMode",
+]
