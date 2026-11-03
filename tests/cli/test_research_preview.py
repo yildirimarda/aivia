@@ -506,3 +506,109 @@ profiles:
     assert data["counts"]["topics"] == 1
     assert data["counts"]["duplicates"] == 1
     assert data["dedupe"]["decisions"][1]["matched_title"] == "Bridge engineering"
+
+
+def test_preview_cli_dedupe_window_overrides_the_research_config(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    now = datetime.now(UTC)
+    store = tmp_path / "topics.json"
+    store.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "topics": [
+                    {
+                        "title": "Bridge history",
+                        "source_urls": [_FIRST],
+                        "added_at": (now - timedelta(days=30)).isoformat(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        """
+schema_version: 1
+research:
+  dedupe_window: 7
+profiles:
+  briefed:
+    brief: Explain bridge engineering and history.
+    niche: civil engineering
+    keywords: [bridge, engineering]
+    sources: [wikipedia]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    code, data, err = _run(
+        capsys,
+        "research",
+        "preview",
+        "Bridge history",
+        "--source",
+        _FIRST,
+        "--source",
+        _SECOND,
+        "--profile",
+        "briefed",
+        "--config",
+        str(config),
+        "--store",
+        str(store),
+        "--dedupe-window",
+        "60",
+        "--json",
+    )
+
+    assert code == 0, err
+    assert data["counts"]["topics"] == 0
+    assert data["counts"]["duplicates"] == 1
+    assert data["dedupe"]["metadata"]["window_seconds"] == 60 * 86400
+    assert data["dedupe"]["decisions"][0]["matched_title"] == "Bridge history"
+
+
+def test_preview_cli_embedding_threshold_overrides_the_research_config(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        """
+schema_version: 1
+research:
+  embedding_threshold: 0.9
+profiles:
+  briefed:
+    brief: Explain bridge engineering and history.
+    niche: civil engineering
+    keywords: [bridge, engineering]
+    sources: [wikipedia]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    code, data, err = _run(
+        capsys,
+        "research",
+        "preview",
+        "Bridge history",
+        "--source",
+        _FIRST,
+        "--source",
+        _SECOND,
+        "--profile",
+        "briefed",
+        "--config",
+        str(config),
+        "--embedding-threshold",
+        "0.5",
+        "--json",
+    )
+
+    assert code == 0, err
+    assert data["dedupe"]["metadata"]["embedding_threshold"] == 0.5
