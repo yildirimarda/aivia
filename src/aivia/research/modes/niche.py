@@ -58,6 +58,7 @@ __all__ = [
     "RelevanceGate",
     "WikipediaNicheMode",
     "build_query_expansion",
+    "build_relevance_gate",
     "candidate_relevance",
     "expand_queries",
     "expand_query",
@@ -442,7 +443,14 @@ build_query_expansion = query_expansion
 
 
 class RelevanceGate:
-    """A deterministic term gate with an optional injected scorer."""
+    """A deterministic term gate with an optional injected scorer.
+
+    ``derivation`` may be a :class:`~aivia.research.brief.BriefDerivation`, a
+    :class:`~aivia.research.brief.BriefOutput` or a mapping. Its queries,
+    subtopics, keywords, niche and include/exclude terms configure the gate;
+    explicit arguments still win, and passing an empty value clears the
+    matching derived field.
+    """
 
     def __init__(
         self,
@@ -452,18 +460,35 @@ class RelevanceGate:
         queries: Any = None,
         subtopics: Any = None,
         keywords: Any = None,
-        niche: str = "",
+        niche: str | None = None,
         min_relevance: float | None = DEFAULT_MIN_RELEVANCE,
         relevance: Any = None,
         scorer: Any = None,
+        derivation: Any = None,
+        brief_derivation: Any = None,
     ) -> None:
-        self.include_terms = normalize_terms(include_terms, label="include term")
-        self.exclude_terms = normalize_terms(exclude_terms, label="exclude term")
+        if brief_derivation is not None:
+            if derivation is not None:
+                raise ConfigError("use either derivation or brief_derivation, not both")
+            derivation = brief_derivation
+        base = (
+            QueryExpansion()
+            if derivation is None
+            else QueryExpansion.from_sources(derivation)
+        )
+        self.include_terms = normalize_terms(
+            base.include_terms if include_terms is None else include_terms,
+            label="include term",
+        )
+        self.exclude_terms = normalize_terms(
+            base.exclude_terms if exclude_terms is None else exclude_terms,
+            label="exclude term",
+        )
         expansion = QueryExpansion(
-            queries=normalize_terms(queries, label="query"),
-            subtopics=normalize_terms(subtopics, label="subtopic"),
-            keywords=normalize_terms(keywords, label="keyword"),
-            niche=niche,
+            queries=base.queries if queries is None else queries,
+            subtopics=base.subtopics if subtopics is None else subtopics,
+            keywords=base.keywords if keywords is None else keywords,
+            niche=base.niche if niche is None else niche,
         )
         self.queries = expansion.queries
         self.subtopics = expansion.subtopics
@@ -472,6 +497,14 @@ class RelevanceGate:
         self.min_relevance = _validate_threshold(min_relevance)
         self.threshold = self.min_relevance
         self.scorer = scorer if scorer is not None else relevance
+
+    @classmethod
+    def from_derivation(cls, derivation: Any, **values: Any) -> RelevanceGate:
+        """Build a gate from a brief derivation, with optional overrides."""
+        return cls(derivation=derivation, **values)
+
+    from_brief = from_derivation
+    """Alias for :meth:`from_derivation`."""
 
     @property
     def required_terms(self) -> tuple[str, ...]:
@@ -550,6 +583,20 @@ class RelevanceGate:
         )
 
 
+def build_relevance_gate(
+    derivation: Any = None,
+    *,
+    brief_derivation: Any = None,
+    **values: Any,
+) -> RelevanceGate:
+    """Build a relevance gate from a brief derivation and explicit overrides."""
+    if brief_derivation is not None:
+        if derivation is not None:
+            raise ConfigError("use either derivation or brief_derivation, not both")
+        derivation = brief_derivation
+    return RelevanceGate(derivation=derivation, **values)
+
+
 def candidate_relevance(
     candidate: TopicCandidate,
     include_terms: Any = None,
@@ -558,12 +605,14 @@ def candidate_relevance(
     queries: Any = None,
     subtopics: Any = None,
     keywords: Any = None,
-    niche: str = "",
+    niche: str | None = None,
     min_relevance: float | None = DEFAULT_MIN_RELEVANCE,
     relevance: Any = None,
     scorer: Any = None,
+    derivation: Any = None,
+    brief_derivation: Any = None,
 ) -> float:
-    """Score *candidate* against terms or an injected scorer."""
+    """Score *candidate* against terms, a brief derivation or a scorer."""
     gate = RelevanceGate(
         include_terms=include_terms,
         exclude_terms=exclude_terms,
@@ -574,6 +623,8 @@ def candidate_relevance(
         min_relevance=min_relevance,
         relevance=relevance,
         scorer=scorer,
+        derivation=derivation,
+        brief_derivation=brief_derivation,
     )
     return gate.score(candidate)
 
@@ -591,10 +642,12 @@ def is_relevant(
     queries: Any = None,
     subtopics: Any = None,
     keywords: Any = None,
-    niche: str = "",
+    niche: str | None = None,
     min_relevance: float | None = DEFAULT_MIN_RELEVANCE,
     relevance: Any = None,
     scorer: Any = None,
+    derivation: Any = None,
+    brief_derivation: Any = None,
 ) -> bool:
     """Whether *candidate* clears the local relevance gate."""
     gate = RelevanceGate(
@@ -607,6 +660,8 @@ def is_relevant(
         min_relevance=min_relevance,
         relevance=relevance,
         scorer=scorer,
+        derivation=derivation,
+        brief_derivation=brief_derivation,
     )
     return gate.is_relevant(candidate)
 
