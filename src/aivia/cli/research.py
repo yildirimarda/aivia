@@ -1166,6 +1166,24 @@ def _configure_preview(parser: argparse.ArgumentParser) -> None:
         help="override the rubric minimum score for the preview",
     )
     parser.add_argument(
+        "--dedupe-window",
+        "--window",
+        dest="dedupe_window",
+        type=float,
+        default=None,
+        metavar="DAYS",
+        help="days of topic history to check for duplicates",
+    )
+    parser.add_argument(
+        "--embedding-threshold",
+        "--similarity-threshold",
+        dest="embedding_threshold",
+        type=float,
+        default=None,
+        metavar="SCORE",
+        help="cosine similarity at or above which two topics are duplicates",
+    )
+    parser.add_argument(
         "--json",
         dest="json_output",
         action="store_true",
@@ -1507,6 +1525,13 @@ def run_preview(args: argparse.Namespace) -> int:
             getattr(config, "scoring", None),
             **rubric_options,
         )
+        dedupe_options: dict[str, Any] = {}
+        cli_window = getattr(args, "dedupe_window", None)
+        if cli_window is not None:
+            dedupe_options["window"] = timedelta(days=float(cli_window))
+        cli_threshold = getattr(args, "embedding_threshold", None)
+        if cli_threshold is not None:
+            dedupe_options["embedding_threshold"] = cli_threshold
         result = preview_topics(
             candidates,
             profile=profile,
@@ -1517,6 +1542,7 @@ def run_preview(args: argparse.Namespace) -> int:
             rubric=rubric,
             config=config,
             history=history,
+            **dedupe_options,
         )
         result = replace(result, source_store=source_store)
     except (ConfigError, OSError, ValidationError, yaml.YAMLError) as exc:
