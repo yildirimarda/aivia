@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -389,3 +389,120 @@ def test_explicit_selection_options_override_the_preview_config() -> None:
     assert result.selection.max_per_category is None
     assert result.selection.selected_count == 3
     assert all(topic.selected for topic in result.topics)
+
+
+def test_preview_dedupes_against_topics_added_in_an_earlier_run(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    store = tmp_path / "topics.json"
+    config = _write_config(tmp_path / "config.yaml")
+    add_code = main(
+        [
+            "research",
+            "add",
+            "Bridge history",
+            "--source",
+            _FIRST,
+            "--source",
+            _SECOND,
+            "--store",
+            str(store),
+        ]
+    )
+    assert add_code == 0
+    capsys.readouterr()
+
+    code, data, err = _run(
+        capsys,
+        "research",
+        "preview",
+        "bridge HISTORY",
+        "--source",
+        _FIRST,
+        "--source",
+        _SECOND,
+        "--profile",
+        "briefed",
+        "--config",
+        str(config),
+        "--store",
+        str(store),
+        "--json",
+    )
+
+    assert code == 0, err
+    assert data["counts"]["topics"] == 0
+    assert data["counts"]["duplicates"] == 1
+    assert data["topics"] == []
+    decision = data["dedupe"]["decisions"][0]
+    assert decision["reason"] == "title"
+    assert decision["matched_title"] == "Bridge history"
+
+
+def test_preview_dedupes_against_stored_history_only_inside_the_window(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    now = datetime.now(UTC)
+    store = tmp_path / "topics.json"
+    store.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "topics": [
+                    {
+                        "title": "Bridge history",
+                        "source_urls": [_FIRST],
+                        "added_at": (now - timedelta(days=30)).isoformat(),
+                    },
+                    {
+                        "title": "Bridge engineering",
+                        "source_urls": [_FIRST],
+                        "added_at": (now - timedelta(days=1)).isoformat(),
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        """
+schema_version: 1
+research:
+  dedupe_window: 7
+profiles:
+  briefed:
+    brief: Explain bridge engineering and history.
+    niche: civil engineering
+    keywords: [bridge, engineering]
+    sources: [wikipedia]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    code, data, err = _run(
+        capsys,
+        "research",
+        "preview",
+        "Bridge history",
+        "Bridge engineering",
+        "--source",
+        _FIRST,
+        "--source",
+        _SECOND,
+        "--profile",
+        "briefed",
+        "--config",
+        str(config),
+        "--store",
+        str(store),
+        "--json",
+    )
+
+    assert code == 0, err
+    assert [topic["title"] for topic in data["topics"]] == ["Bridge history"]
+    assert data["counts"]["topics"] == 1
+    assert data["counts"]["duplicates"] == 1
+    assert data["dedupe"]["decisions"][1]["matched_title"] == "Bridge engineering"
