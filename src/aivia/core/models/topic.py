@@ -191,6 +191,7 @@ class TopicCandidate(ModelBase):
     )
     signal: float | None = None
     rank: int | None = Field(default=None, ge=0)
+    year: int | None = None
 
     @field_validator("title", mode="before")
     @classmethod
@@ -237,6 +238,7 @@ class TopicCandidate(ModelBase):
             category=self.category,
             mode=self.mode,
             keywords=list(self.keywords),
+            year=self.year,
             candidate=self,
         )
 
@@ -279,6 +281,7 @@ class Topic(ModelBase):
         default_factory=list,
         validation_alias=AliasChoices("keywords", "tags"),
     )
+    year: int | None = None
     candidate: TopicCandidate | None = None
 
     @field_validator("title", mode="before")
@@ -344,6 +347,7 @@ class Topic(ModelBase):
             category=candidate.category,
             mode=candidate.mode,
             keywords=list(candidate.keywords),
+            year=candidate.year,
             candidate=candidate,
         )
 

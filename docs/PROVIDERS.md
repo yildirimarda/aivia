@@ -113,6 +113,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `whisper` | `stt` | 60/min | - | - | unknown |
 | `whisper-api` | `stt` | 60/min | - | - | unknown |
 | `wikipedia` | `source` | 60/min | - | - | unknown |
+| `wikipedia-otd` | `source` | 60/min | - | - | unknown |
+| `wikipedia_otd` | `source` | 60/min | - | - | unknown |
 
 ## Pricing
 
@@ -240,6 +242,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `whisper` | `stt` | $0.006 per minute |
 | `whisper-api` | `stt` | $0.006 per minute |
 | `wikipedia` | - | - |
+| `wikipedia-otd` | - | - |
+| `wikipedia_otd` | - | - |
 
 ## Supported options
 
@@ -349,6 +353,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `whisper` | - | - |
 | `whisper-api` | - | - |
 | `wikipedia` | - | - |
+| `wikipedia-otd` | - | - |
+| `wikipedia_otd` | - | - |
 
 ## Licensing
 
@@ -458,3 +464,5 @@ This matrix is generated from the metadata every registered provider declares. C
 | `whisper` | - | unknown | no | - |
 | `whisper-api` | - | unknown | no | - |
 | `wikipedia` | - | unknown | no | - |
+| `wikipedia-otd` | - | unknown | no | - |
+| `wikipedia_otd` | - | unknown | no | - |

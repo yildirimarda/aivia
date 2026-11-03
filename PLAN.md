@@ -518,6 +518,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add a profile create chat command asking at most three questions, writing the profile and showing ten sample topics for approval before saving (tests/cli/test_profile_chat.py)
 - [ ] Add the research stage chaining collection, dedupe, gating, scoring, verification and selection into a topic input (tests/research/test_research_stage.py)
 - [ ] Add a research end to end test where one failing source is tolerated (tests/e2e/test_research.py)
+- [ ] Extract shared Wikimedia REST request and error helpers so search, on this day and pageviews sources reuse one layer (tests/providers/sources/test_wikimedia_common.py)
 
 ## Milestone 11: Writing
 
