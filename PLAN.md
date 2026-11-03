@@ -531,7 +531,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Register installed module config sections before config validate and schema so research settings are accepted (tests/cli/test_config_validate.py)
 - [x] Read the research config selection limits in the research stage and preview (tests/research/test_research_stage.py)
 - [x] Dedupe research preview candidates against stored topic history so the configured window applies across runs (tests/cli/test_research_preview.py)
-- [ ] Expose the dedupe window and embedding threshold overrides on research preview like add (tests/cli/test_research_preview.py)
+- [x] Expose the dedupe window and embedding threshold overrides on research preview like add (tests/cli/test_research_preview.py)
 
 ## Milestone 11: Writing
 
