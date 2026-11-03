@@ -537,7 +537,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: mode aware scripts and lyrics from a fact list or user supplied text, with originality and length control -->
 
-- [ ] Define the mode aware script schema with per mode payloads, dialogue per speaker and a stable round trip (tests/writing/test_script_schema.py)
+- [x] Define the mode aware script schema with per mode payloads, dialogue per speaker and a stable round trip (tests/writing/test_script_schema.py)
 - [ ] Add the writing mode registry with a mode base class and support for a custom mode defined in a file (tests/writing/test_mode_registry.py)
 - [ ] Implement the facts mode building hook, beats and outro from a fact list supplied either by user text or by the research module, without importing it (tests/writing/test_mode_facts.py)
 - [ ] Implement the quote mode requiring attribution and forbidding invented attribution to real people (tests/writing/test_mode_quote.py)
