@@ -538,7 +538,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 <!-- goal: mode aware scripts and lyrics from a fact list or user supplied text, with originality and length control -->
 
 - [x] Define the mode aware script schema with per mode payloads, dialogue per speaker and a stable round trip (tests/writing/test_script_schema.py)
-- [ ] Add the writing mode registry with a mode base class and support for a custom mode defined in a file (tests/writing/test_mode_registry.py)
+- [x] Add the writing mode registry with a mode base class and support for a custom mode defined in a file (tests/writing/test_mode_registry.py)
 - [ ] Implement the facts mode building hook, beats and outro from a fact list supplied either by user text or by the research module, without importing it (tests/writing/test_mode_facts.py)
 - [ ] Implement the quote mode requiring attribution and forbidding invented attribution to real people (tests/writing/test_mode_quote.py)
 - [ ] Implement the poem and story modes with configurable length, form and tone and a reading time in range (tests/writing/test_mode_poem_story.py)
@@ -559,6 +559,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Guard the writer against injection by wrapping sources and labels as data, verified with five hostile fixtures (tests/writing/test_injection.py)
 - [ ] Add a write command that runs the stage for an existing run with a language filter and prints cost and tokens (tests/cli/test_write.py)
 - [ ] Load a per language brand glossary from user or packaged files and apply it to scripts, captions and media prompts, reporting violations (tests/writing/test_glossary.py)
+- [ ] Resolve custom writing mode aliases and reject alias collisions with registered names (tests/writing/test_mode_registry.py)
+- [ ] Load every custom writing mode from a configured directory and reject duplicate names and aliases (tests/writing/test_mode_registry.py)
 
 ## Milestone 12: Voice, subtitles and timeline
 
