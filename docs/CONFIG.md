@@ -41,6 +41,7 @@ This reference is generated from the registered configuration models, their JSON
 | `reconcile` | [ReconcileConfig](#reconcile) or null | Thresholds that turn an estimate/actual difference into a drift flag. |
 | `reference` | [ReferenceConfig](#reference) or null | Similarity level, similarity gates, regeneration cap and downloads. |
 | `render` | [RenderConfig](#render) or null | Deterministic renderer settings that never require an AI call. |
+| `research` | [ResearchConfig](#research) or null | Repeat suppression, selection limits and sensitivity settings. |
 | `retention` | [RetentionConfig](#retention) or null | How long intermediates, cache, logs and personal data are kept. Final outputs are pinned and are never removed unless ``delete_final_outputs`` is explicitly enabled. |
 | `review` | [ReviewConfig](#review) or null | Approval policy for the optional human review stage. ``approval_mode`` is ``always`` (a reviewer must approve every run), ``ask`` (the default: approve unless a profile says otherwise) or ``never`` (skip the review stage). When a review is not answered before ``timeout_seconds``, ``on_timeout`` decides whether it is rejected, approved or only escalated with a notification. |
 | `safety` | [SafetyConfig](#safety) or null | Prompt and media screening before a paid or published call. ``blocked_terms`` holds literal words and phrases that must never reach a paid provider. ``block_categories`` names broader policy categories; the screener treats those names as literal terms too so a category such as ``violence`` is blocked even when no narrower term is configured. |
@@ -421,6 +422,18 @@ Deterministic renderer settings that never require an AI call.
 | `fonts_dir` | string | `"package"` |  |  |
 | `min_contrast` | number | `4.5` | >= 1; <= 21 |  |
 | `require_bundled_fonts` | boolean | `true` |  |  |
+
+## `research`
+
+Repeat suppression, selection limits and sensitivity settings.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `dedupe_window` | string |  |  |  |
+| `embedding_threshold` | number or null | `0.85` | >= 0; <= 1 |  |
+| `max_per_category` | integer or null | `1` |  |  |
+| `max_topics` | integer or null | `null` |  |  |
+| `sensitivity` | [SensitivityConfig](#sensitivityconfig) |  |  | Sensitivity overrides that add, replace or disable research rules. |
 
 ## `retention`
 
@@ -909,6 +922,31 @@ One cron entry: when to run and which content profile to use.
 | `profile` | string | `""` |  |  |
 | `profiles` | array of string |  |  |  |
 | `timezone` | string | `""` |  |  |
+
+### SensitivityConfig
+
+Sensitivity overrides that add, replace or disable research rules.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `blocked_terms` | array of string |  |  |  |
+| `disabled_rules` | array of string |  |  |  |
+| `enabled` | boolean | `true` |  |  |
+| `review_terms` | array of string |  |  |  |
+| `rules` | array of [SensitivityRuleConfig](#sensitivityruleconfig) |  |  |  |
+
+### SensitivityRuleConfig
+
+One sensitivity rule override loaded from research configuration.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `action` | string | `"manual_review"` |  |  |
+| `category` | string | `""` |  |  |
+| `enabled` | boolean | `true` |  |  |
+| `name` | string |  | length >= 1 |  |
+| `reason` | string | `""` |  |  |
+| `terms` | array of string |  |  |  |
 
 ### SimilarityLevel
 

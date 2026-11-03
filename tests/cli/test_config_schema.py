@@ -10,6 +10,7 @@ import pytest
 
 from aivia.cli import main
 from aivia.core.config import CORE_SECTION_KEYS, ConfigModel, SectionRegistry
+from aivia.core.config.installed import installed_module_names
 from aivia.core.config.schema import (
     SCHEMA_DIALECT,
     build_config_schema,
@@ -40,7 +41,9 @@ def test_schema_prints_every_registered_section_as_json(
     assert schema["$schema"] == SCHEMA_DIALECT
     assert schema["type"] == "object"
     assert schema["additionalProperties"] is False
-    assert set(properties) == set(CORE_SECTION_KEYS) | {"schema_version"}
+    assert set(properties) == (
+        set(CORE_SECTION_KEYS) | set(installed_module_names()) | {"schema_version"}
+    )
     assert properties["schema_version"]["type"] == "integer"
     for key in CORE_SECTION_KEYS:
         assert key in properties
@@ -88,6 +91,23 @@ def test_schema_includes_a_module_registered_section() -> None:
 
     assert "custom" in schema["properties"]
     assert "CustomConfig" in schema["$defs"]
+
+
+def test_schema_includes_the_sections_of_installed_modules(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, output, err = run_schema(capsys)
+
+    assert code == 0
+    assert err == ""
+    schema = cast(dict[str, Any], json.loads(output))
+    properties = cast(dict[str, Any], schema["properties"])
+    definitions = cast(dict[str, Any], schema["$defs"])
+
+    for name in installed_module_names():
+        assert name in properties
+    assert "research" in installed_module_names()
+    assert "ResearchConfig" in definitions
 
 
 def test_the_committed_schema_is_current() -> None:

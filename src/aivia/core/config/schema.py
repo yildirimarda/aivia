@@ -9,15 +9,18 @@ artifact can be compared byte for byte and a stale copy fails CI.
 from __future__ import annotations
 
 import json
+import warnings
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
 from pydantic import Field, create_model
+from pydantic.json_schema import PydanticJsonSchemaWarning
 
 from aivia.core.config.base import ConfigModel
+from aivia.core.config.installed import register_installed_sections
 from aivia.core.config.migrations import CURRENT_SCHEMA_VERSION
-from aivia.core.config.registry import SectionRegistry, registry
+from aivia.core.config.registry import SectionRegistry
 from aivia.core.config.sections import register_core_sections
 from aivia.core.paths import package_resource
 
@@ -40,11 +43,16 @@ def build_config_schema(
 ) -> dict[str, Any]:
     """Return the JSON Schema for every section registered in *sections*.
 
-    A custom registry is filled with the core sections first, mirroring
+    Without an explicit registry, a fresh one holds the core sections plus
+    those of every installed optional module. A custom registry is filled with
+    the core sections first, mirroring
     :func:`aivia.core.config.app.build_app_config`. ``schema_version`` is
     included because it is a valid root key even though it is not a section.
     """
-    target = registry if sections is None else sections
+    if sections is None:
+        target = register_installed_sections(SectionRegistry())
+    else:
+        target = sections
     register_core_sections(target)
     fields: dict[str, Any] = {
         "schema_version": (int, Field(default=CURRENT_SCHEMA_VERSION, ge=1)),
@@ -54,7 +62,9 @@ def build_config_schema(
         type[ConfigModel],
         create_model("ConfigSchema", __base__=ConfigModel, **fields),
     )
-    schema = model.model_json_schema()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PydanticJsonSchemaWarning)
+        schema = model.model_json_schema()
     schema["$schema"] = SCHEMA_DIALECT
     schema["title"] = SCHEMA_TITLE
     return schema
