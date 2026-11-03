@@ -494,7 +494,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add generic RSS and optional Google Trends sources that degrade to empty results instead of failing (tests/providers/sources/test_rss_trends.py)
 - [x] Resolve per profile sources with weights and language filters, failing clearly on unknown sources (tests/research/test_source_selection.py)
 - [x] Add the topic mode protocol and registry including custom modes loaded by dotted path (tests/research/test_modes_base.py)
-- [ ] Derive search queries, subtopics, include and exclude terms and a relevance rubric from the profile brief, cached by brief hash with explicit keywords taking precedence (tests/research/test_brief.py)
+- [x] Derive search queries, subtopics, include and exclude terms and a relevance rubric from the profile brief, cached by brief hash with explicit keywords taking precedence (tests/research/test_brief.py)
 - [ ] Regenerate derived settings only when the brief changes and expose them through profile show with a derived flag (tests/cli/test_profile_derived.py)
 - [ ] Feed the brief into relevance, scoring, tone and style prompts (tests/research/test_brief_propagation.py)
 - [ ] Implement the on this day mode with an importance filter and no repetition within the dedupe window (tests/research/test_mode_otd.py)

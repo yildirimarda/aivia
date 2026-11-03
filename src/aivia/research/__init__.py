@@ -4,6 +4,20 @@ The module is optional: the core never imports it, and it consumes the core
 topic models and the provider source registry instead of duplicating either.
 """
 
+from aivia.research.brief import (
+    BRIEF_OPERATION,
+    DEFAULT_BRIEF_PROMPT,
+    BriefDerivation,
+    BriefDerivationCache,
+    BriefDeriver,
+    BriefOutput,
+    RelevanceRubric,
+    RubricCriterion,
+    brief_hash,
+    build_brief_request,
+    derive_brief,
+    derive_brief_sync,
+)
 from aivia.research.modes import (
     BaseMode,
     BaseTopicMode,
@@ -48,16 +62,24 @@ from aivia.research.sources import (
 )
 
 __all__ = [
+    "BRIEF_OPERATION",
+    "DEFAULT_BRIEF_PROMPT",
     "DEFAULT_SOURCE_WEIGHT",
     "DEFAULT_WEIGHT",
     "BaseMode",
     "BaseTopicMode",
+    "BriefDerivation",
+    "BriefDerivationCache",
+    "BriefDeriver",
+    "BriefOutput",
     "Mode",
     "ModeBase",
     "ModeRegistry",
     "ProfileSource",
+    "RelevanceRubric",
     "ResolvedSource",
     "ResolvedSources",
+    "RubricCriterion",
     "SourceConfig",
     "SourceResolution",
     "SourceSelection",
@@ -72,6 +94,10 @@ __all__ = [
     "TopicModeRequest",
     "TopicModeResponse",
     "TopicModeResult",
+    "brief_hash",
+    "build_brief_request",
+    "derive_brief",
+    "derive_brief_sync",
     "mode_registry",
     "parse_source_specs",
     "parse_sources",
