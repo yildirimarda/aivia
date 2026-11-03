@@ -575,3 +575,34 @@ OnThisDay = OnThisDayMode
 """Alias for :class:`OnThisDayMode`."""
 
 register_mode("on_this_day", OnThisDayMode)
+
+_PERSISTENT_HISTORY_NAMES = frozenset(
+    {
+        "History",
+        "HistoryStore",
+        "PersistentHistory",
+        "PersistentHistoryStore",
+        "PersistentTopicHistory",
+        "PersistentTopicHistoryStore",
+        "StoredTopicHistory",
+        "TopicHistoryFile",
+        "TopicHistoryPersistence",
+        "TopicHistoryRepository",
+        "TopicHistoryStore",
+        "history_store_path",
+        "load_history",
+        "load_topic_history",
+        "save_history",
+        "save_topic_history",
+        "topic_history_path",
+        "topic_history_store_path",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    if name in _PERSISTENT_HISTORY_NAMES:
+        from aivia.research import topic_history
+
+        return getattr(topic_history, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
