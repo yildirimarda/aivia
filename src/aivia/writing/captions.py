@@ -40,6 +40,7 @@ from aivia.llm.languages import (
     LanguageResolver,
     normalize_language_code,
 )
+from aivia.writing.glossary import Glossary, load_glossary
 from aivia.writing.multilingual import find_forbidden_phrases
 from aivia.writing.schema import Script
 
@@ -546,6 +547,7 @@ class CaptionSet(BaseModel):
     )
     truncated: bool = False
     warnings: list[str] = Field(default_factory=list)
+    glossary_violations: list[dict[str, str]] = Field(default_factory=list)
     limits: dict[str, int | None] = Field(default_factory=dict)
 
     @field_validator(
@@ -599,6 +601,11 @@ class CaptionSet(BaseModel):
         return self.disclosure
 
     @property
+    def violations(self) -> list[dict[str, str]]:
+        """Alias for :attr:`glossary_violations`."""
+        return self.glossary_violations
+
+    @property
     def within_limits(self) -> bool:
         """Whether every generated field stayed inside its platform limit."""
         checks = (
@@ -644,6 +651,7 @@ class CaptionGenerator:
         tags: Sequence[str] | None = None,
         disclosure: str | None = None,
         include_disclosure: bool = True,
+        glossary: Any = None,
         config_dir: Any = None,
     ) -> None:
         self.platform = _resolve_platform(
@@ -658,6 +666,8 @@ class CaptionGenerator:
         self.tags = None if tags is None else list(tags)
         self.disclosure = disclosure
         self.include_disclosure = include_disclosure
+        self.glossary = glossary
+        self.config_dir = config_dir
 
     @property
     def caption_limits(self) -> CaptionLimits:
@@ -710,9 +720,45 @@ class CaptionGenerator:
         if description_limit is None:
             description_limit = limits.max_length
 
+        active = (
+            self.glossary
+            if isinstance(self.glossary, Glossary)
+            else load_glossary(
+                self.glossary,
+                language=language,
+                config_dir=self.config_dir,
+            )
+        )
+        if self.glossary is None:
+            active = Glossary()
+        glossary_violations = list(
+            active.violations(
+                _join(
+                    [
+                        _clean(getattr(script, "title", "")),
+                        _clean(getattr(script, "hook", "")),
+                        *(_clean(beat.text) for beat in getattr(script, "beats", ())),
+                    ]
+                ),
+                language=language,
+            )
+        )
+
         warnings: list[str] = []
+        if glossary_violations:
+            warnings.append(
+                "glossary violations: "
+                + ", ".join(
+                    f"{item.found} -> {item.expected}" for item in glossary_violations
+                )
+            )
         raw_title, removed = _without_forbidden(
-            _clean(getattr(script, "title", "")),
+            _clean(
+                active.apply(
+                    _clean(getattr(script, "title", "")),
+                    language=language,
+                )
+            ),
             forbidden,
         )
         if removed:
@@ -721,8 +767,15 @@ class CaptionGenerator:
         if title != raw_title:
             warnings.append("title truncated")
 
-        caption_body = _caption_text(script, title)
-        description_body = _description_text(script, title, caption_body)
+        caption_body = str(
+            active.apply(_caption_text(script, title), language=language)
+        )
+        description_body = str(
+            active.apply(
+                _description_text(script, title, caption_body),
+                language=language,
+            )
+        )
         caption_body, removed = _without_forbidden(caption_body, forbidden)
         if removed:
             warnings.append("forbidden phrases removed from caption")
@@ -747,6 +800,7 @@ class CaptionGenerator:
             limit=limits.max_hashtags,
             forbidden=forbidden,
         )
+        tags = [str(active.apply(tag, language=language)) for tag in tags]
         hashtags = [f"#{tag}" for tag in tags]
 
         return CaptionSet(
@@ -763,6 +817,7 @@ class CaptionGenerator:
             disclosure_required=self.platform.disclosure.required,
             truncated=bool(warnings and any("truncated" in item for item in warnings)),
             warnings=warnings,
+            glossary_violations=[item.to_dict() for item in glossary_violations],
             limits={
                 "max_length": limits.max_length,
                 "max_title_length": limits.max_title_length,

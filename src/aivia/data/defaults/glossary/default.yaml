@@ -1,0 +1,5 @@
+schema_version: 1
+name: default
+description: The packaged glossary is empty so no term is rewritten by default.
+language: ""
+terms: []
