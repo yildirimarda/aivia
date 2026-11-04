@@ -14,6 +14,8 @@ from aivia.writing.length import *  # noqa: F403
 from aivia.writing.length import __all__ as _length_all
 from aivia.writing.lyrics import *  # noqa: F403
 from aivia.writing.lyrics import __all__ as _lyrics_all
+from aivia.writing.media_prompts import *  # noqa: F403
+from aivia.writing.media_prompts import __all__ as _media_prompts_all
 from aivia.writing.modes import *  # noqa: F403
 from aivia.writing.modes import __all__ as _modes_all
 from aivia.writing.multilingual import *  # noqa: F403
@@ -40,6 +42,7 @@ __all__ = list(
             *_modes_all,
             *_multilingual_all,
             *_length_all,
+            *_media_prompts_all,
             *_facts_all,
             *_hook_formulas_all,
             *_hooks_all,
