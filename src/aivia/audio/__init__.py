@@ -1,12 +1,39 @@
-"""Voice synthesis, subtitles, timeline building and the audio stages.
+"""Voice synthesis, subtitles, quality checks, timeline building and stages.
 
 The package owns the voice stage that turns written scripts into measured
-speech and a timeline file, and the subtitle stage that turns that timeline
-into one styled ASS file per language. It consumes the core script model, the
+speech and a timeline file, the subtitle stage that turns that timeline into
+one styled ASS file per language, and the deterministic audio quality checks
+that read the resulting segments. It consumes the core script model, the
 compose timeline schema and the media services; it does not select providers
 or write cost events itself.
 """
 
+from aivia.audio.qa import (
+    DEFAULT_EXPECTED_WORDS_PER_SECOND,
+    DEFAULT_MAX_INTERNAL_SILENCE_SECONDS,
+    DEFAULT_MAX_LEADING_SILENCE_SECONDS,
+    DEFAULT_MAX_MISPRONUNCIATION_RATIO,
+    DEFAULT_MAX_SILENCE_RATIO,
+    DEFAULT_MAX_TRAILING_SILENCE_SECONDS,
+    DEFAULT_MIN_DURATION_RATIO,
+    DEFAULT_MIN_WORD_CONFIDENCE,
+    DEFAULT_SILENT_RATIO,
+    AudioQA,
+    AudioQAFinding,
+    AudioQAReport,
+    AudioQAResult,
+    AudioQualityChecker,
+    AudioSegment,
+    Severity,
+    SilenceSpan,
+    TimedWord,
+    audio_qa,
+    check_audio,
+    check_audio_quality,
+    lint_audio_quality,
+    qa_audio,
+    segments_from_timeline,
+)
 from aivia.audio.subtitle_stage import (
     DEFAULT_SUBTITLE_FILENAME_PATTERN,
     SUBTITLE_STAGE_NAME,
@@ -33,24 +60,48 @@ from aivia.audio.voice_stage import (
 )
 
 __all__ = [
+    "DEFAULT_EXPECTED_WORDS_PER_SECOND",
     "DEFAULT_GAP_SECONDS",
+    "DEFAULT_MAX_INTERNAL_SILENCE_SECONDS",
+    "DEFAULT_MAX_LEADING_SILENCE_SECONDS",
+    "DEFAULT_MAX_MISPRONUNCIATION_RATIO",
+    "DEFAULT_MAX_SILENCE_RATIO",
+    "DEFAULT_MAX_TRAILING_SILENCE_SECONDS",
+    "DEFAULT_MIN_DURATION_RATIO",
+    "DEFAULT_MIN_WORD_CONFIDENCE",
     "DEFAULT_SCRIPT_FILENAME_PATTERN",
+    "DEFAULT_SILENT_RATIO",
     "DEFAULT_SUBTITLE_FILENAME_PATTERN",
     "DEFAULT_TIMELINE_FILENAME",
     "SUBTITLE_STAGE_NAME",
     "SYNTHESIS_MODES",
     "VOICE_STAGE_NAME",
+    "AudioQA",
+    "AudioQAFinding",
+    "AudioQAReport",
+    "AudioQAResult",
+    "AudioQualityChecker",
+    "AudioSegment",
+    "Severity",
+    "SilenceSpan",
     "Subtitle",
     "SubtitleStage",
     "SubtitleStageResult",
     "SubtitlesStage",
+    "TimedWord",
     "Voice",
     "VoiceStage",
     "VoiceStageResult",
+    "audio_qa",
     "build_subtitle_stage",
     "build_voice_stage",
+    "check_audio",
+    "check_audio_quality",
+    "lint_audio_quality",
+    "qa_audio",
     "run_subtitle_stage",
     "run_voice_stage",
+    "segments_from_timeline",
     "subtitle_stage",
     "voice_stage",
 ]
