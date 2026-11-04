@@ -43,6 +43,9 @@ __all__ = [
     "DEFAULT_MEDIA_SUBTITLE_MAX_DURATION_SECONDS",
     "DEFAULT_MEDIA_SUBTITLE_MAX_GAP_SECONDS",
     "DEFAULT_MEDIA_VOICE_GAP_SECONDS",
+    "DEFAULT_MUSIC_BACKGROUND_FADE_IN_SECONDS",
+    "DEFAULT_MUSIC_BACKGROUND_FADE_OUT_SECONDS",
+    "DEFAULT_MUSIC_BACKGROUND_VOLUME_DB",
     "DEFAULT_MUSIC_CLIPPING_PEAK_DB",
     "DEFAULT_MUSIC_DURATION_TOLERANCE_SECONDS",
     "DEFAULT_MUSIC_LIBRARY_TEMPO_BUCKET_BPM",
@@ -89,6 +92,15 @@ DEFAULT_AUDIO_MIX_SAMPLE_RATE = 48_000
 
 DEFAULT_AUDIO_MIX_CHANNELS = 2
 """Default channel count for a mixed audio output."""
+
+DEFAULT_MUSIC_BACKGROUND_VOLUME_DB = -6.0
+"""Default gain applied to a background music bed before ducking."""
+
+DEFAULT_MUSIC_BACKGROUND_FADE_IN_SECONDS = 1.0
+"""Default fade in for a background music bed."""
+
+DEFAULT_MUSIC_BACKGROUND_FADE_OUT_SECONDS = 2.0
+"""Default fade out for a background music bed."""
 
 AUDIO_QA_TIME_TOLERANCE_SECONDS = 0.05
 """How far a word timing may pass a segment end before it is an error."""
