@@ -562,6 +562,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Resolve custom writing mode aliases and reject alias collisions with registered names (tests/writing/test_mode_registry.py)
 - [ ] Load every custom writing mode from a configured directory and reject duplicate names and aliases (tests/writing/test_mode_registry.py)
 - [ ] Load reading time presets and the default reading speed from packaged config data rather than module constants (tests/writing/test_length_presets.py)
+- [ ] Reject hook candidates whose formula id is absent from the loaded library and record the unknown id (tests/writing/test_hook_formulas.py)
 
 ## Milestone 12: Voice, subtitles and timeline
 
