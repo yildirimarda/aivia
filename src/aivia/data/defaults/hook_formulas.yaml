@@ -1,0 +1,145 @@
+schema_version: 1
+formulas:
+  - id: question
+    name: Question
+    aliases: [questions, ask-a-question]
+    shape: Ask a direct question the script answers, so the viewer needs the answer.
+    failure_mode: A question the facts cannot answer, or one that gives away the payoff.
+    match_patterns:
+      - '^\s*(who|what|when|where|why|how|which|can|could|would|should|is|are|do|does|did|will|has|have)\b'
+      - '\?\s*$'
+    description: The oldest open loop in the book, and still the clearest.
+    examples:
+      - Why do we still build roads the Roman way?
+
+  - id: statistic
+    name: Statistic
+    aliases: [stats, number]
+    shape: Lead with one concrete number that makes the scale of the topic visible.
+    failure_mode: An unsourced or rounded number that sounds precise but cannot be checked.
+    match_patterns:
+      - '\b\d+(?:[.,]\d+)?\s*(?:%|percent|million|billion|thousand|times|x)\b'
+      - '\b(?:one|two|three|four|five|six|seven|eight|nine|ten|half|most|few)\s+(?:in|out of|of every)\b'
+    description: A number earns attention when the fact list can defend it.
+    examples:
+      - Nine in ten people miss this simple pattern.
+
+  - id: contrarian
+    name: Contrarian
+    aliases: [contrarian-take, counterintuitive]
+    shape: State the common belief and immediately signal that the evidence points the other way.
+    failure_mode: Manufactured controversy that the facts do not support or that insults the viewer.
+    match_patterns:
+      - '^\s*(most people|everyone|nobody|you were told|we were taught|the common advice|contrary to|actually|in fact)\b'
+      - '\b(wrong|myth|misconception|not true|never)\b'
+    description: A useful correction, not a cheap fight.
+    examples:
+      - Most people get this wrong.
+
+  - id: curiosity-gap
+    name: Curiosity gap
+    aliases: [curiosity, open-loop]
+    shape: Name a missing piece of the story without revealing the answer itself.
+    failure_mode: Clickbait that withholds information the script never pays off.
+    match_patterns:
+      - '\b(no one|nobody|few people|almost no one|the reason|what happened next|the secret|hidden|untold|surprising)\b'
+      - '\b(you won.t believe|until you|before you|behind|discover|reveals)\b'
+    description: The gap must close inside the same short video.
+    examples:
+      - Nobody tells you what happened next.
+
+  - id: direct-address
+    name: Direct address
+    aliases: [second-person, you]
+    shape: Put the viewer in the sentence with you, your or an imperative.
+    failure_mode: A generic you that could address anyone and therefore connects with no one.
+    match_patterns:
+      - '^\s*(you|your|imagine|picture this|think about|have you ever|if you)\b'
+      - '\b(you|your|you.re|you.ll)\b'
+    description: The fastest way to make an abstract topic personal.
+    examples:
+      - Imagine you are standing at the edge of the sea.
+
+  - id: story
+    name: Story
+    aliases: [anecdote, narrative]
+    shape: Open inside a specific moment, with a time, place or person already in motion.
+    failure_mode: A vague scene with no stakes, or an anecdote that never connects to the topic.
+    match_patterns:
+      - '^\s*(when|one day|years ago|in \d{4}|last (?:week|month|year)|I (?:was|met|found|saw))\b'
+      - '\b(story|happened|remember|once|suddenly)\b'
+    description: A small scene can carry a large fact.
+    examples:
+      - In 1969, a single phone call changed the plan.
+
+  - id: warning
+    name: Warning
+    aliases: [caution, danger]
+    shape: Warn about a concrete cost or mistake before explaining how to avoid it.
+    failure_mode: Fear without evidence, or a warning so vague it applies to everything.
+    match_patterns:
+      - '^\s*(stop|don.t|never|avoid|beware|warning|careful|before you)\b'
+      - '\b(risk|danger|mistake|cost|regret|warning)\b'
+    description: A warning works when the danger is specific and the fix is close.
+    examples:
+      - Before you share that link, check this one detail.
+
+  - id: myth
+    name: Myth
+    aliases: [misconception, myth-busting]
+    shape: Name a belief the audience recognises, then promise the correction the facts support.
+    failure_mode: Knocking down a straw man nobody actually believes.
+    match_patterns:
+      - '^\s*(myth|it.s a myth|contrary to popular belief|people think|you may have heard)\b'
+      - '\b(false|myth|not true|debunked|misconception)\b'
+    description: Correct a belief the audience already holds.
+    examples:
+      - It is a myth that goldfish have three-second memories.
+
+  - id: list
+    name: Numbered list
+    aliases: [listicle, numbered-list]
+    shape: Promise a small, countable set of things the viewer will get by staying.
+    failure_mode: A list longer than the script can support, or items that repeat one idea.
+    match_patterns:
+      - '^\s*\d+\s+(?:things|ways|reasons|facts|steps|mistakes|signs|rules)\b'
+      - '\b(?:three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:things|ways|reasons|facts|steps|mistakes|signs|rules)\b'
+    description: A count sets an expectation the script has to meet.
+    examples:
+      - Five mistakes almost every beginner makes.
+
+  - id: comparison
+    name: Comparison
+    aliases: [contrast, versus]
+    shape: Put two things side by side and make the difference the reason to keep watching.
+    failure_mode: Comparing things that differ in too many ways for the comparison to mean anything.
+    match_patterns:
+      - '\b(before|after|then|now|versus|vs\.?|compared with|instead of)\b'
+      - '\b(better|worse|faster|slower|cheaper|more than|less than)\b'
+    description: Contrast is memorable when only one variable changes.
+    examples:
+      - This old method is faster than the modern one.
+
+  - id: challenge
+    name: Challenge
+    aliases: [test, dare]
+    shape: Invite the viewer to test themselves or beat a clear, short constraint.
+    failure_mode: A challenge that is impossible, unsafe or has no visible result.
+    match_patterns:
+      - '^\s*(try|can you|are you able|test yourself|see if|challenge|how long)\b'
+      - '\b(within|in under|without|before you|in \d+ seconds)\b'
+    description: A challenge turns watching into participating.
+    examples:
+      - Can you spot the difference in under five seconds?
+
+  - id: secret
+    name: Secret
+    aliases: [insider, reveal]
+    shape: Promise an insider explanation that the facts can actually support.
+    failure_mode: A fake secret that only restates common knowledge.
+    match_patterns:
+      - '^\s*(the secret|nobody tells you|what they don.t|the hidden|the real reason|here.s what)\b'
+      - '\b(secret|hidden|insider|truth|actually)\b'
+    description: The reveal has to be worth more than the tease.
+    examples:
+      - The real reason is simpler than anyone admits.

@@ -20,6 +20,7 @@ from aivia.core.config import (
 )
 from aivia.core.model_ids import CATALOG_FILENAME
 from aivia.core.platforms import PLATFORMS_FILENAME
+from aivia.writing.hook_formulas import HOOK_FORMULAS_FILENAME
 
 
 def defaults_dir() -> Path:
@@ -46,7 +47,8 @@ def test_the_package_ships_exactly_one_default_config() -> None:
         for path in defaults_dir().iterdir()
         if path.is_file()
         and path.suffix in {".yaml", ".yml"}
-        and path.name not in {CATALOG_FILENAME, PLATFORMS_FILENAME}
+        and path.name
+        not in {CATALOG_FILENAME, PLATFORMS_FILENAME, HOOK_FORMULAS_FILENAME}
     )
 
     assert configs == [DEFAULT_CONFIG_SOURCE]
