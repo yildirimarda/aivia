@@ -40,6 +40,7 @@ from aivia.compose.schema import (
     VideoLayer,
 )
 from aivia.compose.subtitles import SubtitleTrack, SubtitleWord
+from aivia.core.models.asset import AssetLicense
 
 __all__ = [
     "Timeline",
@@ -492,6 +493,11 @@ class TimelineMusic(_TimelineModel):
         default=None,
         validation_alias=AliasChoices("duck", "ducked", "allow_ducking"),
     )
+    license: AssetLicense | None = Field(
+        default=None,
+        validation_alias=AliasChoices("license", "licence", "rights"),
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = Field(
         default=True, validation_alias=AliasChoices("enabled", "visible")
     )
@@ -528,6 +534,23 @@ class TimelineMusic(_TimelineModel):
     @classmethod
     def _validate_volume(cls, value: Any) -> Any:
         return _finite(value, "volume_db")
+
+    @field_validator("license", mode="before")
+    @classmethod
+    def _coerce_license(cls, value: Any) -> Any:
+        if value is None or isinstance(value, AssetLicense):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            return {"name": text} if text else None
+        if isinstance(value, BaseModel):
+            return value.model_dump()
+        return value
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _coerce_metadata(cls, value: Any) -> Any:
+        return {} if value is None else value
 
     @model_validator(mode="after")
     def _resolve_span(self) -> Self:

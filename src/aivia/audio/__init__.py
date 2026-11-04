@@ -2,12 +2,32 @@
 
 The package owns the voice stage that turns written scripts into measured
 speech and a timeline file, the subtitle stage that turns that timeline into
-one styled ASS file per language, and the deterministic audio quality checks
-that read the resulting segments. It consumes the core script model, the
-compose timeline schema and the media services; it does not select providers
-or write cost events itself.
+one styled ASS file per language, the music stage that selects a licensed bed
+and marks it for ducking, and the deterministic audio quality checks that read
+the resulting segments. It consumes the core script model, the compose timeline
+schema and the media services; it does not select providers or write cost
+events itself.
 """
 
+from aivia.audio.music_select import (
+    DEFAULT_MUSIC_FILENAME,
+    MUSIC_STAGE_NAME,
+    SOURCE_MODES,
+    BackgroundMusic,
+    MusicChoice,
+    MusicSelection,
+    MusicSelectStage,
+    MusicStage,
+    SelectedMusic,
+    apply_ducking,
+    build_music_prompt,
+    build_music_stage,
+    music_stage,
+    run_music_stage,
+    select_library_music,
+    select_music,
+    verify_timeline_ducking,
+)
 from aivia.audio.qa import (
     DEFAULT_EXPECTED_WORDS_PER_SECOND,
     DEFAULT_MAX_INTERNAL_SILENCE_SECONDS,
@@ -69,10 +89,13 @@ __all__ = [
     "DEFAULT_MAX_TRAILING_SILENCE_SECONDS",
     "DEFAULT_MIN_DURATION_RATIO",
     "DEFAULT_MIN_WORD_CONFIDENCE",
+    "DEFAULT_MUSIC_FILENAME",
     "DEFAULT_SCRIPT_FILENAME_PATTERN",
     "DEFAULT_SILENT_RATIO",
     "DEFAULT_SUBTITLE_FILENAME_PATTERN",
     "DEFAULT_TIMELINE_FILENAME",
+    "MUSIC_STAGE_NAME",
+    "SOURCE_MODES",
     "SUBTITLE_STAGE_NAME",
     "SYNTHESIS_MODES",
     "VOICE_STAGE_NAME",
@@ -82,6 +105,12 @@ __all__ = [
     "AudioQAResult",
     "AudioQualityChecker",
     "AudioSegment",
+    "BackgroundMusic",
+    "MusicChoice",
+    "MusicSelectStage",
+    "MusicSelection",
+    "MusicStage",
+    "SelectedMusic",
     "Severity",
     "SilenceSpan",
     "Subtitle",
@@ -92,16 +121,24 @@ __all__ = [
     "Voice",
     "VoiceStage",
     "VoiceStageResult",
+    "apply_ducking",
     "audio_qa",
+    "build_music_prompt",
+    "build_music_stage",
     "build_subtitle_stage",
     "build_voice_stage",
     "check_audio",
     "check_audio_quality",
     "lint_audio_quality",
+    "music_stage",
     "qa_audio",
+    "run_music_stage",
     "run_subtitle_stage",
     "run_voice_stage",
     "segments_from_timeline",
+    "select_library_music",
+    "select_music",
     "subtitle_stage",
+    "verify_timeline_ducking",
     "voice_stage",
 ]
