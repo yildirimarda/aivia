@@ -574,7 +574,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the voice stage supporting per beat or whole script synthesis with gaps and real durations written to a timeline file (tests/audio/test_voice_stage.py)
 - [x] Add the subtitle stage producing ASS per language with style presets and safe areas (tests/audio/test_subtitle_stage.py)
 - [x] Map dialogue lines per speaker to distinct voices with correct timing for narrator and character (tests/audio/test_dialogue.py)
-- [ ] Add audio quality checks for silence, duplication, truncation and mispronunciation with severity (tests/audio/test_audio_qa.py)
+- [x] Add audio quality checks for silence, duplication, truncation and mispronunciation with severity (tests/audio/test_audio_qa.py)
 - [ ] Select background music from the library or a provider by mood, record the license and apply ducking (tests/audio/test_music_select.py)
 - [ ] Place sound effects by rule with volume set, leaving total duration unchanged (tests/audio/test_sfx_stage.py)
 - [ ] Add a voice command that runs voice, subtitles and timeline and prints cost and durations (tests/cli/test_voice.py)
