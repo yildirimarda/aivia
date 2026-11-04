@@ -563,8 +563,9 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Load every custom writing mode from a configured directory and reject duplicate names and aliases (tests/writing/test_mode_registry.py)
 - [x] Load reading time presets and the default reading speed from packaged config data rather than module constants (tests/writing/test_length_presets.py)
 - [x] Reject hook candidates whose formula id is absent from the loaded library and record the unknown id (tests/writing/test_hook_formulas.py)
-- [ ] Add a concrete write stage that reads the run fact list, writes scripts per language and reports cost and tokens (tests/writing/test_write_stage.py)
+- [x] Add a concrete write stage that reads the run fact list, writes scripts per language and reports cost and tokens (tests/writing/test_write_stage.py)
 - [ ] Resolve formula aliases before the distinct check so two aliases of one formula cannot both appear (tests/writing/test_hook_formulas.py)
+- [ ] Hash the run fact list as a write stage input so editing facts invalidates resume (tests/writing/test_write_stage.py)
 
 ## Milestone 12: Voice, subtitles and timeline
 
