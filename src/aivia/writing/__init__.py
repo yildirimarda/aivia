@@ -1,5 +1,7 @@
 """Writing stage: mode aware scripts, payloads and the mode registry."""
 
+from aivia.writing.captions import *  # noqa: F403
+from aivia.writing.captions import __all__ as _captions_all
 from aivia.writing.facts import *  # noqa: F403
 from aivia.writing.facts import __all__ as _facts_all
 from aivia.writing.hook_formulas import *  # noqa: F403
@@ -45,6 +47,7 @@ __all__ = list(
             *_multilingual_all,
             *_length_all,
             *_media_prompts_all,
+            *_captions_all,
             *_facts_all,
             *_hook_formulas_all,
             *_hooks_all,
