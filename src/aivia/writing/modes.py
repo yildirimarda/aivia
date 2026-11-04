@@ -27,6 +27,7 @@ from typing import Any, Protocol, cast, overload, runtime_checkable
 
 import yaml
 
+from aivia.core import paths
 from aivia.core.errors import ConfigError
 from aivia.writing.schema import (
     CustomPayload,
@@ -36,6 +37,9 @@ from aivia.writing.schema import (
 )
 
 __all__ = [
+    "CUSTOM_MODES_DIR",
+    "WRITING_MODES_DIR",
+    "WRITING_MODE_DIRNAME",
     "BaseWritingMode",
     "BuiltinWritingMode",
     "CustomModeDefinition",
@@ -48,8 +52,11 @@ __all__ = [
     "WritingModeRegistry",
     "builtin_writing_mode",
     "is_known_writing_mode",
+    "load_custom_writing_modes",
     "load_writing_mode",
+    "load_writing_mode_directory",
     "load_writing_mode_file",
+    "load_writing_modes",
     "mode_registry",
     "register_builtin_writing_mode",
     "register_mode",
@@ -62,6 +69,13 @@ __all__ = [
 _BUILTIN_MODULE = __name__
 _MODE_FILE_SUFFIXES = {".json", ".toml", ".yaml", ".yml", ".md", ".markdown", ".txt"}
 _DATA_SUFFIXES = {".json", ".toml", ".yaml", ".yml"}
+_DIRECTORY_SUFFIXES = _MODE_FILE_SUFFIXES | {".py"}
+
+WRITING_MODES_DIR = "modes"
+"""The user config subdirectory searched for custom writing modes."""
+
+CUSTOM_MODES_DIR = WRITING_MODES_DIR
+WRITING_MODE_DIRNAME = WRITING_MODES_DIR
 
 
 @runtime_checkable
@@ -744,6 +758,102 @@ class WritingModeRegistry:
         """Alias for :meth:`load_file`."""
         return self.load_file(path)
 
+    def load_directory(
+        self,
+        directory: str | Path | None = None,
+        *,
+        recursive: bool = False,
+    ) -> tuple[WritingModeLike, ...]:
+        """Load every supported writing mode file from *directory*.
+
+        The directory defaults to ``<config>/modes``; a missing default is an
+        empty directory. Files are loaded in sorted path order, so loading the
+        same directory twice is deterministic. A duplicate name or alias is
+        rejected and a failed load leaves the registry unchanged.
+        """
+        if directory is None:
+            base = paths.config_dir() / WRITING_MODES_DIR
+            if not base.is_dir():
+                return ()
+        else:
+            base = Path(directory).expanduser()
+            if not base.exists():
+                raise ConfigError(
+                    f"writing mode directory does not exist: {base}",
+                    details={"path": str(base)},
+                )
+            if not base.is_dir():
+                raise ConfigError(
+                    f"writing mode path is not a directory: {base}",
+                    details={"path": str(base)},
+                )
+        entries = base.rglob("*") if recursive else base.iterdir()
+        files = sorted(
+            (
+                entry
+                for entry in entries
+                if entry.is_file()
+                and not entry.name.startswith(".")
+                and entry.suffix.lower() in _DIRECTORY_SUFFIXES
+            ),
+            key=str,
+        )
+        snapshot = self._snapshot()
+        loaded: list[WritingModeLike] = []
+        try:
+            for path in files:
+                before = set(self._modes) | set(self._loaded)
+                first = self.load_file(path)
+                after = set(self._modes) | set(self._loaded)
+                added = sorted(after - before)
+                if added:
+                    for name in added:
+                        mode = self._lookup(name)
+                        if mode is not None:
+                            loaded.append(mode)
+                elif first not in loaded:
+                    loaded.append(first)
+        except Exception:
+            self._restore(snapshot)
+            raise
+        return tuple(loaded)
+
+    def load_dir(
+        self,
+        directory: str | Path | None = None,
+        *,
+        recursive: bool = False,
+    ) -> tuple[WritingModeLike, ...]:
+        """Alias for :meth:`load_directory`."""
+        return self.load_directory(directory, recursive=recursive)
+
+    def from_directory(
+        self,
+        directory: str | Path | None = None,
+        *,
+        recursive: bool = False,
+    ) -> tuple[WritingModeLike, ...]:
+        """Alias for :meth:`load_directory`."""
+        return self.load_directory(directory, recursive=recursive)
+
+    def load_modes(
+        self,
+        directory: str | Path | None = None,
+        *,
+        recursive: bool = False,
+    ) -> tuple[WritingModeLike, ...]:
+        """Alias for :meth:`load_directory`."""
+        return self.load_directory(directory, recursive=recursive)
+
+    def load_from_directory(
+        self,
+        directory: str | Path | None = None,
+        *,
+        recursive: bool = False,
+    ) -> tuple[WritingModeLike, ...]:
+        """Alias for :meth:`load_directory`."""
+        return self.load_directory(directory, recursive=recursive)
+
     def register_file(
         self,
         path: str | Path,
@@ -881,6 +991,7 @@ class WritingModeRegistry:
         name = _mode_name(mode)
         aliases = _mode_aliases(mode) if name else ()
         if name:
+            self._check_duplicate_name(name, mode, path)
             self._check_name_collision(name)
             self._check_alias_collisions(name, aliases, mode)
         self._loaded_paths[path] = mode
@@ -888,6 +999,74 @@ class WritingModeRegistry:
             self._loaded.setdefault(name, mode)
             self._commit_aliases(name, aliases)
             _KNOWN_CUSTOM_MODES.add(name.lower())
+
+    def _snapshot(
+        self,
+    ) -> tuple[
+        dict[str, WritingModeRegistration],
+        dict[str, WritingModeLike],
+        dict[str, WritingModeLike],
+        dict[str, str],
+        set[str],
+    ]:
+        return (
+            dict(self._modes),
+            dict(self._loaded),
+            dict(self._loaded_paths),
+            dict(self._aliases),
+            set(_KNOWN_CUSTOM_MODES),
+        )
+
+    def _restore(
+        self,
+        snapshot: tuple[
+            dict[str, WritingModeRegistration],
+            dict[str, WritingModeLike],
+            dict[str, WritingModeLike],
+            dict[str, str],
+            set[str],
+        ],
+    ) -> None:
+        modes, loaded, loaded_paths, aliases, known = snapshot
+        self._modes.clear()
+        self._modes.update(modes)
+        self._loaded.clear()
+        self._loaded.update(loaded)
+        self._loaded_paths.clear()
+        self._loaded_paths.update(loaded_paths)
+        self._aliases.clear()
+        self._aliases.update(aliases)
+        _KNOWN_CUSTOM_MODES.clear()
+        _KNOWN_CUSTOM_MODES.update(known)
+
+    def _check_duplicate_name(
+        self,
+        name: str,
+        mode: WritingModeLike,
+        path: str,
+    ) -> None:
+        registration = self._modes.get(name)
+        existing = (
+            registration.mode if registration is not None else self._loaded.get(name)
+        )
+        if existing is None or existing is mode:
+            return
+        existing_path = next(
+            (
+                loaded_path
+                for loaded_path, loaded_mode in self._loaded_paths.items()
+                if loaded_mode is existing
+            ),
+            None,
+        )
+        raise ConfigError(
+            f"duplicate writing mode name: {name!r} is already registered",
+            details={
+                "mode": name,
+                "path": path,
+                "existing": existing_path,
+            },
+        )
 
     def _load_file(self, path: Path) -> WritingModeLike:
         text = str(path)
@@ -901,12 +1080,17 @@ class WritingModeRegistry:
         cached = self._loaded_paths.get(text) or self._loaded_paths.get(str(resolved))
         if cached is not None:
             return cached
-        if target.suffix.lower() == ".py":
-            mode = self._load_python_file(path)
-        else:
-            mode = self._load_data_file(target)
-        self._remember(text, mode)
-        self._remember(str(resolved), mode)
+        snapshot = self._snapshot()
+        try:
+            if target.suffix.lower() == ".py":
+                mode = self._load_python_file(path)
+            else:
+                mode = self._load_data_file(target)
+            self._remember(text, mode)
+            self._remember(str(resolved), mode)
+        except Exception:
+            self._restore(snapshot)
+            raise
         return mode
 
     def _load_data_file(self, path: Path) -> WritingModeLike:
@@ -1119,3 +1303,8 @@ resolve_mode = resolve_writing_mode
 
 load_writing_mode = writing_mode_registry.load
 load_writing_mode_file = writing_mode_registry.load_file
+load_writing_modes = writing_mode_registry.load_directory
+"""Load every custom writing mode from a directory into the shared registry."""
+
+load_writing_mode_directory = load_writing_modes
+load_custom_writing_modes = load_writing_modes
