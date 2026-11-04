@@ -57,6 +57,8 @@ __all__ = [
     "DEFAULT_MUSIC_MIN_LOUDNESS_LUFS",
     "DEFAULT_MUSIC_SILENCE_MIN_SECONDS",
     "DEFAULT_MUSIC_SILENCE_NOISE_DB",
+    "DEFAULT_SFX_DURATION_SECONDS",
+    "DEFAULT_SFX_VOLUME_DB",
     "MAX_AUDIO_QA_CONFIDENCE",
     "MAX_MEDIA_SIMILARITY",
     "MIN_MEDIA_SIMILARITY",
@@ -209,6 +211,12 @@ DEFAULT_MUSIC_MAX_LOUDNESS_LUFS = -6.0
 
 DEFAULT_MUSIC_SILENCE_NOISE_DB = -50.0
 """The noise floor below which ffmpeg counts a stretch as silence."""
+
+DEFAULT_SFX_DURATION_SECONDS = 1.0
+"""The fallback length of a sound effect when no measured duration is known."""
+
+DEFAULT_SFX_VOLUME_DB = -6.0
+"""Default gain applied to a placed sound effect before mixing."""
 
 DEFAULT_MUSIC_SILENCE_MIN_SECONDS = 0.5
 """The shortest pause ffmpeg reports as silence."""
