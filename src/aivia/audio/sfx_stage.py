@@ -307,8 +307,7 @@ def _position(value: Any, start_seconds: float | None = None) -> str:
         return "offset" if start_seconds is not None else "start"
     if text not in _POSITION_ALIASES:
         raise ValueError(
-            f"unknown sfx placement: {value!r} "
-            f"(choose from {', '.join(SFX_POSITIONS)})"
+            f"unknown sfx placement: {value!r} (choose from {', '.join(SFX_POSITIONS)})"
         )
     return _POSITION_ALIASES[text]
 
@@ -601,9 +600,7 @@ def load_sfx_rules(value: Any) -> tuple[SfxRule, ...]:
             else:
                 item = raw
             rules.append(item)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         rules = list(value)
     else:
         raise ConfigError(
@@ -1073,9 +1070,7 @@ class SfxStage(Stage):
             "volume_db",
         )
         self.position = _position(
-            merged.get("position")
-            or merged.get("placement")
-            or merged.get("anchor")
+            merged.get("position") or merged.get("placement") or merged.get("anchor")
         )
         self.duration_seconds = _optional_finite(
             merged.get("duration_seconds"),
@@ -1083,14 +1078,10 @@ class SfxStage(Stage):
             positive=True,
         )
         self.prompt = _text(merged.get("prompt"))
-        self.languages = _languages(
-            merged.get("languages") or merged.get("language")
-        )
+        self.languages = _languages(merged.get("languages") or merged.get("language"))
         self.replace = bool(merged.get("replace", True))
         self.sfx = (
-            merged.get("sfx")
-            or merged.get("generator")
-            or merged.get("provider")
+            merged.get("sfx") or merged.get("generator") or merged.get("provider")
         )
         if self.timeline is None:
             self.inputs = (self.timeline_filename,)
@@ -1417,9 +1408,7 @@ class SfxStage(Stage):
                     )
                     beat_id = beat.id
 
-                identifier = _slug(
-                    f"{rule.id}_{beat_id or target_index}_{rule_index}"
-                )
+                identifier = _slug(f"{rule.id}_{beat_id or target_index}_{rule_index}")
                 (
                     effect_source,
                     measured_duration,
