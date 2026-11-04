@@ -193,6 +193,7 @@ _BUILTIN_IMPLEMENTATION_MODULES: dict[str, str] = {
     "story": "aivia.writing.story",
     "joke": "aivia.writing.humor",
     "riddle": "aivia.writing.humor",
+    "lyrics": "aivia.writing.lyrics",
 }
 _KNOWN_CUSTOM_MODES: set[str] = set()
 
