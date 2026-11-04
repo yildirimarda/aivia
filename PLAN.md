@@ -548,7 +548,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Generate several hook candidates and pick one with a recorded reason, keeping all alternatives for testing (tests/writing/test_hooks.py)
 - [x] Ship the hook formula library as package data with shape, failure mode and match patterns, and require candidates from distinct formulas (tests/writing/test_hook_formulas.py)
 - [x] Pre-score hook candidates with a dependency free heuristic weighted by the weakest property before the model picks (tests/writing/test_hook_prefilter.py)
-- [ ] Estimate duration from per language words per second and rewrite up to a limit before failing with measured versus target (tests/writing/test_length.py)
+- [x] Estimate duration from per language words per second and rewrite up to a limit before failing with measured versus target (tests/writing/test_length.py)
 - [ ] Write each target language natively from the same fact base with per language forbidden phrase lists (tests/writing/test_multilingual.py)
 - [ ] Load the style bible from user files with packaged defaults as fallback and fail clearly when it is missing (tests/writing/test_style_bible.py)
 - [ ] Load a per profile voice profile file before writing and ship an empty template in the packaged defaults (tests/writing/test_voice_profile.py)
