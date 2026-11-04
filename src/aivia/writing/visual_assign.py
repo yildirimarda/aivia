@@ -41,6 +41,7 @@ __all__ = [
     "visual_types_for",
 ]
 
+
 class VisualStrategy(StrEnum):
     """The ways a script's beats can be assigned a visual source."""
 
