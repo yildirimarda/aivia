@@ -535,19 +535,27 @@ class HookFormulaLibrary:
         require_all: bool = False,
         require_known: bool = False,
     ) -> tuple[HookFormula, ...]:
-        """Validate candidate formulas and return the known formulas used."""
+        """Validate candidate formulas and return the known formulas used.
+
+        When *require_known* is set, every non-empty formula must resolve to a
+        formula in this library. All unknown ids are collected before raising so
+        the caller can see exactly which model-supplied ids were rejected.
+        """
         keys = distinct_formulas(candidates, require_all=require_all)
         used: list[HookFormula] = []
+        unknown: list[str] = []
         for key in keys:
             formula = self.get(key)
             if formula is None:
-                if require_known:
-                    raise HookFormulaError(
-                        f"unknown hook formula: {key!r}",
-                        details={"formula": key, "known": list(self.ids)},
-                    )
+                unknown.append(key)
                 continue
             used.append(formula)
+        if unknown and require_known:
+            label = "formula" if len(unknown) == 1 else "formulas"
+            raise HookFormulaError(
+                f"unknown hook {label}: " + ", ".join(repr(key) for key in unknown),
+                details={"unknown": unknown, "known": list(self.ids)},
+            )
         return tuple(used)
 
     def prompt_lines(self) -> tuple[str, ...]:

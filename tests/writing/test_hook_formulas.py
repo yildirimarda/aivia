@@ -181,6 +181,85 @@ def test_the_distinct_formula_helper_ignores_blank_formulas_unless_required() ->
         distinct_formulas(candidates, require_all=True)
 
 
+def test_candidates_with_formulas_absent_from_the_library_are_rejected() -> None:
+    library = load_hook_formulas(
+        {
+            "formulas": [
+                _formula("question"),
+                _formula("statistic", patterns=(r"\b\d+ percent\b",)),
+            ]
+        }
+    )
+    candidates = [
+        HookCandidate(text="Why does this happen?", formula="question"),
+        HookCandidate(text="A made up opening.", formula="Invented Formula"),
+        HookCandidate(text="Another made up opening.", formula="mystery"),
+    ]
+
+    with pytest.raises(HookFormulaError, match="unknown hook formulas") as refused:
+        library.validate_candidates(candidates, require_known=True)
+
+    assert refused.value.details["unknown"] == ["invented-formula", "mystery"]
+    assert refused.value.details["known"] == ["question", "statistic"]
+    assert [formula.id for formula in library.validate_candidates(candidates)] == [
+        "question"
+    ]
+
+
+def test_generation_rejects_an_unknown_formula_and_records_the_id() -> None:
+    library = load_hook_formulas(
+        {
+            "formulas": [
+                _formula("question"),
+                _formula("statistic", patterns=(r"\b\d+ percent\b",)),
+            ]
+        }
+    )
+    provider = FakeHookProvider(
+        {
+            "candidates": [
+                {"text": "Why does this happen?", "formula": "question"},
+                {"text": "Nine in ten people miss it.", "formula": "invented"},
+            ],
+            "selected": 0,
+            "reason": "The question opens the loop.",
+        }
+    )
+
+    with pytest.raises(HookFormulaError, match="unknown hook formula") as refused:
+        _run(generate_hooks("Topic", provider=provider, formulas=library, count=2))
+
+    assert refused.value.details["unknown"] == ["invented"]
+    assert refused.value.details["known"] == ["question", "statistic"]
+
+
+def test_generation_accepts_aliases_and_blank_formulas_from_the_library() -> None:
+    library = load_hook_formulas(
+        {
+            "formulas": [
+                {**_formula("question"), "aliases": ["ask"]},
+                _formula("statistic", patterns=(r"\b\d+ percent\b",)),
+            ]
+        }
+    )
+    provider = FakeHookProvider(
+        {
+            "candidates": [
+                {"text": "Why does this happen?", "formula": "ask"},
+                {"text": "A hook without a formula."},
+            ],
+            "selected": 0,
+            "reason": "The question opens the loop.",
+        }
+    )
+
+    selection = _run(
+        generate_hooks("Topic", provider=provider, formulas=library, count=2)
+    )
+
+    assert selection.candidate_formulas == ("ask",)
+
+
 def test_the_prompt_carries_the_formula_library_and_distinct_requirement() -> None:
     library = load_hook_formulas(
         {
