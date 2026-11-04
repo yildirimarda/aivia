@@ -212,8 +212,7 @@ def _resolver_from(source: Any) -> LanguageResolver | None:
             except (ConfigError, TypeError, ValueError):
                 return None
         if "default" in source or (
-            source
-            and all(isinstance(value, Mapping) for value in source.values())
+            source and all(isinstance(value, Mapping) for value in source.values())
         ):
             try:
                 return LanguageResolver(LanguagesConfig.from_mapping(source))
@@ -843,9 +842,7 @@ def _split_text(text: str) -> list[str]:
     if not lines:
         return []
     return [
-        part.strip()
-        for part in re.split(r"(?<=[.!?])\s+", lines[0])
-        if part.strip()
+        part.strip() for part in re.split(r"(?<=[.!?])\s+", lines[0]) if part.strip()
     ]
 
 
@@ -915,10 +912,7 @@ def _script_from_output(
     )
     if raw_beats is None:
         raw_text = (
-            output.get("text")
-            or output.get("content")
-            or output.get("body")
-            or ""
+            output.get("text") or output.get("content") or output.get("body") or ""
         )
         raw_beats = _split_text(str(raw_text))
     elif isinstance(raw_beats, str):
@@ -1038,9 +1032,7 @@ class MultilingualResult(dict[str, Script]):
 
     def to_dict(self) -> dict[str, Any]:
         """Return the scripts as JSON-compatible mappings."""
-        return {
-            code: script.model_dump(mode="json") for code, script in self.items()
-        }
+        return {code: script.model_dump(mode="json") for code, script in self.items()}
 
     def __getattr__(self, name: str) -> Any:
         if name in self:
@@ -1099,8 +1091,10 @@ async def generate_multilingual_scripts(
         source = language_config
     if source is None:
         source = config
-    if source is None and languages is not None and not _is_target_language_value(
-        languages
+    if (
+        source is None
+        and languages is not None
+        and not _is_target_language_value(languages)
     ):
         source = languages
     targets_value = target_languages
@@ -1117,9 +1111,7 @@ async def generate_multilingual_scripts(
     active = helper
     if active is None:
         if provider is None:
-            raise ConfigError(
-                "multilingual writing requires an LLM provider or helper"
-            )
+            raise ConfigError("multilingual writing requires an LLM provider or helper")
         active = StructuredOutputHelper(provider)
     refuse = raise_on_violation if strict is None else strict
     scripts: dict[str, Script] = {}
@@ -1248,9 +1240,7 @@ class MultilingualWriter:
             return self.config
         if self.language_config is not None:
             return self.language_config
-        if self.languages is not None and not _is_target_language_value(
-            self.languages
-        ):
+        if self.languages is not None and not _is_target_language_value(self.languages):
             return self.languages
         return None
 

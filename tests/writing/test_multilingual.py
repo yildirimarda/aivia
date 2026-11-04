@@ -123,9 +123,7 @@ def test_language_config_carries_forbidden_phrases_and_accepts_aliases() -> None
     )
     assert language.forbidden_phrases == ["first phrase", "second"]
 
-    config = LanguagesConfig.from_mapping(
-        {"en": {"forbidden_phrases": ["no way"]}}
-    )
+    config = LanguagesConfig.from_mapping({"en": {"forbidden_phrases": ["no way"]}})
     assert config.languages["en"].forbidden_phrases == ["no way"]
 
 
