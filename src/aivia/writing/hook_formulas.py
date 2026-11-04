@@ -541,7 +541,18 @@ class HookFormulaLibrary:
         formula in this library. All unknown ids are collected before raising so
         the caller can see exactly which model-supplied ids were rejected.
         """
-        keys = distinct_formulas(candidates, require_all=require_all)
+        resolved: list[str] = []
+        for index, candidate in enumerate(candidates):
+            key = normalise_formula(candidate)
+            if not key:
+                if require_all:
+                    raise HookFormulaError(
+                        f"hook candidate {index + 1} must name a formula"
+                    )
+                continue
+            formula = self.get(key)
+            resolved.append(formula.key if formula is not None else key)
+        keys = distinct_formulas(resolved)
         used: list[HookFormula] = []
         unknown: list[str] = []
         for key in keys:

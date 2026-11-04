@@ -260,6 +260,53 @@ def test_generation_accepts_aliases_and_blank_formulas_from_the_library() -> Non
     assert selection.candidate_formulas == ("ask",)
 
 
+def test_two_aliases_of_one_formula_are_not_distinct() -> None:
+    library = load_hook_formulas(
+        {
+            "formulas": [
+                {**_formula("question"), "aliases": ["ask"]},
+                _formula("statistic", patterns=(r"\b\d+ percent\b",)),
+            ]
+        }
+    )
+    candidates = [
+        HookCandidate(text="Why does this happen?", formula="question"),
+        HookCandidate(text="What changed?", formula="Ask"),
+    ]
+
+    with pytest.raises(HookFormulaError, match="distinct formulas") as refused:
+        library.validate_candidates(candidates, require_known=True)
+
+    assert "question" in str(refused.value)
+    assert [formula.id for formula in library.validate_candidates(candidates[1:])] == [
+        "question"
+    ]
+
+
+def test_generation_rejects_two_aliases_of_the_same_formula() -> None:
+    library = load_hook_formulas(
+        {
+            "formulas": [
+                {**_formula("question"), "aliases": ["ask"]},
+                _formula("statistic", patterns=(r"\b\d+ percent\b",)),
+            ]
+        }
+    )
+    provider = FakeHookProvider(
+        {
+            "candidates": [
+                {"text": "Why does this happen?", "formula": "question"},
+                {"text": "What changed?", "formula": "ask"},
+            ],
+            "selected": 0,
+            "reason": "The question opens the loop.",
+        }
+    )
+
+    with pytest.raises(HookFormulaError, match="distinct formulas"):
+        _run(generate_hooks("Topic", provider=provider, formulas=library, count=2))
+
+
 def test_the_prompt_carries_the_formula_library_and_distinct_requirement() -> None:
     library = load_hook_formulas(
         {
