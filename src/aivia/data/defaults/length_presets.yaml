@@ -1,0 +1,24 @@
+# Reading time presets and the fallback reading speed. This file is data:
+# update it instead of releasing new code when a preset range or the default
+# rate changes. Ranges are inclusive and measured in seconds.
+
+schema_version: 1
+
+default_words_per_second: 2.5
+
+presets:
+  micro:
+    min_seconds: 0
+    max_seconds: 10
+  short:
+    min_seconds: 0
+    max_seconds: 30
+  medium:
+    min_seconds: 15
+    max_seconds: 60
+  long:
+    min_seconds: 45
+    max_seconds: 180
+  epic:
+    min_seconds: 90
+    max_seconds: 600

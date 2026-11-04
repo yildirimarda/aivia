@@ -10,25 +10,36 @@ yields the same duration.
 from __future__ import annotations
 
 import inspect
+import json
 import math
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+import yaml
+
+from aivia.core import paths
 from aivia.core.errors import ConfigError
 
 __all__ = [
+    "DEFAULT_LENGTH_PRESETS",
+    "DEFAULT_LENGTH_PRESETS_FILENAME",
     "DEFAULT_MAX_LENGTH_REWRITES",
     "DEFAULT_MAX_REWRITES",
     "DEFAULT_WORDS_PER_SECOND",
     "LENGTH_PRESETS",
+    "LENGTH_PRESETS_FILENAME",
+    "LENGTH_PRESETS_SCHEMA_VERSION",
     "DurationCheck",
     "DurationEstimate",
     "DurationResult",
     "LengthCheck",
     "LengthEstimate",
+    "LengthPresetError",
+    "LengthPresets",
     "LengthRange",
     "LengthResult",
     "check_duration",
@@ -36,6 +47,8 @@ __all__ = [
     "check_reading_time",
     "coerce_length_range",
     "count_words",
+    "default_length_presets",
+    "default_length_presets_path",
     "enforce_duration",
     "enforce_length",
     "enforce_reading_time",
@@ -47,8 +60,13 @@ __all__ = [
     "fit_length",
     "fit_reading_time",
     "fit_to_length",
+    "length_presets",
+    "length_presets_path",
+    "load_default_length_presets",
+    "load_length_presets",
     "measure_duration",
     "measure_length",
+    "package_length_presets_path",
     "reading_time_range",
     "reading_time_seconds",
     "require_length",
@@ -63,25 +81,18 @@ __all__ = [
     "validate_length",
 ]
 
-DEFAULT_WORDS_PER_SECOND = 2.5
-"""Fallback reading speed in words per second when no rate is supplied."""
+LENGTH_PRESETS_FILENAME = "length_presets.yaml"
+DEFAULT_LENGTH_PRESETS_FILENAME = LENGTH_PRESETS_FILENAME
+LENGTH_PRESETS_SCHEMA_VERSION = 1
+
+_FALLBACK_WORDS_PER_SECOND = 2.5
+"""Reading speed used for a custom preset manifest that omits one."""
 
 DEFAULT_MAX_LENGTH_REWRITES = 2
 """How many times a script outside its target range is rewritten."""
 
 DEFAULT_MAX_REWRITES = DEFAULT_MAX_LENGTH_REWRITES
 """Alias for :data:`DEFAULT_MAX_LENGTH_REWRITES`."""
-
-LENGTH_PRESETS: Mapping[str, tuple[float, float]] = MappingProxyType(
-    {
-        "micro": (0.0, 10.0),
-        "short": (0.0, 30.0),
-        "medium": (15.0, 60.0),
-        "long": (45.0, 180.0),
-        "epic": (90.0, 600.0),
-    }
-)
-"""Named target ranges in seconds, from shortest to longest."""
 
 _WORD = re.compile(r"[^\W_]+", re.UNICODE)
 _ZERO = 0.0
@@ -92,6 +103,33 @@ _TOLERANCE_KEYS = ("tolerance", "tolerance_seconds")
 _RATE_KEYS = ("words_per_second", "rate", "wps")
 _MIN_RATE_KEYS = ("min_words_per_second", "min_rate", "minimum", "min")
 _MAX_RATE_KEYS = ("max_words_per_second", "max_rate", "maximum", "max")
+_PRESET_CONTAINER_KEYS = (
+    "presets",
+    "length_presets",
+    "reading_time_presets",
+    "ranges",
+    "items",
+    "entries",
+    "library",
+)
+_DEFAULT_RATE_KEYS = (
+    "default_words_per_second",
+    "default_reading_speed",
+    "default_rate",
+    "words_per_second",
+    "reading_speed",
+    "rate",
+)
+_PRESET_NAME_KEYS = ("name", "id", "preset", "key")
+_RESERVED_KEYS = frozenset(
+    {
+        "schema_version",
+        "version",
+        "defaults",
+        *_PRESET_CONTAINER_KEYS,
+        *_DEFAULT_RATE_KEYS,
+    }
+)
 
 
 def _number(value: Any, field: str) -> float:
@@ -160,6 +198,386 @@ class LengthRange:
     def to_dict(self) -> dict[str, float]:
         """Return the range as a JSON-compatible mapping."""
         return {"min_seconds": self.min_seconds, "max_seconds": self.max_seconds}
+
+
+class LengthPresetError(ConfigError):
+    """A reading-time preset manifest is missing, unreadable or invalid."""
+
+    code = "length_presets"
+
+
+def _preset_range(name: str, value: Any) -> LengthRange:
+    field = f"length preset {name!r}"
+    try:
+        if isinstance(value, LengthRange):
+            return value
+        if isinstance(value, Mapping):
+            minimum = _first(value, _MIN_KEYS)
+            maximum = _first(value, _MAX_KEYS)
+            target = _first(value, _TARGET_KEYS)
+            tolerance = _first(value, _TOLERANCE_KEYS)
+            if target is not None:
+                center = _number(target, field)
+                span = (
+                    _number(tolerance, f"{field} tolerance")
+                    if tolerance is not None
+                    else center * 0.2
+                )
+                low = (
+                    _number(minimum, f"{field} minimum")
+                    if minimum is not None
+                    else center - span
+                )
+                high = (
+                    _number(maximum, f"{field} maximum")
+                    if maximum is not None
+                    else center + span
+                )
+                return LengthRange(max(0.0, low), high)
+            if minimum is None and maximum is None:
+                raise LengthPresetError(
+                    f"{field} must define min_seconds and max_seconds or a target",
+                    details={"preset": name, "value": dict(value)},
+                )
+            low = _number(minimum, f"{field} minimum") if minimum is not None else 0.0
+            high = (
+                _number(maximum, f"{field} maximum")
+                if maximum is not None
+                else math.inf
+            )
+            return LengthRange(low, high)
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
+            items = list(value)
+            if len(items) != 2:
+                raise LengthPresetError(
+                    f"{field} must have exactly two values",
+                    details={"preset": name, "value": value},
+                )
+            return LengthRange(
+                _number(items[0], f"{field} minimum"),
+                _number(items[1], f"{field} maximum"),
+            )
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            center = _number(value, field)
+            span = center * 0.2
+            return LengthRange(max(0.0, center - span), center + span)
+    except ValueError as exc:
+        raise LengthPresetError(
+            f"invalid {field}: {exc}",
+            details={"preset": name, "value": repr(value)},
+        ) from exc
+    raise LengthPresetError(
+        f"cannot read {field} from {type(value).__name__}",
+        details={"preset": name, "value": repr(value)},
+    )
+
+
+def _schema_version(value: Any) -> int:
+    if value is None:
+        return LENGTH_PRESETS_SCHEMA_VERSION
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise LengthPresetError(
+            "length preset schema_version must be an integer",
+            details={"schema_version": repr(value)},
+        )
+    if value != LENGTH_PRESETS_SCHEMA_VERSION:
+        raise LengthPresetError(
+            f"unsupported length preset schema_version: {value}",
+            details={
+                "schema_version": value,
+                "supported": LENGTH_PRESETS_SCHEMA_VERSION,
+            },
+        )
+    return value
+
+
+def _default_rate(value: Any) -> float:
+    if not isinstance(value, Mapping):
+        return _FALLBACK_WORDS_PER_SECOND
+    for key in _DEFAULT_RATE_KEYS:
+        if key in value:
+            return _number(value[key], "default_words_per_second")
+    defaults = value.get("defaults")
+    if isinstance(defaults, Mapping):
+        for key in _DEFAULT_RATE_KEYS:
+            if key in defaults:
+                return _number(defaults[key], "default_words_per_second")
+    return _FALLBACK_WORDS_PER_SECOND
+
+
+def _preset_entries(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        raise LengthPresetError(
+            "length presets must be a mapping or a list of entries",
+            details={"value": repr(value)},
+        )
+    entries: dict[str, Any] = {}
+    for item in value:
+        entry: Any
+        if isinstance(item, Mapping):
+            name = _first(item, _PRESET_NAME_KEYS)
+            if name is None:
+                raise LengthPresetError(
+                    "a length preset entry must name the preset",
+                    details={"entry": dict(item)},
+                )
+            entry = {
+                key: val for key, val in item.items() if key not in _PRESET_NAME_KEYS
+            }
+        elif isinstance(item, Sequence) and not isinstance(
+            item, (str, bytes, bytearray)
+        ):
+            parts = list(item)
+            if len(parts) != 3:
+                raise LengthPresetError(
+                    "a length preset entry must be [name, min_seconds, max_seconds]",
+                    details={"entry": item},
+                )
+            name, entry = parts[0], [parts[1], parts[2]]
+        else:
+            raise LengthPresetError(
+                "a length preset entry must be a mapping or a triple",
+                details={"entry": repr(item)},
+            )
+        key = str(name).strip()
+        if not key:
+            raise LengthPresetError("a length preset name must not be empty")
+        if key.casefold() in {existing.casefold() for existing in entries}:
+            raise LengthPresetError(
+                f"duplicate length preset name: {key}",
+                details={"preset": key},
+            )
+        entries[key] = entry
+    return entries
+
+
+def _manifest(value: Any) -> tuple[Mapping[str, Any], Any]:
+    if not isinstance(value, Mapping):
+        return _preset_entries(value), None
+    container = next(
+        (key for key in _PRESET_CONTAINER_KEYS if key in value),
+        None,
+    )
+    if container is not None:
+        return _preset_entries(value[container]), value
+    direct = {key: val for key, val in value.items() if key not in _RESERVED_KEYS}
+    if direct or set(value) & _RESERVED_KEYS:
+        return _preset_entries(direct), value
+    return _preset_entries(value), value
+
+
+class LengthPresets(Mapping[str, tuple[float, float]]):
+    """Named reading-time ranges and the default reading speed.
+
+    The object is itself a mapping from preset name to an inclusive
+    ``(min_seconds, max_seconds)`` pair, so it can stand in for the old module
+    level ``LENGTH_PRESETS`` mapping while also carrying the default rate and
+    the file it was loaded from.
+    """
+
+    def __init__(
+        self,
+        presets: Any = (),
+        *,
+        default_words_per_second: Any = _FALLBACK_WORDS_PER_SECOND,
+        source: str | Path | None = None,
+        schema_version: Any = LENGTH_PRESETS_SCHEMA_VERSION,
+    ) -> None:
+        version = _schema_version(schema_version)
+        rate = _number(default_words_per_second, "default_words_per_second")
+        if rate <= 0:
+            raise LengthPresetError(
+                "default_words_per_second must be positive",
+                details={"default_words_per_second": rate},
+            )
+        normalised: dict[str, tuple[float, float]] = {}
+        for name, value in _preset_entries(presets).items():
+            key = str(name).strip().casefold()
+            if not key:
+                raise LengthPresetError("a length preset name must not be empty")
+            if key in normalised:
+                raise LengthPresetError(
+                    f"duplicate length preset name: {key}",
+                    details={"preset": key},
+                )
+            length = _preset_range(key, value)
+            normalised[key] = (length.min_seconds, length.max_seconds)
+        if not normalised:
+            raise LengthPresetError("length presets must define at least one preset")
+        self._presets: Mapping[str, tuple[float, float]] = MappingProxyType(normalised)
+        self._ranges: Mapping[str, LengthRange] = MappingProxyType(
+            {name: LengthRange(*bounds) for name, bounds in normalised.items()}
+        )
+        self._default_words_per_second = rate
+        self._schema_version = version
+        self.source = None if source is None else Path(source).expanduser()
+
+    @classmethod
+    def from_mapping(cls, value: Any) -> LengthPresets:
+        """Build presets from a manifest mapping, list or existing instance."""
+        if isinstance(value, cls):
+            return value
+        presets, manifest = _manifest(value)
+        version = (
+            _first(manifest, ("schema_version", "version"))
+            if isinstance(manifest, Mapping)
+            else LENGTH_PRESETS_SCHEMA_VERSION
+        )
+        return cls(
+            presets,
+            default_words_per_second=_default_rate(manifest),
+            schema_version=version,
+        )
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> LengthPresets:
+        """Load a YAML or JSON preset manifest from *path*."""
+        manifest = Path(path).expanduser()
+        if not manifest.is_file():
+            raise LengthPresetError(
+                f"length preset manifest not found: {manifest}",
+                details={"path": str(manifest)},
+            )
+        text = manifest.read_text(encoding="utf-8")
+        suffix = manifest.suffix.lower()
+        try:
+            if suffix in {".yaml", ".yml"}:
+                payload: Any = yaml.safe_load(text)
+            elif suffix == ".json":
+                payload = json.loads(text)
+            else:
+                raise LengthPresetError(
+                    f"unsupported length preset extension: {suffix}",
+                    details={"path": str(manifest)},
+                )
+        except (yaml.YAMLError, json.JSONDecodeError) as exc:
+            raise LengthPresetError(
+                f"invalid length preset manifest: {manifest}",
+                details={"path": str(manifest), "error": str(exc)},
+            ) from exc
+        loaded = cls.from_mapping(payload)
+        return cls(
+            loaded.presets,
+            default_words_per_second=loaded.default_words_per_second,
+            source=manifest,
+            schema_version=loaded.schema_version,
+        )
+
+    @classmethod
+    def from_default(cls) -> LengthPresets:
+        """Load the presets shipped as package data."""
+        return cls.from_file(default_length_presets_path())
+
+    @property
+    def presets(self) -> Mapping[str, tuple[float, float]]:
+        """The named ranges as ``(min_seconds, max_seconds)`` pairs."""
+        return self._presets
+
+    @property
+    def ranges(self) -> Mapping[str, LengthRange]:
+        """The named ranges as :class:`LengthRange` values."""
+        return self._ranges
+
+    @property
+    def default_words_per_second(self) -> float:
+        """The fallback reading speed in words per second."""
+        return self._default_words_per_second
+
+    @property
+    def default_rate(self) -> float:
+        """Alias for :attr:`default_words_per_second`."""
+        return self._default_words_per_second
+
+    @property
+    def schema_version(self) -> int:
+        """The manifest schema version."""
+        return self._schema_version
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """Every preset name, sorted."""
+        return tuple(sorted(self._presets))
+
+    def range(self, name: str) -> LengthRange:
+        """Return one preset as a :class:`LengthRange`."""
+        key = str(name).strip().casefold()
+        try:
+            return self._ranges[key]
+        except KeyError:
+            raise LengthPresetError(
+                f"unknown length preset: {name!r} (known: {', '.join(self.names)})",
+                details={"preset": name, "known": list(self.names)},
+            ) from None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the manifest as a JSON-compatible mapping."""
+        return {
+            "schema_version": self._schema_version,
+            "default_words_per_second": self._default_words_per_second,
+            "presets": {
+                name: {"min_seconds": low, "max_seconds": high}
+                for name, (low, high) in self._presets.items()
+            },
+        }
+
+    def __getitem__(self, name: str) -> tuple[float, float]:
+        return self._presets[name]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._presets)
+
+    def __len__(self) -> int:
+        return len(self._presets)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Mapping):
+            return dict(self._presets) == dict(other.items())
+        return NotImplemented
+
+
+def default_length_presets_path() -> Path:
+    """Return the packaged reading-time preset manifest path."""
+    return paths.package_defaults_dir() / LENGTH_PRESETS_FILENAME
+
+
+def load_length_presets(source: Any = None) -> LengthPresets:
+    """Load reading-time presets from package data, a file or a mapping."""
+    if isinstance(source, LengthPresets):
+        return source
+    if source is None:
+        return LengthPresets.from_default()
+    if isinstance(source, (str, Path)):
+        return LengthPresets.from_file(source)
+    if isinstance(source, Mapping) or (
+        isinstance(source, Sequence) and not isinstance(source, (str, bytes, bytearray))
+    ):
+        return LengthPresets.from_mapping(source)
+    raise LengthPresetError(
+        f"cannot read length presets from {type(source).__name__}",
+        details={"value": repr(source)},
+    )
+
+
+def load_default_length_presets() -> LengthPresets:
+    """Load the reading-time presets shipped with this release."""
+    return LengthPresets.from_default()
+
+
+DEFAULT_LENGTH_PRESETS = load_default_length_presets()
+LENGTH_PRESETS: Mapping[str, tuple[float, float]] = DEFAULT_LENGTH_PRESETS.presets
+"""Named target ranges in seconds, loaded from packaged data."""
+
+DEFAULT_WORDS_PER_SECOND: float = DEFAULT_LENGTH_PRESETS.default_words_per_second
+"""Fallback reading speed in words per second, loaded from packaged data."""
+
+length_presets = load_length_presets
+default_length_presets = load_default_length_presets
+length_presets_path = default_length_presets_path
+package_length_presets_path = default_length_presets_path
 
 
 class LengthResult(str):
