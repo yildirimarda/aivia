@@ -24,6 +24,7 @@ from aivia.writing.modes import (
     BuiltinWritingMode,
     register_builtin_writing_mode,
 )
+from aivia.writing.originality import DEFAULT_MAX_REWRITES, apply_lyrics_safety
 from aivia.writing.schema import (
     LyricsPayload,
     LyricsSection,
@@ -892,6 +893,15 @@ class LyricsMode(BuiltinWritingMode):
         outro: str | None = None,
         speaker: str = "narrator",
         max_beats: int | None = None,
+        references: Any = None,
+        reference_lyrics: Any = None,
+        sources: Any = None,
+        overlap_threshold: float | None = None,
+        max_rewrites: int = DEFAULT_MAX_REWRITES,
+        rewrite: Any = None,
+        profanity_terms: Any = None,
+        safety: bool = True,
+        safety_config: Any = None,
     ) -> Script:
         """Build a lyrics script from text, sections, a mapping or a payload."""
         if section_counts is None:
@@ -948,6 +958,21 @@ class LyricsMode(BuiltinWritingMode):
             genre=genre.strip() if genre is not None else payload.genre,
             tempo=tempo.strip() if tempo is not None else payload.tempo,
         )
+        if safety:
+            reference_texts = references
+            if reference_texts is None:
+                reference_texts = reference_lyrics
+            if reference_texts is None:
+                reference_texts = sources
+            payload = apply_lyrics_safety(
+                payload,
+                reference_texts,
+                threshold=overlap_threshold,
+                rewrite=rewrite,
+                max_rewrites=max_rewrites,
+                profanity_terms=profanity_terms,
+                config=safety_config,
+            )
         resolved_title = (
             title if title is not None else _text(_value_of(value, _TITLE_KEYS))
         )
