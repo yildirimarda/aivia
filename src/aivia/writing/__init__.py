@@ -34,6 +34,8 @@ from aivia.writing.quote import *  # noqa: F403
 from aivia.writing.quote import __all__ as _quote_all
 from aivia.writing.schema import *  # noqa: F403
 from aivia.writing.schema import __all__ as _schema_all
+from aivia.writing.stage import *  # noqa: F403
+from aivia.writing.stage import __all__ as _stage_all
 from aivia.writing.story import *  # noqa: F403
 from aivia.writing.story import __all__ as _story_all
 from aivia.writing.style_bible import *  # noqa: F403
@@ -51,6 +53,7 @@ __all__ = list(
             *_schema_all,
             *_modes_all,
             *_multilingual_all,
+            *_stage_all,
             *_length_all,
             *_media_prompts_all,
             *_glossary_all,
