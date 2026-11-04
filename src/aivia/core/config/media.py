@@ -32,6 +32,12 @@ __all__ = [
     "DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS",
     "DEFAULT_MEDIA_FFPROBE_TIMEOUT_SECONDS",
     "DEFAULT_MEDIA_LOOP_SIMILARITY_THRESHOLD",
+    "DEFAULT_MEDIA_LYRIC_DELETION_COST",
+    "DEFAULT_MEDIA_LYRIC_INSERTION_COST",
+    "DEFAULT_MEDIA_LYRIC_LINE_THRESHOLD",
+    "DEFAULT_MEDIA_LYRIC_MATCH_WEIGHT",
+    "DEFAULT_MEDIA_LYRIC_MERGE_COST",
+    "DEFAULT_MEDIA_LYRIC_MIN_CONFIDENCE",
     "DEFAULT_MEDIA_MAX_ANIMATED_FRAMES",
     "DEFAULT_MEDIA_MAX_ANIMATED_PIXELS",
     "DEFAULT_MEDIA_MAX_BYTES",
@@ -139,6 +145,24 @@ DEFAULT_AUDIO_QA_MIN_DURATION_RATIO = 0.4
 
 DEFAULT_MEDIA_ALIGNMENT_SIMILARITY_THRESHOLD = 0.8
 """Word similarity at or above this pairs a script word with a transcript word."""
+
+DEFAULT_MEDIA_LYRIC_LINE_THRESHOLD = 0.5
+"""Line coverage below this is noted as a weak lyric line."""
+
+DEFAULT_MEDIA_LYRIC_MIN_CONFIDENCE = 0.0
+"""Transcript confidence below this is reported as a low-confidence word."""
+
+DEFAULT_MEDIA_LYRIC_MATCH_WEIGHT = 2.0
+"""The score awarded for a perfect lyric word match during alignment."""
+
+DEFAULT_MEDIA_LYRIC_DELETION_COST = 0.7
+"""The score lost when a written lyric word is not heard."""
+
+DEFAULT_MEDIA_LYRIC_INSERTION_COST = 0.4
+"""The score lost for an extra transcript word during alignment."""
+
+DEFAULT_MEDIA_LYRIC_MERGE_COST = 0.08
+"""The score lost for each extra token merged into one sung word."""
 
 MAX_MEDIA_SIMILARITY = 1.0
 """The highest possible normalized similarity score."""
