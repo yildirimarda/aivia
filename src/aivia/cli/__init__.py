@@ -19,6 +19,7 @@ from aivia.cli import (
     resume,
     run,
     topics,
+    voice,
     worker,
     write,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "run",
     "topics",
     "version_string",
+    "voice",
     "worker",
     "write",
 ]
