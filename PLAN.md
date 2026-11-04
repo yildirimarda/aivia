@@ -542,7 +542,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the facts mode building hook, beats and outro from a fact list supplied either by user text or by the research module, without importing it (tests/writing/test_mode_facts.py)
 - [x] Implement the quote mode requiring attribution and forbidding invented attribution to real people (tests/writing/test_mode_quote.py)
 - [x] Implement the poem and story modes with configurable length, form and tone and a reading time in range (tests/writing/test_mode_poem_story.py)
-- [ ] Implement the joke and riddle modes with setup and punchline or question and answer fields (tests/writing/test_mode_humor.py)
+- [x] Implement the joke and riddle modes with setup and punchline or question and answer fields (tests/writing/test_mode_humor.py)
 - [ ] Implement the lyrics mode with section counts, rhyme scheme, syllable budget and optional keyword insertion (tests/writing/test_mode_lyrics.py)
 - [ ] Add originality and lyrics safety checks that rewrite above the overlap threshold and block profanity (tests/writing/test_originality.py)
 - [ ] Generate several hook candidates and pick one with a recorded reason, keeping all alternatives for testing (tests/writing/test_hooks.py)
