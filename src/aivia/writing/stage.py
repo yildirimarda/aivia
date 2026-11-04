@@ -658,6 +658,12 @@ class WriteStage(Stage):
 
         run = context.run
         if run is not None:
+            for key in ("fact_list", "facts", "topic"):
+                value = getattr(run, key, None)
+                if value is not None:
+                    facts = _facts_from(value)
+                    if facts:
+                        return facts, value
             for source in (run.config_snapshot, getattr(run, "metadata", None)):
                 if isinstance(source, Mapping):
                     for key in ("fact_list", "facts", "topic"):
