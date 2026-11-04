@@ -12,6 +12,8 @@ from aivia.writing.hooks import *  # noqa: F403
 from aivia.writing.hooks import __all__ as _hooks_all
 from aivia.writing.humor import *  # noqa: F403
 from aivia.writing.humor import __all__ as _humor_all
+from aivia.writing.injection import *  # noqa: F403
+from aivia.writing.injection import __all__ as _injection_all
 from aivia.writing.length import *  # noqa: F403
 from aivia.writing.length import __all__ as _length_all
 from aivia.writing.lyrics import *  # noqa: F403
@@ -53,6 +55,7 @@ __all__ = list(
             *_facts_all,
             *_hook_formulas_all,
             *_hooks_all,
+            *_injection_all,
             *_hook_prefilter_all,
             *_humor_all,
             *_quote_all,
