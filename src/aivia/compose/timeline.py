@@ -353,6 +353,10 @@ class TimelineVoice(_TimelineModel):
         validation_alias=AliasChoices("words", "timed_words", "word_timings"),
     )
     speaker: str = Field(default="", validation_alias=AliasChoices("speaker", "who"))
+    voice: str = Field(
+        default="",
+        validation_alias=AliasChoices("voice", "voice_id", "voice_name"),
+    )
     language: str = Field(
         default="",
         validation_alias=AliasChoices("language", "lang", "locale"),
@@ -368,7 +372,9 @@ class TimelineVoice(_TimelineModel):
             return {"source": data}
         return data
 
-    @field_validator("id", "beat", "source", "speaker", "language", mode="before")
+    @field_validator(
+        "id", "beat", "source", "speaker", "voice", "language", mode="before"
+    )
     @classmethod
     def _strip_text(cls, value: Any) -> Any:
         return _text(value)

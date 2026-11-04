@@ -5,13 +5,16 @@ single screened, cached and budgeted speech path. A script may be voiced one
 beat at a time or as one whole script:
 
 * ``beat`` mode makes one speech request per non-empty beat and leaves a
-  configurable gap of silence between the beats.
+  configurable gap of silence between voiced segments. When a beat carries
+  dialogue, every line is voiced separately so a named speaker can use a
+  distinct voice while the narration keeps the language's narrator voice.
 * ``script`` mode makes one request per language for the whole script.
 
 Either way the timeline records the *measured* duration returned by the speech
-service, not an estimate from the word count. Beat timings, voice starts, gaps
-and word timings are written to a :class:`~aivia.compose.timeline.Timeline`
-JSON file, which is the hand-off the subtitle and render stages consume.
+service, not an estimate from the word count. Beat timings, speaker names,
+voice starts, gaps and word timings are written to a
+:class:`~aivia.compose.timeline.Timeline` JSON file, which is the hand-off the
+subtitle and render stages consume.
 
 An injected speech callable or service keeps the stage offline in tests. The
 default path calls ``context.media.speech`` so the call still goes through the
@@ -34,7 +37,7 @@ from aivia.core.config.media import DEFAULT_MEDIA_VOICE_GAP_SECONDS
 from aivia.core.errors import ConfigError
 from aivia.core.models.base import canonical_json
 from aivia.core.models.run import StageResult, StageState
-from aivia.core.models.script import Beat, Script
+from aivia.core.models.script import Beat, DialogueLine, Script
 from aivia.core.stages.base import Stage, StageContext
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.tts import TTSRequest
@@ -74,6 +77,23 @@ _BEAT_ALIASES = frozenset(
 _SCRIPT_ALIASES = frozenset(
     {"script", "scripts", "whole", "whole-script", "whole_script", "full", "single"}
 )
+_NARRATOR_SPEAKERS = frozenset(
+    {"narrator", "narration", "voiceover", "voice-over", "voice_over"}
+)
+_SPEAKER_VOICE_KEYS = (
+    "speaker_voices",
+    "speaker_voice",
+    "voices_by_speaker",
+    "voices_by_role",
+    "role_voices",
+    "character_voices",
+    "character_voice",
+    "speaker_map",
+    "character_map",
+    "voice_map",
+)
+_SPEAKER_SECTION_KEYS = ("speakers", "characters", "roles", "voices")
+_VOICE_VALUE_KEYS = ("voice", "voice_id", "id", "name")
 
 
 def _finite(value: Any, name: str, *, non_negative: bool = False) -> float:
@@ -103,6 +123,49 @@ def _language_key(value: Any) -> str:
 
 def _base_language(value: str) -> str:
     return value.split("-", 1)[0]
+
+
+def _speaker_key(value: Any) -> str:
+    return _text(value).casefold()
+
+
+def _comparison_text(value: Any) -> str:
+    return " ".join(_text(value).split()).casefold()
+
+
+def _voice_value(value: Any) -> str:
+    if isinstance(value, Mapping):
+        for name in _VOICE_VALUE_KEYS:
+            text = _text(value.get(name))
+            if text:
+                return text
+        return ""
+    return _text(value)
+
+
+def _lookup_voice(mapping: Any, key: str) -> str:
+    if not key or not isinstance(mapping, Mapping):
+        return ""
+    text = _voice_value(mapping.get(key))
+    if text:
+        return text
+    folded = key.casefold()
+    for raw_key, raw_value in mapping.items():
+        if isinstance(raw_key, str) and raw_key.strip().casefold() == folded:
+            text = _voice_value(raw_value)
+            if text:
+                return text
+    return ""
+
+
+def _nested_mapping(value: Any, keys: Iterable[str]) -> Mapping[Any, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    for key in keys:
+        nested = value.get(key)
+        if isinstance(nested, Mapping):
+            return nested
+    return {}
 
 
 def _section(config: Any, name: str) -> Any:
@@ -215,6 +278,45 @@ def _beat_text(beat: Beat) -> str:
         return text
     parts = [_text(line.text) for line in beat.dialogue if _text(line.text)]
     return " ".join(parts)
+
+
+def _dialogue_units(
+    lines: Iterable[DialogueLine],
+    *,
+    fallback_speaker: str = "narrator",
+) -> list[tuple[str, str, str, DialogueLine | None]]:
+    units: list[tuple[str, str, str, DialogueLine | None]] = []
+    for line in lines:
+        text = _text(line.text)
+        if not text:
+            continue
+        speaker = _text(line.speaker) or fallback_speaker
+        units.append((text, speaker, _text(line.voice), line))
+    return units
+
+
+def _beat_units(beat: Beat) -> list[tuple[str, str, str, DialogueLine | None]]:
+    """Return the spoken units of *beat* in script order.
+
+    A beat that repeats its narration as a narrator dialogue line is voiced
+    once, from the dialogue, so writing modes that populate both fields do not
+    produce duplicate audio.
+    """
+    dialogue = _dialogue_units(beat.dialogue)
+    narration = _text(beat.text)
+    if not narration:
+        return dialogue
+    if not dialogue:
+        return [(narration, "narrator", "", None)]
+    target = _comparison_text(narration)
+    joined = _comparison_text(
+        " ".join(text for text, _speaker, _voice, _line in dialogue)
+    )
+    if target == joined or any(
+        _comparison_text(text) == target for text, _speaker, _voice, _line in dialogue
+    ):
+        return dialogue
+    return [(narration, "narrator", "", None), *dialogue]
 
 
 def _full_script_text(script: Script) -> str:
@@ -422,7 +524,8 @@ class VoiceStage(Stage):
     """Synthesize a script per language and write a measured timeline.
 
     ``options`` may carry ``languages``/``language``, ``mode`` (``beat`` or
-    ``script``), ``gap_seconds``, ``voice``/``voices``, ``model``,
+    ``script``), ``gap_seconds``, ``voice``/``voices``, ``speaker_voices``
+    (a speaker or character name to voice mapping), ``model``,
     ``instructions``, ``speed``, ``format``, ``timeline_filename``,
     ``script_filename_pattern`` and ``word_timestamps``. A caller may inject
     ``scripts``, a single ``script`` or a ``speech`` callable/service instead
@@ -446,6 +549,8 @@ class VoiceStage(Stage):
         gap_seconds: float | None = None,
         voice: str | None = None,
         voices: Mapping[str, Any] | None = None,
+        speaker_voices: Mapping[str, Any] | None = None,
+        character_voices: Mapping[str, Any] | None = None,
         timeline_filename: str | None = None,
         script_filename_pattern: str | None = None,
         **kwargs: Any,
@@ -469,6 +574,10 @@ class VoiceStage(Stage):
             merged["voice"] = voice
         if voices is not None:
             merged["voices"] = voices
+        if speaker_voices is not None:
+            merged["speaker_voices"] = speaker_voices
+        if character_voices is not None:
+            merged["character_voices"] = character_voices
         if timeline_filename is not None:
             merged["timeline_filename"] = timeline_filename
         if script_filename_pattern is not None:
@@ -489,8 +598,23 @@ class VoiceStage(Stage):
             "gap_seconds",
             non_negative=True,
         )
-        self.voice = _text(merged.get("voice"))
+        self.voice = _text(
+            merged.get("voice")
+            or merged.get("narrator_voice")
+            or merged.get("narration_voice")
+            or merged.get("default_voice")
+        )
         self.voices = merged.get("voices")
+        self.speaker_voices = next(
+            (
+                merged[name]
+                for name in _SPEAKER_VOICE_KEYS
+                if isinstance(merged.get(name), Mapping)
+            ),
+            None,
+        )
+        if self.speaker_voices is None:
+            self.speaker_voices = merged.get("speakers") or merged.get("characters")
         self.timeline_filename = str(
             merged.get("timeline_filename") or DEFAULT_TIMELINE_FILENAME
         )
@@ -584,26 +708,42 @@ class VoiceStage(Stage):
             )
         return scripts
 
-    def _voice_for(self, language: str, config: Any) -> str:
-        mapping = self.voices
-        if isinstance(mapping, Mapping):
-            for key in (language, _base_language(language)):
-                if key in mapping:
-                    value = mapping[key]
-                    if isinstance(value, Mapping):
-                        value = value.get("voice") or value.get("id")
-                    text = _text(value)
-                    if text:
-                        return text
+    def _speaker_voice_for(self, speaker: str, config: Any) -> str:
+        key = _speaker_key(speaker)
+        if not key:
+            return ""
+        mappings: list[Any] = [self.speaker_voices]
+        if isinstance(self.voices, Mapping):
+            mappings.append(self.voices)
         configured = _section(config, "voices")
         if isinstance(configured, Mapping):
-            for key in (language, _base_language(language), "default"):
-                value = configured.get(key)
-                if isinstance(value, Mapping):
-                    value = value.get("voice") or value.get("id")
-                text = _text(value)
-                if text:
-                    return text
+            mappings.append(_nested_mapping(configured, _SPEAKER_SECTION_KEYS))
+            mappings.append(configured)
+        for name in _SPEAKER_VOICE_KEYS:
+            mappings.append(_section(config, name))
+        for mapping in mappings:
+            text = _lookup_voice(mapping, key)
+            if text:
+                return text
+        return ""
+
+    def _voice_for(self, language: str, config: Any, *, speaker: str = "") -> str:
+        speaker_voice = self._speaker_voice_for(speaker, config)
+        if speaker_voice:
+            return speaker_voice
+        key = _speaker_key(speaker)
+        if key and key not in _NARRATOR_SPEAKERS:
+            return _text(speaker)
+        mapping = self.voices
+        for name in (language, _base_language(language), "default"):
+            text = _lookup_voice(mapping, name)
+            if text:
+                return text
+        configured = _section(config, "voices")
+        for name in (language, _base_language(language), "default"):
+            text = _lookup_voice(configured, name)
+            if text:
+                return text
         if self.voice:
             return self.voice
         return "default"
@@ -615,14 +755,22 @@ class VoiceStage(Stage):
         *,
         beat: str,
         config: Any,
+        speaker: str = "",
+        voice: str = "",
     ) -> TTSRequest:
         options = self.options
+        resolved = _text(voice) or self._voice_for(language, config, speaker=speaker)
         values: dict[str, Any] = {
             "text": text,
-            "voice": self._voice_for(language, config),
+            "voice": resolved,
             "language": language,
             "word_timestamps": bool(options.get("word_timestamps", True)),
-            "metadata": {"stage": self.name, "language": language, "beat": beat},
+            "metadata": {
+                "stage": self.name,
+                "language": language,
+                "beat": beat,
+                "speaker": _text(speaker),
+            },
         }
         for key in ("model", "instructions", "speed", "sample_rate"):
             value = options.get(key)
@@ -679,6 +827,73 @@ class VoiceStage(Stage):
             value = await value
         return value
 
+    async def _synthesize_unit(
+        self,
+        text: str,
+        language: str,
+        context: StageContext,
+        *,
+        run_id: str,
+        beat_id: str,
+        speaker: str,
+        voice: str,
+        start: float,
+        unit_id: str,
+        line: DialogueLine | None = None,
+    ) -> tuple[dict[str, Any], float, float, str, str]:
+        resolved = _text(voice) or self._voice_for(
+            language, context.config, speaker=speaker
+        )
+        result = await self._speak(
+            self._request(
+                text,
+                language,
+                beat=beat_id,
+                config=context.config,
+                speaker=speaker,
+                voice=resolved,
+            ),
+            context,
+            run_id=run_id,
+        )
+        measured = _duration_of(result)
+        if measured is None:
+            raise ConfigError(
+                "speech result has no measured duration",
+                details={"language": language, "beat": beat_id, "speaker": speaker},
+            )
+        source = _path_of(result)
+        if not source:
+            raise ConfigError(
+                "speech result has no stored audio path",
+                details={"language": language, "beat": beat_id, "speaker": speaker},
+            )
+        duration = measured
+        if line is not None:
+            if line.duration_seconds is not None:
+                duration = float(line.duration_seconds)
+            elif line.end_seconds is not None and line.end_seconds >= start:
+                duration = float(line.end_seconds) - start
+        end = start + duration
+        record = {
+            "id": unit_id,
+            "beat": beat_id,
+            "source": source,
+            "start_seconds": start,
+            "end_seconds": end,
+            "language": language,
+            "speaker": speaker,
+            "voice": resolved,
+            "words": _word_records(result, start),
+        }
+        return (
+            record,
+            end,
+            _cost_of(result),
+            _provider_of(result),
+            _model_of(result),
+        )
+
     async def _synthesize_language(
         self,
         language: str,
@@ -724,6 +939,7 @@ class VoiceStage(Stage):
                     "start_seconds": 0.0,
                     "end_seconds": duration,
                     "language": language,
+                    "speaker": "narrator",
                     "words": _word_records(result, 0.0),
                 }
             )
@@ -735,47 +951,74 @@ class VoiceStage(Stage):
 
         starts_by_beat: dict[str, float] = {}
         ends_by_beat: dict[str, float] = {}
-        for position, beat in enumerate(script.beats):
-            text = _beat_text(beat)
-            if not text:
-                continue
-            beat_id = f"beat_{position}"
+        for unit_position, (text, speaker, unit_voice, line) in enumerate(
+            _dialogue_units(script.dialogue_lines)
+        ):
             start = cursor
-            result = await self._speak(
-                self._request(text, language, beat=beat_id, config=context.config),
+            if line is not None and line.start_seconds is not None:
+                start = float(line.start_seconds)
+            (
+                record,
+                end,
+                cost,
+                unit_provider,
+                unit_model,
+            ) = await self._synthesize_unit(
+                text,
+                language,
                 context,
                 run_id=run_id,
+                beat_id="",
+                speaker=speaker,
+                voice=unit_voice,
+                start=start,
+                unit_id=f"{language}_dialogue_{unit_position}",
+                line=line,
             )
-            duration = _duration_of(result)
-            if duration is None:
-                raise ConfigError(
-                    "speech result has no measured duration",
-                    details={"language": language, "beat": beat_id},
-                )
-            source = _path_of(result)
-            if not source:
-                raise ConfigError(
-                    "speech result has no stored audio path",
-                    details={"language": language, "beat": beat_id},
-                )
-            end = start + duration
-            voices.append(
-                {
-                    "id": f"{language}_{beat_id}",
-                    "beat": beat_id,
-                    "source": source,
-                    "start_seconds": start,
-                    "end_seconds": end,
-                    "language": language,
-                    "words": _word_records(result, start),
-                }
-            )
-            starts_by_beat[beat_id] = start
-            ends_by_beat[beat_id] = end
+            voices.append(record)
             cursor = end + self.gap_seconds
-            total_cost += _cost_of(result)
-            provider = provider or _provider_of(result)
-            model = model or _model_of(result)
+            total_cost += cost
+            provider = provider or unit_provider
+            model = model or unit_model
+            ends_by_beat[""] = max(ends_by_beat.get("", end), end)
+
+        for position, beat in enumerate(script.beats):
+            beat_id = f"beat_{position}"
+            units = _beat_units(beat)
+            for unit_position, (text, speaker, unit_voice, line) in enumerate(units):
+                start = cursor
+                if line is not None and line.start_seconds is not None:
+                    start = float(line.start_seconds)
+                unit_id = (
+                    f"{language}_{beat_id}"
+                    if len(units) == 1
+                    else f"{language}_{beat_id}_{unit_position}"
+                )
+                (
+                    record,
+                    end,
+                    cost,
+                    unit_provider,
+                    unit_model,
+                ) = await self._synthesize_unit(
+                    text,
+                    language,
+                    context,
+                    run_id=run_id,
+                    beat_id=beat_id,
+                    speaker=speaker,
+                    voice=unit_voice,
+                    start=start,
+                    unit_id=unit_id,
+                    line=line,
+                )
+                voices.append(record)
+                starts_by_beat.setdefault(beat_id, start)
+                ends_by_beat[beat_id] = max(ends_by_beat.get(beat_id, end), end)
+                cursor = end + self.gap_seconds
+                total_cost += cost
+                provider = provider or unit_provider
+                model = model or unit_model
 
         if not voices:
             raise ConfigError(
