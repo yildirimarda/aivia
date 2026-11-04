@@ -180,7 +180,7 @@ _URL = re.compile(
     r"(?:https?://|www\.|\b[\w.-]+\.(?:com|org|net|io|co|dev)\b)",
     re.IGNORECASE,
 )
-_EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF]")
+_EMOJI = re.compile("[\U0001f000-\U0001faff\u2600-\u27bf]")
 _ALLCAPS = re.compile(r"\b[A-Z]{3,}\b")
 _REPEATED_PUNCT = re.compile(r"[!?.,]{2,}")
 _ADJACENT_REPEAT = re.compile(r"\b(\w+)\s+\1\b", re.IGNORECASE)
@@ -299,9 +299,7 @@ class HookPrefilterConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_bands(self) -> HookPrefilterConfig:
         if self.ideal_min_words > self.ideal_max_words:
-            raise ValueError(
-                "ideal_min_words must not be greater than ideal_max_words"
-            )
+            raise ValueError("ideal_min_words must not be greater than ideal_max_words")
         return self
 
 
@@ -386,10 +384,9 @@ def _clarity_score(text: str, config: HookPrefilterConfig) -> float:
     if not words:
         return 0.0
     average_length = sum(len(word) for word in words) / len(words)
-    long_ratio = (
-        sum(1 for word in words if len(word) > HOOK_CLARITY_LONG_WORD_LENGTH)
-        / len(words)
-    )
+    long_ratio = sum(
+        1 for word in words if len(word) > HOOK_CLARITY_LONG_WORD_LENGTH
+    ) / len(words)
     sentences = max(1, len(re.findall(r"[.!?]+", text)))
     clauses = text.count(",") + text.count(";")
     value = HOOK_MAX_PROPERTY_SCORE
@@ -398,16 +395,13 @@ def _clarity_score(text: str, config: HookPrefilterConfig) -> float:
         * HOOK_CLARITY_AVG_WORD_PENALTY
     )
     value -= (
-        max(0, sentences - HOOK_CLARITY_SENTENCE_LIMIT)
-        * HOOK_CLARITY_SENTENCE_PENALTY
+        max(0, sentences - HOOK_CLARITY_SENTENCE_LIMIT) * HOOK_CLARITY_SENTENCE_PENALTY
     )
     value -= (
         max(0.0, long_ratio - HOOK_CLARITY_LONG_WORD_RATIO_LIMIT)
         * HOOK_CLARITY_LONG_RATIO_PENALTY
     )
-    value -= (
-        max(0, clauses - HOOK_CLARITY_CLAUSE_LIMIT) * HOOK_CLARITY_CLAUSE_PENALTY
-    )
+    value -= max(0, clauses - HOOK_CLARITY_CLAUSE_LIMIT) * HOOK_CLARITY_CLAUSE_PENALTY
     return _clamp(value)
 
 
@@ -767,7 +761,6 @@ class HookPrefilterResult:
         ]
 
 
-
 def score_hook_candidate(
     candidate: Any,
     *,
@@ -787,9 +780,7 @@ def score_hook_candidate(
         name: _PROPERTY_SCORERS[name](hook.text, active) for name in HOOK_PROPERTIES
     }
     effective = {
-        name: active.weights[name]
-        for name in HOOK_PROPERTIES
-        if name in active.weights
+        name: active.weights[name] for name in HOOK_PROPERTIES if name in active.weights
     }
     total_weight = sum(effective.values())
     weighted_mean = (
@@ -802,9 +793,8 @@ def score_hook_candidate(
     )
     weakest_score = properties[weakest_property]
     score = (
-        (1.0 - active.weakest_weight) * weighted_mean
-        + active.weakest_weight * weakest_score
-    )
+        1.0 - active.weakest_weight
+    ) * weighted_mean + active.weakest_weight * weakest_score
     return HookCandidateScore(
         index=index,
         candidate=hook,
@@ -893,11 +883,17 @@ def choose_hook_by_prefilter(
     weights: Mapping[str, Any] | None = None,
 ) -> HookCandidate:
     """Return the highest scoring candidate, raising when none clears the floor."""
-    return prefilter_hook_candidates(
-        candidates,
-        config=config,
-        weights=weights,
-    ).require().chosen  # type: ignore[return-value]
+    chosen = (
+        prefilter_hook_candidates(
+            candidates,
+            config=config,
+            weights=weights,
+        )
+        .require()
+        .chosen
+    )
+    assert chosen is not None
+    return chosen
 
 
 class HookPrefilter:

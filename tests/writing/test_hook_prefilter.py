@@ -102,9 +102,9 @@ def test_curiosity_rewards_a_question_or_an_open_loop() -> None:
 
 def test_naturalness_penalises_links_shouting_and_repeated_punctuation() -> None:
     clean = hook_property_scores("Most people get this wrong.")["naturalness"]
-    noisy = hook_property_scores(
-        "STOP!!! VISIT https://example.com NOW!!!"
-    )["naturalness"]
+    noisy = hook_property_scores("STOP!!! VISIT https://example.com NOW!!!")[
+        "naturalness"
+    ]
 
     assert clean == 1.0
     assert noisy < 0.5
@@ -227,9 +227,7 @@ def test_candidates_can_be_text_mappings_candidate_models_or_a_full_selection() 
     selection = HookSelection(
         candidates=[
             HookCandidate(text="Why does this keep happening?", formula="question"),
-            HookCandidate(
-                text="Most people get this wrong.", formula="contrarian"
-            ),
+            HookCandidate(text="Most people get this wrong.", formula="contrarian"),
         ],
         selected_index=0,
         reason="The question opens a loop.",
