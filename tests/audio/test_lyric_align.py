@@ -255,6 +255,29 @@ def test_low_confidence_words_are_reported_when_a_threshold_is_set() -> None:
     assert [item.code for item in reusable.mismatches] == ["low_confidence_word"]
 
 
+def test_a_line_below_the_coverage_threshold_is_reported_as_weak() -> None:
+    transcript = _response(_word("Hello", 0.0, 0.4))
+
+    default = align_lyrics("Hello world again", transcript)
+    strict = align_lyrics("Hello world again", transcript, line_threshold=0.2)
+    reusable = LyricAligner(line_threshold=0.5)("Hello world again", transcript)
+
+    assert default.lines[0].coverage == pytest.approx(1 / 3)
+    weak = default.by_code("weak_line")
+    assert len(weak) == 1
+    assert weak[0].kind == "line"
+    assert weak[0].expected == "Hello world again"
+    assert weak[0].metadata == {
+        "coverage": pytest.approx(1 / 3),
+        "line_threshold": 0.5,
+    }
+    assert default.weak_lines == default.lines
+    assert default.line_mismatches == weak
+    assert default.passed is True
+    assert strict.by_code("weak_line") == []
+    assert reusable.by_code("weak_line") == weak
+
+
 def test_a_line_with_no_matches_is_untimed_and_can_be_interpolated() -> None:
     lyrics = "Hello world\nSilent line\nFinal words"
     transcript = _response(

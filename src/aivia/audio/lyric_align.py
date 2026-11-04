@@ -697,6 +697,8 @@ class LyricMismatch(BaseModel):
             return "timing"
         if self.code.startswith("low_confidence"):
             return "confidence"
+        if self.code.startswith(("weak_line", "line_coverage", "low_coverage")):
+            return "line"
         return self.code
 
     @property
@@ -1176,6 +1178,18 @@ class LyricAlignment(BaseModel):
         return [mismatch for mismatch in self.mismatches if mismatch.kind == "timing"]
 
     @property
+    def weak_lines(self) -> list[LyricLine]:
+        """The lines whose coverage is below the configured threshold."""
+        return [
+            line for line in self.lines if line.metadata.get("below_line_threshold")
+        ]
+
+    @property
+    def line_mismatches(self) -> list[LyricMismatch]:
+        """The weak-line mismatches."""
+        return [mismatch for mismatch in self.mismatches if mismatch.kind == "line"]
+
+    @property
     def errors(self) -> list[LyricMismatch]:
         """Mismatches severe enough to fail the stage."""
         return [
@@ -1216,6 +1230,10 @@ class LyricAlignment(BaseModel):
             "overlap": "timing_overlap",
             "confidence": "low_confidence_word",
             "low_confidence": "low_confidence_word",
+            "line": "weak_line",
+            "weak": "weak_line",
+            "line_coverage": "weak_line",
+            "low_coverage": "weak_line",
         }
         wanted = aliases.get(code, code)
         return [
@@ -1690,8 +1708,26 @@ def align_lyrics(
                 )
             )
         previous_end = line.end_seconds
-        if line.matched and line.similarity < line_score:
+        if line.matched and line.coverage < line_score - _EPSILON:
             line.metadata["below_line_threshold"] = True
+            line.metadata["coverage"] = line.coverage
+            mismatches.append(
+                _mismatch(
+                    "weak_line",
+                    f"line {line.index + 1 if line.index is not None else 1} "
+                    f"matched only {line.coverage:.0%} of its words",
+                    severity=Severity.INFO,
+                    line_index=line.index,
+                    expected=line.text,
+                    similarity=line.similarity,
+                    start_seconds=line.start_seconds,
+                    end_seconds=line.end_seconds,
+                    metadata={
+                        "coverage": line.coverage,
+                        "line_threshold": line_score,
+                    },
+                )
+            )
 
     mismatches.sort(
         key=lambda item: (
