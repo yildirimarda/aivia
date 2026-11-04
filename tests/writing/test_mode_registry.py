@@ -466,3 +466,124 @@ def test_shared_registry_register_resolve_and_unregister_helpers_agree() -> None
 
     with pytest.raises(ConfigError, match="unknown writing mode"):
         writing_mode_registry.resolve("shared-recording")
+
+
+def test_registry_resolves_custom_mode_aliases(tmp_path: Path) -> None:
+    path = tmp_path / "alias_mode.yaml"
+    path.write_text(
+        "\n".join(
+            [
+                "name: acrostic",
+                "instructions: Shape the lines.",
+                "aliases: [acrostic-poem, shaped]",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry = WritingModeRegistry()
+
+    loaded = registry.load_file(path)
+
+    assert registry.resolve("acrostic-poem") is loaded
+    assert registry.resolve_mode("shaped") is loaded
+    assert registry.get("acrostic-poem") is loaded
+    assert registry["shaped"] is loaded
+    assert "acrostic-poem" in registry
+    assert is_known_writing_mode("acrostic-poem")
+    assert is_known_writing_mode("shaped")
+
+
+def test_registry_resolves_python_mode_aliases() -> None:
+    class AliasMode(RecordingMode):
+        name = "alias-mode"
+        aliases = ("alias-one", "alias-two")
+
+    registry = WritingModeRegistry()
+    registry.register(AliasMode)
+
+    assert registry.resolve("alias-one") is AliasMode
+    assert registry.resolve("alias-two") is AliasMode
+
+
+def test_registry_rejects_an_alias_that_collides_with_a_registered_name() -> None:
+    class AliasCollision(RecordingMode):
+        name = "alias-collision"
+        aliases = ("recording",)
+
+    registry = WritingModeRegistry()
+    registry.register("recording", RecordingMode)
+
+    with pytest.raises(ConfigError, match="alias") as caught:
+        registry.register(AliasCollision)
+
+    assert caught.value.details["alias"] == "recording"
+    assert caught.value.details["mode"] == "alias-collision"
+    assert registry.resolve("recording") is RecordingMode
+
+
+def test_registry_rejects_a_name_that_collides_with_an_alias() -> None:
+    class AliasOwner(RecordingMode):
+        name = "alias-owner"
+        aliases = ("taken",)
+
+    registry = WritingModeRegistry()
+    registry.register(AliasOwner)
+
+    with pytest.raises(ConfigError, match="alias") as caught:
+        registry.register("taken", RecordingMode)
+
+    assert caught.value.details["mode"] == "taken"
+    assert caught.value.details["alias_of"] == "alias-owner"
+    assert registry.resolve("taken") is AliasOwner
+
+
+def test_registry_rejects_an_alias_shared_by_two_modes() -> None:
+    class FirstAlias(RecordingMode):
+        name = "first-alias"
+        aliases = ("shared-alias",)
+
+    class SecondAlias(RecordingMode):
+        name = "second-alias"
+        aliases = ("shared-alias",)
+
+    registry = WritingModeRegistry()
+    registry.register(FirstAlias)
+
+    with pytest.raises(ConfigError, match="alias") as caught:
+        registry.register(SecondAlias)
+
+    assert caught.value.details["alias"] == "shared-alias"
+    assert caught.value.details["existing"] == "first-alias"
+
+
+def test_registry_rejects_an_alias_colliding_with_a_built_in_mode() -> None:
+    class SharedRegistry(WritingModeRegistry):
+        include_builtins = True
+
+    class FactsAlias(RecordingMode):
+        name = "facts-alias"
+        aliases = ("facts",)
+
+    registry = SharedRegistry()
+
+    with pytest.raises(ConfigError, match="built in") as caught:
+        registry.register(FactsAlias)
+
+    assert caught.value.details["alias"] == "facts"
+
+
+def test_registry_rejects_an_alias_collision_while_loading_a_file(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "loaded_alias.yaml"
+    path.write_text(
+        "name: loaded-alias\ninstructions: Keep it.\naliases: [recording]\n",
+        encoding="utf-8",
+    )
+    registry = WritingModeRegistry()
+    registry.register("recording", RecordingMode)
+
+    with pytest.raises(ConfigError, match="alias") as caught:
+        registry.load_file(path)
+
+    assert caught.value.details["alias"] == "recording"
