@@ -15,17 +15,9 @@ are rebuilt, which makes the operation safe to run more than once.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any, overload
-
-from pydantic import (
-    AliasChoices,
-    BaseModel,
-    ConfigDict,
-    Field,
-    field_validator,
-    model_validator,
-)
 
 from aivia.core.models.script import (
     Beat,
@@ -34,6 +26,17 @@ from aivia.core.models.script import (
     MediaPrompt,
     MotionPrompt,
     Script,
+)
+from aivia.writing.glossary import (
+    BrandGlossary,
+    Glossary,
+    GlossaryEntry,
+    GlossaryTerm,
+    GlossaryTerms,
+    apply_glossary,
+    glossary_terms,
+    normalise_glossary,
+    normalize_glossary,
 )
 from aivia.writing.style_bible import StyleBible, load_style_bible
 
@@ -103,38 +106,6 @@ _WHITESPACE = re.compile(r"\s+", re.UNICODE)
 _AVOID_KEYS = frozenset(
     {"avoid", "negative", "negative-prompt", "exclude", "forbidden", "no"}
 )
-_TERM_KEYS = ("term", "key", "name", "source", "from")
-_PREFERRED_KEYS = (
-    "preferred",
-    "replacement",
-    "replace",
-    "use",
-    "instead",
-    "target",
-    "translation",
-    "translated",
-    "canonical",
-    "render",
-)
-_DEFINITION_KEYS = ("definition", "description", "meaning", "gloss", "note", "notes")
-_AVOID_TERM_KEYS = (
-    "avoid",
-    "forbidden",
-    "banned",
-    "incorrect",
-    "wrong",
-    "variants",
-)
-_ALIAS_KEYS = ("aliases", "alias", "synonyms", "also")
-_LANGUAGE_KEYS = ("language", "lang", "locale")
-_GLOSSARY_LIST_KEYS = (
-    "terms",
-    "entries",
-    "glossary",
-    "items",
-    "definitions",
-    "lexicon",
-)
 
 
 def _clean(value: Any) -> str:
@@ -157,377 +128,62 @@ def _first(data: Mapping[str, Any], keys: Iterable[str]) -> Any:
     return None
 
 
-def _normalise_language(value: Any) -> str:
-    return str(value).strip().casefold().replace("_", "-")
-
-
-def _same_language(left: str, right: str) -> bool:
-    if not left or not right:
-        return True
-    first = _normalise_language(left)
-    second = _normalise_language(right)
-    return first == second or first.split("-", 1)[0] == second.split("-", 1)[0]
-
-
-def _text_sequence(value: Any, field: str) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return ()
-        parts = text.splitlines() if "\n" in text else text.split(",")
-        return tuple(part.strip() for part in parts if part.strip())
-    if isinstance(value, (bytes, bytearray, Mapping)):
-        raise ValueError(f"{field} must be a sequence of strings")
-    if isinstance(value, Iterable):
-        return tuple(str(item).strip() for item in value if str(item).strip())
-    raise ValueError(f"{field} must be a sequence of strings")
-
-
 def _normalise_key(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "-", str(value).casefold()).strip("-")
 
 
-class GlossaryTerm(BaseModel):
-    """One glossary entry with a preferred form and optional definition.
-
-    ``term`` is the spelling the writer used. ``preferred`` is the spelling,
-    translation or brand form that prompts should use instead. ``avoid`` and
-    ``aliases`` list additional forms that map to the same preferred form.
-    A term with no preferred form is still useful when it carries a definition.
-    """
-
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-
-    term: str = Field(validation_alias=AliasChoices(*_TERM_KEYS))
-    preferred: str = Field(default="", validation_alias=AliasChoices(*_PREFERRED_KEYS))
-    definition: str = Field(
-        default="",
-        validation_alias=AliasChoices(*_DEFINITION_KEYS),
-    )
-    avoid: tuple[str, ...] = Field(
-        default=(),
-        validation_alias=AliasChoices(*_AVOID_TERM_KEYS),
-    )
-    aliases: tuple[str, ...] = Field(
-        default=(),
-        validation_alias=AliasChoices(*_ALIAS_KEYS),
-    )
-    language: str = Field(
-        default="",
-        validation_alias=AliasChoices(*_LANGUAGE_KEYS),
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _accept_string(cls, value: Any) -> Any:
-        if isinstance(value, str):
-            return {"term": value}
-        return value
-
-    @field_validator("term", mode="before")
-    @classmethod
-    def _validate_term(cls, value: Any) -> str:
-        text = _clean(value)
-        if not text:
-            raise ValueError("glossary term must not be empty")
-        return text
-
-    @field_validator("preferred", "definition", "language", mode="before")
-    @classmethod
-    def _clean_text(cls, value: Any) -> str:
-        return _clean(value)
-
-    @field_validator("avoid", "aliases", mode="before")
-    @classmethod
-    def _normalise_sequence(cls, value: Any) -> tuple[str, ...]:
-        return _text_sequence(value, "glossary variants")
-
-    @property
-    def key(self) -> str:
-        """Alias for :attr:`term`."""
-        return self.term
-
-    @property
-    def replacement(self) -> str:
-        """Alias for :attr:`preferred`."""
-        return self.preferred
-
-    @property
-    def target(self) -> str:
-        """Alias for :attr:`preferred`."""
-        return self.preferred
-
-    @property
-    def display(self) -> str:
-        """The form a prompt should show."""
-        return self.preferred or self.term
-
-    @property
-    def variants(self) -> tuple[str, ...]:
-        """Every source form that should be rewritten to :attr:`display`."""
-        if not self.preferred:
-            return ()
-        values = [self.term, *self.aliases, *self.avoid]
-        seen: set[str] = set()
-        result: list[str] = []
-        for value in values:
-            text = _clean(value)
-            if not text or text.casefold() == self.preferred.casefold():
-                continue
-            key = text.casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            result.append(text)
-        result.sort(key=len, reverse=True)
-        return tuple(result)
-
-    def matches(self, value: Any) -> bool:
-        """Whether *value* names this term by term, preferred or alias."""
-        text = _clean(value).casefold()
-        if not text:
-            return False
-        candidates = (self.term, self.preferred, *self.aliases, *self.avoid)
-        return text in {_clean(candidate).casefold() for candidate in candidates}
-
-    def applies_to(self, language: str) -> bool:
-        """Whether this term applies to *language*."""
-        return _same_language(self.language, language)
-
-    def apply(self, text: str) -> str:
-        """Rewrite every source form in *text* to the preferred form."""
-        result = text
-        for variant in self.variants:
-            pattern = re.compile(
-                rf"(?<!\w){re.escape(variant)}(?!\w)",
-                re.IGNORECASE,
-            )
-            result = pattern.sub(self.preferred, result)
-        return result
-
-    def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible representation of this term."""
-        return {
-            "term": self.term,
-            "preferred": self.preferred,
-            "definition": self.definition,
-            "avoid": list(self.avoid),
-            "aliases": list(self.aliases),
-            "language": self.language,
-        }
-
-
-GlossaryEntry = GlossaryTerm
-
-
-class Glossary(BaseModel):
-    """A named set of brand terms, optionally split by language."""
-
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-
-    name: str = ""
-    language: str = ""
-    terms: list[GlossaryTerm] = Field(
-        default_factory=list,
-        validation_alias=AliasChoices(*_GLOSSARY_LIST_KEYS),
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_value(cls, value: Any) -> Any:
-        if isinstance(value, Glossary):
-            return value.model_dump()
-        if value is None:
-            return {"terms": []}
-        if isinstance(value, (str, bytes, bytearray)):
-            text = value.decode() if isinstance(value, (bytes, bytearray)) else value
-            return {
-                "terms": [
-                    {"term": line.strip()} for line in text.splitlines() if line.strip()
-                ]
-            }
-        if isinstance(value, GlossaryTerm):
-            return {"terms": [value]}
-        if isinstance(value, Mapping):
-            data = dict(value)
-            if any(key in data for key in _GLOSSARY_LIST_KEYS):
-                return data
-            if any(key in data for key in _TERM_KEYS):
-                return {"terms": [data]}
-            language_map = _language_mapping(data)
-            if language_map is not None:
-                terms: list[Any] = []
-                for language, entries in language_map.items():
-                    terms.extend(_terms_from_mapping(entries, language=language))
-                return {"terms": terms}
-            return {"terms": _terms_from_mapping(data)}
-        if isinstance(value, Iterable):
-            return {"terms": list(value)}
-        raise ValueError("a glossary must be a mapping, a list or text")
-
-    @field_validator("name", "language", mode="before")
-    @classmethod
-    def _clean_text(cls, value: Any) -> str:
-        return _clean(value)
-
-    @classmethod
-    def from_value(
-        cls,
-        value: Any = None,
-        *,
-        language: str | None = None,
-    ) -> Glossary:
-        """Build a glossary from text, mappings, terms or an existing glossary."""
-        glossary = value if isinstance(value, Glossary) else cls.model_validate(value)
-        if language is not None:
-            glossary = glossary.for_language(language)
-        return glossary
-
-    from_mapping = from_value
-
-    def for_language(self, language: str | None) -> Glossary:
-        """Return a glossary restricted to terms that apply to *language*."""
-        if not language:
-            return self
-        return self.model_copy(
-            update={"terms": [term for term in self.terms if term.applies_to(language)]}
-        )
-
-    def apply(self, text: str, *, language: str | None = None) -> str:
-        """Rewrite every matching term in *text* for *language*."""
-        result = text
-        for term in self.for_language(language).terms:
-            result = term.apply(result)
-        return result
-
-    def matched(
-        self,
-        text: str,
-        *,
-        language: str | None = None,
-    ) -> tuple[GlossaryTerm, ...]:
-        """Return the terms that appear in *text*, in glossary order."""
-        matched: list[GlossaryTerm] = []
-        for term in self.for_language(language).terms:
-            candidates = (term.term, term.preferred, *term.aliases, *term.avoid)
-            if any(
-                candidate
-                and re.search(
-                    rf"(?<!\w){re.escape(candidate)}(?!\w)",
-                    text,
-                    re.IGNORECASE,
-                )
-                for candidate in candidates
-            ):
-                matched.append(term)
-        return tuple(matched)
-
-    def definitions(
-        self,
-        text: str,
-        *,
-        language: str | None = None,
-    ) -> tuple[str, ...]:
-        """Return ``term: definition`` lines for matched terms with definitions."""
-        lines: list[str] = []
-        for term in self.matched(text, language=language):
-            if term.definition:
-                lines.append(f"{term.display}: {term.definition}")
-        return tuple(dict.fromkeys(lines))
-
-    def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible representation of this glossary."""
-        return {
-            "name": self.name,
-            "language": self.language,
-            "terms": [term.to_dict() for term in self.terms],
-        }
-
-    def __len__(self) -> int:
-        return len(self.terms)
-
-    def __iter__(self) -> Iterator[GlossaryTerm]:  # type: ignore[override]
-        return iter(self.terms)
-
-
-GlossaryTerms = Glossary
-BrandGlossary = Glossary
-
-
-def _looks_like_language_code(value: Any) -> bool:
-    text = _clean(value)
-    return bool(re.fullmatch(r"[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?", text))
-
-
-def _language_mapping(data: Mapping[str, Any]) -> dict[str, Any] | None:
-    if not data or not all(isinstance(value, Mapping) for value in data.values()):
-        return None
-    if not all(_looks_like_language_code(key) for key in data):
-        return None
-    return dict(data)
-
-
-def _terms_from_mapping(
-    data: Mapping[str, Any],
-    *,
-    language: str = "",
-) -> list[Any]:
-    terms: list[Any] = []
-    for key, value in data.items():
-        if isinstance(value, Mapping):
-            item = dict(value)
-            item.setdefault("term", key)
-            if language:
-                item.setdefault("language", language)
-            terms.append(item)
-        elif isinstance(value, (list, tuple)):
-            terms.append(
-                {
-                    "term": str(key),
-                    "aliases": list(value),
-                    "language": language,
-                }
-            )
-        else:
-            terms.append(
-                {
-                    "term": str(key),
-                    "preferred": "" if value is None else str(value),
-                    "language": language,
-                }
-            )
-    return terms
-
-
-def normalise_glossary(
-    value: Any = None,
+def _glossary_input(
+    value: Any,
     *,
     language: str | None = None,
+    config_dir: Any = None,
+    defaults_dir: Any = None,
+    environ: Mapping[str, str] | None = None,
 ) -> Glossary:
-    """Return *value* as a :class:`Glossary`, restricted to *language*."""
-    if value is None:
-        return Glossary()
-    return Glossary.from_value(value, language=language)
+    """Load a glossary name or path, falling back to inline term text."""
+    if isinstance(value, Path):
+        from aivia.writing.glossary import load_glossary
 
+        return load_glossary(
+            value,
+            language=language,
+            config_dir=config_dir,
+            defaults_dir=defaults_dir,
+            environ=environ,
+        )
+    if isinstance(value, str) and "\n" not in value:
+        text = value.strip()
+        candidate = Path(text).expanduser()
+        if text and (
+            candidate.is_file()
+            or candidate.suffix.lower()
+            in {".yaml", ".yml", ".json", ".md", ".markdown", ".txt"}
+            or "/" in text
+            or "\\" in text
+        ):
+            from aivia.writing.glossary import load_glossary
 
-normalize_glossary = normalise_glossary
+            return load_glossary(
+                text,
+                language=language,
+                config_dir=config_dir,
+                defaults_dir=defaults_dir,
+                environ=environ,
+            )
+        if text:
+            from aivia.writing.glossary import GlossaryError, load_glossary
 
-
-def glossary_terms(value: Any = None) -> tuple[GlossaryTerm, ...]:
-    """Return every term in *value* as a tuple."""
-    return tuple(normalise_glossary(value).terms)
-
-
-def apply_glossary(
-    text: str,
-    glossary: Any = None,
-    *,
-    language: str | None = None,
-) -> str:
-    """Rewrite glossary terms in *text*."""
-    return normalise_glossary(glossary, language=language).apply(text)
+            try:
+                return load_glossary(
+                    text,
+                    language=language,
+                    config_dir=config_dir,
+                    defaults_dir=defaults_dir,
+                    environ=environ,
+                )
+            except GlossaryError:
+                pass
+    return normalise_glossary(value, language=language)
 
 
 class MediaPromptPair(list[MediaPrompt]):
@@ -634,7 +290,13 @@ class MediaPromptBuilder:
             defaults_dir=defaults_dir,
             environ=environ,
         )
-        self.glossary = normalise_glossary(glossary, language=language or None)
+        self.glossary = _glossary_input(
+            glossary,
+            language=language or None,
+            config_dir=config_dir,
+            defaults_dir=defaults_dir,
+            environ=environ,
+        )
         self.language = _clean(language)
         self.aspect_ratio = _clean(aspect_ratio)
         self.image_guidance = _clean(image_guidance) or DEFAULT_IMAGE_GUIDANCE
