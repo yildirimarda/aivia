@@ -550,7 +550,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Pre-score hook candidates with a dependency free heuristic weighted by the weakest property before the model picks (tests/writing/test_hook_prefilter.py)
 - [x] Estimate duration from per language words per second and rewrite up to a limit before failing with measured versus target (tests/writing/test_length.py)
 - [x] Write each target language natively from the same fact base with per language forbidden phrase lists (tests/writing/test_multilingual.py)
-- [ ] Load the style bible from user files with packaged defaults as fallback and fail clearly when it is missing (tests/writing/test_style_bible.py)
+- [x] Load the style bible from user files with packaged defaults as fallback and fail clearly when it is missing (tests/writing/test_style_bible.py)
 - [ ] Load a per profile voice profile file before writing and ship an empty template in the packaged defaults (tests/writing/test_voice_profile.py)
 - [ ] Generate one image prompt and one motion prompt per beat, provider agnostic, with style bible and glossary terms applied (tests/writing/test_media_prompts.py)
 - [ ] Assign each beat a visual type while honouring the maximum AI video beats limit (tests/writing/test_visual_assign.py)
