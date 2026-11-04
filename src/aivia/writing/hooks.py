@@ -767,6 +767,7 @@ async def generate_hooks(
         audience=audience,
         count=count,
     )
+    library = load_hook_formulas(formulas)
     active = helper
     if active is None:
         if provider is None:
@@ -783,7 +784,7 @@ async def generate_hooks(
         audience=audience,
         count=count,
         prompt=prompt,
-        formulas=formulas,
+        formulas=library,
         model=model,
         role=role,
         metadata=metadata,
@@ -796,6 +797,7 @@ async def generate_hooks(
         metadata=dict(metadata or {}),
     )
     output = HookCandidates.model_validate(result.value.model_dump())
+    library.validate_candidates(output.candidates, require_known=True)
     selection_metadata = dict(metadata or {})
     selection_metadata.setdefault("candidate_count", len(output.candidates))
     selection_metadata.setdefault(
