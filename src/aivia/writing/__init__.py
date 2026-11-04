@@ -4,6 +4,8 @@ from aivia.writing.facts import *  # noqa: F403
 from aivia.writing.facts import __all__ as _facts_all
 from aivia.writing.hook_formulas import *  # noqa: F403
 from aivia.writing.hook_formulas import __all__ as _hook_formulas_all
+from aivia.writing.hook_prefilter import *  # noqa: F403
+from aivia.writing.hook_prefilter import __all__ as _hook_prefilter_all
 from aivia.writing.hooks import *  # noqa: F403
 from aivia.writing.hooks import __all__ as _hooks_all
 from aivia.writing.humor import *  # noqa: F403
@@ -34,6 +36,7 @@ __all__ = list(
             *_facts_all,
             *_hook_formulas_all,
             *_hooks_all,
+            *_hook_prefilter_all,
             *_humor_all,
             *_quote_all,
             *_poem_all,
