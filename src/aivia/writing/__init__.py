@@ -6,6 +6,8 @@ from aivia.writing.humor import *  # noqa: F403
 from aivia.writing.humor import __all__ as _humor_all
 from aivia.writing.length import *  # noqa: F403
 from aivia.writing.length import __all__ as _length_all
+from aivia.writing.lyrics import *  # noqa: F403
+from aivia.writing.lyrics import __all__ as _lyrics_all
 from aivia.writing.modes import *  # noqa: F403
 from aivia.writing.modes import __all__ as _modes_all
 from aivia.writing.poem import *  # noqa: F403
@@ -28,6 +30,7 @@ __all__ = list(
             *_quote_all,
             *_poem_all,
             *_story_all,
+            *_lyrics_all,
         ]
     )
 )
