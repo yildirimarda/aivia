@@ -20,6 +20,7 @@ from aivia.cli import (
     run,
     topics,
     worker,
+    write,
 )
 from aivia.cli.globals import GlobalOptions
 from aivia.cli.registry import (
@@ -60,4 +61,5 @@ __all__ = [
     "topics",
     "version_string",
     "worker",
+    "write",
 ]
