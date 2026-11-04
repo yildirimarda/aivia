@@ -36,6 +36,7 @@ __all__ = [
     "LanguageSettings",
     "TextDirection",
     "detect_language",
+    "forbidden_phrases",
     "hashtag_style",
     "is_rtl_language",
     "language_code",
@@ -456,6 +457,11 @@ class LanguageSettings:
         return self.config.hashtag_style
 
     @property
+    def forbidden_phrases(self) -> tuple[str, ...]:
+        """The phrases this language must never use in generated text."""
+        return tuple(self.config.forbidden_phrases)
+
+    @property
     def direction(self) -> TextDirection:
         """The default writing direction of this language."""
         return language_direction(self.code)
@@ -586,6 +592,10 @@ class LanguageResolver:
         """Return the hashtag casing style for a language."""
         return self.require(value).hashtag_style
 
+    def forbidden_phrases(self, value: str | None = None) -> tuple[str, ...]:
+        """Return the forbidden phrases for a language."""
+        return self.require(value).forbidden_phrases
+
     def locale(self, value: str | None = None) -> str:
         """Return the locale for a language."""
         return self.require(value).locale
@@ -629,6 +639,14 @@ def hashtag_style(
 ) -> str:
     """Return the configured hashtag style for a language."""
     return LanguageResolver(config).hashtag_style(language)
+
+
+def forbidden_phrases(
+    config: LanguagesConfig | Mapping[str, Any],
+    language: str | None = None,
+) -> tuple[str, ...]:
+    """Return the configured forbidden phrases for a language."""
+    return LanguageResolver(config).forbidden_phrases(language)
 
 
 def language_locale(

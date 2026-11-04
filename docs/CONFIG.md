@@ -683,6 +683,7 @@ Settings for one language written natively from the shared fact base.
 
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
+| `forbidden_phrases` | array of string |  |  |  |
 | `hashtag_style` | string | `"lower"` | one of: `lower`, `title`, `upper` |  |
 | `locale` | string | `"en_US"` |  |  |
 | `name` | string | `""` |  |  |
