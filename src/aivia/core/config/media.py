@@ -32,6 +32,7 @@ __all__ = [
     "DEFAULT_MEDIA_SUBTITLE_MAX_CHARS",
     "DEFAULT_MEDIA_SUBTITLE_MAX_DURATION_SECONDS",
     "DEFAULT_MEDIA_SUBTITLE_MAX_GAP_SECONDS",
+    "DEFAULT_MEDIA_VOICE_GAP_SECONDS",
     "DEFAULT_MUSIC_CLIPPING_PEAK_DB",
     "DEFAULT_MUSIC_DURATION_TOLERANCE_SECONDS",
     "DEFAULT_MUSIC_LIBRARY_TEMPO_BUCKET_BPM",
@@ -128,6 +129,9 @@ DEFAULT_MEDIA_SUBTITLE_MAX_DURATION_SECONDS = 6.0
 
 DEFAULT_MEDIA_SUBTITLE_MAX_GAP_SECONDS = 1.0
 """A pause longer than this starts a new subtitle cue."""
+
+DEFAULT_MEDIA_VOICE_GAP_SECONDS = 0.0
+"""Silence inserted between voiced beats unless a caller configures one."""
 
 DEFAULT_MUSIC_MIN_DURATION_SECONDS = 0.0
 """The shortest music candidate accepted when no target duration is supplied."""
