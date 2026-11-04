@@ -541,7 +541,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the writing mode registry with a mode base class and support for a custom mode defined in a file (tests/writing/test_mode_registry.py)
 - [x] Implement the facts mode building hook, beats and outro from a fact list supplied either by user text or by the research module, without importing it (tests/writing/test_mode_facts.py)
 - [x] Implement the quote mode requiring attribution and forbidding invented attribution to real people (tests/writing/test_mode_quote.py)
-- [ ] Implement the poem and story modes with configurable length, form and tone and a reading time in range (tests/writing/test_mode_poem_story.py)
+- [x] Implement the poem and story modes with configurable length, form and tone and a reading time in range (tests/writing/test_mode_poem_story.py)
 - [ ] Implement the joke and riddle modes with setup and punchline or question and answer fields (tests/writing/test_mode_humor.py)
 - [ ] Implement the lyrics mode with section counts, rhyme scheme, syllable budget and optional keyword insertion (tests/writing/test_mode_lyrics.py)
 - [ ] Add originality and lyrics safety checks that rewrite above the overlap threshold and block profanity (tests/writing/test_originality.py)
@@ -561,6 +561,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Load a per language brand glossary from user or packaged files and apply it to scripts, captions and media prompts, reporting violations (tests/writing/test_glossary.py)
 - [ ] Resolve custom writing mode aliases and reject alias collisions with registered names (tests/writing/test_mode_registry.py)
 - [ ] Load every custom writing mode from a configured directory and reject duplicate names and aliases (tests/writing/test_mode_registry.py)
+- [ ] Load reading time presets and the default reading speed from packaged config data rather than module constants (tests/writing/test_length_presets.py)
 
 ## Milestone 12: Voice, subtitles and timeline
 
