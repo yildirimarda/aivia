@@ -546,7 +546,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the lyrics mode with section counts, rhyme scheme, syllable budget and optional keyword insertion (tests/writing/test_mode_lyrics.py)
 - [x] Add originality and lyrics safety checks that rewrite above the overlap threshold and block profanity (tests/writing/test_originality.py)
 - [x] Generate several hook candidates and pick one with a recorded reason, keeping all alternatives for testing (tests/writing/test_hooks.py)
-- [ ] Ship the hook formula library as package data with shape, failure mode and match patterns, and require candidates from distinct formulas (tests/writing/test_hook_formulas.py)
+- [x] Ship the hook formula library as package data with shape, failure mode and match patterns, and require candidates from distinct formulas (tests/writing/test_hook_formulas.py)
 - [ ] Pre-score hook candidates with a dependency free heuristic weighted by the weakest property before the model picks (tests/writing/test_hook_prefilter.py)
 - [ ] Estimate duration from per language words per second and rewrite up to a limit before failing with measured versus target (tests/writing/test_length.py)
 - [ ] Write each target language natively from the same fact base with per language forbidden phrase lists (tests/writing/test_multilingual.py)
