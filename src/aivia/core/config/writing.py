@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 
 __all__ = [
+    "DEFAULT_COVER_TEXT_MAX_LENGTH",
     "DEFAULT_HOOK_IDEAL_MAX_WORDS",
     "DEFAULT_HOOK_IDEAL_MIN_WORDS",
     "DEFAULT_HOOK_MIN_SCORE",
@@ -48,6 +49,9 @@ __all__ = [
     "HOOK_SPECIFICITY_QUOTE_BONUS",
     "HOOK_SPECIFICITY_TIME_BONUS",
 ]
+
+DEFAULT_COVER_TEXT_MAX_LENGTH = 60
+"""Longest cover text, in characters, before the lint reports truncation."""
 
 DEFAULT_VISUAL_STRATEGY = "hybrid"
 """The default strategy for assigning a visual type to each beat."""
