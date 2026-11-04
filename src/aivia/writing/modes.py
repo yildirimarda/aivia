@@ -356,6 +356,25 @@ def _mode_name(mode: WritingModeLike) -> str:
     return str(getattr(mode, "name", ""))
 
 
+def _mode_aliases(mode: WritingModeLike) -> tuple[str, ...]:
+    value = getattr(mode, "aliases", ())
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        value = (value,)
+    if not isinstance(value, Sequence) or isinstance(value, (bytes, bytearray)):
+        raise ConfigError(
+            f"writing mode {_mode_name(mode)!r} aliases must be a string or sequence",
+            details={"mode": _mode_name(mode)},
+        )
+    aliases: list[str] = []
+    for alias in value:
+        validated = _validate_name(alias)
+        if validated not in aliases:
+            aliases.append(validated)
+    return tuple(aliases)
+
+
 def _is_dotted_path(value: str) -> bool:
     return ":" in value or "." in value
 
@@ -501,6 +520,7 @@ class WritingModeRegistry:
         self._modes: dict[str, WritingModeRegistration] = {}
         self._loaded: dict[str, WritingModeLike] = {}
         self._loaded_paths: dict[str, WritingModeLike] = {}
+        self._aliases: dict[str, str] = {}
 
     @overload
     def register(
@@ -565,6 +585,9 @@ class WritingModeRegistry:
                     "new": type(validated_mode).__name__,
                 },
             )
+        aliases = _mode_aliases(validated_mode)
+        self._check_name_collision(validated_name)
+        self._check_alias_collisions(validated_name, aliases, validated_mode)
         registration = WritingModeRegistration(
             name=validated_name,
             mode=validated_mode,
@@ -572,6 +595,7 @@ class WritingModeRegistry:
             source=source,
         )
         self._modes[validated_name] = registration
+        self._commit_aliases(validated_name, aliases)
         _KNOWN_CUSTOM_MODES.add(validated_name.lower())
         return registration
 
@@ -623,12 +647,9 @@ class WritingModeRegistry:
     def get(self, name: str) -> WritingModeLike:
         """Return the mode registered under *name*."""
         validated_name = _validate_name(name)
-        registration = self._modes.get(validated_name)
-        if registration is not None:
-            return registration.mode
-        loaded = self._loaded.get(validated_name)
-        if loaded is not None:
-            return loaded
+        mode = self._lookup(validated_name)
+        if mode is not None:
+            return mode
         try:
             return builtin_writing_mode(validated_name)
         except ValueError:
@@ -661,6 +682,9 @@ class WritingModeRegistry:
                 },
             )
         self._loaded.pop(validated_name, None)
+        for alias, owner in list(self._aliases.items()):
+            if owner == validated_name:
+                del self._aliases[alias]
         for path, mode in list(self._loaded_paths.items()):
             if _mode_name(mode) == validated_name:
                 del self._loaded_paths[path]
@@ -733,14 +757,11 @@ class WritingModeRegistry:
         return self.register(target, mode, module=str(path), source=source or str(path))
 
     def resolve(self, name: str) -> WritingModeLike:
-        """Return the mode for a registered *name*, file path or built in."""
+        """Return the mode for a registered *name*, alias, file path or built in."""
         validated_name = _validate_name(name)
-        registration = self._modes.get(validated_name)
-        if registration is not None:
-            return registration.mode
-        loaded = self._loaded.get(validated_name)
-        if loaded is not None:
-            return loaded
+        mode = self._lookup(validated_name)
+        if mode is not None:
+            return mode
         if _is_dotted_path(validated_name) or Path(validated_name).exists():
             return self.load(validated_name)
         try:
@@ -793,11 +814,79 @@ class WritingModeRegistry:
     def _known(self) -> str:
         return ", ".join(self.names()) or "none"
 
+    def _lookup(self, name: str) -> WritingModeLike | None:
+        registration = self._modes.get(name)
+        if registration is not None:
+            return registration.mode
+        loaded = self._loaded.get(name)
+        if loaded is not None:
+            return loaded
+        owner = self._aliases.get(name)
+        if owner is not None:
+            registration = self._modes.get(owner)
+            if registration is not None:
+                return registration.mode
+            return self._loaded.get(owner)
+        return None
+
+    def _check_name_collision(self, name: str) -> None:
+        owner = self._aliases.get(name)
+        if owner is not None and owner != name:
+            raise ConfigError(
+                f"writing mode name {name!r} is already an alias: {owner}",
+                details={"mode": name, "alias_of": owner},
+            )
+
+    def _check_alias_collisions(
+        self,
+        name: str,
+        aliases: tuple[str, ...],
+        mode: WritingModeLike,
+    ) -> None:
+        builtin_names = {value.value for value in WritingMode}
+        for alias in aliases:
+            if alias == name:
+                continue
+            registration = self._modes.get(alias)
+            existing = (
+                registration.mode
+                if registration is not None
+                else self._loaded.get(alias)
+            )
+            if existing is not None and existing is not mode:
+                raise ConfigError(
+                    f"writing mode alias {alias!r} collides with a registered mode",
+                    details={"alias": alias, "mode": name, "existing": alias},
+                )
+            if self.include_builtins and alias in builtin_names:
+                raise ConfigError(
+                    f"writing mode alias {alias!r} collides with a built in mode",
+                    details={"alias": alias, "mode": name, "existing": alias},
+                )
+            owner = self._aliases.get(alias)
+            if owner is not None and owner != name:
+                raise ConfigError(
+                    f"writing mode alias already registered: {alias}",
+                    details={"alias": alias, "mode": name, "existing": owner},
+                )
+
+    def _commit_aliases(self, name: str, aliases: tuple[str, ...]) -> None:
+        for alias in aliases:
+            if alias == name:
+                continue
+            self._aliases[alias] = name
+            _KNOWN_CUSTOM_MODES.add(alias.lower())
+
     def _remember(self, path: str, mode: WritingModeLike) -> None:
-        self._loaded_paths[path] = mode
         name = _mode_name(mode)
+        aliases = _mode_aliases(mode) if name else ()
+        if name:
+            self._check_name_collision(name)
+            self._check_alias_collisions(name, aliases, mode)
+        self._loaded_paths[path] = mode
         if name:
             self._loaded.setdefault(name, mode)
+            self._commit_aliases(name, aliases)
             _KNOWN_CUSTOM_MODES.add(name.lower())
 
     def _load_file(self, path: Path) -> WritingModeLike:
@@ -993,6 +1082,8 @@ class WritingModeRegistry:
             return False
         cleaned = name.strip()
         if cleaned in self._modes or cleaned in self._loaded:
+            return True
+        if cleaned in self._aliases:
             return True
         return self.include_builtins and cleaned in {mode.value for mode in WritingMode}
 
