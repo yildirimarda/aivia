@@ -11,6 +11,8 @@ __all__ = [
     "DEFAULT_HOOK_MIN_SCORE",
     "DEFAULT_HOOK_PROPERTY_WEIGHTS",
     "DEFAULT_HOOK_WEAKEST_WEIGHT",
+    "DEFAULT_MAX_AI_VIDEO_BEATS",
+    "DEFAULT_VISUAL_STRATEGY",
     "HOOK_CLARITY_AVG_WORD_LIMIT",
     "HOOK_CLARITY_AVG_WORD_PENALTY",
     "HOOK_CLARITY_CLAUSE_LIMIT",
@@ -46,6 +48,12 @@ __all__ = [
     "HOOK_SPECIFICITY_QUOTE_BONUS",
     "HOOK_SPECIFICITY_TIME_BONUS",
 ]
+
+DEFAULT_VISUAL_STRATEGY = "hybrid"
+"""The default strategy for assigning a visual type to each beat."""
+
+DEFAULT_MAX_AI_VIDEO_BEATS = 2
+"""The default number of beats that may become AI generated video."""
 
 DEFAULT_HOOK_PROPERTY_WEIGHTS: Mapping[str, float] = MappingProxyType(
     {
