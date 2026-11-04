@@ -1214,6 +1214,8 @@ class LyricAlignment(BaseModel):
             "mispronunciation": "mispronounced_word",
             "untimed": "untimed_line",
             "overlap": "timing_overlap",
+            "confidence": "low_confidence_word",
+            "low_confidence": "low_confidence_word",
         }
         wanted = aliases.get(code, code)
         return [
@@ -1427,6 +1429,7 @@ def align_lyrics(
     words: Any = None,
     threshold: float = DEFAULT_LYRIC_ALIGNMENT_THRESHOLD,
     line_threshold: float = DEFAULT_LINE_THRESHOLD,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     min_similarity: float | None = None,
     min_score: float | None = None,
     interpolate: bool = False,
@@ -1452,6 +1455,7 @@ def align_lyrics(
     timing of later lines. Set *interpolate* to distribute a gap across words
     that were not heard, *report_extra* or *report_fuzzy* to silence those
     mismatch classes, and *ignore_fillers* to ignore ad-libs such as ``oh``.
+    Words with a provider confidence below *min_confidence* are reported too.
     """
     if transcript is None:
         transcript = words
@@ -1466,6 +1470,7 @@ def align_lyrics(
         threshold = min_score
     score_threshold = _threshold(threshold, field="threshold")
     line_score = _threshold(line_threshold, field="line_threshold")
+    confidence_threshold = _threshold(min_confidence, field="min_confidence")
     if not isinstance(interpolate, bool):
         raise TypeError("interpolate must be a bool")
     if not isinstance(report_extra, bool):
@@ -1600,6 +1605,32 @@ def align_lyrics(
                         similarity=word.similarity,
                         start_seconds=word.start_seconds,
                         end_seconds=word.end_seconds,
+                    )
+                )
+            if (
+                word.matched
+                and word.confidence is not None
+                and word.confidence < confidence_threshold - _EPSILON
+            ):
+                mismatches.append(
+                    _mismatch(
+                        "low_confidence_word",
+                        f"line {line.index + 1 if line.index is not None else 1} "
+                        f"heard {word.transcript_word!r} with confidence "
+                        f"{word.confidence:.2f}",
+                        severity=Severity.INFO,
+                        line_index=line.index,
+                        word_index=word.index,
+                        line_word_index=line_word_index,
+                        expected=word.word,
+                        actual=word.transcript_word or "",
+                        similarity=word.similarity,
+                        start_seconds=word.start_seconds,
+                        end_seconds=word.end_seconds,
+                        metadata={
+                            "confidence": word.confidence,
+                            "min_confidence": confidence_threshold,
+                        },
                     )
                 )
 
@@ -1751,6 +1782,7 @@ async def align_lyrics_audio(
     request: STTRequest | None = None,
     threshold: float = DEFAULT_LYRIC_ALIGNMENT_THRESHOLD,
     line_threshold: float = DEFAULT_LINE_THRESHOLD,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     interpolate: bool = False,
     max_merge_tokens: int = DEFAULT_MAX_MERGE_TOKENS,
     report_extra: bool = True,
@@ -1806,6 +1838,7 @@ async def align_lyrics_audio(
         result,
         threshold=threshold,
         line_threshold=line_threshold,
+        min_confidence=min_confidence,
         interpolate=interpolate,
         max_merge_tokens=max_merge_tokens,
         report_extra=report_extra,
@@ -1851,6 +1884,7 @@ class LyricAligner:
         threshold: float = DEFAULT_LYRIC_ALIGNMENT_THRESHOLD,
         *,
         line_threshold: float = DEFAULT_LINE_THRESHOLD,
+        min_confidence: float = DEFAULT_MIN_CONFIDENCE,
         interpolate: bool = False,
         max_merge_tokens: int = DEFAULT_MAX_MERGE_TOKENS,
         report_extra: bool = True,
@@ -1859,6 +1893,7 @@ class LyricAligner:
     ) -> None:
         self._threshold = _threshold(threshold, field="threshold")
         self._line_threshold = _threshold(line_threshold, field="line_threshold")
+        self._min_confidence = _threshold(min_confidence, field="min_confidence")
         if not isinstance(interpolate, bool):
             raise TypeError("interpolate must be a bool")
         if not isinstance(report_extra, bool):
@@ -1891,6 +1926,11 @@ class LyricAligner:
         return self._line_threshold
 
     @property
+    def min_confidence(self) -> float:
+        """The provider confidence below which a word is reported."""
+        return self._min_confidence
+
+    @property
     def interpolate(self) -> bool:
         """Whether unmatched words receive distributed timing."""
         return self._interpolate
@@ -1902,6 +1942,7 @@ class LyricAligner:
             transcript,
             threshold=self._threshold,
             line_threshold=self._line_threshold,
+            min_confidence=self._min_confidence,
             interpolate=self._interpolate,
             max_merge_tokens=self._max_merge_tokens,
             report_extra=self._report_extra,

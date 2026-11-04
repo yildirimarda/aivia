@@ -232,6 +232,29 @@ def test_fuzzy_substitutions_are_reported_and_threshold_is_configurable() -> Non
     assert rejected.by_code("missing_word")[0].expected == "Smyth"
 
 
+def test_low_confidence_words_are_reported_when_a_threshold_is_set() -> None:
+    transcript = _response(
+        WordTimestamp(word="Hello", start_seconds=0.0, end_seconds=0.4, confidence=0.2),
+        WordTimestamp(word="world", start_seconds=0.4, end_seconds=0.8, confidence=0.9),
+    )
+
+    default = align_lyrics("Hello world", transcript)
+    reported = align_lyrics("Hello world", transcript, min_confidence=0.5)
+    reusable = LyricAligner(min_confidence=0.5)("Hello world", transcript)
+
+    assert default.by_code("low_confidence") == []
+    low = reported.by_code("low_confidence")
+    assert len(low) == 1
+    assert low[0].code == "low_confidence_word"
+    assert low[0].expected == "Hello"
+    assert low[0].actual == "Hello"
+    assert low[0].line_index == 0
+    assert low[0].line_word_index == 0
+    assert low[0].metadata == {"confidence": 0.2, "min_confidence": 0.5}
+    assert reported.passed is True
+    assert [item.code for item in reusable.mismatches] == ["low_confidence_word"]
+
+
 def test_a_line_with_no_matches_is_untimed_and_can_be_interpolated() -> None:
     lyrics = "Hello world\nSilent line\nFinal words"
     transcript = _response(
