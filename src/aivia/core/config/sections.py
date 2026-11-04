@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Literal, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.budget import BudgetConfig, OnExceed
@@ -156,6 +156,39 @@ class LanguageConfig(ConfigModel):
     words_per_second: WordsPerSecondConfig = Field(default_factory=WordsPerSecondConfig)
     subtitle_font: str = Field(default="Lato", min_length=1)
     hashtag_style: Literal["lower", "title", "upper"] = "lower"
+    forbidden_phrases: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices(
+            "forbidden_phrases",
+            "forbidden",
+            "banned_phrases",
+        ),
+    )
+
+    @field_validator("forbidden_phrases", mode="before")
+    @classmethod
+    def _accept_forbidden_phrases(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
+
+    @field_validator("forbidden_phrases")
+    @classmethod
+    def _normalise_forbidden_phrases(cls, value: list[str]) -> list[str]:
+        phrases: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            phrase = " ".join(item.split())
+            if not phrase:
+                continue
+            key = phrase.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            phrases.append(phrase)
+        return phrases
 
 
 class LanguagesConfig(ConfigModel):

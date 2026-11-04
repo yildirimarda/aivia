@@ -1071,6 +1071,13 @@
       "additionalProperties": false,
       "description": "Settings for one language written natively from the shared fact base.",
       "properties": {
+        "forbidden_phrases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Phrases",
+          "type": "array"
+        },
         "hashtag_style": {
           "default": "lower",
           "enum": [
