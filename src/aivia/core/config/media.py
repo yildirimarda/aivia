@@ -9,6 +9,7 @@ safe defaults used when no override is supplied.
 from __future__ import annotations
 
 __all__ = [
+    "AUDIO_QA_TIME_TOLERANCE_SECONDS",
     "DEFAULT_AUDIO_ANALYSIS_MAX_BPM",
     "DEFAULT_AUDIO_ANALYSIS_MIN_BPM",
     "DEFAULT_AUDIO_DUCKING_ATTACK_MS",
@@ -17,6 +18,15 @@ __all__ = [
     "DEFAULT_AUDIO_DUCKING_THRESHOLD_DB",
     "DEFAULT_AUDIO_MIX_CHANNELS",
     "DEFAULT_AUDIO_MIX_SAMPLE_RATE",
+    "DEFAULT_AUDIO_QA_EXPECTED_WORDS_PER_SECOND",
+    "DEFAULT_AUDIO_QA_MAX_INTERNAL_SILENCE_SECONDS",
+    "DEFAULT_AUDIO_QA_MAX_LEADING_SILENCE_SECONDS",
+    "DEFAULT_AUDIO_QA_MAX_MISPRONUNCIATION_RATIO",
+    "DEFAULT_AUDIO_QA_MAX_SILENCE_RATIO",
+    "DEFAULT_AUDIO_QA_MAX_TRAILING_SILENCE_SECONDS",
+    "DEFAULT_AUDIO_QA_MIN_DURATION_RATIO",
+    "DEFAULT_AUDIO_QA_MIN_WORD_CONFIDENCE",
+    "DEFAULT_AUDIO_QA_SILENT_RATIO",
     "DEFAULT_MEDIA_ALIGNMENT_SIMILARITY_THRESHOLD",
     "DEFAULT_MEDIA_ANIMATED_FRAME_RATE",
     "DEFAULT_MEDIA_FFMPEG_TIMEOUT_SECONDS",
@@ -44,6 +54,7 @@ __all__ = [
     "DEFAULT_MUSIC_MIN_LOUDNESS_LUFS",
     "DEFAULT_MUSIC_SILENCE_MIN_SECONDS",
     "DEFAULT_MUSIC_SILENCE_NOISE_DB",
+    "MAX_AUDIO_QA_CONFIDENCE",
     "MAX_MEDIA_SIMILARITY",
     "MIN_MEDIA_SIMILARITY",
     "MIN_MUSIC_LIBRARY_LIMIT",
@@ -78,6 +89,39 @@ DEFAULT_AUDIO_MIX_SAMPLE_RATE = 48_000
 
 DEFAULT_AUDIO_MIX_CHANNELS = 2
 """Default channel count for a mixed audio output."""
+
+AUDIO_QA_TIME_TOLERANCE_SECONDS = 0.05
+"""How far a word timing may pass a segment end before it is an error."""
+
+MAX_AUDIO_QA_CONFIDENCE = 1.0
+"""The highest word confidence a provider may report."""
+
+DEFAULT_AUDIO_QA_MAX_INTERNAL_SILENCE_SECONDS = 1.0
+"""An internal pause longer than this is suspicious."""
+
+DEFAULT_AUDIO_QA_MAX_LEADING_SILENCE_SECONDS = 0.75
+"""A voice segment should normally start speaking before this."""
+
+DEFAULT_AUDIO_QA_MAX_TRAILING_SILENCE_SECONDS = 1.0
+"""A voice segment should normally stop speaking before this."""
+
+DEFAULT_AUDIO_QA_MAX_SILENCE_RATIO = 0.5
+"""Above this share of silence the segment is flagged."""
+
+DEFAULT_AUDIO_QA_SILENT_RATIO = 0.9
+"""At or above this share of silence the segment is treated as silent."""
+
+DEFAULT_AUDIO_QA_MIN_WORD_CONFIDENCE = 0.5
+"""A word below this provider confidence may be mispronounced."""
+
+DEFAULT_AUDIO_QA_MAX_MISPRONUNCIATION_RATIO = 0.5
+"""Above this share of wrong words the finding becomes an error."""
+
+DEFAULT_AUDIO_QA_EXPECTED_WORDS_PER_SECOND = 2.5
+"""A fallback speaking rate used when no word timing is available."""
+
+DEFAULT_AUDIO_QA_MIN_DURATION_RATIO = 0.4
+"""Below this share of the expected duration the audio is truncated."""
 
 DEFAULT_MEDIA_ALIGNMENT_SIMILARITY_THRESHOLD = 0.8
 """Word similarity at or above this pairs a script word with a transcript word."""

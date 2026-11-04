@@ -583,6 +583,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add a subtitle edit command exposing words and timings as YAML and re burning only the affected outputs through the cached renderer (tests/cli/test_subtitle_edit.py)
 - [ ] Declare each per-language script file as a voice stage input so editing a script invalidates resume (tests/audio/test_voice_stage.py)
 - [ ] Write one subtitle file per language and platform when a timeline targets several platforms (tests/audio/test_subtitle_stage.py)
+- [ ] Run audio quality checks after voice synthesis and record findings in stage metadata (tests/audio/test_voice_stage.py)
 
 ## Milestone 13: Visuals in the pipeline
 
