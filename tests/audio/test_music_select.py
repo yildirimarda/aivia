@@ -336,9 +336,7 @@ def test_custom_ducking_settings_are_recorded_and_verified(tmp_path: Path) -> No
     track = timeline.music[0]
     assert track.volume_db == pytest.approx(-12.0)
     assert track.duck is True
-    assert timeline.metadata["music"]["ducking"]["threshold_db"] == pytest.approx(
-        -18.0
-    )
+    assert timeline.metadata["music"]["ducking"]["threshold_db"] == pytest.approx(-18.0)
 
 
 def test_ducking_can_be_disabled_for_a_music_only_timeline(tmp_path: Path) -> None:

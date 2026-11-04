@@ -219,22 +219,14 @@ def _license_of(value: Any) -> AssetLicense:
             if raw is not None:
                 return _coerce_license(raw)
         raw = value.get("licenses")
-        if (
-            isinstance(raw, Sequence)
-            and not isinstance(raw, (str, bytes))
-            and raw
-        ):
+        if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)) and raw:
             return _coerce_license(raw[0])
     for source in _sources(value):
         raw = getattr(source, "license", None)
         if raw is not None:
             return _coerce_license(raw)
         raw = getattr(source, "licenses", None)
-        if (
-            isinstance(raw, Sequence)
-            and not isinstance(raw, (str, bytes))
-            and raw
-        ):
+        if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)) and raw:
             return _coerce_license(raw[0])
         asset = getattr(source, "asset", None)
         if asset is not None:
@@ -1077,9 +1069,7 @@ class MusicSelectStage(Stage):
             for language in timeline.languages:
                 language.music = []
         else:
-            timeline.music = [
-                item for item in timeline.music if item.id != track.id
-            ]
+            timeline.music = [item for item in timeline.music if item.id != track.id]
         timeline.music.append(track)
         if timeline.duration_seconds is None:
             timeline.duration_seconds = duration
