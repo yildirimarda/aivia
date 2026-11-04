@@ -553,7 +553,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Load the style bible from user files with packaged defaults as fallback and fail clearly when it is missing (tests/writing/test_style_bible.py)
 - [x] Load a per profile voice profile file before writing and ship an empty template in the packaged defaults (tests/writing/test_voice_profile.py)
 - [x] Generate one image prompt and one motion prompt per beat, provider agnostic, with style bible and glossary terms applied (tests/writing/test_media_prompts.py)
-- [ ] Assign each beat a visual type while honouring the maximum AI video beats limit (tests/writing/test_visual_assign.py)
+- [x] Assign each beat a visual type while honouring the maximum AI video beats limit (tests/writing/test_visual_assign.py)
 - [ ] Generate captions, descriptions and hashtags and tags within platform and language limits with a source line and AI disclosure (tests/writing/test_captions.py)
 - [ ] Lint the title, the caption and the cover text as one pairing for truncation, duplication and vagueness (tests/writing/test_title_cover_lint.py)
 - [ ] Guard the writer against injection by wrapping sources and labels as data, verified with five hostile fixtures (tests/writing/test_injection.py)
