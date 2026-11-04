@@ -1,0 +1,33 @@
+schema_version: 1
+name: default
+description: Clear, factual short-form storytelling with a calm and curious voice.
+prompt_suffix: Natural light, uncluttered composition, muted documentary palette.
+entries:
+  - key: voice
+    title: Voice
+    text: Calm, direct and curious. Explain the idea the way a knowledgeable friend would, without hype or filler.
+    prompt_suffix: Restrained, documentary mood.
+    aliases: [tone]
+  - key: structure
+    title: Structure
+    text: Open with one concrete hook, develop one idea per beat and close by paying off the opening promise.
+    prompt_suffix: Clear single subject in every shot.
+    aliases: [shape]
+  - key: pacing
+    title: Pacing
+    text: Keep sentences short enough to read aloud and let each beat land before moving to the next.
+    prompt_suffix: Calm, deliberate camera movement.
+  - key: visuals
+    title: Visual language
+    text: Prefer natural light, real textures and simple compositions. Avoid glossy stock imagery, neon gradients and visual clutter.
+    prompt_suffix: Natural light, real textures, simple composition.
+    aliases: [visual]
+  - key: accuracy
+    title: Accuracy
+    text: Every claim must be traceable to the supplied facts. Never invent a number, a quote or a source.
+    prompt_suffix: No invented text, logos or signage.
+    aliases: [facts]
+  - key: avoid
+    title: Avoid
+    text: Avoid clickbait, shouting, moralising, repeated catchphrases and claims the facts cannot support.
+    prompt_suffix: No sensational imagery or on-screen text.

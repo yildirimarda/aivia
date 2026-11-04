@@ -28,6 +28,8 @@ from aivia.writing.schema import *  # noqa: F403
 from aivia.writing.schema import __all__ as _schema_all
 from aivia.writing.story import *  # noqa: F403
 from aivia.writing.story import __all__ as _story_all
+from aivia.writing.style_bible import *  # noqa: F403
+from aivia.writing.style_bible import __all__ as _style_bible_all
 
 __all__ = list(
     dict.fromkeys(
@@ -44,6 +46,7 @@ __all__ = list(
             *_quote_all,
             *_poem_all,
             *_story_all,
+            *_style_bible_all,
             *_lyrics_all,
             *_originality_all,
         ]
