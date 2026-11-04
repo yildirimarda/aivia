@@ -34,6 +34,8 @@ from aivia.writing.story import *  # noqa: F403
 from aivia.writing.story import __all__ as _story_all
 from aivia.writing.style_bible import *  # noqa: F403
 from aivia.writing.style_bible import __all__ as _style_bible_all
+from aivia.writing.title_cover import *  # noqa: F403
+from aivia.writing.title_cover import __all__ as _title_cover_all
 from aivia.writing.visual_assign import *  # noqa: F403
 from aivia.writing.visual_assign import __all__ as _visual_assign_all
 from aivia.writing.voice_profile import *  # noqa: F403
@@ -57,6 +59,7 @@ __all__ = list(
             *_poem_all,
             *_story_all,
             *_style_bible_all,
+            *_title_cover_all,
             *_voice_profile_all,
             *_visual_assign_all,
             *_lyrics_all,
