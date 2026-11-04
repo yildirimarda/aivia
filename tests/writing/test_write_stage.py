@@ -12,13 +12,22 @@ import pytest
 from sqlalchemy import Engine
 
 from aivia.core.cost import CostTracker
-from aivia.core.db import create_database_engine, upgrade_database
+from aivia.core.db import (
+    RunRepository,
+    StageRunRepository,
+    create_database_engine,
+    upgrade_database,
+)
 from aivia.core.errors import ConfigError
-from aivia.core.models import Run, StageResult
+from aivia.core.models import Run, StageResult, StageState
+from aivia.core.orchestrator import Orchestrator
+from aivia.core.resume import compute_input_hash
 from aivia.core.run_dirs import RunDirectory
+from aivia.core.run_state import RunStateMachine
 from aivia.core.stages import StageContext
 from aivia.providers.protocols.llm import LLMRequest, LLMResponse, LLMUsage
 from aivia.writing import WriteStage
+from aivia.writing.stage import DEFAULT_FACT_LIST_FILENAME
 
 MODEL = "writer-model"
 INPUT_PRICE = 3.0
@@ -293,3 +302,99 @@ def test_stage_falls_back_to_cost_events_when_the_writer_hides_usage(
     assert result.metadata["input_tokens"] == 40
     assert result.metadata["output_tokens"] == 20
     assert result.metadata["total_tokens"] == 60
+
+
+def test_stage_declares_the_run_fact_list_as_an_input(tmp_path: Path) -> None:
+    stage = WriteStage(options={"languages": ["en"]})
+
+    assert DEFAULT_FACT_LIST_FILENAME in stage.inputs
+    assert "research/facts.json" in stage.inputs
+
+
+def test_editing_the_run_fact_list_changes_the_stage_input_hash(
+    tmp_path: Path,
+) -> None:
+    _write_facts(tmp_path)
+    stage = WriteStage(options={"languages": ["en"]})
+    original = compute_input_hash(stage, base_dir=tmp_path)
+
+    _write_facts(
+        tmp_path,
+        {
+            "title": "Honey",
+            "claims": [{"text": "Honey is made by bees."}],
+        },
+    )
+    changed = compute_input_hash(stage, base_dir=tmp_path)
+
+    assert changed != original
+    _write_facts(tmp_path)
+    assert compute_input_hash(stage, base_dir=tmp_path) == original
+
+
+def test_editing_an_explicit_fact_list_changes_the_stage_input_hash(
+    tmp_path: Path,
+) -> None:
+    facts_path = tmp_path / "input" / "claims.json"
+    facts_path.parent.mkdir(parents=True)
+    facts_path.write_text(json.dumps(FACTS), encoding="utf-8")
+    stage = WriteStage(
+        fact_list_path=facts_path,
+        options={"languages": ["en"]},
+    )
+    original = compute_input_hash(stage, base_dir=tmp_path)
+
+    facts_path.write_text(
+        json.dumps({"claims": [{"text": "Honey is made by bees."}]}),
+        encoding="utf-8",
+    )
+
+    assert compute_input_hash(stage, base_dir=tmp_path) != original
+
+
+def test_editing_the_run_fact_list_reruns_the_write_stage_on_resume(
+    tmp_path: Path,
+    engine: Engine,
+) -> None:
+    _write_facts(tmp_path)
+    machine = RunStateMachine(RunRepository(engine))
+    run = machine.create(Run())
+    provider = FakeWriterProvider()
+    provider.payloads = [provider.payloads[0] for _ in range(3)]
+
+    def execute() -> Any:
+        return Orchestrator(
+            stages=[WriteStage(options={"languages": ["en"]}, provider=provider)],
+            run=run.id,
+            repository=StageRunRepository(engine),
+            run_dir=tmp_path,
+            config=_config(),
+            cost=CostTracker(engine),
+            raise_on_failure=False,
+        ).execute_sync()
+
+    first = execute()
+    stored = StageRunRepository(engine).get(run.id, "write")
+    assert first.ok is True
+    assert len(provider.requests) == 1
+    assert stored is not None
+
+    _write_facts(
+        tmp_path,
+        {
+            "title": "Honey",
+            "claims": [{"text": "Honey is made by bees."}],
+        },
+    )
+    second = execute()
+
+    assert second.ok is True
+    assert len(provider.requests) == 2
+    assert second.stages[0].status is StageState.SUCCEEDED
+    assert second.stages[0].input_hash != stored.input_hash
+
+    third = execute()
+
+    assert third.ok is True
+    assert len(provider.requests) == 2
+    assert third.stages[0].status is StageState.SKIPPED

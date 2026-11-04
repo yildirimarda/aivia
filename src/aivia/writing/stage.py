@@ -351,6 +351,24 @@ def _read_document(path: Path) -> Any:
     return text
 
 
+def _fact_input_declarations(explicit: Any) -> tuple[str, ...]:
+    """Return the fact list paths a write stage may read as declared inputs.
+
+    Relative names are resolved by the resume hash against the run directory,
+    so a facts file edited between runs changes the stage input hash. Missing
+    candidates are included too: a file appearing where the stage would read it
+    must also invalidate the previous result.
+    """
+    declared: list[str] = []
+    if isinstance(explicit, (str, Path)) and str(explicit).strip():
+        declared.append(str(Path(str(explicit)).expanduser()))
+    for name in FACT_LIST_FILENAMES:
+        for relative in (name, f"research/{name}", f"input/{name}"):
+            if relative not in declared:
+                declared.append(relative)
+    return tuple(declared)
+
+
 def _candidate_paths(run_dir: Path, explicit: Any) -> list[Path]:
     paths: list[Path] = []
     if isinstance(explicit, (str, Path)) and str(explicit).strip():
@@ -606,7 +624,22 @@ class WriteStage(Stage):
         if fact_list_path is not None:
             merged["fact_list_path"] = fact_list_path
         merged.update(kwargs)
-        super().__init__(name=name or WRITE_STAGE_NAME, options=merged)
+        explicit_fact_path = (
+            merged.get("fact_list_path")
+            or merged.get("facts_path")
+            or merged.get("input")
+        )
+        inline_facts = any(
+            merged.get(key) is not None for key in ("fact_list", "facts", "topic")
+        )
+        declared_inputs = (
+            () if inline_facts else _fact_input_declarations(explicit_fact_path)
+        )
+        super().__init__(
+            name=name or WRITE_STAGE_NAME,
+            options=merged,
+            inputs=declared_inputs,
+        )
         self.fact_list = merged.get("fact_list")
         self.facts = merged.get("facts")
         self.writer = merged.get("writer")

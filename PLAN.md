@@ -565,7 +565,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Reject hook candidates whose formula id is absent from the loaded library and record the unknown id (tests/writing/test_hook_formulas.py)
 - [x] Add a concrete write stage that reads the run fact list, writes scripts per language and reports cost and tokens (tests/writing/test_write_stage.py)
 - [x] Resolve formula aliases before the distinct check so two aliases of one formula cannot both appear (tests/writing/test_hook_formulas.py)
-- [ ] Hash the run fact list as a write stage input so editing facts invalidates resume (tests/writing/test_write_stage.py)
+- [x] Hash the run fact list as a write stage input so editing facts invalidates resume (tests/writing/test_write_stage.py)
 
 ## Milestone 12: Voice, subtitles and timeline
 
@@ -843,3 +843,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Include local background removal and remote ops adapters in provider docs and regenerate the matrix (tests/test_provider_docs.py)
 - [ ] Break the media probe import cycle so its test module collects without importing providers first (tests/core/test_media_probe.py)
 - [ ] Fix the placement test helper typing so mypy passes on the compose suite (tests/compose/test_placement.py)
+- [ ] Exclude injected writer and provider objects from the stage input hash so resume is stable across processes (tests/writing/test_write_stage.py)
