@@ -587,3 +587,168 @@ def test_registry_rejects_an_alias_collision_while_loading_a_file(
         registry.load_file(path)
 
     assert caught.value.details["alias"] == "recording"
+
+
+def test_registry_loads_every_mode_from_a_directory(tmp_path: Path) -> None:
+    directory = tmp_path / "modes"
+    directory.mkdir()
+    (directory / "01_first.yaml").write_text(
+        "name: first\ninstructions: First mode.\naliases: [first-alias]\n",
+        encoding="utf-8",
+    )
+    (directory / "02_second.json").write_text(
+        json.dumps({"name": "second", "instructions": "Second mode."}),
+        encoding="utf-8",
+    )
+    (directory / "03_third.yaml").write_text(
+        "name: third\ninstructions: Third mode.\n", encoding="utf-8"
+    )
+    (directory / "04_fourth.py").write_text(
+        "from aivia.writing import WritingModeBase\n\n"
+        "class FourthMode(WritingModeBase):\n"
+        '    name = "fourth"\n'
+        '    instructions = "Fourth mode."\n',
+        encoding="utf-8",
+    )
+    (directory / "ignored.ini").write_text("not a mode\n", encoding="utf-8")
+    (directory / ".hidden.yaml").write_text(
+        "name: hidden\ninstructions: Hidden.\n", encoding="utf-8"
+    )
+
+    registry = WritingModeRegistry()
+    loaded = registry.load_directory(directory)
+
+    assert [mode.name for mode in loaded] == ["first", "second", "third", "fourth"]
+    assert {mode.name for mode in loaded} == {"first", "second", "third", "fourth"}
+    assert registry.resolve("first").instructions == "First mode."
+    assert registry.resolve("first-alias") is registry.resolve("first")
+    assert registry.resolve("second").instructions == "Second mode."
+    assert registry.resolve("third").instructions == "Third mode."
+    assert registry.resolve("fourth").instructions == "Fourth mode."
+    assert "hidden" not in registry
+    assert "ignored" not in registry
+    assert registry.load_dir(directory) == loaded
+    assert registry.from_directory(directory) == loaded
+    assert registry.load_modes(directory) == loaded
+    assert registry.load_from_directory(directory) == loaded
+
+
+def test_registry_loads_the_configured_modes_directory_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "aivia" / "modes"
+    directory.mkdir(parents=True)
+    (directory / "configured.yaml").write_text(
+        "name: configured\ninstructions: From the config directory.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+    registry = WritingModeRegistry()
+    loaded = registry.load_directory()
+
+    assert [mode.name for mode in loaded] == ["configured"]
+    assert registry.resolve("configured").instructions == ("From the config directory.")
+
+
+def test_registry_directory_rejects_duplicate_names_and_rolls_back(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "modes"
+    directory.mkdir()
+    (directory / "first.yaml").write_text(
+        "name: duplicated\ninstructions: First.\n", encoding="utf-8"
+    )
+    (directory / "second.yaml").write_text(
+        "name: duplicated\ninstructions: Second.\n", encoding="utf-8"
+    )
+    registry = WritingModeRegistry()
+
+    with pytest.raises(ConfigError, match="duplicate") as caught:
+        registry.load_directory(directory)
+
+    assert caught.value.details["mode"] == "duplicated"
+    assert caught.value.details["existing"] == str(directory / "first.yaml")
+    assert "duplicated" not in registry
+
+
+def test_registry_directory_rejects_duplicate_aliases_and_rolls_back(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "modes"
+    directory.mkdir()
+    (directory / "first.yaml").write_text(
+        "name: first\ninstructions: First.\naliases: [shared]\n",
+        encoding="utf-8",
+    )
+    (directory / "second.yaml").write_text(
+        "name: second\ninstructions: Second.\naliases: [shared]\n",
+        encoding="utf-8",
+    )
+    registry = WritingModeRegistry()
+
+    with pytest.raises(ConfigError, match="alias") as caught:
+        registry.load_directory(directory)
+
+    assert caught.value.details["alias"] == "shared"
+    assert caught.value.details["existing"] == "first"
+    assert "first" not in registry
+    assert "second" not in registry
+
+
+def test_registry_directory_rejects_a_name_already_registered(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "modes"
+    directory.mkdir()
+    (directory / "taken.yaml").write_text(
+        "name: recording\ninstructions: Loaded.\n", encoding="utf-8"
+    )
+    registry = WritingModeRegistry()
+    registry.register("recording", RecordingMode)
+
+    with pytest.raises(ConfigError, match="duplicate") as caught:
+        registry.load_directory(directory)
+
+    assert caught.value.details["mode"] == "recording"
+    assert registry.resolve("recording") is RecordingMode
+
+
+def test_registry_rejects_a_duplicate_name_inside_one_data_file(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "duplicates.yaml"
+    path.write_text(
+        "\n".join(
+            [
+                "modes:",
+                "  first:",
+                "    name: same-name",
+                "    instructions: First.",
+                "  second:",
+                "    name: same-name",
+                "    instructions: Second.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry = WritingModeRegistry()
+
+    with pytest.raises(ConfigError, match="duplicate") as caught:
+        registry.load_file(path)
+
+    assert caught.value.details["mode"] == "same-name"
+    assert "same-name" not in registry
+
+
+def test_registry_directory_must_exist_and_be_a_directory(tmp_path: Path) -> None:
+    registry = WritingModeRegistry()
+
+    with pytest.raises(ConfigError, match="does not exist"):
+        registry.load_directory(tmp_path / "missing")
+
+    file_path = tmp_path / "a_file.yaml"
+    file_path.write_text("name: a-file\ninstructions: Text.\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="not a directory"):
+        registry.load_directory(file_path)
