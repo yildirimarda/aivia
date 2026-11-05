@@ -548,6 +548,90 @@ def test_editing_a_rule_file_changes_the_stage_input_hash(tmp_path: Path) -> Non
     assert compute_input_hash(stage, base_dir=tmp_path) == original
 
 
+def test_config_rule_files_volume_and_placement_are_stage_defaults(
+    tmp_path: Path,
+) -> None:
+    _write_timeline(tmp_path, _timeline(duration_seconds=6.0))
+    doors = _write_rules(
+        tmp_path / "doors.yaml",
+        [{"id": "door", "match": "door", "prompt": "door impact"}],
+    )
+    clicks = _write_rules(
+        tmp_path / "clicks.yaml",
+        [{"id": "click", "match": "camera", "prompt": "camera shutter"}],
+    )
+    config = {
+        "sfx": {
+            "rule_files": [str(doors), str(clicks)],
+            "volume_db": -21.0,
+            "placement": "end",
+        }
+    }
+    sfx = FakeSFX(durations={"door impact": 0.5, "camera shutter": 0.5})
+    stage = SfxStage(sfx=sfx)
+
+    assert stage.resolve_inputs(config=config) == (
+        "timeline.json",
+        str(doors),
+        str(clicks),
+    )
+
+    result = _run(stage.run(_context(tmp_path, config=config)))
+
+    assert result.metadata["placements"] == 2
+    assert [request.prompt for request in sfx.requests] == [
+        "door impact",
+        "camera shutter",
+    ]
+    timeline = Timeline.model_validate(
+        json.loads((tmp_path / "timeline.json").read_text(encoding="utf-8"))
+    )
+    door, click = timeline.music
+    assert (door.start_seconds, door.end_seconds) == pytest.approx((1.5, 2.0))
+    assert (click.start_seconds, click.end_seconds) == pytest.approx((3.5, 4.0))
+    assert door.volume_db == pytest.approx(-21.0)
+    assert click.volume_db == pytest.approx(-21.0)
+
+
+def test_stage_options_and_rule_values_override_sfx_config_defaults(
+    tmp_path: Path,
+) -> None:
+    _write_timeline(tmp_path, _timeline(duration_seconds=6.0))
+    rules = _write_rules(
+        tmp_path / "rules.yaml",
+        [
+            {"id": "door", "match": "door", "prompt": "door impact"},
+            {
+                "id": "click",
+                "match": "camera",
+                "prompt": "camera shutter",
+                "position": "start",
+                "volume_db": -3.0,
+            },
+        ],
+    )
+    config = {
+        "sfx": {
+            "rule_files": [str(rules)],
+            "volume_db": -21.0,
+            "placement": "end",
+        }
+    }
+    sfx = FakeSFX(durations={"door impact": 0.5, "camera shutter": 0.5})
+    stage = SfxStage(options={"volume_db": -9.0, "position": "center"}, sfx=sfx)
+
+    _run(stage.run(_context(tmp_path, config=config)))
+
+    timeline = Timeline.model_validate(
+        json.loads((tmp_path / "timeline.json").read_text(encoding="utf-8"))
+    )
+    door, click = timeline.music
+    assert (door.start_seconds, door.end_seconds) == pytest.approx((0.75, 1.25))
+    assert door.volume_db == pytest.approx(-9.0)
+    assert (click.start_seconds, click.end_seconds) == pytest.approx((2.0, 2.5))
+    assert click.volume_db == pytest.approx(-3.0)
+
+
 def test_editing_a_rule_file_reruns_the_sfx_stage_on_resume(
     tmp_path: Path,
     engine: Engine,
