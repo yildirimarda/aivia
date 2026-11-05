@@ -116,6 +116,10 @@ video:
     max: 45
   loudness_lufs: -14
 
+visuals:
+  strategy: hybrid
+  max_ai_video_beats: 2
+
 render:
   fonts_dir: package
   require_bundled_fonts: true

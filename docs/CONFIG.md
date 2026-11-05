@@ -53,6 +53,7 @@ This reference is generated from the registered configuration models, their JSON
 | `storage` | [StorageConfig](#storage) or null | Where generated media and intermediates are stored. Credentials are referenced by name and resolved through the secrets loader, never written into the configuration file. |
 | `tracing` | [TracingConfig](#tracing) or null | Optional tracing export; disabled by default and vendor neutral. |
 | `video` | [VideoConfig](#video) or null | Video defaults shared by formats, profiles and platform overrides. |
+| `visuals` | [VisualsConfig](#visuals) or null | Default visual strategy and the maximum number of AI video beats. |
 
 ## `accessibility`
 
@@ -597,6 +598,15 @@ Video defaults shared by formats, profiles and platform overrides.
 | `profiles` | map of [VideoOverridesConfig](#videooverridesconfig) |  |  |  |
 | `resolution` | string | `"1080x1920"` |  |  |
 
+## `visuals`
+
+Default visual strategy and the maximum number of AI video beats.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `max_ai_video_beats` | integer | `2` | >= 0 |  |
+| `strategy` | [VisualStrategy](#visualstrategy) | `"hybrid"` | one of: `hybrid`, `image`, `video`, `stock`, `still`, `text`, `none`, `existing` | The ways a script's beats can be assigned a visual source. |
+
 ## Type definitions
 
 ### CharacterConsentConfig
@@ -1084,6 +1094,12 @@ Partial video settings applied on top of the base video section.
 | `fps` | integer or null | `null` | > 0 |  |
 | `loudness_lufs` | number or null | `null` |  |  |
 | `resolution` | string or null | `null` |  |  |
+
+### VisualStrategy
+
+The ways a script's beats can be assigned a visual source.
+
+Allowed values: `hybrid`, `image`, `video`, `stock`, `still`, `text`, `none`, `existing`.
 
 ### WordsPerSecondConfig
 

@@ -613,9 +613,10 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Generate visuals once per run and share them across languages (tests/visuals/test_reuse.py)
 - [x] Persist provider, model, prompt hash, license, cost links, quality score, alt text and pinned flag on every asset row (tests/visuals/test_asset_rows.py)
 - [x] Add a visuals command printing the per beat decision, provider, cost and quality score (tests/cli/test_visuals.py)
-- [ ] Add a visuals config section for the default strategy and maximum AI video beats and read it in visual assignment (tests/core/config/test_visuals.py)
+- [x] Add a visuals config section for the default strategy and maximum AI video beats and read it in visual assignment (tests/core/config/test_visuals.py)
 - [ ] Handle language scripts with different beat counts when sharing one visual set (tests/visuals/test_reuse.py)
 - [ ] Pass the run database engine into visual stages so quality and stock asset rows persist in every run (tests/visuals/test_asset_rows.py)
+- [ ] Apply the visuals config strategy and AI video cap in visual stages when options omit them (tests/visuals/test_reuse.py)
 
 ## Milestone 14: Formats and song pipeline
 

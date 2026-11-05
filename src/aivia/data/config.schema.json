@@ -3608,6 +3608,39 @@
       "title": "VideoOverridesConfig",
       "type": "object"
     },
+    "VisualStrategy": {
+      "description": "The ways a script's beats can be assigned a visual source.",
+      "enum": [
+        "hybrid",
+        "image",
+        "video",
+        "stock",
+        "still",
+        "text",
+        "none",
+        "existing"
+      ],
+      "title": "VisualStrategy",
+      "type": "string"
+    },
+    "VisualsConfig": {
+      "additionalProperties": false,
+      "description": "Default visual strategy and the maximum number of AI video beats.",
+      "properties": {
+        "max_ai_video_beats": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Max Ai Video Beats",
+          "type": "integer"
+        },
+        "strategy": {
+          "$ref": "#/$defs/VisualStrategy",
+          "default": "hybrid"
+        }
+      },
+      "title": "VisualsConfig",
+      "type": "object"
+    },
     "WordsPerSecondConfig": {
       "additionalProperties": false,
       "description": "Inclusive speaking-rate bounds used to estimate and check script length.",
@@ -4104,6 +4137,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/VideoConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "visuals": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VisualsConfig"
         },
         {
           "type": "null"

@@ -340,6 +340,14 @@ from aivia.core.config.sfx import (
     SfxPlacementMode,
     SfxPosition,
 )
+from aivia.core.config.visuals import (
+    VISUALS_SECTION_KEY,
+    VisualsConfig,
+    VisualStrategy,
+    VisualStrategyConfig,
+    normalise_visual_strategy,
+    normalize_visual_strategy,
+)
 
 __all__ = [
     "CLI_ORIGIN",
@@ -375,6 +383,7 @@ __all__ = [
     "SCHEMA_FILENAME",
     "SCHEMA_TITLE",
     "USER_ORIGIN",
+    "VISUALS_SECTION_KEY",
     "AccessibilityConfig",
     "ApiConfig",
     "AppConfig",
@@ -589,6 +598,9 @@ __all__ = [
     "VideoOverridesConfig",
     "VideoSpec",
     "VideoSpecConfig",
+    "VisualStrategy",
+    "VisualStrategyConfig",
+    "VisualsConfig",
     "WebhookDeliveryConfig",
     "WordsPerSecondConfig",
     "assemble_root_config",
@@ -611,6 +623,8 @@ __all__ = [
     "merge_video_specs",
     "migrate_config",
     "normalise_prompt_source",
+    "normalise_visual_strategy",
+    "normalize_visual_strategy",
     "packaged_schema_path",
     "parse_app_config",
     "parse_resolution",
