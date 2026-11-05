@@ -612,7 +612,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Downgrade from video to image to stock under a tight budget, emitting an alert and never exceeding the cap (tests/visuals/test_downgrade.py)
 - [x] Generate visuals once per run and share them across languages (tests/visuals/test_reuse.py)
 - [x] Persist provider, model, prompt hash, license, cost links, quality score, alt text and pinned flag on every asset row (tests/visuals/test_asset_rows.py)
-- [ ] Add a visuals command printing the per beat decision, provider, cost and quality score (tests/cli/test_visuals.py)
+- [x] Add a visuals command printing the per beat decision, provider, cost and quality score (tests/cli/test_visuals.py)
 - [ ] Add a visuals config section for the default strategy and maximum AI video beats and read it in visual assignment (tests/core/config/test_visuals.py)
 - [ ] Handle language scripts with different beat counts when sharing one visual set (tests/visuals/test_reuse.py)
 - [ ] Pass the run database engine into visual stages so quality and stock asset rows persist in every run (tests/visuals/test_asset_rows.py)
