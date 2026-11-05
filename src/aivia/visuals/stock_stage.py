@@ -44,6 +44,7 @@ from aivia.providers.protocols.stock import (
     StockRequest,
     StockResponse,
 )
+from aivia.visuals.asset_rows import persist_asset_rows
 from aivia.visuals.strategy import VisualRequest, resolve_visual_requests
 
 __all__ = [
@@ -1156,6 +1157,9 @@ class StockStage(Stage):
         helper: Any = None,
         model: str | None = None,
         config: Any = None,
+        assets: Any = None,
+        asset_repository: Any = None,
+        engine: Any = None,
         min_relevance: float | None = None,
         threshold: float | None = None,
         top_results: int | None = None,
@@ -1193,6 +1197,9 @@ class StockStage(Stage):
             "helper": helper,
             "model": model,
             "config": config,
+            "assets": assets,
+            "asset_repository": asset_repository,
+            "engine": engine,
             "min_relevance": min_relevance,
             "threshold": threshold,
             "top_results": top_results,
@@ -1244,6 +1251,11 @@ class StockStage(Stage):
         self._helper = merged.pop("helper", None)
         self._model = merged.pop("model", None)
         self._config = merged.pop("config", None)
+        self._assets = merged.pop("assets", None)
+        if self._assets is None:
+            self._assets = merged.pop("asset_repository", None)
+        if self._assets is None:
+            self._assets = merged.pop("engine", None)
         self._min_relevance = merged.pop("min_relevance", None)
         self._threshold = merged.pop("threshold", None)
         self.top_results = int(merged.pop("top_results", DEFAULT_TOP_RESULTS))
@@ -1315,6 +1327,8 @@ class StockStage(Stage):
                 run_id=run_id,
                 metadata={"position": position},
             )
+            if self._assets is not None:
+                persist_asset_rows(self._assets, result, run_id=run_id)
             results.append(result)
         self.results = results
 

@@ -52,6 +52,7 @@ from aivia.core.models.asset import (
     AssetKind,
 )
 from aivia.core.models.cost import CostEvent
+from aivia.media.provenance import alt_text_from, license_from
 from aivia.providers.protocols.media import MediaInput, VideoFormat
 from aivia.providers.protocols.storage import (
     StorageObject,
@@ -561,6 +562,8 @@ class VideoCache:
         key: str | None = None,
         key_prefix: str | None = None,
         cost_links: Iterable[AssetCostLink] | None = None,
+        license: Any = None,
+        alt_text: str | None = None,
     ) -> VideoCacheOutcome:
         """Validate *result*, store it as a video asset and cache the request.
 
@@ -615,6 +618,10 @@ class VideoCache:
             run_id=run_id,
             pinned=pinned,
             seed=selected_seed,
+            license=license_from(
+                license,
+                request.metadata,
+            ),
             analysis=AssetAnalysis(
                 width=probe.width,
                 height=probe.height,
@@ -623,6 +630,11 @@ class VideoCache:
                 format=video_format.value,
                 has_audio=video_has_audio,
                 audio_stripped=audio_stripped,
+            ),
+            alt_text=(
+                alt_text.strip()
+                if isinstance(alt_text, str) and alt_text.strip()
+                else alt_text_from(request.metadata)
             ),
             cost_links=list(cost_links or ()),
         )

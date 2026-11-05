@@ -1,5 +1,7 @@
 """Visual stages: resolve beats into deterministic asset requests."""
 
+from aivia.visuals.asset_rows import *  # noqa: F403
+from aivia.visuals.asset_rows import __all__ as _asset_rows_all
 from aivia.visuals.downgrade import *  # noqa: F403
 from aivia.visuals.downgrade import __all__ as _downgrade_all
 from aivia.visuals.image_stage import *  # noqa: F403
@@ -16,6 +18,7 @@ from aivia.visuals.video_stage import *  # noqa: F403
 from aivia.visuals.video_stage import __all__ as _video_all
 
 __all__ = [
+    *_asset_rows_all,
     *_strategy_all,
     *_stock_all,
     *_image_all,

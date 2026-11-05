@@ -66,6 +66,7 @@ from aivia.media.adaptation import (
     adapt_for_provider,
     cache_request_variants,
 )
+from aivia.media.provenance import alt_text_from, license_from
 from aivia.media.screening import (
     DEFAULT_PROMPT_KIND,
     ScreeningToken,
@@ -1562,6 +1563,11 @@ class VideoService:
                 run_id=run_id,
                 pinned=pinned,
                 seed=result.seed,
+                license=license_from(
+                    request.metadata,
+                    response.metadata,
+                    provider=selection.provider,
+                ),
                 analysis=AssetAnalysis(
                     width=probe.width,
                     height=probe.height,
@@ -1571,6 +1577,7 @@ class VideoService:
                     has_audio=result.has_audio,
                     audio_stripped=item.audio_stripped,
                 ),
+                alt_text=alt_text_from(request.metadata, response.metadata),
                 cost_links=list(cost_links),
             )
             if use_cache and self._videos.cache is not None:
