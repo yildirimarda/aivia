@@ -21,7 +21,7 @@ from aivia.core.db import (
     create_database_engine,
     upgrade_database,
 )
-from aivia.core.errors import ConfigError
+from aivia.core.errors import ConfigError, ValidationError
 from aivia.core.models import Run, StageState
 from aivia.core.orchestrator import Orchestrator
 from aivia.core.resume import compute_input_hash
@@ -514,3 +514,120 @@ def test_stage_quality_thresholds_can_be_configured_or_disabled(
     )
     assert "quality" not in disabled_result.metadata
     assert disabled_result.quality == {}
+
+
+def test_config_audio_qa_thresholds_are_stage_defaults(tmp_path: Path) -> None:
+    _write_script(tmp_path, _script({"text": "Hello world."}))
+    speech = FakeSpeech(
+        durations={"Hello world.": 3.0},
+        words={
+            "Hello world.": [
+                {"word": "Hello", "start": 1.0, "end": 1.5},
+                {"word": "world", "start": 1.5, "end": 3.0},
+            ]
+        },
+    )
+    config = {"audio_qa": {"max_leading_silence_seconds": 5.0}}
+    stage = VoiceStage(speech=speech)
+
+    result = cast(
+        VoiceStageResult,
+        _run(stage.run(_context(tmp_path, config=config))),
+    )
+
+    assert result.metadata["quality"]["findings"] == []
+    assert result.quality_ok is True
+
+
+def test_config_audio_qa_pronunciations_are_stage_defaults(tmp_path: Path) -> None:
+    _write_script(tmp_path, _script({"text": "nuclear energy is safe."}))
+    speech = FakeSpeech(durations={"nuclear energy is safe.": 2.0})
+    config = {"audio_qa": {"pronunciations": {"nuclear": ["nucular"]}}}
+    stage = VoiceStage(
+        options={
+            "quality": {
+                "transcripts": {"en_beat_0": "nucular energy is safe."},
+            }
+        },
+        speech=speech,
+    )
+
+    result = cast(
+        VoiceStageResult,
+        _run(stage.run(_context(tmp_path, config=config))),
+    )
+
+    assert result.metadata["quality"]["findings"] == []
+    assert result.quality_ok is True
+
+
+def test_config_audio_qa_failure_policy_fails_the_stage_on_errors(
+    tmp_path: Path,
+) -> None:
+    _write_script(tmp_path, _script({"text": "Hello world."}))
+    speech = FakeSpeech(
+        durations={"Hello world.": 3.0},
+        words={"Hello world.": [{"word": "Hello", "start": 0.0, "end": 0.1}]},
+    )
+    config = {"audio_qa": {"fail_on_error": True}}
+    stage = VoiceStage(speech=speech)
+
+    with pytest.raises(ValidationError) as caught:
+        _run(stage.run(_context(tmp_path, config=config)))
+
+    details = caught.value.details
+    assert details["quality"]["passed"] is False
+    assert "silence" in {finding["code"] for finding in details["findings"]}
+
+
+def test_config_audio_qa_failure_policy_can_report_instead_of_failing(
+    tmp_path: Path,
+) -> None:
+    _write_script(tmp_path, _script({"text": "Hello world."}))
+    speech = FakeSpeech(
+        durations={"Hello world.": 3.0},
+        words={"Hello world.": [{"word": "Hello", "start": 0.0, "end": 0.1}]},
+    )
+    config = {"audio_qa": {"fail_on_error": False}}
+    stage = VoiceStage(speech=speech)
+
+    result = cast(
+        VoiceStageResult,
+        _run(stage.run(_context(tmp_path, config=config))),
+    )
+
+    assert result.metadata["quality"]["passed"] is False
+    assert result.quality_ok is False
+    assert result.status is StageState.SUCCEEDED
+
+
+def test_stage_quality_options_override_audio_qa_config_defaults(
+    tmp_path: Path,
+) -> None:
+    _write_script(tmp_path, _script({"text": "Hello world."}))
+    speech = FakeSpeech(
+        durations={"Hello world.": 3.0},
+        words={
+            "Hello world.": [
+                {"word": "Hello", "start": 1.0, "end": 1.5},
+                {"word": "world", "start": 1.5, "end": 3.0},
+            ]
+        },
+    )
+    config = {"audio_qa": {"enabled": False, "max_leading_silence_seconds": 5.0}}
+    stage = VoiceStage(
+        options={
+            "quality": {
+                "enabled": True,
+                "max_leading_silence_seconds": 0.1,
+            }
+        },
+        speech=speech,
+    )
+
+    result = cast(
+        VoiceStageResult,
+        _run(stage.run(_context(tmp_path, config=config))),
+    )
+
+    assert [finding["code"] for finding in result.quality_findings] == ["silence"]
