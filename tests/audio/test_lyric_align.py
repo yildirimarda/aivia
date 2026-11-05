@@ -112,6 +112,17 @@ def test_exact_lyrics_receive_line_and_word_timings() -> None:
     ]
 
 
+def test_a_text_only_transcript_aligns_words_but_has_no_timings() -> None:
+    result = align_lyrics("Hello world", {"text": "Hello world"})
+
+    assert result.coverage == 1.0
+    assert result.mismatches[0].code == "untimed_line"
+    assert result.aligned is False
+    assert result.has_timings is False
+    assert result.word_timestamps == []
+    assert result.line_timestamps == []
+
+
 def test_sung_variants_and_adlibs_do_not_shift_later_lines() -> None:
     lyrics = "I love you\nWe sing tonight"
     transcript = _response(

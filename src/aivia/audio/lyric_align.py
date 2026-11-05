@@ -1119,7 +1119,7 @@ class LyricAlignment(BaseModel):
     @property
     def aligned(self) -> bool:
         """Whether any line received timing."""
-        return bool(self.matched_lines) or any(line.aligned for line in self.lines)
+        return any(line.aligned for line in self.lines)
 
     @property
     def has_timings(self) -> bool:
