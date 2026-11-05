@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -223,6 +224,103 @@ def test_apply_reburns_only_the_affected_language(
     assert not (tmp_path / "subtitle.de.ass").exists()
     assert (tmp_path / "renders" / "run_subtitle_en.mp4").read_bytes() == b"video-en"
     assert not (tmp_path / "renders" / "run_subtitle_de.mp4").exists()
+
+
+def test_applying_an_edit_registers_edited_subtitles_and_renders_in_the_manifest(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timeline = _write_timeline(tmp_path)
+    document = _export(tmp_path, timeline, capsys)
+    _set_word(document, "en", 0, word="Hi")
+    edit = _write_edit(tmp_path, document)
+
+    def fake_video(composition: Any, path: Any, **options: Any) -> None:
+        Path(path).write_bytes(f"video-{composition.language}".encode())
+
+    monkeypatch.setattr(subtitle_cli, "render_video", fake_video)
+
+    code, _out, err = _run(
+        capsys,
+        "edit",
+        "--timeline",
+        str(timeline),
+        "--input",
+        str(edit),
+    )
+
+    assert code == 0, err
+    assert err == ""
+    manifest = json.loads((tmp_path / "artifacts.json").read_text(encoding="utf-8"))
+    subtitles = manifest["stages"]["subtitle"]
+    renders = manifest["stages"]["render"]
+    assert [entry["path"] for entry in manifest["stages"]["voice"]] == ["timeline.json"]
+    assert [entry["path"] for entry in subtitles] == ["subtitle.en.ass"]
+    assert [entry["path"] for entry in renders] == ["renders/run_subtitle_en.mp4"]
+    for entry in [*subtitles, *renders]:
+        artifact = tmp_path / entry["path"]
+        assert entry["size_bytes"] == artifact.stat().st_size
+        assert entry["sha256"] == hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+
+def test_applying_an_edit_registers_the_timeline_under_the_voice_stage(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        """
+database:
+  filename: aivia.db
+""".lstrip(),
+        encoding="utf-8",
+    )
+    database = tmp_path / "data" / "aivia.db"
+    upgrade_database(database)
+    engine = create_database_engine(database)
+    try:
+        run = Run(id="run_subtitle", format="sample", state=RunState.QUEUED)
+        RunDirectories(tmp_path / "data").create(run)
+        RunRepository(engine).create(run)
+    finally:
+        engine.dispose()
+    timeline = Path(run.run_dir) / "timeline.json"
+    timeline.write_text(json.dumps(_timeline_document()), encoding="utf-8")
+    document = _export(tmp_path, timeline, capsys)
+    _set_word(document, "en", 0, word="Hi")
+    edit = _write_edit(tmp_path, document)
+    monkeypatch.setattr(
+        subtitle_cli,
+        "render_video",
+        lambda composition, path, **options: Path(path).write_bytes(b"video"),
+    )
+
+    code, _out, err = _run(
+        capsys,
+        "edit",
+        run.id,
+        "--input",
+        str(edit),
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0, err
+    assert err == ""
+    manifest = json.loads(
+        (Path(run.run_dir) / "artifacts.json").read_text(encoding="utf-8")
+    )
+    assert [entry["path"] for entry in manifest["stages"]["voice"]] == ["timeline.json"]
+    assert [entry["path"] for entry in manifest["stages"]["subtitle"]] == [
+        "subtitle.en.ass"
+    ]
+    assert [entry["path"] for entry in manifest["stages"]["render"]] == [
+        "renders/run_subtitle_en.mp4"
+    ]
 
 
 def test_reapplying_a_previous_edit_is_served_from_the_render_cache(

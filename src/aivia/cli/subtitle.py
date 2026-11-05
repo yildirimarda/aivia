@@ -39,7 +39,7 @@ from aivia.core.config.resolve import resolve_config
 from aivia.core.db import RunRepository, create_database_engine
 from aivia.core.errors import AiviaError, ConfigError
 from aivia.core.models import Run
-from aivia.core.run_dirs import RunDirectories
+from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import StageContext
 
 __all__ = [
@@ -414,6 +414,41 @@ def render_affected_outputs(
     return rendered
 
 
+def _register_edit_artifacts(
+    timeline_path: Path,
+    run: Run | None,
+    subtitles: Mapping[str, str],
+    rendered: Sequence[tuple[Path, bool]],
+) -> None:
+    """Record edited subtitle files and re-burnt outputs for resume."""
+    directory = RunDirectory(
+        timeline_path.parent,
+        run_id=run.id if run is not None else "",
+    )
+    subtitle_files: list[Path] = []
+    for relative in subtitles.values():
+        if not relative:
+            continue
+        try:
+            subtitle_files.append(directory.resolve(relative))
+        except ValueError:
+            continue
+    if subtitle_files:
+        directory.register("subtitle", subtitle_files)
+    render_files: list[Path] = []
+    for path, _cached in rendered:
+        candidate = Path(path).expanduser()
+        if not candidate.is_absolute():
+            candidate = candidate.resolve()
+        try:
+            render_files.append(directory.resolve(candidate))
+        except ValueError:
+            continue
+    if render_files:
+        directory.register("render", render_files)
+    directory.register("voice", timeline_path)
+
+
 def _print_apply_report(
     timeline_path: Path,
     changed: Sequence[str],
@@ -464,6 +499,7 @@ def run_edit(args: argparse.Namespace) -> int:
                         output_format=getattr(args, "output_format", None),
                         no_cache=bool(getattr(args, "no_cache", False)),
                     )
+                _register_edit_artifacts(timeline_path, _run, subtitles, rendered)
             _print_apply_report(timeline_path, changed, subtitles, rendered)
             return 0
 
