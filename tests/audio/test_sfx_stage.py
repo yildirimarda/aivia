@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import yaml
+from sqlalchemy import Engine
 
 from aivia.audio import (
     SFXRule,
@@ -19,7 +21,18 @@ from aivia.audio import (
     place_sound_effects,
 )
 from aivia.compose import Timeline, compositions_from_timeline
+from aivia.core.cost import CostTracker
+from aivia.core.db import (
+    RunRepository,
+    StageRunRepository,
+    create_database_engine,
+    upgrade_database,
+)
 from aivia.core.errors import ConfigError
+from aivia.core.models import Run, StageState
+from aivia.core.orchestrator import Orchestrator
+from aivia.core.resume import compute_input_hash
+from aivia.core.run_state import RunStateMachine
 from aivia.core.stages import StageContext
 from aivia.providers.protocols.sfx import SFXRequest
 
@@ -113,8 +126,23 @@ def _write_timeline(run_dir: Path, value: dict[str, Any]) -> Path:
     return path
 
 
+def _write_rules(path: Path, rules: list[dict[str, Any]]) -> Path:
+    path.write_text(yaml.safe_dump({"rules": rules}, sort_keys=False), encoding="utf-8")
+    return path
+
+
 def _context(run_dir: Path, *, config: Any = None) -> StageContext:
     return StageContext(run_dir=run_dir, config=config or {})
+
+
+@pytest.fixture
+def engine() -> Iterator[Engine]:
+    created = create_database_engine(url="sqlite+pysqlite:///:memory:")
+    upgrade_database(engine=created)
+    try:
+        yield created
+    finally:
+        created.dispose()
 
 
 def test_rules_place_effects_on_matching_beats_with_gain_and_keep_duration(
@@ -479,3 +507,101 @@ def test_preplaced_effects_are_clamped_by_the_pure_helper() -> None:
     assert tracks[0].start_seconds == pytest.approx(3.5)
     assert tracks[0].end_seconds == pytest.approx(4.0)
     assert tracks[0].volume_db == pytest.approx(-10.0)
+
+
+def test_stage_declares_the_rule_file_and_timeline_as_inputs(tmp_path: Path) -> None:
+    rules = _write_rules(
+        tmp_path / "rules.yaml",
+        [{"id": "door", "match": "door", "prompt": "door impact"}],
+    )
+    stage = SfxStage(options={"rules": str(rules)})
+
+    assert stage.inputs == ("timeline.json", str(rules))
+
+
+def test_stage_declares_no_rule_file_input_for_inline_rules() -> None:
+    stage = SfxStage(
+        options={"rules": [{"id": "door", "prompt": "door impact"}]},
+    )
+
+    assert stage.inputs == ("timeline.json",)
+
+
+def test_editing_a_rule_file_changes_the_stage_input_hash(tmp_path: Path) -> None:
+    rules = _write_rules(
+        tmp_path / "rules.yaml",
+        [{"id": "door", "match": "door", "prompt": "door impact"}],
+    )
+    stage = SfxStage(options={"rules": str(rules)})
+    original = compute_input_hash(stage, base_dir=tmp_path)
+
+    _write_rules(
+        rules,
+        [{"id": "door", "match": "door", "prompt": "heavy door creaks"}],
+    )
+    assert compute_input_hash(stage, base_dir=tmp_path) != original
+
+    _write_rules(
+        rules,
+        [{"id": "door", "match": "door", "prompt": "door impact"}],
+    )
+    assert compute_input_hash(stage, base_dir=tmp_path) == original
+
+
+def test_editing_a_rule_file_reruns_the_sfx_stage_on_resume(
+    tmp_path: Path,
+    engine: Engine,
+) -> None:
+    rules = _write_rules(
+        tmp_path / "rules.yaml",
+        [{"id": "door", "match": "door", "prompt": "door impact"}],
+    )
+    timeline = Timeline.model_validate(_timeline(duration_seconds=6.0))
+    sfx = FakeSFX(durations={"door impact": 0.5, "heavy door creaks": 0.5})
+    stage = SfxStage(
+        options={"rules": str(rules)},
+        timeline=timeline,
+        sfx=sfx,
+    )
+    machine = RunStateMachine(RunRepository(engine))
+    run = machine.create(Run())
+
+    def execute() -> Any:
+        return Orchestrator(
+            stages=[stage],
+            run=run.id,
+            repository=StageRunRepository(engine),
+            run_dir=tmp_path,
+            config={},
+            cost=CostTracker(engine),
+            raise_on_failure=False,
+        ).execute_sync()
+
+    first = execute()
+    stored = StageRunRepository(engine).get(run.id, "sfx")
+    assert first.ok is True
+    assert len(sfx.requests) == 1
+    assert stored is not None
+
+    second = execute()
+
+    assert second.ok is True
+    assert len(sfx.requests) == 1
+    assert second.stages[0].status is StageState.SKIPPED
+
+    _write_rules(
+        rules,
+        [{"id": "door", "match": "door", "prompt": "heavy door creaks"}],
+    )
+    third = execute()
+
+    assert third.ok is True
+    assert len(sfx.requests) == 2
+    assert third.stages[0].status is StageState.SUCCEEDED
+    assert third.stages[0].input_hash != stored.input_hash
+
+    fourth = execute()
+
+    assert fourth.ok is True
+    assert len(sfx.requests) == 2
+    assert fourth.stages[0].status is StageState.SKIPPED

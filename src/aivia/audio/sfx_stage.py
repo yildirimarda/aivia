@@ -50,7 +50,7 @@ from aivia.core.config.media import (
 from aivia.core.errors import ConfigError
 from aivia.core.models.base import canonical_json
 from aivia.core.models.run import StageResult, StageState
-from aivia.core.stages.base import Stage, StageContext
+from aivia.core.stages.base import Stage, StageContext, _normalise_inputs
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.sfx import SFXRequest
 
@@ -181,9 +181,9 @@ def _field(value: Any, name: str, default: Any = None) -> Any:
     return getattr(value, name, default)
 
 
-def _config_value(context: StageContext, *names: str) -> Any:
+def _config_value(config: Any, *names: str) -> Any:
     for section_name in _SECTION_KEYS:
-        section = _section(context.config, section_name)
+        section = _section(config, section_name)
         if section is None:
             continue
         for name in names:
@@ -629,6 +629,36 @@ normalise_sfx_rules = load_sfx_rules
 normalize_sfx_rules = load_sfx_rules
 """Alias for :func:`load_sfx_rules`."""
 
+_RULE_FILE_SUFFIXES = frozenset({".json", ".yaml", ".yml"})
+
+
+def _rule_file_declarations(value: Any) -> tuple[str, ...]:
+    """Return the rule files a rule source reads, so resume can hash them."""
+    if value is None or isinstance(value, SfxRule):
+        return ()
+    if isinstance(value, (str, Path)):
+        text = str(value).strip()
+        if not text:
+            return ()
+        path = Path(text).expanduser()
+        if path.is_file() or path.suffix.casefold() in _RULE_FILE_SUFFIXES:
+            return (text,)
+        return ()
+    if isinstance(value, Mapping):
+        values = dict(value)
+        for key in _RULE_KEYS:
+            if key in values:
+                return _rule_file_declarations(values[key])
+        return ()
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        declared: list[str] = []
+        for item in value:
+            for declared_path in _rule_file_declarations(item):
+                if declared_path not in declared:
+                    declared.append(declared_path)
+        return tuple(declared)
+    return ()
+
 
 def _matched_terms(rule: SfxRule, text: str) -> tuple[str, ...] | None:
     if not rule.triggers:
@@ -1051,7 +1081,9 @@ class SfxStage(Stage):
             name=name or SFX_STAGE_NAME,
             options=merged,
             artifacts=(timeline_name, manifest_name),
+            inputs=(),
         )
+        self._declared_input_override: tuple[str, ...] | None = None
         self.rules = next(
             (
                 merged[key]
@@ -1083,13 +1115,49 @@ class SfxStage(Stage):
         self.sfx = (
             merged.get("sfx") or merged.get("generator") or merged.get("provider")
         )
+
+    def _input_declarations(self, source: Any) -> tuple[str, ...]:
+        declared: list[str] = []
         if self.timeline is None:
-            self.inputs = (self.timeline_filename,)
+            declared.append(self.timeline_filename)
+        for path in _rule_file_declarations(source):
+            if path not in declared:
+                declared.append(path)
+        return tuple(declared)
+
+    @property
+    def inputs(self) -> tuple[str, ...]:
+        """The timeline and rule files this stage reads from disk.
+
+        Editing a rule file between runs changes the stage input hash, so a
+        resume reruns the stage instead of reusing placements made from stale
+        rules. Inline rules and an injected timeline read no files.
+        """
+        override = self._declared_input_override
+        if override is not None:
+            return override
+        return self._input_declarations(self.rules)
+
+    @inputs.setter
+    def inputs(self, value: Iterable[str | Path] | str | Path) -> None:
+        self._declared_input_override = _normalise_inputs(value)
+
+    def resolve_inputs(
+        self,
+        *,
+        base_dir: str | Path | None = None,
+        config: Any = None,
+    ) -> tuple[str, ...]:
+        """Resolve the rule files this run will read, including config rules."""
+        source = self.rules
+        if source is None:
+            source = _config_value(config, *_RULE_KEYS)
+        return self._input_declarations(source)
 
     def _rules_source(self, context: StageContext, timeline: Timeline) -> Any:
         if self.rules is not None:
             return self.rules
-        configured = _config_value(context, *_RULE_KEYS)
+        configured = _config_value(context.config, *_RULE_KEYS)
         if configured is not None:
             return configured
         for key in (*_RULE_KEYS, "sfx_rules"):
