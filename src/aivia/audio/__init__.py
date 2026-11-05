@@ -10,6 +10,19 @@ schema and the media services; it does not select providers or write cost
 events itself.
 """
 
+from aivia.audio.analysis import (
+    DEFAULT_ANALYSIS_MAX_BPM,
+    DEFAULT_ANALYSIS_MIN_BPM,
+    DEFAULT_ANALYSIS_SILENCE_MIN_SECONDS,
+    DEFAULT_ANALYSIS_SILENCE_NOISE_DB,
+    AudioAnalysis,
+    AudioAnalysisReport,
+    AudioAnalyzer,
+    SilenceMap,
+    analyze_audio,
+    analyze_audio_file,
+    parse_audio_analysis,
+)
 from aivia.audio.lyric_align import (
     DEFAULT_LINE_THRESHOLD,
     DEFAULT_LYRIC_ALIGNMENT_THRESHOLD,
@@ -143,6 +156,10 @@ from aivia.audio.voice_stage import (
 )
 
 __all__ = [
+    "DEFAULT_ANALYSIS_MAX_BPM",
+    "DEFAULT_ANALYSIS_MIN_BPM",
+    "DEFAULT_ANALYSIS_SILENCE_MIN_SECONDS",
+    "DEFAULT_ANALYSIS_SILENCE_NOISE_DB",
     "DEFAULT_EXPECTED_WORDS_PER_SECOND",
     "DEFAULT_GAP_SECONDS",
     "DEFAULT_LINE_THRESHOLD",
@@ -172,6 +189,9 @@ __all__ = [
     "SUBTITLE_STAGE_NAME",
     "SYNTHESIS_MODES",
     "VOICE_STAGE_NAME",
+    "AudioAnalysis",
+    "AudioAnalysisReport",
+    "AudioAnalyzer",
     "AudioQA",
     "AudioQAFinding",
     "AudioQAReport",
@@ -205,6 +225,7 @@ __all__ = [
     "SfxRule",
     "SfxStage",
     "SfxStageResult",
+    "SilenceMap",
     "SilenceSpan",
     "SoundEffectRule",
     "SoundEffectStage",
@@ -226,6 +247,8 @@ __all__ = [
     "align_lyrics_to_transcript",
     "align_song",
     "align_song_lyrics",
+    "analyze_audio",
+    "analyze_audio_file",
     "apply_ducking",
     "audio_qa",
     "build_music_prompt",
@@ -247,6 +270,7 @@ __all__ = [
     "music_stage",
     "normalise_sfx_rules",
     "normalize_sfx_rules",
+    "parse_audio_analysis",
     "place_sound_effects",
     "qa_audio",
     "report_lyric_mismatches",
