@@ -1145,6 +1145,79 @@
       "title": "ModelsFileConfig",
       "type": "object"
     },
+    "MusicConfig": {
+      "additionalProperties": false,
+      "description": "Default music source, local library, mood, gain and ducking settings.",
+      "properties": {
+        "ducking": {
+          "$ref": "#/$defs/MusicDuckingConfig"
+        },
+        "library_path": {
+          "default": "",
+          "title": "Library Path",
+          "type": "string"
+        },
+        "mood": {
+          "default": "",
+          "title": "Mood",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/MusicSource",
+          "default": "auto"
+        },
+        "volume_db": {
+          "default": -6.0,
+          "title": "Volume Db",
+          "type": "number"
+        }
+      },
+      "title": "MusicConfig",
+      "type": "object"
+    },
+    "MusicDuckingConfig": {
+      "additionalProperties": false,
+      "description": "Sidechain compression that lowers music while a voice is present.",
+      "properties": {
+        "attack_ms": {
+          "default": 20.0,
+          "title": "Attack Ms",
+          "type": "number"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "ratio": {
+          "default": 8.0,
+          "title": "Ratio",
+          "type": "number"
+        },
+        "release_ms": {
+          "default": 300.0,
+          "title": "Release Ms",
+          "type": "number"
+        },
+        "threshold_db": {
+          "default": -25.0,
+          "title": "Threshold Db",
+          "type": "number"
+        }
+      },
+      "title": "MusicDuckingConfig",
+      "type": "object"
+    },
+    "MusicSource": {
+      "description": "Where a background music bed may come from.",
+      "enum": [
+        "auto",
+        "library",
+        "provider"
+      ],
+      "title": "MusicSource",
+      "type": "string"
+    },
     "NameVerifyConfig": {
       "additionalProperties": false,
       "description": "How often a generated name is transcribed and checked before accepting.\n\nVerification regenerates the spoken name up to ``retries`` times when the\ntranscription does not match within ``threshold``.",
@@ -3593,6 +3666,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/ModelsFileConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "music": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MusicConfig"
         },
         {
           "type": "null"

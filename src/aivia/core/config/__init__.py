@@ -121,6 +121,13 @@ from aivia.core.config.migrations import (
     schema_version_of,
 )
 from aivia.core.config.models_file import ModelsFileConfig, ModelsFileSettings
+from aivia.core.config.music import (
+    MusicConfig,
+    MusicDucking,
+    MusicDuckingConfig,
+    MusicSource,
+    MusicSourceMode,
+)
 from aivia.core.config.orders import (
     Delivery,
     DeliveryConfig,
@@ -438,6 +445,11 @@ __all__ = [
     "ModelPricing",
     "ModelsFileConfig",
     "ModelsFileSettings",
+    "MusicConfig",
+    "MusicDucking",
+    "MusicDuckingConfig",
+    "MusicSource",
+    "MusicSourceMode",
     "NameVerificationConfig",
     "NameVerifyConfig",
     "Occasion",

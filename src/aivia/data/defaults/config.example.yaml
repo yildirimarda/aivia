@@ -381,6 +381,18 @@ brand:
   outro: ""
   caption_style: ""
 
+music:
+  source: auto
+  library_path: ""
+  mood: ""
+  volume_db: -6.0
+  ducking:
+    enabled: true
+    threshold_db: -25.0
+    ratio: 8.0
+    attack_ms: 20.0
+    release_ms: 300.0
+
 occasions:
   default: birthday
   occasions:
