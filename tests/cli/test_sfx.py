@@ -211,9 +211,7 @@ def test_sfx_places_configured_rules_and_prints_each_placement_and_cost(
     )
     assert timeline["duration_seconds"] == pytest.approx(6.0)
     assert [track["role"] for track in timeline["music"]] == ["sfx", "sfx"]
-    manifest = json.loads(
-        (Path(run.run_dir) / "sfx.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((Path(run.run_dir) / "sfx.json").read_text(encoding="utf-8"))
     assert manifest["placements"] == 2
     assert manifest["cost_usd"] == pytest.approx(0.02)
 
