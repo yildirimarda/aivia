@@ -6,6 +6,8 @@ from aivia.visuals.image_stage import *  # noqa: F403
 from aivia.visuals.image_stage import __all__ as _image_all
 from aivia.visuals.qa import *  # noqa: F403
 from aivia.visuals.qa import __all__ as _qa_all
+from aivia.visuals.reuse import *  # noqa: F403
+from aivia.visuals.reuse import __all__ as _reuse_all
 from aivia.visuals.stock_stage import *  # noqa: F403
 from aivia.visuals.stock_stage import __all__ as _stock_all
 from aivia.visuals.strategy import *  # noqa: F403
@@ -20,4 +22,5 @@ __all__ = [
     *_video_all,
     *_qa_all,
     *_downgrade_all,
+    *_reuse_all,
 ]
