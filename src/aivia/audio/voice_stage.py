@@ -34,8 +34,9 @@ from typing import Any, cast
 
 from aivia.audio.qa import AudioQAReport, check_audio_quality
 from aivia.compose.timeline import Timeline
+from aivia.core.config.audio_qa import AudioQAConfig
 from aivia.core.config.media import DEFAULT_MEDIA_VOICE_GAP_SECONDS
-from aivia.core.errors import ConfigError
+from aivia.core.errors import ConfigError, ValidationError
 from aivia.core.models.base import canonical_json
 from aivia.core.models.run import StageResult, StageState
 from aivia.core.models.script import Beat, DialogueLine, Script
@@ -520,6 +521,19 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 _QUALITY_OPTION_KEYS = ("audio_qa", "audio_quality", "qa", "quality")
+_AUDIO_QA_SECTION_KEYS = (
+    "audio_qa",
+    "audio-qa",
+    "audio_quality",
+    "audio-quality",
+)
+_QUALITY_ENABLED_KEYS = ("enabled", "enable", "active")
+_QUALITY_FAILURE_KEYS = (
+    "fail_on_error",
+    "fail_on_errors",
+    "raise_on_error",
+    "strict",
+)
 _QUALITY_THRESHOLD_KEYS = frozenset(
     {
         "expected_words_per_second",
@@ -534,6 +548,37 @@ _QUALITY_THRESHOLD_KEYS = frozenset(
     }
 )
 _QUALITY_EXTRA_KEYS = ("transcripts", "silences", "pronunciations")
+
+
+def _quality_raw_options(options: Mapping[str, Any]) -> Any:
+    for key in _QUALITY_OPTION_KEYS:
+        if key in options:
+            return options[key]
+    return None
+
+
+def _quality_enabled_explicit(options: Mapping[str, Any]) -> bool:
+    raw = _quality_raw_options(options)
+    if raw is None:
+        return False
+    if isinstance(raw, Mapping):
+        return any(key in raw for key in _QUALITY_ENABLED_KEYS)
+    return True
+
+
+def _quality_failure_option(
+    options: Mapping[str, Any],
+) -> tuple[bool, bool]:
+    """Return the explicit failure policy and whether it was configured."""
+    for key in _QUALITY_FAILURE_KEYS:
+        if key in options:
+            return bool(options[key]), True
+    raw = _quality_raw_options(options)
+    if isinstance(raw, Mapping):
+        for key in _QUALITY_FAILURE_KEYS:
+            if key in raw:
+                return bool(raw[key]), True
+    return True, False
 
 
 def _quality_options(
@@ -566,6 +611,31 @@ def _quality_options(
         {key: value for key, value in values.items() if key in _QUALITY_THRESHOLD_KEYS}
     )
     return enabled, thresholds, extras
+
+
+def _audio_qa_config(config: Any) -> AudioQAConfig | None:
+    """Resolve the ``audio_qa`` section from an app config or mapping."""
+    if isinstance(config, AudioQAConfig):
+        return config
+    section: Any = None
+    for key in _AUDIO_QA_SECTION_KEYS:
+        section = _section(config, key)
+        if section is not None:
+            break
+    if section is None:
+        return None
+    if isinstance(section, AudioQAConfig):
+        return section
+    if isinstance(section, Mapping):
+        return AudioQAConfig.from_mapping(section)
+    values: dict[str, Any] = {}
+    for name in AudioQAConfig.model_fields:
+        value = getattr(section, name, None)
+        if value is not None:
+            values[name] = value
+    if not values:
+        return None
+    return AudioQAConfig.from_mapping(values)
 
 
 class VoiceStageResult(StageResult):
@@ -714,6 +784,11 @@ class VoiceStage(Stage):
             self.quality_thresholds,
             self.quality_extras,
         ) = _quality_options(merged)
+        self._quality_enabled_explicit = _quality_enabled_explicit(merged)
+        (
+            self.quality_fail_on_error,
+            self._quality_fail_explicit,
+        ) = _quality_failure_option(merged)
         self.scripts_by_language: dict[str, Script] = {}
         self._declared_input_override: tuple[str, ...] | None = None
 
@@ -1223,21 +1298,48 @@ class VoiceStage(Stage):
             event for event in events if str(getattr(event, "id", "")) not in before
         ]
 
+    def _resolved_quality(
+        self,
+        config: Any,
+    ) -> tuple[bool, dict[str, Any], dict[str, Any], bool]:
+        """Merge the stage's quality options over the configured defaults."""
+        configured = _audio_qa_config(config)
+        enabled = self.quality_enabled
+        if configured is not None and not self._quality_enabled_explicit:
+            enabled = configured.enabled
+
+        thresholds: dict[str, Any] = {}
+        if configured is not None:
+            thresholds.update(configured.thresholds)
+        thresholds.update(self.quality_thresholds)
+
+        extras = dict(self.quality_extras)
+        if configured is not None and "pronunciations" not in extras:
+            extras["pronunciations"] = configured.pronunciations
+
+        fail_on_error = self.quality_fail_on_error
+        if configured is not None and not self._quality_fail_explicit:
+            fail_on_error = configured.fail_on_error
+        return enabled, thresholds, extras, fail_on_error
+
     def _quality_report(
         self,
         timeline: Timeline,
         scripts: Mapping[str, Script],
+        *,
+        enabled: bool,
+        thresholds: Mapping[str, Any],
+        extras: Mapping[str, Any],
     ) -> AudioQAReport | None:
-        if not self.quality_enabled:
+        if not enabled:
             return None
-        extras = self.quality_extras
         return check_audio_quality(
             timeline,
             scripts=scripts,
             transcripts=extras.get("transcripts"),
             silences=extras.get("silences"),
             pronunciations=extras.get("pronunciations"),
-            **self.quality_thresholds,
+            **thresholds,
         )
 
     async def run(self, context: StageContext) -> StageResult:
@@ -1319,7 +1421,16 @@ class VoiceStage(Stage):
         _write_json(context.run_dir / relative, timeline.model_dump(mode="json"))
         self.artifacts = (relative,)
 
-        quality = self._quality_report(timeline, scripts)
+        quality_enabled, quality_thresholds, quality_extras, fail_on_error = (
+            self._resolved_quality(context.config)
+        )
+        quality = self._quality_report(
+            timeline,
+            scripts,
+            enabled=quality_enabled,
+            thresholds=quality_thresholds,
+            extras=quality_extras,
+        )
         metadata = {
             "mode": self.mode,
             "gap_seconds": self.gap_seconds,
@@ -1337,6 +1448,15 @@ class VoiceStage(Stage):
             metadata["audio_quality"] = report
             metadata["quality_ok"] = quality.passed
             metadata["quality_findings"] = report["findings"]
+            if fail_on_error and quality.errors:
+                raise ValidationError(
+                    "audio quality checks found errors",
+                    details={
+                        "timeline": relative,
+                        "findings": report["findings"],
+                        "quality": report,
+                    },
+                )
         return VoiceStageResult(
             run_id=run_id,
             stage=self.name,
