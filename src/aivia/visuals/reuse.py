@@ -25,6 +25,7 @@ from typing import Any, cast
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from aivia.core.config.visuals import VisualsConfig
 from aivia.core.errors import ConfigError
 from aivia.core.models.run import StageResult, StageState
 from aivia.core.models.script import Script, VisualType
@@ -36,8 +37,6 @@ from aivia.visuals.image_stage import (
 )
 from aivia.visuals.stock_stage import resolve_stock_request
 from aivia.visuals.strategy import (
-    DEFAULT_MAX_AI_VIDEO_BEATS,
-    DEFAULT_VISUAL_STRATEGY,
     VisualRequest,
     resolve_visual_requests,
 )
@@ -116,6 +115,24 @@ _IMAGE_TYPES = frozenset(
 )
 _VIDEO_TYPES = frozenset({VisualType.VIDEO})
 _STOCK_TYPES = frozenset({VisualType.STOCK})
+
+
+def _configured_visual_options(
+    config: Any,
+    strategy: Any,
+    max_ai_video_beats: int | None,
+) -> tuple[Any, int]:
+    """Resolve the visuals config defaults, keeping explicit options on top."""
+    configured = VisualsConfig.from_config(config)
+    chosen_strategy = (
+        configured.strategy if strategy is None or strategy == "" else strategy
+    )
+    chosen_limit = (
+        configured.max_ai_video_beats
+        if max_ai_video_beats is None
+        else max_ai_video_beats
+    )
+    return chosen_strategy, chosen_limit
 
 
 def _config_default_language(config: Any) -> str:
@@ -350,10 +367,11 @@ def shared_visual_requests(
     *,
     source_language: Any = None,
     language: Any = None,
-    strategy: Any = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: Any = None,
+    max_ai_video_beats: int | None = None,
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
+    config: Any = None,
 ) -> list[VisualRequest]:
     """Resolve the shared requests, covering the longest language script."""
     scripts = _scripts_from(value)
@@ -361,6 +379,11 @@ def shared_visual_requests(
         source_language if source_language is not None else language,
         scripts,
         list(scripts),
+    )
+    strategy, max_ai_video_beats = _configured_visual_options(
+        config,
+        strategy,
+        max_ai_video_beats,
     )
     return _request_input(
         value,
@@ -379,10 +402,11 @@ def share_visual_requests(
     source_language: Any = None,
     language: Any = None,
     languages: Any = None,
-    strategy: Any = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: Any = None,
+    max_ai_video_beats: int | None = None,
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
+    config: Any = None,
 ) -> dict[str, list[VisualRequest]]:
     """Return the shared requests for every language in *value*.
 
@@ -398,6 +422,11 @@ def share_visual_requests(
         source_language if source_language is not None else language,
         scripts,
         codes,
+    )
+    strategy, max_ai_video_beats = _configured_visual_options(
+        config,
+        strategy,
+        max_ai_video_beats,
     )
     active = (
         _requests_from(requests)
@@ -787,11 +816,12 @@ def share_visuals(
     source_language: Any = None,
     language: Any = None,
     languages: Any = None,
-    strategy: Any = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: Any = None,
+    max_ai_video_beats: int | None = None,
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
     metadata: Mapping[str, Any] | None = None,
+    config: Any = None,
 ) -> SharedVisuals:
     """Share requests or already resolved results across every language.
 
@@ -807,6 +837,11 @@ def share_visuals(
         source_language if source_language is not None else language,
         scripts,
         codes,
+    )
+    strategy, max_ai_video_beats = _configured_visual_options(
+        config,
+        strategy,
+        max_ai_video_beats,
     )
     selected_results = results if results is not None else visuals
     active_results = _coerce_results(selected_results, source)
@@ -923,8 +958,8 @@ class VisualReuse:
         visuals: Any = None,
         source_language: Any = None,
         language: Any = None,
-        strategy: Any = DEFAULT_VISUAL_STRATEGY,
-        max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+        strategy: Any = None,
+        max_ai_video_beats: int | None = None,
         aspect_ratio: str = "",
         duration_seconds: float | None = None,
         **options: Any,
@@ -946,11 +981,26 @@ class VisualReuse:
         self.source_language = (
             source_language if source_language is not None else language
         )
-        self.strategy = strategy
-        self.max_ai_video_beats = max_ai_video_beats
+        self._strategy = strategy
+        self._max_ai_video_beats = max_ai_video_beats
+        self.strategy, self.max_ai_video_beats = _configured_visual_options(
+            config,
+            strategy,
+            max_ai_video_beats,
+        )
         self.aspect_ratio = aspect_ratio
         self.duration_seconds = duration_seconds
         self.options = dict(options)
+
+    def _visual_options(self, context: StageContext | None) -> tuple[Any, int]:
+        config = self._config
+        if config is None and context is not None:
+            config = context.config
+        return _configured_visual_options(
+            config,
+            self._strategy,
+            self._max_ai_video_beats,
+        )
 
     def _context_media(self, context: StageContext | None) -> Any:
         if context is None:
@@ -1057,6 +1107,7 @@ class VisualReuse:
         )
         if not codes and source:
             codes = [source]
+        self.strategy, self.max_ai_video_beats = self._visual_options(context)
         selected = results if results is not None else visuals
         if selected is None:
             selected = self._results
@@ -1163,8 +1214,8 @@ class VisualReuseStore:
         media: Any = None,
         config: Any = None,
         source_language: Any = None,
-        strategy: Any = DEFAULT_VISUAL_STRATEGY,
-        max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+        strategy: Any = None,
+        max_ai_video_beats: int | None = None,
         aspect_ratio: str = "",
         duration_seconds: float | None = None,
         **options: Any,
@@ -1383,8 +1434,8 @@ class VisualReuseStage(Stage):
         config: Any = None,
         generator: Any = None,
         resolver: Any = None,
-        strategy: Any = DEFAULT_VISUAL_STRATEGY,
-        max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+        strategy: Any = None,
+        max_ai_video_beats: int | None = None,
         aspect_ratio: str = "",
         duration_seconds: float | None = None,
         filename: str | None = None,
@@ -1467,10 +1518,8 @@ class VisualReuseStage(Stage):
         self._generator = merged.pop("generator", None)
         if self._generator is None:
             self._generator = merged.pop("resolver", None)
-        self.strategy = merged.pop("strategy", DEFAULT_VISUAL_STRATEGY)
-        self.max_ai_video_beats = merged.pop(
-            "max_ai_video_beats", DEFAULT_MAX_AI_VIDEO_BEATS
-        )
+        self.strategy = merged.pop("strategy", None)
+        self.max_ai_video_beats = merged.pop("max_ai_video_beats", None)
         self.aspect_ratio = merged.pop("aspect_ratio", "")
         self.duration_seconds = merged.pop("duration_seconds", None)
         self.results: list[SharedVisualBeat] = []
@@ -1637,8 +1686,8 @@ async def resolve_visual_reuse(
     context: StageContext | None = None,
     run_id: str = "",
     metadata: Mapping[str, Any] | None = None,
-    strategy: Any = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: Any = None,
+    max_ai_video_beats: int | None = None,
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
     **options: Any,
