@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -14,6 +15,7 @@ from aivia.audio import SfxStage
 from aivia.cli import main
 from aivia.core.db import (
     RunRepository,
+    StageRunRepository,
     create_database_engine,
     upgrade_database,
 )
@@ -48,6 +50,7 @@ def _write_config(
     rule_files: list[str] | None = None,
     volume_db: float = -6.0,
     placement: str = "start",
+    providers: dict[str, Any] | None = None,
 ) -> Path:
     values: dict[str, Any] = {
         "sfx": {
@@ -65,9 +68,33 @@ def _write_config(
             }
         },
     }
+    if providers is not None:
+        values["providers"] = providers
     path = tmp_path / "config.yaml"
     path.write_text(yaml.safe_dump(values, sort_keys=False), encoding="utf-8")
     return path
+
+
+@pytest.fixture
+def fake_ffprobe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """Put a deterministic ffprobe on PATH for provider generated effects."""
+    directory = tmp_path / "bin"
+    directory.mkdir()
+    script = directory / "ffprobe"
+    script.write_text(
+        """#!/bin/sh
+cat <<'JSON'
+{"streams":[{"index":0,"codec_type":"audio","codec_name":"pcm_s16le","duration":"1.000","sample_rate":"44100","channels":1}],"format":{"format_name":"wav","format_long_name":"WAV","duration":"1.000","size":"88200"}}
+JSON
+""",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{directory}{os.pathsep}{os.environ['PATH']}")
+    return script
 
 
 def _write_rules(tmp_path: Path, rules: list[dict[str, Any]]) -> Path:
@@ -338,3 +365,65 @@ def test_sfx_requires_a_run_id(
     assert code == 2
     assert out == ""
     assert "a run id is required" in err
+
+
+def test_sfx_provider_effects_use_the_configured_router(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    fake_ffprobe: Path,
+) -> None:
+    database = tmp_path / "data" / "aivia.db"
+    upgrade_database(database)
+    run = _seed_run(database, tmp_path)
+    _write_timeline(run)
+    rules = _write_rules(
+        tmp_path,
+        [
+            {
+                "id": "door",
+                "match": "door",
+                "prompt": "heavy door creaks",
+                "position": "start",
+                "duration_seconds": 0.5,
+            }
+        ],
+    )
+    config = _write_config(
+        tmp_path,
+        rule_files=[str(rules)],
+        providers={"mock": {"type": "mock"}},
+    )
+    monkeypatch.setattr(
+        "aivia.cli.sfx.build_stages",
+        lambda _recipe: [SfxStage()],
+    )
+
+    code, out, err = _sfx(
+        capsys,
+        run.id,
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0, err
+    assert err == ""
+    assert "Rules: 1" in out
+    assert "Placements: 1" in out
+    assert "Provider: mock" in out
+    assert "Model: mock-sfx" in out
+    assert "Cost: $0.002000" in out
+    assert "Effect cost: $0.002000" in out
+
+    engine = create_database_engine(database)
+    try:
+        stored = StageRunRepository(engine).get(run.id, "sfx")
+        assert stored is not None
+        assert stored.metadata["provider"] == "mock"
+        assert stored.metadata["model"] == "mock-sfx"
+        assert stored.metadata["placements"] == 1
+        assert stored.metadata["cost_usd"] == pytest.approx(0.002)
+    finally:
+        engine.dispose()
