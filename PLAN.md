@@ -597,7 +597,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Stop an unchanged sfx stage from rerunning because it rewrites the timeline it reads (tests/audio/test_sfx_stage.py)
 - [x] Apply audio QA config thresholds, pronunciations and failure policy as voice stage defaults (tests/audio/test_voice_stage.py)
 - [x] Build the configured media router when the voice command synthesizes speech through a provider for a run (tests/cli/test_voice.py)
-- [ ] Build the configured media router when the sfx command places provider effects for a run (tests/cli/test_sfx.py)
+- [x] Build the configured media router when the sfx command places provider effects for a run (tests/cli/test_sfx.py)
 - [ ] Record voice stage provider calls under the tts operation so their price resolves instead of zero (tests/audio/test_voice_stage.py)
 
 ## Milestone 13: Visuals in the pipeline
