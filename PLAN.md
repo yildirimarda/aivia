@@ -579,7 +579,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Place sound effects by rule with volume set, leaving total duration unchanged (tests/audio/test_sfx_stage.py)
 - [x] Add a voice command that runs voice, subtitles and timeline and prints cost and durations (tests/cli/test_voice.py)
 - [x] Align lyrics to a generated song with line and word timings tolerant of sung text and report mismatches (tests/audio/test_lyric_align.py)
-- [ ] Add an audio analysis utility reporting tempo, silence map and loudness (tests/audio/test_analysis.py)
+- [x] Add an audio analysis utility reporting tempo, silence map and loudness (tests/audio/test_analysis.py)
 - [ ] Add a subtitle edit command exposing words and timings as YAML and re burning only the affected outputs through the cached renderer (tests/cli/test_subtitle_edit.py)
 - [ ] Declare each per-language script file as a voice stage input so editing a script invalidates resume (tests/audio/test_voice_stage.py)
 - [ ] Write one subtitle file per language and platform when a timeline targets several platforms (tests/audio/test_subtitle_stage.py)
