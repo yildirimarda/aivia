@@ -605,7 +605,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 <!-- goal: beats become assets with quality checks and budget downgrades -->
 
 - [x] Resolve the visual strategy per beat into a concrete deterministic request (tests/visuals/test_strategy.py)
-- [ ] Resolve stock beats with a query, top results, relevance scoring and fallback to the next query (tests/visuals/test_stock_stage.py)
+- [x] Resolve stock beats with a query, top results, relevance scoring and fallback to the next query (tests/visuals/test_stock_stage.py)
 - [ ] Resolve image beats through the media service, storing prompt hash, provider and model with the asset (tests/visuals/test_image_stage.py)
 - [ ] Resolve video beats with duration clamped to the beat, a per clip cap and the platform aspect ratio (tests/visuals/test_video_stage.py)
 - [ ] Run visual quality checks per asset with retries and fallback, logging every attempt with its cost (tests/visuals/test_qa_integration.py)
