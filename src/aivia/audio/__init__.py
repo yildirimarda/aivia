@@ -130,6 +130,15 @@ from aivia.audio.sfx_stage import (
     run_sfx_stage,
     sfx_stage,
 )
+from aivia.audio.subtitle_edit import (
+    SubtitleEditError,
+    apply_subtitle_edits,
+    load_subtitle_edit_yaml,
+    parse_subtitle_edit_document,
+    subtitle_edit_document,
+    subtitle_edit_yaml,
+    subtitle_words_by_language,
+)
 from aivia.audio.subtitle_stage import (
     DEFAULT_SUBTITLE_FILENAME_PATTERN,
     SUBTITLE_STAGE_NAME,
@@ -231,6 +240,7 @@ __all__ = [
     "SoundEffectStage",
     "SoundEffectsStage",
     "Subtitle",
+    "SubtitleEditError",
     "SubtitleStage",
     "SubtitleStageResult",
     "SubtitlesStage",
@@ -250,6 +260,7 @@ __all__ = [
     "analyze_audio",
     "analyze_audio_file",
     "apply_ducking",
+    "apply_subtitle_edits",
     "audio_qa",
     "build_music_prompt",
     "build_music_stage",
@@ -263,6 +274,7 @@ __all__ = [
     "forced_align_lyrics",
     "lint_audio_quality",
     "load_sfx_rules",
+    "load_subtitle_edit_yaml",
     "lyric_alignment",
     "lyric_mismatches",
     "lyric_word_similarity",
@@ -271,6 +283,7 @@ __all__ = [
     "normalise_sfx_rules",
     "normalize_sfx_rules",
     "parse_audio_analysis",
+    "parse_subtitle_edit_document",
     "place_sound_effects",
     "qa_audio",
     "report_lyric_mismatches",
@@ -283,7 +296,10 @@ __all__ = [
     "select_library_music",
     "select_music",
     "sfx_stage",
+    "subtitle_edit_document",
+    "subtitle_edit_yaml",
     "subtitle_stage",
+    "subtitle_words_by_language",
     "verify_timeline_ducking",
     "voice_stage",
 ]

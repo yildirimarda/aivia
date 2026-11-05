@@ -589,6 +589,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add an sfx config section for rule files, default volume and placement (tests/core/config/test_sfx.py)
 - [ ] Add an sfx command that places effects on an existing timeline and prints placements and cost (tests/cli/test_sfx.py)
 - [ ] Declare the sfx rule file as a stage input so editing rules invalidates resume (tests/audio/test_sfx_stage.py)
+- [ ] Register edited subtitle files and re-burnt outputs in the run artifact manifest so resume sees them (tests/cli/test_subtitle_edit.py)
 
 ## Milestone 13: Visuals in the pipeline
 
