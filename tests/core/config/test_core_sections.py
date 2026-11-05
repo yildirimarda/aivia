@@ -98,6 +98,7 @@ EXPECTED_KEYS = {
     "storage",
     "tracing",
     "video",
+    "visuals",
 }
 
 

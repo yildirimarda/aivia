@@ -68,6 +68,7 @@ from aivia.core.config.video import (
     parse_resolution,
     resolve_video,
 )
+from aivia.core.config.visuals import VisualsConfig, VisualStrategy
 from aivia.core.errors import ConfigError
 
 __all__ = [
@@ -132,6 +133,8 @@ __all__ = [
     "VideoOverridesConfig",
     "VideoSpec",
     "VideoSpecConfig",
+    "VisualStrategy",
+    "VisualsConfig",
     "WordsPerSecondConfig",
     "deep_merge",
     "merge_video_specs",
@@ -656,6 +659,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("tracing", TracingConfig),
     ("accessibility", AccessibilityConfig),
     ("audio_qa", AudioQAConfig),
+    ("visuals", VisualsConfig),
 )
 
 CORE_SECTION_KEYS: tuple[str, ...] = tuple(sorted(key for key, _ in CORE_SECTIONS))

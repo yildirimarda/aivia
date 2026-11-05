@@ -484,15 +484,17 @@ class VisualStrategyResolver:
 
     def __init__(
         self,
-        strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-        max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+        strategy: VisualStrategy | str | None = None,
+        max_ai_video_beats: int | None = None,
         *,
         aspect_ratio: str = "",
         duration_seconds: float | None = None,
+        config: Any = None,
     ) -> None:
         self.assigner = VisualAssigner(
             strategy=strategy,
             max_ai_video_beats=max_ai_video_beats,
+            config=config,
         )
         self.strategy = self.assigner.strategy
         self.max_ai_video_beats = self.assigner.max_ai_video_beats
@@ -586,10 +588,11 @@ VisualPlanBuilder = VisualStrategyResolver
 def resolve_visual_request(
     beat: Beat,
     *,
-    strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: VisualStrategy | str | None = None,
+    max_ai_video_beats: int | None = None,
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
+    config: Any = None,
 ) -> VisualRequest:
     """Resolve one *beat* into a concrete visual request."""
     return VisualStrategyResolver(
@@ -597,16 +600,18 @@ def resolve_visual_request(
         max_ai_video_beats=max_ai_video_beats,
         aspect_ratio=aspect_ratio,
         duration_seconds=duration_seconds,
+        config=config,
     ).resolve_beat(beat)
 
 
 def resolve_visual_requests(
     value: Script | Beat | Sequence[Beat],
     *,
-    strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: VisualStrategy | str | None = None,
+    max_ai_video_beats: int | None = None,
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
+    config: Any = None,
 ) -> list[VisualRequest]:
     """Resolve a script, beat or sequence into a list of visual requests."""
     resolver = VisualStrategyResolver(
@@ -614,6 +619,7 @@ def resolve_visual_requests(
         max_ai_video_beats=max_ai_video_beats,
         aspect_ratio=aspect_ratio,
         duration_seconds=duration_seconds,
+        config=config,
     )
     if isinstance(value, Script):
         return resolver.requests_for(value)
@@ -630,10 +636,11 @@ def resolve_visual_requests(
 def resolve_visual_strategy(
     value: Script | Beat | Sequence[Beat],
     *,
-    strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: VisualStrategy | str | None = None,
+    max_ai_video_beats: int | None = None,
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
+    config: Any = None,
 ) -> VisualRequest | list[VisualRequest]:
     """Resolve a beat to one request, or a script/sequence to a request list."""
     resolver = VisualStrategyResolver(
@@ -641,6 +648,7 @@ def resolve_visual_strategy(
         max_ai_video_beats=max_ai_video_beats,
         aspect_ratio=aspect_ratio,
         duration_seconds=duration_seconds,
+        config=config,
     )
     return resolver.resolve(value)
 
@@ -648,10 +656,11 @@ def resolve_visual_strategy(
 def build_visual_plan(
     value: Script | Sequence[Beat],
     *,
-    strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: VisualStrategy | str | None = None,
+    max_ai_video_beats: int | None = None,
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
+    config: Any = None,
 ) -> VisualPlan:
     """Resolve *value* into a :class:`VisualPlan`."""
     return VisualStrategyResolver(
@@ -659,6 +668,7 @@ def build_visual_plan(
         max_ai_video_beats=max_ai_video_beats,
         aspect_ratio=aspect_ratio,
         duration_seconds=duration_seconds,
+        config=config,
     ).plan(value)
 
 

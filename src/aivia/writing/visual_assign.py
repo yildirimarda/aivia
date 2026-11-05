@@ -17,9 +17,14 @@ same script, strategy and limit always produce the same assignment.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from enum import StrEnum
 from typing import Any, overload
 
+from aivia.core.config.visuals import (
+    VisualsConfig,
+    VisualStrategy,
+    normalise_visual_strategy,
+    normalize_visual_strategy,
+)
 from aivia.core.config.writing import (
     DEFAULT_MAX_AI_VIDEO_BEATS,
     DEFAULT_VISUAL_STRATEGY,
@@ -41,36 +46,6 @@ __all__ = [
     "visual_types_for",
 ]
 
-
-class VisualStrategy(StrEnum):
-    """The ways a script's beats can be assigned a visual source."""
-
-    HYBRID = "hybrid"
-    IMAGE = "image"
-    VIDEO = "video"
-    STOCK = "stock"
-    STILL = "still"
-    TEXT = "text"
-    NONE = "none"
-    EXISTING = "existing"
-
-
-_STRATEGY_ALIASES: dict[str, VisualStrategy] = {
-    "ai_image": VisualStrategy.IMAGE,
-    "ai_video": VisualStrategy.VIDEO,
-    "assets": VisualStrategy.EXISTING,
-    "auto": VisualStrategy.HYBRID,
-    "existing_assets": VisualStrategy.EXISTING,
-    "image_gen": VisualStrategy.IMAGE,
-    "images": VisualStrategy.IMAGE,
-    "keep": VisualStrategy.EXISTING,
-    "mix": VisualStrategy.HYBRID,
-    "mixed": VisualStrategy.HYBRID,
-    "provided": VisualStrategy.EXISTING,
-    "provided_assets": VisualStrategy.EXISTING,
-    "video_gen": VisualStrategy.VIDEO,
-    "videos": VisualStrategy.VIDEO,
-}
 
 _VISUAL_TYPE_ALIASES: dict[str, VisualType] = {
     "ai_image": VisualType.IMAGE,
@@ -95,32 +70,6 @@ def _normalise_name(value: Any) -> str:
     while "__" in text:
         text = text.replace("__", "_")
     return text.strip("_")
-
-
-def normalise_visual_strategy(value: Any = None) -> VisualStrategy:
-    """Return *value* as a :class:`VisualStrategy`.
-
-    An empty value means the default. Common aliases such as ``ai_video`` or
-    ``provided`` are accepted so callers can use the vocabulary of the config
-    and estimate layers. Anything else fails with the allowed names.
-    """
-    if value is None or value == "":
-        return VisualStrategy(DEFAULT_VISUAL_STRATEGY)
-    if isinstance(value, VisualStrategy):
-        return value
-    name = _normalise_name(value)
-    if name in _STRATEGY_ALIASES:
-        return _STRATEGY_ALIASES[name]
-    try:
-        return VisualStrategy(name)
-    except ValueError:
-        allowed = ", ".join(strategy.value for strategy in VisualStrategy)
-        raise ValueError(
-            f"unknown visual strategy: {value!r} (allowed: {allowed})"
-        ) from None
-
-
-normalize_visual_strategy = normalise_visual_strategy
 
 
 def _validate_limit(value: Any) -> int:
@@ -158,11 +107,36 @@ class VisualAssigner:
     def __init__(
         self,
         *,
-        strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-        max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+        strategy: VisualStrategy | str | None = None,
+        max_ai_video_beats: int | None = None,
+        config: Any = None,
     ) -> None:
-        self.strategy = normalise_visual_strategy(strategy)
-        self.max_ai_video_beats = _validate_limit(max_ai_video_beats)
+        configured = VisualsConfig.from_config(config)
+        resolved_strategy = (
+            configured.strategy if strategy is None or strategy == "" else strategy
+        )
+        resolved_limit = (
+            configured.max_ai_video_beats
+            if max_ai_video_beats is None
+            else max_ai_video_beats
+        )
+        self.strategy = normalise_visual_strategy(resolved_strategy)
+        self.max_ai_video_beats = _validate_limit(resolved_limit)
+
+    @classmethod
+    def from_config(
+        cls,
+        config: Any = None,
+        *,
+        strategy: VisualStrategy | str | None = None,
+        max_ai_video_beats: int | None = None,
+    ) -> VisualAssigner:
+        """Build an assigner from a visuals section, with optional overrides."""
+        return cls(
+            strategy=strategy,
+            max_ai_video_beats=max_ai_video_beats,
+            config=config,
+        )
 
     def _types_for(self, beats: Sequence[Beat]) -> list[VisualType]:
         strategy = self.strategy
@@ -228,8 +202,9 @@ class VisualAssigner:
 def assign_visual_types(
     value: Script,
     *,
-    strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: VisualStrategy | str | None = None,
+    max_ai_video_beats: int | None = None,
+    config: Any = None,
 ) -> Script: ...
 
 
@@ -237,8 +212,9 @@ def assign_visual_types(
 def assign_visual_types(
     value: Beat,
     *,
-    strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: VisualStrategy | str | None = None,
+    max_ai_video_beats: int | None = None,
+    config: Any = None,
 ) -> Beat: ...
 
 
@@ -246,16 +222,18 @@ def assign_visual_types(
 def assign_visual_types(
     value: Sequence[Beat],
     *,
-    strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: VisualStrategy | str | None = None,
+    max_ai_video_beats: int | None = None,
+    config: Any = None,
 ) -> list[Beat]: ...
 
 
 def assign_visual_types(
     value: Script | Beat | Sequence[Beat],
     *,
-    strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: VisualStrategy | str | None = None,
+    max_ai_video_beats: int | None = None,
+    config: Any = None,
 ) -> Script | Beat | list[Beat]:
     """Assign a visual type to a script, one beat or a sequence of beats.
 
@@ -266,6 +244,7 @@ def assign_visual_types(
     assigner = VisualAssigner(
         strategy=strategy,
         max_ai_video_beats=max_ai_video_beats,
+        config=config,
     )
     if isinstance(value, Script):
         return assigner.assign(value)
@@ -284,13 +263,15 @@ assign_beat_visual = assign_visual_types
 def visual_types(
     value: Script | Beat | Sequence[Beat],
     *,
-    strategy: VisualStrategy | str = DEFAULT_VISUAL_STRATEGY,
-    max_ai_video_beats: int = DEFAULT_MAX_AI_VIDEO_BEATS,
+    strategy: VisualStrategy | str | None = None,
+    max_ai_video_beats: int | None = None,
+    config: Any = None,
 ) -> list[str]:
     """Return the visual type values for *value* without changing it."""
     assigner = VisualAssigner(
         strategy=strategy,
         max_ai_video_beats=max_ai_video_beats,
+        config=config,
     )
     if isinstance(value, Script):
         return assigner.types_for(value)
