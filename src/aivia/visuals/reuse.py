@@ -4,7 +4,10 @@ A run writes one script per language from the same fact base, but the visual
 assets belong to the run, not to a language. This module resolves the visual
 requests once from a single source language, generates each asset once and then
 exposes the same results to every language. No provider is called for a second
-language and no cost is charged twice.
+language and no cost is charged twice. When scripts have different beat counts,
+the shared set covers the longest script: positions missing from the source
+language fall back to the first language that has them, and each language uses
+only the prefix matching its own beat count.
 
 The decision is deterministic: the source language is explicit or the first
 language in input order, the requests come from the existing strategy resolver
@@ -250,6 +253,55 @@ def _source_language(
     return ""
 
 
+def _beat_counts(value: Any) -> dict[str, int]:
+    """Return the beat count of every script in *value* keyed by language."""
+    return {code: len(script.beats) for code, script in _scripts_from(value).items()}
+
+
+def _requests_by_language(
+    scripts: Mapping[str, Script],
+    *,
+    strategy: Any,
+    max_ai_video_beats: int,
+    aspect_ratio: str,
+    duration_seconds: float | None,
+) -> dict[str, list[VisualRequest]]:
+    return {
+        code: resolve_visual_requests(
+            script,
+            strategy=strategy,
+            max_ai_video_beats=max_ai_video_beats,
+            aspect_ratio=aspect_ratio,
+            duration_seconds=duration_seconds,
+        )
+        for code, script in scripts.items()
+    }
+
+
+def _merge_requests(
+    by_language: Mapping[str, list[VisualRequest]],
+    *,
+    source: str,
+    order: Sequence[str],
+) -> list[VisualRequest]:
+    """Build one shared request list covering the longest language script.
+
+    A position comes from the source language when it has a beat there and
+    falls back to the first other language that does. Equal length scripts
+    therefore keep using exactly the source language's requests.
+    """
+    preferred = [source, *(code for code in order if code != source)]
+    count = max((len(requests) for requests in by_language.values()), default=0)
+    merged: list[VisualRequest] = []
+    for position in range(count):
+        for code in preferred:
+            requests = by_language.get(code, [])
+            if position < len(requests):
+                merged.append(requests[position])
+                break
+    return merged
+
+
 def _request_input(
     value: Any,
     *,
@@ -265,12 +317,17 @@ def _request_input(
     scripts = _scripts_from(value)
     if scripts:
         source = _source_language(source_language, scripts, list(scripts))
-        return resolve_visual_requests(
-            scripts[source],
+        by_language = _requests_by_language(
+            scripts,
             strategy=strategy,
             max_ai_video_beats=max_ai_video_beats,
             aspect_ratio=aspect_ratio,
             duration_seconds=duration_seconds,
+        )
+        return _merge_requests(
+            by_language,
+            source=source,
+            order=list(scripts),
         )
     if isinstance(value, (Script, Mapping)) or (
         isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
@@ -298,7 +355,7 @@ def shared_visual_requests(
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
 ) -> list[VisualRequest]:
-    """Resolve the visual requests once from the source language's script."""
+    """Resolve the shared requests, covering the longest language script."""
     scripts = _scripts_from(value)
     source = _source_language(
         source_language if source_language is not None else language,
@@ -327,7 +384,12 @@ def share_visual_requests(
     aspect_ratio: str = "",
     duration_seconds: float | None = None,
 ) -> dict[str, list[VisualRequest]]:
-    """Return the same ordered requests for every language in *value*."""
+    """Return the shared requests for every language in *value*.
+
+    The shared list covers the longest script. Each language receives only the
+    prefix that matches its own beat count, so a shorter script never sees
+    requests for beats it does not have.
+    """
     scripts = _scripts_from(value)
     codes = _normalise_languages(languages)
     if not codes:
@@ -349,7 +411,12 @@ def share_visual_requests(
             duration_seconds=duration_seconds,
         )
     )
-    return {code: list(active) for code in codes}
+    return {
+        code: list(active[: len(scripts[code].beats)])
+        if code in scripts
+        else list(active)
+        for code in codes
+    }
 
 
 def _asset_of(value: Any) -> Any:
@@ -513,6 +580,7 @@ class SharedVisuals(BaseModel):
         validation_alias=AliasChoices("beats", "results", "items", "visuals"),
     )
     cost_usd: float = Field(default=0.0, ge=0.0)
+    beat_counts: dict[str, int] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
@@ -547,12 +615,21 @@ class SharedVisuals(BaseModel):
 
     @property
     def by_language(self) -> dict[str, list[SharedVisualBeat]]:
-        """The same shared beats keyed by every language."""
-        return {code: list(self.beats) for code in self.languages}
+        """The shared beats for each language, trimmed to its beat count."""
+        return {code: self.for_language(code) for code in self.languages}
 
     def for_language(self, language: str) -> list[SharedVisualBeat]:
-        """Return the shared beats for *language*."""
-        return list(self.beats)
+        """Return the shared beats for *language*.
+
+        The shared set covers the longest script. A language with fewer beats
+        receives only the prefix it can use; a language with no recorded count
+        receives the whole set.
+        """
+        code = _language_key(language)
+        count = self.beat_counts.get(code)
+        if count is None:
+            return list(self.beats)
+        return list(self.beats[:count])
 
     def visuals_for(self, language: str) -> list[SharedVisualBeat]:
         """Alias for :meth:`for_language`."""
@@ -561,21 +638,35 @@ class SharedVisuals(BaseModel):
     def get_language(self, language: str) -> list[SharedVisualBeat] | None:
         """Return the shared beats only when *language* is part of the run."""
         code = _language_key(language)
-        return list(self.beats) if code in self.languages else None
+        return self.for_language(code) if code in self.languages else None
 
-    def add_language(self, language: str) -> SharedVisuals:
-        """Return a copy that also shares this set with *language*."""
+    def add_language(
+        self,
+        language: str,
+        beat_count: int | None = None,
+    ) -> SharedVisuals:
+        """Return a copy that also shares this set with *language*.
+
+        *beat_count* records how many of the shared beats the language can use.
+        When omitted the whole set is assumed, which keeps the set usable for
+        callers that only add a language name.
+        """
         code = _language_key(language)
         languages = list(self.languages)
         if code and code not in languages:
             languages.append(code)
+        counts = dict(self.beat_counts)
+        if code:
+            counts[code] = len(self.beats) if beat_count is None else max(0, beat_count)
         beats = [
             beat.model_copy(
                 update={"languages": list(dict.fromkeys([*beat.languages, code]))}
             )
             for beat in self.beats
         ]
-        return self.model_copy(update={"languages": languages, "beats": beats})
+        return self.model_copy(
+            update={"languages": languages, "beats": beats, "beat_counts": counts}
+        )
 
     def __getitem__(self, language: str) -> list[SharedVisualBeat]:
         return self.for_language(language)
@@ -586,6 +677,7 @@ class SharedVisuals(BaseModel):
             "source_language": self.source_language,
             "languages": list(self.languages),
             "beats": [beat.to_dict() for beat in self.beats],
+            "beat_counts": dict(self.beat_counts),
             "cost_usd": self.cost_usd,
             "metadata": dict(self.metadata),
         }
@@ -604,6 +696,7 @@ def _build_shared(
     *,
     source_language: str,
     languages: Sequence[str],
+    beat_counts: Mapping[str, int] | None = None,
     metadata: Mapping[str, Any] | None = None,
 ) -> SharedVisuals:
     beats: list[SharedVisualBeat] = []
@@ -638,7 +731,50 @@ def _build_shared(
         languages=list(languages),
         beats=beats,
         cost_usd=math.fsum(beat.cost_usd for beat in beats),
+        beat_counts=dict(beat_counts or {}),
         metadata=dict(metadata or {}),
+    )
+
+
+def _extend_shared(
+    shared: SharedVisuals,
+    requests: Sequence[VisualRequest],
+    results: Sequence[Any],
+    *,
+    language: str,
+    beat_count: int,
+) -> SharedVisuals:
+    """Append newly generated beats to an existing shared visual set."""
+    code = _language_key(language)
+    languages = list(dict.fromkeys([*shared.languages, code]))
+    beats = [
+        beat.model_copy(
+            update={"languages": list(dict.fromkeys([*beat.languages, code]))}
+        )
+        for beat in shared.beats
+    ]
+    for offset, (request, result) in enumerate(zip(requests, results, strict=False)):
+        position = len(shared.beats) + offset
+        beats.append(
+            SharedVisualBeat(
+                index=_result_index(result, request.index),
+                request=request,
+                visual=result,
+                languages=languages,
+                source_language=shared.source_language,
+                cost_usd=_result_cost(result),
+                metadata={"position": position},
+            )
+        )
+    counts = dict(shared.beat_counts)
+    counts[code] = max(0, beat_count)
+    return shared.model_copy(
+        update={
+            "languages": languages,
+            "beats": beats,
+            "beat_counts": counts,
+            "cost_usd": math.fsum(beat.cost_usd for beat in beats),
+        }
     )
 
 
@@ -677,7 +813,15 @@ def share_visuals(
     if requests is not None:
         active_requests = _requests_from(requests)
     elif selected_results is not None:
-        active_requests = _requests_from_results(active_results)
+        active_requests = _requests_with_results(
+            value,
+            active_results,
+            source_language=source,
+            strategy=strategy,
+            max_ai_video_beats=max_ai_video_beats,
+            aspect_ratio=aspect_ratio,
+            duration_seconds=duration_seconds,
+        )
     else:
         active_requests = _request_input(
             value,
@@ -692,6 +836,7 @@ def share_visuals(
         active_results,
         source_language=source,
         languages=codes,
+        beat_counts=_beat_counts(value),
         metadata=metadata,
     )
 
@@ -703,6 +848,33 @@ def _requests_from_results(results: Sequence[Any]) -> list[VisualRequest]:
         if request is not None:
             requests.append(request)
     return requests
+
+
+def _requests_with_results(
+    value: Any,
+    results: Sequence[Any],
+    *,
+    source_language: str,
+    strategy: Any,
+    max_ai_video_beats: int,
+    aspect_ratio: str,
+    duration_seconds: float | None,
+) -> list[VisualRequest]:
+    """Keep result requests and add fallback requests for missing beats."""
+    result_requests = _requests_from_results(results)
+    if not _scripts_from(value):
+        return result_requests
+    script_requests = _request_input(
+        value,
+        source_language=source_language,
+        strategy=strategy,
+        max_ai_video_beats=max_ai_video_beats,
+        aspect_ratio=aspect_ratio,
+        duration_seconds=duration_seconds,
+    )
+    if len(script_requests) <= len(result_requests):
+        return result_requests
+    return [*result_requests, *script_requests[len(result_requests) :]]
 
 
 def _callable_kwargs(method: Any, values: Mapping[str, Any]) -> dict[str, Any]:
@@ -893,7 +1065,15 @@ class VisualReuse:
             if requests is not None:
                 active_requests = _requests_from(requests)
             else:
-                active_requests = _requests_from_results(active_results)
+                active_requests = _requests_with_results(
+                    value,
+                    active_results,
+                    source_language=source,
+                    strategy=self.strategy,
+                    max_ai_video_beats=self.max_ai_video_beats,
+                    aspect_ratio=self.aspect_ratio,
+                    duration_seconds=self.duration_seconds,
+                )
         else:
             if requests is not None:
                 active_requests = _requests_from(requests)
@@ -925,6 +1105,7 @@ class VisualReuse:
             active_results,
             source_language=source,
             languages=codes,
+            beat_counts=_beat_counts(value),
             metadata=metadata,
         )
 
@@ -1017,7 +1198,12 @@ class VisualReuseStore:
         metadata: Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> list[SharedVisualBeat]:
-        """Return this language's shared beats, generating only on first use."""
+        """Return this language's shared beats, generating only on first use.
+
+        When a later language has more beats than the shared set, only the
+        missing beats are generated and appended. Beats that already exist are
+        never requested or charged again.
+        """
         code = _language_key(language)
         if self.shared is None:
             self.shared = await self._resolver.resolve(
@@ -1029,8 +1215,63 @@ class VisualReuseStore:
                 **kwargs,
             )
         elif code and code not in self.shared.languages:
-            self.shared = self.shared.add_language(code)
+            self.shared = await self._add_language(
+                self.shared,
+                value,
+                code,
+                context=context,
+                run_id=run_id,
+                metadata=metadata,
+            )
         return self.shared.for_language(code)
+
+    async def _add_language(
+        self,
+        shared: SharedVisuals,
+        value: Any,
+        code: str,
+        *,
+        context: StageContext | None,
+        run_id: str,
+        metadata: Mapping[str, Any] | None,
+    ) -> SharedVisuals:
+        scripts = _scripts_from(value)
+        script = scripts.get(code)
+        if script is None and len(scripts) == 1:
+            script = next(iter(scripts.values()))
+        if script is None:
+            return shared.add_language(code)
+        count = len(script.beats)
+        if count <= len(shared.beats):
+            return shared.add_language(code, count)
+        requests = resolve_visual_requests(
+            script,
+            strategy=self._resolver.strategy,
+            max_ai_video_beats=self._resolver.max_ai_video_beats,
+            aspect_ratio=self._resolver.aspect_ratio,
+            duration_seconds=self._resolver.duration_seconds,
+        )
+        extra = requests[len(shared.beats) : count]
+        generated: list[Any] = []
+        for offset, request in enumerate(extra, start=len(shared.beats)):
+            active_meta = dict(metadata or {})
+            active_meta.setdefault("position", offset)
+            active_meta.setdefault("source_language", shared.source_language)
+            generated.append(
+                await self._resolver._generate(
+                    request,
+                    context=context,
+                    run_id=run_id,
+                    metadata=active_meta,
+                )
+            )
+        return _extend_shared(
+            shared,
+            extra,
+            generated,
+            language=code,
+            beat_count=count,
+        )
 
     def resolve_sync(self, value: Any = None, **kwargs: Any) -> list[SharedVisualBeat]:
         """Run :meth:`resolve` from synchronous code."""
@@ -1048,6 +1289,7 @@ class VisualReuseStageResult(StageResult):
     )
     source_language: str = ""
     languages: list[str] = Field(default_factory=list)
+    beat_counts: dict[str, int] = Field(default_factory=dict)
 
     @property
     def results(self) -> list[SharedVisualBeat]:
@@ -1081,8 +1323,13 @@ class VisualReuseStageResult(StageResult):
 
     @property
     def by_language(self) -> dict[str, list[SharedVisualBeat]]:
-        """The same shared beats keyed by every language."""
-        return {code: list(self.beats) for code in self.languages}
+        """The shared beats for each language, trimmed to its beat count."""
+        return {
+            code: list(self.beats[: self.beat_counts[code]])
+            if code in self.beat_counts
+            else list(self.beats)
+            for code in self.languages
+        }
 
     @property
     def total_cost_usd(self) -> float:
@@ -1307,6 +1554,7 @@ class VisualReuseStage(Stage):
             "unresolved": len(shared.beats) - resolved_count,
             "languages": list(shared.languages),
             "source_language": shared.source_language,
+            "beat_counts": dict(shared.beat_counts),
             "cost_usd": total_cost,
             "providers": list(dict.fromkeys(providers)),
             "models": list(dict.fromkeys(models)),
@@ -1317,6 +1565,7 @@ class VisualReuseStage(Stage):
             "stage": self.name,
             "source_language": shared.source_language,
             "languages": list(shared.languages),
+            "beat_counts": dict(shared.beat_counts),
             "beats": [beat.to_dict() for beat in shared.beats],
             "metadata": metadata,
         }
@@ -1331,6 +1580,7 @@ class VisualReuseStage(Stage):
             beats=shared.beats,
             source_language=shared.source_language,
             languages=list(shared.languages),
+            beat_counts=dict(shared.beat_counts),
             metadata={**metadata, "manifest": self.filename},
         )
 

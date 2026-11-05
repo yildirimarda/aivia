@@ -363,3 +363,188 @@ def test_share_visuals_accepts_a_shared_result_as_is() -> None:
     assert shared.for_language("de") == []
     assert shared.get_language("fr") is None
     assert shared.add_language("fr").languages == ["en", "de", "fr"]
+
+
+def test_different_beat_counts_share_the_longest_script(
+    tmp_path: Path,
+) -> None:
+    service = FakeImageService()
+    stage = VisualReuseStage(
+        scripts={
+            "en": _script("en", ["English lighthouse", "English harbour"]),
+            "de": _script(
+                "de",
+                ["Deutscher Leuchtturm", "Deutscher Hafen", "Deutscher Markt"],
+            ),
+        },
+        source_language="en",
+        strategy="image",
+        image=service,
+    )
+
+    result = cast(
+        VisualReuseStageResult,
+        _run(stage.run(StageContext(run_dir=tmp_path, config={}))),
+    )
+
+    assert [request.prompt for request in service.requests] == [
+        "English lighthouse",
+        "English harbour",
+        "Deutscher Markt",
+    ]
+    assert len(result.beats) == 3
+    assert result.beat_counts == {"en": 2, "de": 3}
+    assert result.by_language["en"] == result.beats[:2]
+    assert result.by_language["de"] == result.beats
+    assert result.total_cost_usd == 0.12
+    assert len(result.resolved) == 3
+
+    manifest = json.loads(
+        (tmp_path / DEFAULT_VISUAL_REUSE_FILENAME).read_text(encoding="utf-8")
+    )
+    assert manifest["beat_counts"] == {"en": 2, "de": 3}
+    assert manifest["metadata"]["beat_counts"] == {"en": 2, "de": 3}
+
+
+def test_shared_requests_cover_the_longest_script_and_trim_each_language() -> None:
+    scripts = {
+        "en": _script("en", ["English lighthouse", "English harbour"]),
+        "de": _script(
+            "de",
+            ["Deutscher Leuchtturm", "Deutscher Hafen", "Deutscher Markt"],
+        ),
+    }
+
+    shared = shared_visual_requests(scripts, source_language="en", strategy="image")
+    by_language = share_visual_requests(
+        scripts,
+        source_language="en",
+        strategy="image",
+    )
+
+    assert [request.prompt for request in shared] == [
+        "English lighthouse",
+        "English harbour",
+        "Deutscher Markt",
+    ]
+    assert by_language["en"] == shared[:2]
+    assert by_language["de"] == shared
+    assert by_language["en"][0] is by_language["de"][0]
+
+
+def test_the_store_generates_only_the_extra_beats_for_a_longer_language() -> None:
+    service = FakeImageService()
+    store = VisualReuseStore(
+        image=service,
+        source_language="en",
+        strategy="image",
+    )
+
+    first = _run(
+        store.resolve(
+            {"en": _script("en", ["English lighthouse", "English harbour"])},
+            language="en",
+        )
+    )
+    second = _run(
+        store.resolve(
+            {
+                "de": _script(
+                    "de",
+                    [
+                        "Deutscher Leuchtturm",
+                        "Deutscher Hafen",
+                        "Deutscher Markt",
+                        "Deutscher Bahnhof",
+                    ],
+                )
+            },
+            language="de",
+        )
+    )
+
+    assert len(first) == 2
+    assert len(second) == 4
+    assert len(service.requests) == 4
+    assert [request.prompt for request in service.requests] == [
+        "English lighthouse",
+        "English harbour",
+        "Deutscher Markt",
+        "Deutscher Bahnhof",
+    ]
+    assert [beat.asset for beat in first] == [beat.asset for beat in second[:2]]
+    assert store.shared is not None
+    assert store.shared.languages == ["en", "de"]
+    assert store.shared.beat_counts == {"en": 2, "de": 4}
+    assert store.shared.total_cost_usd == 0.16
+    assert store.shared.by_language["en"] == store.shared.beats[:2]
+    assert store.shared.by_language["de"] == store.shared.beats
+
+
+def test_the_store_does_not_generate_when_a_later_language_is_shorter() -> None:
+    service = FakeImageService()
+    store = VisualReuseStore(
+        image=service,
+        source_language="en",
+        strategy="image",
+    )
+
+    _run(
+        store.resolve(
+            {"en": _script("en", ["English lighthouse", "English harbour"])},
+            language="en",
+        )
+    )
+    second = _run(
+        store.resolve(
+            {"de": _script("de", ["Deutscher Leuchtturm"])},
+            language="de",
+        )
+    )
+
+    assert len(service.requests) == 2
+    assert len(second) == 1
+    assert store.shared is not None
+    assert store.shared.beat_counts == {"en": 2, "de": 1}
+    assert store.shared.by_language["de"] == store.shared.beats[:1]
+
+
+def test_existing_results_cover_extra_beats_without_calling_a_provider(
+    tmp_path: Path,
+) -> None:
+    service = FakeImageService()
+    scripts = {
+        "en": _script("en", ["English lighthouse"]),
+        "de": _script("de", ["Deutscher Leuchtturm", "Deutscher Hafen"]),
+    }
+    generated = _run(
+        resolve_visual_reuse(
+            {"en": scripts["en"]},
+            source_language="en",
+            strategy="image",
+            image=service,
+        )
+    )
+
+    class ExplodingService:
+        async def generate(self, *_args: Any, **_kwargs: Any) -> Any:
+            raise AssertionError("reused visuals must not call the provider")
+
+    stage = VisualReuseStage(
+        scripts=scripts,
+        source_language="en",
+        results=generated,
+        image=ExplodingService(),
+    )
+    result = cast(
+        VisualReuseStageResult,
+        _run(stage.run(StageContext(run_dir=tmp_path, config={}))),
+    )
+
+    assert len(service.requests) == 1
+    assert len(result.beats) == 2
+    assert len(result.resolved) == 1
+    assert len(result.unresolved) == 1
+    assert result.beat_counts == {"en": 1, "de": 2}
+    assert result.by_language["de"] == result.beats
+    assert result.by_language["en"] == result.beats[:1]
