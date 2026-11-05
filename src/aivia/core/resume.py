@@ -114,7 +114,11 @@ def _input_path(declared: str, base_dir: Path | None) -> Path:
     return candidate
 
 
-def _input_file_digest(declared: str, base_dir: Path | None) -> dict[str, Any]:
+def _input_file_digest(
+    declared: str,
+    base_dir: Path | None,
+    stage: Stage | None = None,
+) -> dict[str, Any]:
     path = _input_path(declared, base_dir)
     row: dict[str, Any] = {
         "path": declared,
@@ -125,6 +129,17 @@ def _input_file_digest(declared: str, base_dir: Path | None) -> dict[str, Any]:
     try:
         if not path.is_file():
             return row
+        if stage is not None and (
+            type(stage).canonical_input is not Stage.canonical_input
+        ):
+            canonical = stage.canonical_input(declared, path.read_bytes())
+            if canonical is not None:
+                return {
+                    "path": declared,
+                    "sha256": hashlib.sha256(canonical).hexdigest(),
+                    "size_bytes": len(canonical),
+                    "missing": False,
+                }
         digest = hashlib.sha256()
         size = 0
         with path.open("rb") as handle:
@@ -155,7 +170,7 @@ def _external_inputs(
         return []
     if isinstance(declared, (str, Path)):
         declared = (declared,)
-    rows = [_input_file_digest(str(path), base_dir) for path in declared]
+    rows = [_input_file_digest(str(path), base_dir, stage) for path in declared]
     rows.sort(key=lambda row: row["path"])
     return rows
 
