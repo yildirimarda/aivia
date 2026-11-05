@@ -48,6 +48,7 @@ This reference is generated from the registered configuration models, their JSON
 | `safety` | [SafetyConfig](#safety) or null | Prompt and media screening before a paid or published call. ``blocked_terms`` holds literal words and phrases that must never reach a paid provider. ``block_categories`` names broader policy categories; the screener treats those names as literal terms too so a category such as ``violence`` is blocked even when no narrower term is configured. |
 | `schedule` | [ScheduleConfig](#schedule) or null | Named cron schedules, their timezone and the default entry. Entries may be written directly under the section (``schedule: {daily: {...}}``) or nested under ``schedules``. A single top-level ``cron`` and ``profile`` pair is treated as the ``default`` entry. |
 | `scoring` | [ScoringConfig](#scoring) or null | Versioned rubric, dimension weights and score thresholds for research. |
+| `sfx` | [SfxConfig](#sfx) or null | Default rule files, gain and placement for sound effects. |
 | `storage` | [StorageConfig](#storage) or null | Where generated media and intermediates are stored. Credentials are referenced by name and resolved through the secrets loader, never written into the configuration file. |
 | `tracing` | [TracingConfig](#tracing) or null | Optional tracing export; disabled by default and vendor neutral. |
 | `video` | [VideoConfig](#video) or null | Video defaults shared by formats, profiles and platform overrides. |
@@ -520,6 +521,16 @@ Versioned rubric, dimension weights and score thresholds for research.
 | `rubric_version` | string | `"1"` | length >= 1 |  |
 | `weights` | map of number |  |  |  |
 
+## `sfx`
+
+Default rule files, gain and placement for sound effects.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `placement` | [SfxPlacement](#sfxplacement) | `"start"` | one of: `start`, `center`, `end`, `word`, `offset`, `absolute` | Where an effect is placed relative to a beat or the timeline. |
+| `rule_files` | array of string |  |  |  |
+| `volume_db` | number | `-6.0` |  |  |
+
 ## `storage`
 
 Where generated media and intermediates are stored. Credentials are referenced by name and resolved through the secrets loader, never written into the configuration file.
@@ -979,6 +990,12 @@ One sensitivity rule override loaded from research configuration.
 | `name` | string |  | length >= 1 |  |
 | `reason` | string | `""` |  |  |
 | `terms` | array of string |  |  |  |
+
+### SfxPlacement
+
+Where an effect is placed relative to a beat or the timeline.
+
+Allowed values: `start`, `center`, `end`, `word`, `offset`, `absolute`.
 
 ### SimilarityLevel
 

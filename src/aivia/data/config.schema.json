@@ -2913,6 +2913,43 @@
       "title": "SensitivityRuleConfig",
       "type": "object"
     },
+    "SfxConfig": {
+      "additionalProperties": false,
+      "description": "Default rule files, gain and placement for sound effects.",
+      "properties": {
+        "placement": {
+          "$ref": "#/$defs/SfxPlacement",
+          "default": "start"
+        },
+        "rule_files": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Rule Files",
+          "type": "array"
+        },
+        "volume_db": {
+          "default": -6.0,
+          "title": "Volume Db",
+          "type": "number"
+        }
+      },
+      "title": "SfxConfig",
+      "type": "object"
+    },
+    "SfxPlacement": {
+      "description": "Where an effect is placed relative to a beat or the timeline.",
+      "enum": [
+        "start",
+        "center",
+        "end",
+        "word",
+        "offset",
+        "absolute"
+      ],
+      "title": "SfxPlacement",
+      "type": "string"
+    },
     "SimilarityLevel": {
       "description": "How closely generated content should follow the reference.",
       "enum": [
@@ -3925,6 +3962,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/ScoringConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "sfx": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SfxConfig"
         },
         {
           "type": "null"
