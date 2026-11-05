@@ -1015,6 +1015,11 @@ def _timeline_duration(timeline: Timeline) -> float:
     return max(ends, default=0.0)
 
 
+def _stage_generated_effect(track: TimelineMusic) -> bool:
+    """Whether *track* was placed by this stage rather than authored by a user."""
+    return "rule_id" in track.metadata or "effect_id" in track.metadata
+
+
 def _beat_end(
     beat: TimelineBeat,
     position: int,
@@ -1223,6 +1228,52 @@ class SfxStage(Stage):
         if source is None:
             source = _config_value(config, *_CONFIG_RULE_KEYS)
         return self._input_declarations(source)
+
+    def canonical_input(self, declared: str, data: bytes) -> bytes | None:
+        """Hash the timeline as it looked before this stage rewrote it.
+
+        The stage both reads and writes ``timeline.json``. Its own effect
+        tracks, summary metadata and pinned duration must not change the input
+        digest, otherwise an unchanged resume would rerun it forever. Existing
+        effects are dropped when this run replaces them; effects this stage
+        added are dropped always. Editing the beats, voices or duration still
+        changes the digest and reruns the stage.
+        """
+        if str(declared) != self.timeline_filename:
+            return None
+        try:
+            payload = json.loads(data)
+            timeline = Timeline.model_validate(payload)
+        except (ValueError, PydanticValidationError):
+            return None
+        original_duration = _timeline_duration(timeline)
+        if self.replace:
+            timeline.music = [
+                track
+                for track in timeline.music
+                if track.role not in (TimelineTrackRole.SFX, TimelineTrackRole.EFFECTS)
+            ]
+            for language in timeline.languages:
+                language.music = [
+                    track
+                    for track in language.music
+                    if track.role
+                    not in (TimelineTrackRole.SFX, TimelineTrackRole.EFFECTS)
+                ]
+        else:
+            timeline.music = [
+                track for track in timeline.music if not _stage_generated_effect(track)
+            ]
+            for language in timeline.languages:
+                language.music = [
+                    track
+                    for track in language.music
+                    if not _stage_generated_effect(track)
+                ]
+        timeline.metadata.pop("sfx", None)
+        if timeline.duration_seconds is None and original_duration > _EPSILON:
+            timeline.duration_seconds = original_duration
+        return canonical_json(timeline.model_dump(mode="json")).encode("utf-8")
 
     def _rules_source(self, context: StageContext, timeline: Timeline) -> Any:
         if self.rules is not None:

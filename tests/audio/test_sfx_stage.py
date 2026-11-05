@@ -689,3 +689,53 @@ def test_editing_a_rule_file_reruns_the_sfx_stage_on_resume(
     assert fourth.ok is True
     assert len(sfx.requests) == 2
     assert fourth.stages[0].status is StageState.SKIPPED
+
+
+def test_an_unchanged_sfx_stage_is_skipped_when_it_reads_the_timeline_from_disk(
+    tmp_path: Path,
+    engine: Engine,
+) -> None:
+    _write_timeline(tmp_path, _timeline(duration_seconds=6.0))
+    sfx = FakeSFX(durations={"door impact": 0.5})
+    stage = SfxStage(
+        options={
+            "rules": [
+                {"id": "door", "match": "door", "prompt": "door impact"},
+            ]
+        },
+        sfx=sfx,
+    )
+    machine = RunStateMachine(RunRepository(engine))
+    run = machine.create(Run())
+
+    def execute() -> Any:
+        return Orchestrator(
+            stages=[stage],
+            run=run.id,
+            repository=StageRunRepository(engine),
+            run_dir=tmp_path,
+            config={},
+            cost=CostTracker(engine),
+            raise_on_failure=False,
+        ).execute_sync()
+
+    first = execute()
+    stored = StageRunRepository(engine).get(run.id, "sfx")
+    assert first.ok is True
+    assert stored is not None
+    assert len(sfx.requests) == 1
+
+    second = execute()
+
+    assert second.ok is True
+    assert second.stages[0].status is StageState.SKIPPED
+    assert second.stages[0].input_hash == stored.input_hash
+    assert len(sfx.requests) == 1
+
+    _write_timeline(tmp_path, _timeline(duration_seconds=7.0))
+    third = execute()
+
+    assert third.ok is True
+    assert third.stages[0].status is StageState.SUCCEEDED
+    assert third.stages[0].input_hash != stored.input_hash
+    assert len(sfx.requests) == 2

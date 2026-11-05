@@ -433,6 +433,16 @@ class Stage:
         """
         return self.inputs
 
+    def canonical_input(self, declared: str, data: bytes) -> bytes | None:
+        """Return the bytes to hash for a declared input file, or ``None``.
+
+        A stage that reads and rewrites the same file overrides this to strip
+        its own writes from the input digest. Without that, the file changes on
+        every run and an unchanged stage can never be skipped on resume.
+        Returning ``None`` hashes the raw file contents.
+        """
+        return None
+
     def estimate(self, context: StageContext | None = None) -> StageEstimate:
         """Return the pre-run estimate for this stage.
 
