@@ -99,6 +99,34 @@ _EPSILON = 1e-9
 _MIN_DURATION = 1e-6
 _SECTION_KEYS = ("sfx", "sound_effects", "sound-effects", "effects")
 _RULE_KEYS = ("rules", "effects", "sound_effects", "sound-effects", "cues")
+_CONFIG_RULE_KEYS = (
+    "rule_files",
+    "rules",
+    "files",
+    "rule_file",
+    "rules_file",
+    "rule_paths",
+    "paths",
+    "sound_effects",
+    "effects",
+    "cues",
+)
+_VOLUME_KEYS = (
+    "volume_db",
+    "volume",
+    "gain_db",
+    "gain",
+    "default_volume_db",
+    "default_volume",
+)
+_POSITION_KEYS = (
+    "placement",
+    "position",
+    "place",
+    "anchor",
+    "default_placement",
+    "default_position",
+)
 _POSITION_ALIASES = {
     "absolute": "absolute",
     "after": "end",
@@ -571,14 +599,14 @@ def load_sfx_rules(value: Any) -> tuple[SfxRule, ...]:
         return (value.model_copy(deep=True),)
     if isinstance(value, (str, Path)):
         text = str(value).strip()
-        path = Path(text).expanduser()
-        if path.is_file():
+        path = _rule_file_path(value)
+        if path is not None:
+            if not path.is_file():
+                raise ConfigError(
+                    f"sfx rules file does not exist: {path}",
+                    details={"path": str(path)},
+                )
             return load_sfx_rules(_load_rule_file(path))
-        if path.suffix.casefold() in {".yaml", ".yml", ".json"}:
-            raise ConfigError(
-                f"sfx rules file does not exist: {path}",
-                details={"path": str(path)},
-            )
         return (SfxRule(prompt=text, id="rule_0"),)
 
     rules: list[Any]
@@ -610,8 +638,8 @@ def load_sfx_rules(value: Any) -> tuple[SfxRule, ...]:
 
     loaded: list[SfxRule] = []
     seen: set[str] = set()
-    for index, raw in enumerate(rules):
-        rule = _rule_from_value(raw, index=index)
+
+    def add(rule: SfxRule) -> None:
         key = rule.id.casefold()
         if key in seen:
             raise ConfigError(
@@ -620,6 +648,19 @@ def load_sfx_rules(value: Any) -> tuple[SfxRule, ...]:
             )
         seen.add(key)
         loaded.append(rule)
+
+    for index, raw in enumerate(rules):
+        path = _rule_file_path(raw)
+        if path is not None:
+            if not path.is_file():
+                raise ConfigError(
+                    f"sfx rules file does not exist: {path}",
+                    details={"path": str(path)},
+                )
+            for rule in load_sfx_rules(_load_rule_file(path)):
+                add(rule)
+            continue
+        add(_rule_from_value(raw, index=index))
     return tuple(loaded)
 
 
@@ -630,6 +671,19 @@ normalize_sfx_rules = load_sfx_rules
 """Alias for :func:`load_sfx_rules`."""
 
 _RULE_FILE_SUFFIXES = frozenset({".json", ".yaml", ".yml"})
+
+
+def _rule_file_path(value: Any) -> Path | None:
+    """Return *value* as a rule file path when it names or looks like one."""
+    if not isinstance(value, (str, Path)):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    path = Path(text).expanduser()
+    if path.is_file() or path.suffix.casefold() in _RULE_FILE_SUFFIXES:
+        return path
+    return None
 
 
 def _rule_file_declarations(value: Any) -> tuple[str, ...]:
@@ -1097,13 +1151,29 @@ class SfxStage(Stage):
         self.timeline = merged.get("timeline")
         self.timeline_filename = timeline_name
         self.sfx_filename = manifest_name
-        self.volume_db = _finite(
-            merged.get("volume_db", DEFAULT_SFX_VOLUME_DB),
-            "volume_db",
+        volume_value = next(
+            (
+                merged[key]
+                for key in ("volume_db", "volume", "gain_db", "gain")
+                if merged.get(key) is not None
+            ),
+            DEFAULT_SFX_VOLUME_DB,
         )
-        self.position = _position(
-            merged.get("position") or merged.get("placement") or merged.get("anchor")
+        self._volume_explicit = any(
+            merged.get(key) is not None
+            for key in ("volume_db", "volume", "gain_db", "gain")
         )
+        self.volume_db = _finite(volume_value, "volume_db")
+        position_value = next(
+            (
+                merged[key]
+                for key in ("position", "placement", "anchor")
+                if merged.get(key) is not None
+            ),
+            None,
+        )
+        self._position_explicit = position_value is not None
+        self.position = _position(position_value)
         self.duration_seconds = _optional_finite(
             merged.get("duration_seconds"),
             "duration_seconds",
@@ -1151,13 +1221,13 @@ class SfxStage(Stage):
         """Resolve the rule files this run will read, including config rules."""
         source = self.rules
         if source is None:
-            source = _config_value(config, *_RULE_KEYS)
+            source = _config_value(config, *_CONFIG_RULE_KEYS)
         return self._input_declarations(source)
 
     def _rules_source(self, context: StageContext, timeline: Timeline) -> Any:
         if self.rules is not None:
             return self.rules
-        configured = _config_value(context.config, *_RULE_KEYS)
+        configured = _config_value(context.config, *_CONFIG_RULE_KEYS)
         if configured is not None:
             return configured
         for key in (*_RULE_KEYS, "sfx_rules"):
@@ -1428,6 +1498,24 @@ class SfxStage(Stage):
                 or any(code in self.languages for code in rule.languages)
             )
 
+        default_volume = self.volume_db
+        if not self._volume_explicit:
+            configured_volume = _config_value(context.config, *_VOLUME_KEYS)
+            if configured_volume is not None:
+                default_volume = _finite(configured_volume, "volume_db")
+
+        default_position = self.position
+        if not self._position_explicit:
+            configured_position = _config_value(context.config, *_POSITION_KEYS)
+            if configured_position is not None:
+                try:
+                    default_position = _position(configured_position)
+                except ValueError as exc:
+                    raise ConfigError(
+                        str(exc),
+                        details={"placement": configured_position},
+                    ) from exc
+
         if self.replace:
             timeline.music = [
                 track
@@ -1501,9 +1589,12 @@ class SfxStage(Stage):
                     or DEFAULT_SFX_DURATION_SECONDS
                 )
                 length = max(_MIN_DURATION, min(float(duration), original_duration))
+                rule_position = rule.position
+                if not ({"position", "start_seconds"} & rule.model_fields_set):
+                    rule_position = default_position
                 start = self._start_seconds(
                     rule,
-                    rule.position or self.position,
+                    rule_position,
                     beat,
                     beat_start,
                     beat_end,
@@ -1522,7 +1613,7 @@ class SfxStage(Stage):
                 fade_in = min(rule.fade_in_seconds or 0.0, length)
                 fade_out = min(rule.fade_out_seconds or 0.0, length)
                 volume = (
-                    self.volume_db if rule.volume_db is None else float(rule.volume_db)
+                    default_volume if rule.volume_db is None else float(rule.volume_db)
                 )
 
                 track_id = identifier
