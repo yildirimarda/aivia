@@ -29,15 +29,18 @@ from aivia.core import paths
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
 from aivia.core.config.music import MusicConfig
+from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_config
 from aivia.core.cost import CostTracker
 from aivia.core.db import RunRepository, create_database_engine
 from aivia.core.errors import ConfigError
 from aivia.core.models import Run
 from aivia.core.orchestrator import OrchestrationResult, Orchestrator
+from aivia.core.router import Router
 from aivia.core.stages import Stage
 from aivia.media.audio_mix import DuckingSettings
 from aivia.media.music_library import MusicLibraryError
+from aivia.providers.provider_factory import build_providers
 
 __all__ = [
     "configure",
@@ -257,6 +260,31 @@ def _music_config(config: Any) -> MusicConfig:
         if isinstance(raw, Mapping):
             return MusicConfig.from_mapping(raw)
     return MusicConfig()
+
+
+def _providers_config(config: Any) -> ProvidersConfig:
+    section = getattr(config, "providers", None)
+    if isinstance(section, ProvidersConfig):
+        return section
+    if isinstance(section, Mapping):
+        return ProvidersConfig.from_mapping(section)
+    if isinstance(config, Mapping):
+        raw = config.get("providers")
+        if isinstance(raw, ProvidersConfig):
+            return raw
+        if isinstance(raw, Mapping):
+            return ProvidersConfig.from_mapping(raw)
+    return ProvidersConfig()
+
+
+def _build_router(config: Any) -> Router:
+    """Build the configured media router for a provider music bed."""
+    return Router(build_providers(_providers_config(config)))
+
+
+def _needs_router(options: Mapping[str, Any]) -> bool:
+    """Whether the selection may reach a provider instead of the library."""
+    return str(options.get("source", "auto")) != "library"
 
 
 def _database_path(args: argparse.Namespace, config: Any) -> Path:
@@ -498,6 +526,7 @@ def _execute(
     *,
     data_dir: Path,
     tracker: CostTracker,
+    router: Router | None = None,
 ) -> OrchestrationResult:
     return Orchestrator(
         stages=stages,
@@ -507,6 +536,7 @@ def _execute(
         data_dir=data_dir,
         config=config,
         cost=tracker,
+        router=router,
         raise_on_failure=False,
     ).execute_sync()
 
@@ -529,6 +559,7 @@ def _run_stage(
             return 1
 
         stage = _apply_options(_music_stage(_recipe(config, run)), options)
+        router = _build_router(config) if _needs_router(options) else None
         result = _execute(
             engine,
             run,
@@ -536,6 +567,7 @@ def _run_stage(
             [stage],
             data_dir=database_path.parent,
             tracker=tracker,
+            router=router,
         )
         stage_result = next(
             (item for item in result.stages if item.stage == stage.name),

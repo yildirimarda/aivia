@@ -61,7 +61,10 @@ from aivia.media.music_library import (
     load_music_library,
 )
 from aivia.providers.protocols.audio import AudioFormat
-from aivia.providers.protocols.music import MusicRequest
+from aivia.providers.protocols.music import (
+    CAPABILITY_MUSIC_GEN,
+    MusicRequest,
+)
 
 __all__ = [
     "DEFAULT_MUSIC_FILENAME",
@@ -800,6 +803,10 @@ class MusicSelectStage(Stage):
             "music_library",
         ):
             raw = _field(section, name)
+            if isinstance(raw, str):
+                if raw.strip():
+                    return raw
+                continue
             if raw is not None:
                 return raw
         return None
@@ -850,7 +857,7 @@ class MusicSelectStage(Stage):
             return await context.media.music(
                 request,
                 run_id=run_id,
-                operation=self.name,
+                operation=CAPABILITY_MUSIC_GEN,
             )
         method = target
         if not callable(target):

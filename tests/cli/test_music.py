@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +84,7 @@ def _write_config(
     source: str = "library",
     ducking: dict[str, Any] | None = None,
     formats: bool = False,
+    providers: bool = False,
 ) -> Path:
     values: dict[str, Any] = {
         "music": {
@@ -100,6 +102,8 @@ def _write_config(
             },
         }
     }
+    if providers:
+        values["providers"] = {"mock": {"type": "mock"}}
     if formats:
         values["formats"] = {
             "sample": {
@@ -122,6 +126,28 @@ def _music(
     code = main(["music", *args])
     captured = capsys.readouterr()
     return code, captured.out, captured.err
+
+
+@pytest.fixture
+def fake_ffprobe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """Put a deterministic ffprobe on PATH for provider generated audio."""
+    directory = tmp_path / "bin"
+    directory.mkdir()
+    script = directory / "ffprobe"
+    script.write_text(
+        """#!/bin/sh
+cat <<'JSON'
+{"streams":[{"index":0,"codec_type":"audio","codec_name":"mp3","duration":"6.000","sample_rate":"44100","channels":1}],"format":{"format_name":"mp3","format_long_name":"MP3","duration":"6.000","size":"88200"}}
+JSON
+""",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{directory}{os.pathsep}{os.environ['PATH']}")
+    return script
 
 
 def test_music_selects_the_configured_library_bed_and_prints_its_rights(
@@ -289,3 +315,47 @@ def test_music_runs_the_recipe_stage_for_an_existing_run(
     assert "Ducking: enabled" in out
     assert "Ducking verified: yes" in out
     assert "Cost: $0.000000" in out
+
+
+def test_music_provider_bed_for_a_run_uses_the_configured_router(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    fake_ffprobe: Path,
+) -> None:
+    database = tmp_path / "data" / "aivia.db"
+    upgrade_database(database)
+    run = _seed_run(database, tmp_path)
+    _write_timeline(run)
+    config = _write_config(
+        tmp_path,
+        source="provider",
+        formats=True,
+        providers=True,
+    )
+    monkeypatch.setattr(
+        music_cli,
+        "build_stages",
+        lambda _recipe: [MusicSelectStage()],
+    )
+
+    code, out, err = _music(
+        capsys,
+        run.id,
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0, err
+    assert "Source: provider" in out
+    assert "Track: music" in out
+    cost_line = next(line for line in out.splitlines() if line.startswith("Cost: $"))
+    assert float(cost_line.removeprefix("Cost: $")) > 0
+
+    manifest = json.loads(
+        (Path(run.run_dir) / "music.json").read_text(encoding="utf-8")
+    )
+    assert manifest["source"] == "provider"
+    assert manifest["provider"] == "mock"
