@@ -36,6 +36,7 @@ from aivia.media.subtitles import (
 )
 
 __all__ = [
+    "DEFAULT_PLATFORM_SUBTITLE_FILENAME_PATTERN",
     "DEFAULT_SUBTITLE_FILENAME_PATTERN",
     "DEFAULT_TIMELINE_FILENAME",
     "SUBTITLE_STAGE_NAME",
@@ -56,6 +57,9 @@ DEFAULT_TIMELINE_FILENAME = "timeline.json"
 
 DEFAULT_SUBTITLE_FILENAME_PATTERN = "subtitle.{language}.ass"
 """The per-language ASS file name pattern the stage writes."""
+
+DEFAULT_PLATFORM_SUBTITLE_FILENAME_PATTERN = "subtitle.{language}.{platform}.ass"
+"""The per-language, per-platform ASS pattern used for several platforms."""
 
 _DEFAULT_WIDTH = 1920
 _DEFAULT_HEIGHT = 1080
@@ -208,6 +212,27 @@ def _resolution(value: Any) -> tuple[int, int] | None:
     except (TypeError, ValueError):
         return None
     return parsed.width, parsed.height
+
+
+def _insert_platform(pattern: str, platform: str) -> str:
+    head, separator, tail = pattern.rpartition("/")
+    stem, dot, suffix = tail.rpartition(".")
+    tail = f"{stem}.{platform}.{suffix}" if dot and stem else f"{tail}.{platform}"
+    return f"{head}{separator}{tail}"
+
+
+def _remove_platform(pattern: str) -> str:
+    for token in ("{platform}", "{platform_id}"):
+        while token in pattern:
+            position = pattern.index(token)
+            before = pattern[:position]
+            after = pattern[position + len(token) :]
+            if before and before[-1] in "._-":
+                before = before[:-1]
+            elif after and after[0] in "._-":
+                after = after[1:]
+            pattern = before + after
+    return pattern or DEFAULT_SUBTITLE_FILENAME_PATTERN
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -577,12 +602,16 @@ class SubtitleStage(Stage):
                 details={"language": language, "value": repr(value)},
             ) from exc
 
-    def _platform_for(self, timeline: Timeline) -> Platform | None:
+    def _platforms_for(self, timeline: Timeline) -> list[Platform | None]:
         value = self.platform
-        if value is None and len(timeline.platforms) == 1:
-            value = timeline.platforms[0]
-        if value is None:
-            return None
+        if value is not None:
+            return [self._resolve_platform(value)]
+        if not timeline.platforms:
+            return [None]
+        return [self._resolve_platform(name) for name in timeline.platforms]
+
+    @staticmethod
+    def _resolve_platform(value: Platform | str) -> Platform:
         if isinstance(value, Platform):
             return value
         try:
@@ -591,6 +620,36 @@ class SubtitleStage(Stage):
             raise ConfigError(
                 f"unknown platform: {value!r}",
                 details={"platform": str(value)},
+            ) from exc
+
+    def _relative_name(
+        self,
+        language: str,
+        platform: Platform | None,
+        *,
+        multiple_platforms: bool,
+    ) -> str:
+        name = platform.id if platform is not None else ""
+        pattern = self.filename_pattern
+        has_platform = "{platform" in pattern
+        if not name and has_platform:
+            pattern = _remove_platform(pattern)
+        elif multiple_platforms and not has_platform:
+            if pattern == DEFAULT_SUBTITLE_FILENAME_PATTERN:
+                pattern = DEFAULT_PLATFORM_SUBTITLE_FILENAME_PATTERN
+            else:
+                pattern = _insert_platform(pattern, name)
+        try:
+            return pattern.format(
+                language=language,
+                code=language,
+                platform=name,
+                platform_id=name,
+            )
+        except (KeyError, IndexError, ValueError) as exc:
+            raise ConfigError(
+                "invalid subtitle filename pattern",
+                details={"pattern": pattern},
             ) from exc
 
     def _safe_area_for(
@@ -650,56 +709,88 @@ class SubtitleStage(Stage):
     async def run(self, context: StageContext) -> StageResult:
         timeline, timeline_source = self._load_timeline(context)
         languages = self._target_languages(timeline)
-        platform = self._platform_for(timeline)
-        width, height = self._canvas(context.config, platform)
+        platforms = self._platforms_for(timeline)
+        multiple_platforms = len(platforms) > 1
         run_id = context.run.id if context.run is not None else ""
 
         artifacts: list[str] = []
         files: dict[str, str] = {}
+        platform_files: dict[str, dict[str, str]] = {}
         presets: dict[str, str] = {}
         safe_areas: dict[str, dict[str, float]] = {}
+        platform_safe_areas: dict[str, dict[str, dict[str, float]]] = {}
+        canvases: dict[str, dict[str, int]] = {}
+        language_codes: list[str] = []
+        width = _DEFAULT_WIDTH
+        height = _DEFAULT_HEIGHT
         for entry in languages:
             language = _language_key(entry.language)
+            language_codes.append(language)
             track, had_style = self._track(entry, language)
             style = self._style_for(language, track, had_style, context.config)
-            area = self._safe_area_for(language, platform)
-            try:
-                document = track.to_ass(
-                    width=width,
-                    height=height,
-                    style=style,
-                    safe_area=area,
-                    platform=platform,
-                    highlight=self.highlight,
-                )
-            except ValueError as exc:
-                raise ConfigError(
-                    "subtitle track cannot be rendered as ASS",
-                    details={"language": language},
-                ) from exc
-            relative = self.filename_pattern.format(
-                language=language,
-                code=language,
-            )
-            _write_text(context.run_dir / relative, document)
-            artifacts.append(relative)
-            files[language] = relative
             presets[language] = style.ass_name
-            safe_areas[language] = area.as_dict()
+            for platform in platforms:
+                platform_id = platform.id if platform is not None else ""
+                width, height = self._canvas(context.config, platform)
+                area = self._safe_area_for(language, platform)
+                try:
+                    document = track.to_ass(
+                        width=width,
+                        height=height,
+                        style=style,
+                        safe_area=area,
+                        platform=platform,
+                        highlight=self.highlight,
+                    )
+                except ValueError as exc:
+                    raise ConfigError(
+                        "subtitle track cannot be rendered as ASS",
+                        details={"language": language, "platform": platform_id},
+                    ) from exc
+                relative = self._relative_name(
+                    language,
+                    platform,
+                    multiple_platforms=multiple_platforms,
+                )
+                _write_text(context.run_dir / relative, document)
+                artifacts.append(relative)
+                key = f"{language}/{platform_id}" if multiple_platforms else language
+                files[key] = relative
+                safe_areas[key] = area.as_dict()
+                platform_files.setdefault(platform_id, {})[language] = relative
+                platform_safe_areas.setdefault(platform_id, {})[language] = (
+                    area.as_dict()
+                )
+                canvases[platform_id] = {"width": width, "height": height}
+
+        if platforms:
+            first_platform = platforms[0]
+            primary = first_platform.id if first_platform is not None else ""
+            if primary in canvases:
+                width = canvases[primary]["width"]
+                height = canvases[primary]["height"]
 
         self.artifacts = tuple(artifacts)
         preset = self.preset if self.preset is not None else self.style_preset
         metadata = {
-            "languages": list(files),
+            "languages": language_codes,
             "files": files,
             "subtitles": files,
+            "platform_files": platform_files,
             "styles": presets,
             "presets": presets,
             "preset": str(preset) if preset is not None else "",
             "safe_areas": safe_areas,
+            "platform_safe_areas": platform_safe_areas,
+            "canvases": canvases,
             "width": width,
             "height": height,
-            "platform": platform.id if platform is not None else "",
+            "platform": platforms[0].id
+            if len(platforms) == 1 and platforms[0] is not None
+            else "",
+            "platforms": [
+                platform.id for platform in platforms if platform is not None
+            ],
             "timeline": timeline_source,
             "cost_usd": 0.0,
         }
