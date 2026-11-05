@@ -36,9 +36,11 @@ from aivia.compose import (
 from aivia.core import paths
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.resolve import resolve_config
+from aivia.core.config.video import VideoConfig, VideoOverridesConfig
 from aivia.core.db import RunRepository, create_database_engine
 from aivia.core.errors import AiviaError, ConfigError
 from aivia.core.models import Run
+from aivia.core.platforms import get_platform
 from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import StageContext
 
@@ -324,13 +326,52 @@ def _read_input(path: str) -> str:
     return Path(path).expanduser().read_text(encoding="utf-8")
 
 
+def _platform_video(video: Any, platforms: Sequence[str]) -> Any:
+    """Fill missing video platform overrides from the packaged registry."""
+    if not platforms:
+        return video
+    if isinstance(video, VideoConfig):
+        base = video
+    elif isinstance(video, Mapping):
+        base = VideoConfig.from_mapping(video)
+    elif video is None:
+        base = VideoConfig()
+    else:
+        return video
+
+    overrides = dict(base.platforms)
+    for name in platforms:
+        if name in overrides:
+            continue
+        try:
+            platform = get_platform(name)
+        except (KeyError, ValueError):
+            continue
+        limit = platform.limit("video")
+        if limit is None:
+            continue
+        values: dict[str, Any] = {}
+        if limit.resolutions:
+            values["resolution"] = limit.resolutions[0]
+        if limit.loudness_lufs is not None:
+            values["loudness_lufs"] = limit.loudness_lufs
+        if values:
+            overrides[name] = VideoOverridesConfig.from_mapping(values)
+    if overrides == base.platforms:
+        return base
+    return base.model_copy(update={"platforms": overrides})
+
+
 def _compositions(timeline: Timeline, config: Any) -> list[Composition]:
     video = (
         config.get("video")
         if isinstance(config, Mapping)
         else getattr(config, "video", None)
     )
-    return timeline_to_compositions(timeline, video=video)
+    return timeline_to_compositions(
+        timeline,
+        video=_platform_video(video, timeline.platforms),
+    )
 
 
 def _format_suffix(value: str | None) -> str:
@@ -344,29 +385,26 @@ def _format_suffix(value: str | None) -> str:
 def _regenerate_subtitles(
     timeline: Timeline,
     changed: Sequence[str],
-    compositions: Sequence[Composition],
     run_dir: Path,
     config: Any,
 ) -> dict[str, str]:
-    by_language: dict[str, Composition] = {}
-    for composition in compositions:
-        by_language.setdefault(composition.language, composition)
+    """Regenerate every ASS file of each changed language and platform.
 
+    The stage owns platform expansion so a multi-platform timeline writes one
+    file per platform with that platform's canvas and safe area. Forcing a
+    single platform here would leave the other platforms' ASS files stale.
+    """
     files: dict[str, str] = {}
     for code in changed:
-        active = by_language.get(code)
-        options: dict[str, Any] = {"languages": [code]}
-        if active is not None:
-            options["width"] = active.canvas.width
-            options["height"] = active.canvas.height
-            if active.platform:
-                options["platform"] = active.platform
-        stage = SubtitleStage(options=options, timeline=timeline)
+        stage = SubtitleStage(options={"languages": [code]}, timeline=timeline)
         result = cast(
             SubtitleStageResult,
             asyncio.run(stage.run(StageContext(run_dir=run_dir, config=config))),
         )
-        files[code] = result.files.get(code, "")
+        for key, relative in result.files.items():
+            language, _separator, _platform = key.partition("/")
+            if language == code:
+                files[key] = relative
     return files
 
 
@@ -481,7 +519,6 @@ def run_edit(args: argparse.Namespace) -> int:
                 subtitles = _regenerate_subtitles(
                     updated,
                     changed,
-                    compositions,
                     timeline_path.parent,
                     config,
                 )

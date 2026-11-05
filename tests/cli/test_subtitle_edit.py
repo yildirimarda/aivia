@@ -28,8 +28,11 @@ def _words(*pairs: tuple[str, float, float]) -> list[dict[str, Any]]:
     ]
 
 
-def _timeline_document() -> dict[str, Any]:
-    return {
+def _timeline_document(
+    *,
+    platforms: list[str] | None = None,
+) -> dict[str, Any]:
+    document: dict[str, Any] = {
         "id": "run_subtitle",
         "languages": [
             {
@@ -58,6 +61,9 @@ def _timeline_document() -> dict[str, Any]:
             },
         ],
     }
+    if platforms is not None:
+        document["platforms"] = platforms
+    return document
 
 
 def _write_timeline(
@@ -224,6 +230,56 @@ def test_apply_reburns_only_the_affected_language(
     assert not (tmp_path / "subtitle.de.ass").exists()
     assert (tmp_path / "renders" / "run_subtitle_en.mp4").read_bytes() == b"video-en"
     assert not (tmp_path / "renders" / "run_subtitle_de.mp4").exists()
+
+
+def test_apply_regenerates_every_platform_subtitle_for_a_changed_language(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timeline = _write_timeline(
+        tmp_path,
+        _timeline_document(platforms=["tiktok", "youtube"]),
+    )
+    for language in ("en", "de"):
+        for platform in ("tiktok", "youtube"):
+            (tmp_path / f"subtitle.{language}.{platform}.ass").write_text(
+                f"stale {language} {platform} Hello",
+                encoding="utf-8",
+            )
+    document = _export(tmp_path, timeline, capsys)
+    _set_word(document, "en", 0, word="Hi")
+    edit = _write_edit(tmp_path, document)
+    calls: list[tuple[str, str | None]] = []
+
+    def fake_video(composition: Any, path: Any, **options: Any) -> None:
+        calls.append((composition.language, composition.platform))
+        Path(path).write_bytes(f"video-{composition.id}".encode())
+
+    monkeypatch.setattr(subtitle_cli, "render_video", fake_video)
+
+    code, out, err = _run(
+        capsys,
+        "edit",
+        "--timeline",
+        str(timeline),
+        "--input",
+        str(edit),
+    )
+
+    assert code == 0, err
+    assert err == ""
+    assert "Affected: en" in out
+    assert sorted(calls) == [("en", "tiktok"), ("en", "youtube")]
+    for platform in ("tiktok", "youtube"):
+        ass = (tmp_path / f"subtitle.en.{platform}.ass").read_text(encoding="utf-8")
+        assert "Hi" in ass
+        assert "Hello" not in ass
+    for platform in ("tiktok", "youtube"):
+        stale = (tmp_path / f"subtitle.de.{platform}.ass").read_text(encoding="utf-8")
+        assert stale == f"stale de {platform} Hello"
+        assert "Hi" not in stale
+    assert not (tmp_path / "subtitle.en.ass").exists()
 
 
 def test_applying_an_edit_registers_edited_subtitles_and_renders_in_the_manifest(
