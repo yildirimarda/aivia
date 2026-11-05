@@ -141,8 +141,16 @@ def _input_file_digest(declared: str, base_dir: Path | None) -> dict[str, Any]:
     }
 
 
-def _external_inputs(stage: Stage, base_dir: Path | None) -> list[dict[str, Any]]:
-    declared = getattr(stage, "inputs", ())
+def _external_inputs(
+    stage: Stage,
+    base_dir: Path | None,
+    config: Any = None,
+) -> list[dict[str, Any]]:
+    resolver = getattr(stage, "resolve_inputs", None)
+    if callable(resolver):
+        declared = resolver(base_dir=base_dir, config=config)
+    else:
+        declared = getattr(stage, "inputs", ())
     if declared is None:
         return []
     if isinstance(declared, (str, Path)):
@@ -178,7 +186,7 @@ def compute_input_hash(
         "options": stable_value(stage.options),
         "config": stable_value(config),
         "declared_artifacts": sorted(stage.artifacts),
-        "declared_inputs": _external_inputs(stage, root),
+        "declared_inputs": _external_inputs(stage, root, config),
         "upstream": [
             {
                 "stage": result.stage,

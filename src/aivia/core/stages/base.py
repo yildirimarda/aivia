@@ -419,6 +419,20 @@ class Stage:
     def source_files(self, value: Iterable[str | Path] | str | Path) -> None:
         self.inputs = _normalise_inputs(value)
 
+    def resolve_inputs(
+        self,
+        *,
+        base_dir: str | Path | None = None,
+        config: Any = None,
+    ) -> tuple[str, ...]:
+        """Return the input declarations whose contents a run should hash.
+
+        A stage with a fixed :attr:`inputs` tuple keeps the default. A stage
+        that discovers its inputs from the run directory or config overrides
+        this so resume hashes exactly the files the stage will read.
+        """
+        return self.inputs
+
     def estimate(self, context: StageContext | None = None) -> StageEstimate:
         """Return the pre-run estimate for this stage.
 

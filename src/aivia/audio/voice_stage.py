@@ -38,7 +38,7 @@ from aivia.core.errors import ConfigError
 from aivia.core.models.base import canonical_json
 from aivia.core.models.run import StageResult, StageState
 from aivia.core.models.script import Beat, DialogueLine, Script
-from aivia.core.stages.base import Stage, StageContext
+from aivia.core.stages.base import Stage, StageContext, _normalise_inputs
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.tts import TTSRequest
 
@@ -476,6 +476,24 @@ def _script_glob(pattern: str) -> str:
     return pattern.replace("{language}", "*").replace("{code}", "*")
 
 
+def _script_input_declarations(
+    languages: Iterable[str],
+    pattern: str,
+) -> tuple[str, ...]:
+    """Return the per-language script files the stage reads as inputs.
+
+    Relative names are resolved by the resume hash against the run directory,
+    so editing a script between runs changes the stage input hash. A custom
+    ``script_filename_pattern`` is honoured just as it is when loading.
+    """
+    declared: list[str] = []
+    for language in languages:
+        relative = pattern.format(language=language, code=language)
+        if relative and relative not in declared:
+            declared.append(relative)
+    return tuple(declared)
+
+
 def _write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = canonical_json(value, indent=2) + "\n"
@@ -587,6 +605,7 @@ class VoiceStage(Stage):
             name=name or VOICE_STAGE_NAME,
             options=merged,
             artifacts=(merged.get("timeline_filename") or DEFAULT_TIMELINE_FILENAME,),
+            inputs=(),
         )
         self.scripts = merged.get("scripts")
         self.script = merged.get("script")
@@ -622,40 +641,94 @@ class VoiceStage(Stage):
             merged.get("script_filename_pattern") or DEFAULT_SCRIPT_FILENAME_PATTERN
         )
         self.scripts_by_language: dict[str, Script] = {}
+        self._declared_input_override: tuple[str, ...] | None = None
 
-    def _target_languages(self, context: StageContext) -> list[str]:
+    def _explicit_languages(self) -> list[str]:
         explicit = self.languages
         if explicit is None:
             explicit = self.options.get("languages")
         if explicit is None:
             explicit = self.options.get("language")
-        codes = _normalise_languages(explicit)
+        return _normalise_languages(explicit)
+
+    def _discover_script_languages(self, run_dir: Path) -> list[str]:
+        discovered: list[str] = []
+        if not run_dir.is_dir():
+            return discovered
+        pattern = _script_glob(self.script_filename_pattern)
+        for path in sorted(run_dir.glob(pattern)):
+            name = path.name
+            prefix, _, suffix = self.script_filename_pattern.partition("{")
+            if not name.startswith(prefix):
+                continue
+            remainder = name[len(prefix) :]
+            if suffix:
+                _token, _, tail = suffix.partition("}")
+                if tail and remainder.endswith(tail):
+                    remainder = remainder[: -len(tail)]
+            code = _language_key(remainder)
+            if code and code not in discovered:
+                discovered.append(code)
+        return discovered
+
+    def _resolved_languages(
+        self,
+        run_dir: Path | None,
+        config: Any,
+    ) -> list[str]:
+        codes = self._explicit_languages()
         if codes:
             return codes
         if isinstance(self.scripts, Mapping):
             return [_language_key(key) for key in self.scripts if _language_key(key)]
-        discovered: list[str] = []
-        if context.run_dir.is_dir():
-            pattern = _script_glob(self.script_filename_pattern)
-            for path in sorted(context.run_dir.glob(pattern)):
-                name = path.name
-                prefix, _, suffix = self.script_filename_pattern.partition("{")
-                if not name.startswith(prefix):
-                    continue
-                remainder = name[len(prefix) :]
-                if suffix:
-                    _token, _, tail = suffix.partition("}")
-                    if tail and remainder.endswith(tail):
-                        remainder = remainder[: -len(tail)]
-                code = _language_key(remainder)
-                if code and code not in discovered:
-                    discovered.append(code)
-        if discovered:
-            return discovered
-        configured = _configured_languages(context.config)
+        if run_dir is not None:
+            discovered = self._discover_script_languages(run_dir)
+            if discovered:
+                return discovered
+        configured = _configured_languages(config)
         if configured:
             return configured
-        return [_default_language(context.config)]
+        return [_default_language(config)]
+
+    @property
+    def inputs(self) -> tuple[str, ...]:
+        """The per-language script files this stage reads from disk.
+
+        Computed from the current languages so a language filter applied after
+        construction still declares exactly the scripts that will be read. An
+        injected script or scripts mapping reads no files and declares none.
+        """
+        override = self._declared_input_override
+        if override is not None:
+            return override
+        if self.scripts is not None or self.script is not None:
+            return ()
+        return _script_input_declarations(
+            self._explicit_languages(),
+            self.script_filename_pattern,
+        )
+
+    @inputs.setter
+    def inputs(self, value: Iterable[str | Path] | str | Path) -> None:
+        self._declared_input_override = _normalise_inputs(value)
+
+    def resolve_inputs(
+        self,
+        *,
+        base_dir: str | Path | None = None,
+        config: Any = None,
+    ) -> tuple[str, ...]:
+        """Resolve the script files this run will read, including discovery."""
+        if self.scripts is not None or self.script is not None:
+            return ()
+        run_dir = Path(base_dir).expanduser() if base_dir is not None else None
+        return _script_input_declarations(
+            self._resolved_languages(run_dir, config),
+            self.script_filename_pattern,
+        )
+
+    def _target_languages(self, context: StageContext) -> list[str]:
+        return self._resolved_languages(context.run_dir, context.config)
 
     def _load_scripts(self, context: StageContext) -> dict[str, Script]:
         languages = self._target_languages(context)
