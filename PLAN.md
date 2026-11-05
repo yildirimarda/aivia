@@ -587,7 +587,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a music config section for the default source, library path, mood, volume and ducking (tests/core/config/test_music.py)
 - [x] Add a music command that selects a bed and prints its source, license and ducking (tests/cli/test_music.py)
 - [x] Add an sfx config section for rule files, default volume and placement (tests/core/config/test_sfx.py)
-- [ ] Add an sfx command that places effects on an existing timeline and prints placements and cost (tests/cli/test_sfx.py)
+- [x] Add an sfx command that places effects on an existing timeline and prints placements and cost (tests/cli/test_sfx.py)
 - [ ] Declare the sfx rule file as a stage input so editing rules invalidates resume (tests/audio/test_sfx_stage.py)
 - [ ] Register edited subtitle files and re-burnt outputs in the run artifact manifest so resume sees them (tests/cli/test_subtitle_edit.py)
 - [ ] Regenerate every platform subtitle when editing a multi platform timeline so no stale ASS file survives (tests/cli/test_subtitle_edit.py)
