@@ -327,6 +327,12 @@ from aivia.core.config.sections import (
     register_core_sections,
     resolve_video,
 )
+from aivia.core.config.sfx import (
+    SfxConfig,
+    SfxPlacement,
+    SfxPlacementMode,
+    SfxPosition,
+)
 
 __all__ = [
     "CLI_ORIGIN",
@@ -548,6 +554,10 @@ __all__ = [
     "SensitivityRuleConfig",
     "SensitivityRuleSettings",
     "SensitivitySettings",
+    "SfxConfig",
+    "SfxPlacement",
+    "SfxPlacementMode",
+    "SfxPosition",
     "SimilarityLevel",
     "Stage",
     "StageConfig",

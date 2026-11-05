@@ -93,6 +93,7 @@ EXPECTED_KEYS = {
     "safety",
     "schedule",
     "scoring",
+    "sfx",
     "storage",
     "tracing",
     "video",

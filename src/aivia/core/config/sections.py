@@ -48,6 +48,7 @@ from aivia.core.config.schedule import (
     ScheduleEntryConfig,
     profile_names,
 )
+from aivia.core.config.sfx import SfxConfig
 from aivia.core.config.video import (
     DEFAULT_AUDIO_CODEC,
     DEFAULT_VIDEO_CODEC,
@@ -121,6 +122,7 @@ __all__ = [
     "ScheduleConfig",
     "ScheduleEntryConfig",
     "ScoringConfig",
+    "SfxConfig",
     "StorageConfig",
     "TracingConfig",
     "VideoConfig",
@@ -645,6 +647,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("character", CharacterConfig),
     ("brand", BrandKitConfig),
     ("music", MusicConfig),
+    ("sfx", SfxConfig),
     ("retention", RetentionConfig),
     ("review", ReviewConfig),
     ("privacy", PrivacyConfig),
