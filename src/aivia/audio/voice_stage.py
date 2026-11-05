@@ -32,6 +32,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+from aivia.audio.qa import AudioQAReport, check_audio_quality
 from aivia.compose.timeline import Timeline
 from aivia.core.config.media import DEFAULT_MEDIA_VOICE_GAP_SECONDS
 from aivia.core.errors import ConfigError
@@ -518,6 +519,55 @@ def _write_json(path: Path, value: Any) -> None:
         raise
 
 
+_QUALITY_OPTION_KEYS = ("audio_qa", "audio_quality", "qa", "quality")
+_QUALITY_THRESHOLD_KEYS = frozenset(
+    {
+        "expected_words_per_second",
+        "max_internal_silence_seconds",
+        "max_leading_silence_seconds",
+        "max_mispronunciation_ratio",
+        "max_silence_ratio",
+        "max_trailing_silence_seconds",
+        "min_duration_ratio",
+        "min_word_confidence",
+        "silent_ratio",
+    }
+)
+_QUALITY_EXTRA_KEYS = ("transcripts", "silences", "pronunciations")
+
+
+def _quality_options(
+    options: Mapping[str, Any],
+) -> tuple[bool, dict[str, Any], dict[str, Any]]:
+    """Resolve the quality gate toggle, thresholds and extra check inputs."""
+    raw: Any = True
+    for key in _QUALITY_OPTION_KEYS:
+        if key in options:
+            raw = options[key]
+            break
+    enabled = True
+    values: dict[str, Any] = {}
+    if isinstance(raw, Mapping):
+        enabled = bool(raw.get("enabled", True))
+        values.update(raw)
+    elif raw is not None:
+        enabled = bool(raw)
+
+    extras: dict[str, Any] = {}
+    for key in _QUALITY_EXTRA_KEYS:
+        if key in options:
+            extras[key] = options[key]
+        elif key in values:
+            extras[key] = values.pop(key)
+    thresholds = {
+        key: options[key] for key in _QUALITY_THRESHOLD_KEYS if key in options
+    }
+    thresholds.update(
+        {key: value for key, value in values.items() if key in _QUALITY_THRESHOLD_KEYS}
+    )
+    return enabled, thresholds, extras
+
+
 class VoiceStageResult(StageResult):
     """A stage result whose metadata carries per-language durations."""
 
@@ -536,6 +586,25 @@ class VoiceStageResult(StageResult):
     def timeline(self) -> str:
         raw = self.metadata.get("timeline")
         return raw if isinstance(raw, str) else ""
+
+    @property
+    def quality(self) -> dict[str, Any]:
+        """The serialized audio quality report, empty when checks were off."""
+        raw = self.metadata.get("quality")
+        return dict(raw) if isinstance(raw, Mapping) else {}
+
+    @property
+    def quality_ok(self) -> bool:
+        """Whether the audio quality pass found no errors."""
+        return bool(self.metadata.get("quality_ok", True))
+
+    @property
+    def quality_findings(self) -> list[dict[str, Any]]:
+        """The serialized quality findings in report order."""
+        raw = self.metadata.get("quality_findings")
+        if not isinstance(raw, list):
+            return []
+        return [dict(finding) for finding in raw if isinstance(finding, Mapping)]
 
 
 class VoiceStage(Stage):
@@ -640,6 +709,11 @@ class VoiceStage(Stage):
         self.script_filename_pattern = str(
             merged.get("script_filename_pattern") or DEFAULT_SCRIPT_FILENAME_PATTERN
         )
+        (
+            self.quality_enabled,
+            self.quality_thresholds,
+            self.quality_extras,
+        ) = _quality_options(merged)
         self.scripts_by_language: dict[str, Script] = {}
         self._declared_input_override: tuple[str, ...] | None = None
 
@@ -1149,6 +1223,23 @@ class VoiceStage(Stage):
             event for event in events if str(getattr(event, "id", "")) not in before
         ]
 
+    def _quality_report(
+        self,
+        timeline: Timeline,
+        scripts: Mapping[str, Script],
+    ) -> AudioQAReport | None:
+        if not self.quality_enabled:
+            return None
+        extras = self.quality_extras
+        return check_audio_quality(
+            timeline,
+            scripts=scripts,
+            transcripts=extras.get("transcripts"),
+            silences=extras.get("silences"),
+            pronunciations=extras.get("pronunciations"),
+            **self.quality_thresholds,
+        )
+
     async def run(self, context: StageContext) -> StageResult:
         scripts = self._load_scripts(context)
         self.scripts_by_language = scripts
@@ -1228,6 +1319,7 @@ class VoiceStage(Stage):
         _write_json(context.run_dir / relative, timeline.model_dump(mode="json"))
         self.artifacts = (relative,)
 
+        quality = self._quality_report(timeline, scripts)
         metadata = {
             "mode": self.mode,
             "gap_seconds": self.gap_seconds,
@@ -1239,6 +1331,12 @@ class VoiceStage(Stage):
             "provider": provider,
             "model": model,
         }
+        if quality is not None:
+            report = quality.to_dict()
+            metadata["quality"] = report
+            metadata["audio_quality"] = report
+            metadata["quality_ok"] = quality.passed
+            metadata["quality_findings"] = report["findings"]
         return VoiceStageResult(
             run_id=run_id,
             stage=self.name,

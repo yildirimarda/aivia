@@ -409,3 +409,108 @@ def test_editing_a_script_reruns_the_voice_stage_on_resume(
     assert third.ok is True
     assert len(speech.requests) == 2
     assert third.stages[0].status is StageState.SKIPPED
+
+
+def test_stage_runs_audio_quality_checks_and_records_the_report(
+    tmp_path: Path,
+) -> None:
+    _write_script(
+        tmp_path,
+        _script({"text": "First line."}, {"text": "Second line."}),
+    )
+    speech = FakeSpeech(
+        durations={"First line.": 1.0, "Second line.": 1.0},
+    )
+    stage = VoiceStage(options={"gap_seconds": 0.5}, speech=speech)
+
+    result = cast(VoiceStageResult, _run(stage.run(_context(tmp_path))))
+
+    quality = result.metadata["quality"]
+    assert quality == result.metadata["audio_quality"]
+    assert quality["ok"] is True
+    assert quality["passed"] is True
+    assert quality["segments"] == 2
+    assert quality["languages"] == ["en"]
+    assert quality["findings"] == []
+    assert result.metadata["quality_ok"] is True
+    assert result.metadata["quality_findings"] == []
+    assert result.quality == quality
+    assert result.quality_ok is True
+    assert result.quality_findings == []
+
+
+def test_stage_records_duplication_findings_but_still_succeeds(
+    tmp_path: Path,
+) -> None:
+    _write_script(tmp_path, _script({"text": "The the same."}))
+    speech = FakeSpeech(durations={"The the same.": 1.0})
+    stage = VoiceStage(speech=speech)
+
+    result = cast(VoiceStageResult, _run(stage.run(_context(tmp_path))))
+
+    quality = result.metadata["quality"]
+    assert quality["ok"] is False
+    assert quality["passed"] is True
+    assert [finding["code"] for finding in quality["findings"]] == ["duplication"]
+    assert "repeats the word 'the'" in quality["findings"][0]["message"]
+    assert result.metadata["quality_ok"] is True
+    assert result.metadata["quality_findings"] == quality["findings"]
+    assert result.status is StageState.SUCCEEDED
+
+
+def test_stage_records_silence_findings_from_word_timings(
+    tmp_path: Path,
+) -> None:
+    _write_script(tmp_path, _script({"text": "Hello world."}))
+    speech = FakeSpeech(
+        durations={"Hello world.": 3.0},
+        words={
+            "Hello world.": [
+                {"word": "Hello", "start": 1.0, "end": 1.5},
+                {"word": "world", "start": 1.5, "end": 3.0},
+            ]
+        },
+    )
+    stage = VoiceStage(speech=speech)
+
+    result = cast(VoiceStageResult, _run(stage.run(_context(tmp_path))))
+
+    findings = result.metadata["quality_findings"]
+    assert [finding["code"] for finding in findings] == ["silence"]
+    assert "starts with 1.00s of silence" in findings[0]["message"]
+    assert findings[0]["severity"] == "warning"
+    assert result.metadata["quality"]["passed"] is True
+    assert result.quality_ok is True
+
+
+def test_stage_quality_thresholds_can_be_configured_or_disabled(
+    tmp_path: Path,
+) -> None:
+    _write_script(tmp_path, _script({"text": "Hello world."}))
+    speech = FakeSpeech(
+        durations={"Hello world.": 3.0},
+        words={
+            "Hello world.": [
+                {"word": "Hello", "start": 1.0, "end": 1.5},
+                {"word": "world", "start": 1.5, "end": 3.0},
+            ]
+        },
+    )
+
+    relaxed = VoiceStage(
+        options={"quality": {"max_leading_silence_seconds": 5.0}},
+        speech=speech,
+    )
+    relaxed_result = cast(
+        VoiceStageResult,
+        _run(relaxed.run(_context(tmp_path))),
+    )
+    assert relaxed_result.metadata["quality"]["ok"] is True
+
+    disabled = VoiceStage(options={"quality": False}, speech=speech)
+    disabled_result = cast(
+        VoiceStageResult,
+        _run(disabled.run(_context(tmp_path))),
+    )
+    assert "quality" not in disabled_result.metadata
+    assert disabled_result.quality == {}
