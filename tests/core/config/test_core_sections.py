@@ -58,6 +58,7 @@ from aivia.core.errors import ConfigError
 EXPECTED_KEYS = {
     "accessibility",
     "api",
+    "audio_qa",
     "brand",
     "budget",
     "circuit",

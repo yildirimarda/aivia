@@ -14,6 +14,7 @@ from typing import Any, Literal, Self
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
+from aivia.core.config.audio_qa import AudioQAConfig
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.budget import BudgetConfig, OnExceed
 from aivia.core.config.character import BrandKitConfig, CharacterConfig
@@ -76,6 +77,7 @@ __all__ = [
     "DEFAULT_VIDEO_CODEC",
     "AccessibilityConfig",
     "ApiConfig",
+    "AudioQAConfig",
     "BrandKitConfig",
     "BudgetConfig",
     "CharacterConfig",
@@ -653,6 +655,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("privacy", PrivacyConfig),
     ("tracing", TracingConfig),
     ("accessibility", AccessibilityConfig),
+    ("audio_qa", AudioQAConfig),
 )
 
 CORE_SECTION_KEYS: tuple[str, ...] = tuple(sorted(key for key, _ in CORE_SECTIONS))

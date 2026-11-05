@@ -94,6 +94,93 @@
       "title": "ApiConfig",
       "type": "object"
     },
+    "AudioQAConfig": {
+      "additionalProperties": false,
+      "description": "Thresholds, accepted pronunciations and failure policy for audio QA.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "expected_words_per_second": {
+          "default": 2.5,
+          "exclusiveMinimum": 0,
+          "title": "Expected Words Per Second",
+          "type": "number"
+        },
+        "fail_on_error": {
+          "default": true,
+          "title": "Fail On Error",
+          "type": "boolean"
+        },
+        "max_internal_silence_seconds": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Max Internal Silence Seconds",
+          "type": "number"
+        },
+        "max_leading_silence_seconds": {
+          "default": 0.75,
+          "minimum": 0,
+          "title": "Max Leading Silence Seconds",
+          "type": "number"
+        },
+        "max_mispronunciation_ratio": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Max Mispronunciation Ratio",
+          "type": "number"
+        },
+        "max_silence_ratio": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Max Silence Ratio",
+          "type": "number"
+        },
+        "max_trailing_silence_seconds": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Max Trailing Silence Seconds",
+          "type": "number"
+        },
+        "min_duration_ratio": {
+          "default": 0.4,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Duration Ratio",
+          "type": "number"
+        },
+        "min_word_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Word Confidence",
+          "type": "number"
+        },
+        "pronunciations": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Pronunciations",
+          "type": "object"
+        },
+        "silent_ratio": {
+          "default": 0.9,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Silent Ratio",
+          "type": "number"
+        }
+      },
+      "title": "AudioQAConfig",
+      "type": "object"
+    },
     "BrandKitConfig": {
       "additionalProperties": false,
       "description": "Colours, fonts, logo, watermark, intro/outro and caption style.",
@@ -3560,6 +3647,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/ApiConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "audio_qa": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AudioQAConfig"
         },
         {
           "type": "null"

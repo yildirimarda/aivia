@@ -12,6 +12,7 @@ This reference is generated from the registered configuration models, their JSON
 | `schema_version` | integer | Configuration schema version. |
 | `accessibility` | [AccessibilityConfig](#accessibility) or null | Alt text, subtitles and contrast settings for accessible outputs. |
 | `api` | [ApiConfig](#api) or null | The local HTTP API bind address, authentication and request limits. |
+| `audio_qa` | [AudioQAConfig](#audio_qa) or null | Thresholds, accepted pronunciations and failure policy for audio QA. |
 | `brand` | [BrandKitConfig](#brand) or null | Colours, fonts, logo, watermark, intro/outro and caption style. |
 | `budget` | [BudgetConfig](#budget) or null | Spending caps, provider monthly limits, alert thresholds and policy. |
 | `character` | [CharacterConfig](#character) or null | Consistency chain, QA thresholds, consent flags and reference limit. |
@@ -80,6 +81,25 @@ The local HTTP API bind address, authentication and request limits.
 | `port` | integer | `8765` | >= 1; <= 65535 |  |
 | `rate_limit_per_minute` | integer | `60` | >= 0 |  |
 | `require_auth` | boolean | `true` |  |  |
+
+## `audio_qa`
+
+Thresholds, accepted pronunciations and failure policy for audio QA.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `enabled` | boolean | `true` |  |  |
+| `expected_words_per_second` | number | `2.5` | > 0 |  |
+| `fail_on_error` | boolean | `true` |  |  |
+| `max_internal_silence_seconds` | number | `1.0` | >= 0 |  |
+| `max_leading_silence_seconds` | number | `0.75` | >= 0 |  |
+| `max_mispronunciation_ratio` | number | `0.5` | >= 0; <= 1 |  |
+| `max_silence_ratio` | number | `0.5` | >= 0; <= 1 |  |
+| `max_trailing_silence_seconds` | number | `1.0` | >= 0 |  |
+| `min_duration_ratio` | number | `0.4` | >= 0; <= 1 |  |
+| `min_word_confidence` | number | `0.5` | >= 0; <= 1 |  |
+| `pronunciations` | map of array of string |  |  |  |
+| `silent_ratio` | number | `0.9` | >= 0; <= 1 |  |
 
 ## `brand`
 

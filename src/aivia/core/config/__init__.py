@@ -8,6 +8,13 @@ from aivia.core.config.app import (
     parse_app_config,
     validate_cross_references,
 )
+from aivia.core.config.audio_qa import (
+    AudioQA,
+    AudioQa,
+    AudioQAConfig,
+    AudioQaConfig,
+    AudioQualityConfig,
+)
 from aivia.core.config.base import ConfigModel, dotted_path, interpolate_env
 from aivia.core.config.budget import (
     BudgetConfig,
@@ -372,6 +379,11 @@ __all__ = [
     "ApiConfig",
     "AppConfig",
     "ApprovalMode",
+    "AudioQA",
+    "AudioQAConfig",
+    "AudioQa",
+    "AudioQaConfig",
+    "AudioQualityConfig",
     "BrandConfig",
     "BrandKit",
     "BrandKitConfig",
