@@ -159,9 +159,7 @@ def _prompt_of(beat: Beat, visual_type: VisualType) -> MediaPrompt | None:
 
 def _visual_prompts(beat: Beat) -> list[MediaPrompt]:
     return [
-        prompt
-        for prompt in beat.media_prompts
-        if prompt.kind in _VISUAL_PROMPT_KINDS
+        prompt for prompt in beat.media_prompts if prompt.kind in _VISUAL_PROMPT_KINDS
     ]
 
 
@@ -434,11 +432,7 @@ def _request_for(
     else:
         prompt_text = fallback
 
-    query = (
-        (prompt_text or fallback)
-        if visual_type is VisualType.STOCK
-        else ""
-    )
+    query = (prompt_text or fallback) if visual_type is VisualType.STOCK else ""
 
     chosen_aspect = _first_text(
         [
