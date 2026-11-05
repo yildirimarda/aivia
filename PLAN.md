@@ -595,6 +595,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Build the configured media router when a music command selects a provider bed for a run (tests/cli/test_music.py)
 - [ ] Apply sfx config rule files, volume and placement as stage defaults when options omit them (tests/audio/test_sfx_stage.py)
 - [ ] Stop an unchanged sfx stage from rerunning because it rewrites the timeline it reads (tests/audio/test_sfx_stage.py)
+- [ ] Apply audio QA config thresholds, pronunciations and failure policy as voice stage defaults (tests/audio/test_voice_stage.py)
 
 ## Milestone 13: Visuals in the pipeline
 
