@@ -591,7 +591,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Declare the sfx rule file as a stage input so editing rules invalidates resume (tests/audio/test_sfx_stage.py)
 - [x] Register edited subtitle files and re-burnt outputs in the run artifact manifest so resume sees them (tests/cli/test_subtitle_edit.py)
 - [x] Regenerate every platform subtitle when editing a multi platform timeline so no stale ASS file survives (tests/cli/test_subtitle_edit.py)
-- [ ] Add an audio QA config section for thresholds, pronunciations and fail on error (tests/core/config/test_audio_qa.py)
+- [x] Add an audio QA config section for thresholds, pronunciations and fail on error (tests/core/config/test_audio_qa.py)
 - [ ] Build the configured media router when a music command selects a provider bed for a run (tests/cli/test_music.py)
 - [ ] Apply sfx config rule files, volume and placement as stage defaults when options omit them (tests/audio/test_sfx_stage.py)
 - [ ] Stop an unchanged sfx stage from rerunning because it rewrites the timeline it reads (tests/audio/test_sfx_stage.py)
