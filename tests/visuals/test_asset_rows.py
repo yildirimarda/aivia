@@ -18,13 +18,20 @@ from aivia.core.models.asset import (
     AssetLicense,
     compute_prompt_hash,
 )
+from aivia.core.models.run import Run
 from aivia.core.models.script import MediaKind, VisualType
+from aivia.core.orchestrator import Orchestrator
 from aivia.core.stages import StageContext
 from aivia.media.image_qa import ImageQAAttempt, ImageQAResult, ImageQualityScore
 from aivia.media.image_service import ImageOutcome
 from aivia.providers.protocols.image import ImageResponse, ImageResult
-from aivia.providers.protocols.stock import StockAsset, StockMediaKind
+from aivia.providers.protocols.stock import (
+    StockAsset,
+    StockMediaKind,
+    StockResponse,
+)
 from aivia.visuals import (
+    StockStage,
     VisualQAStage,
     VisualQAStageResult,
     VisualRequest,
@@ -51,6 +58,56 @@ def _license() -> AssetLicense:
         commercial_use=True,
         attribution_required=True,
     )
+
+
+def _accepted_qa() -> tuple[Asset, ImageQAResult]:
+    asset = Asset(
+        id="asset_accepted",
+        kind=AssetKind.IMAGE,
+        provider="fake-image",
+        model="fake-model",
+        prompt="A lighthouse",
+        path="file:///tmp/lighthouse.png",
+        license=_license(),
+        cost_links=[AssetCostLink(cost_event_id="cost_3", amount_usd=0.04)],
+        pinned=True,
+    )
+    response = ImageResponse(
+        images=[ImageResult(data=b"image", width=1, height=1)],
+        provider="fake-image",
+        model="fake-model",
+    )
+    outcome = ImageOutcome(response=response, assets=(asset,))
+    score = ImageQualityScore(
+        score=0.93,
+        description="A lighthouse at sunset",
+        threshold=0.5,
+    )
+    attempt = ImageQAAttempt(
+        index=0,
+        provider="fake-image",
+        outcome=outcome,
+        scores=(score,),
+        passed=True,
+    )
+    return asset, ImageQAResult(
+        attempts=(attempt,),
+        outcome=outcome,
+        score=score,
+        passed=True,
+    )
+
+
+class _StockSearch:
+    def __init__(self, assets: list[StockAsset]) -> None:
+        self.assets = assets
+
+    async def search(self, request: Any) -> StockResponse:
+        return StockResponse(
+            query=request.query,
+            assets=list(self.assets),
+            provider="fake-stock",
+        )
 
 
 def test_persist_asset_rows_writes_every_provenance_field(engine: Engine) -> None:
@@ -234,4 +291,85 @@ def test_the_qa_stage_persists_the_accepted_asset_with_its_score_and_alt_text(
     assert row.cost_event_ids == ["cost_3"]
     assert row.quality_score == pytest.approx(0.93)
     assert row.alt_text == "A lighthouse at sunset"
+    assert row.pinned is True
+
+
+def test_the_qa_stage_persists_through_the_context_database(
+    engine: Engine,
+    tmp_path: Path,
+) -> None:
+    asset, qa_result = _accepted_qa()
+
+    async def runner(request: Any, **_: Any) -> ImageQAResult:
+        return qa_result
+
+    stage = VisualQAStage(
+        requests=[
+            VisualRequest(
+                index=0,
+                visual_type=VisualType.IMAGE,
+                kind=MediaKind.IMAGE,
+                prompt="A lighthouse",
+            )
+        ],
+        image_qa=runner,
+    )
+
+    result = asyncio.run(
+        stage.run(StageContext(run_dir=tmp_path, config={}, database=engine))
+    )
+
+    assert isinstance(result, VisualQAStageResult)
+    row = AssetRepository(engine).get(asset.id)
+    assert row is not None
+    assert row.quality_score == pytest.approx(0.93)
+    assert row.alt_text == "A lighthouse at sunset"
+
+
+def test_the_orchestrator_passes_its_run_engine_to_the_stock_stage(
+    engine: Engine,
+    tmp_path: Path,
+) -> None:
+    stock = StockAsset(
+        id="stock_1",
+        provider="pexels",
+        kind=StockMediaKind.IMAGE,
+        url="https://example.com/boat.jpg",
+        width=1920,
+        height=1080,
+        license="Pexels License",
+        license_url="https://www.pexels.com/license/",
+        attribution="Photo by Ada",
+        metadata={"alt": "A red boat on a lake"},
+    )
+    stage = StockStage(
+        requests=[
+            VisualRequest(
+                index=0,
+                visual_type=VisualType.STOCK,
+                kind=MediaKind.STOCK,
+                prompt="A boat at dawn",
+                query="boat",
+            )
+        ],
+        search=_StockSearch([stock]),
+    )
+    orchestrator = Orchestrator(
+        stages=[stage],
+        run=Run(id="run_stock"),
+        repository=engine,
+        run_dir=tmp_path,
+        config={},
+    )
+
+    result = asyncio.run(orchestrator.execute())
+
+    assert result.ok is True
+    rows = AssetRepository(engine).list(run_id="run_stock")
+    assert [row.label for row in rows] == ["stock_1"]
+    row = rows[0]
+    assert row.provider == "pexels"
+    assert row.prompt == "A boat at dawn"
+    assert row.license.name == "Pexels License"
+    assert row.alt_text == "A red boat on a lake"
     assert row.pinned is True

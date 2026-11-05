@@ -1300,6 +1300,11 @@ class StockStage(Stage):
         if search is None:
             search = self._router if self._router is not None else context.router
         run_id = context.run.id if context.run is not None else ""
+        assets = self._assets
+        if assets is None:
+            assets = (
+                context.database if context.database is not None else context.engine
+            )
         results: list[StockBeatResult] = []
         for position, request in enumerate(stock_requests):
             result = await resolve_stock_request(
@@ -1327,8 +1332,8 @@ class StockStage(Stage):
                 run_id=run_id,
                 metadata={"position": position},
             )
-            if self._assets is not None:
-                persist_asset_rows(self._assets, result, run_id=run_id)
+            if assets is not None:
+                persist_asset_rows(assets, result, run_id=run_id)
             results.append(result)
         self.results = results
 

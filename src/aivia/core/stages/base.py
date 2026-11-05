@@ -124,7 +124,8 @@ class StageContext:
     ``storage`` are shared collaborators, never rebuilt per stage. ``logger``
     is already bound to the run and stage by the caller. ``run`` is optional so
     a unit test can build a context for a stage that does not inspect the run
-    record.
+    record. ``database`` is the run's database engine, shared with a stage that
+    writes durable records such as asset rows; ``engine`` is its alias.
     """
 
     run_dir: Path
@@ -136,10 +137,16 @@ class StageContext:
         default_factory=lambda: logging.getLogger("aivia.stages")
     )
     run: Run | None = None
+    database: Any = None
+    engine: Any = None
     _media: Any = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.run_dir = Path(self.run_dir).expanduser()
+        if self.database is None:
+            self.database = self.engine
+        elif self.engine is None:
+            self.engine = self.database
 
     @property
     def run_directory(self) -> Path:

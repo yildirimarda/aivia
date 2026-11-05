@@ -319,6 +319,7 @@ class Orchestrator:
         run: Run | str | None = None,
         *,
         repository: StageRunRepository | Engine | None = None,
+        engine: Engine | None = None,
         stage_repository: StageRunRepository | None = None,
         state_machine: RunStateMachine | None = None,
         run_repository: RunRepository | None = None,
@@ -349,18 +350,25 @@ class Orchestrator:
         self.sleep = sleep
         self.raise_on_failure = raise_on_failure
         self.result: OrchestrationResult | None = None
+        self.engine = engine
 
         if isinstance(repository, Engine):
-            engine = repository
+            self.engine = repository
             self.stage_repository: StageRunRepository | None = (
-                stage_repository or StageRunRepository(engine)
+                stage_repository or StageRunRepository(repository)
             )
             if run_repository is None and state_machine is None:
-                run_repository = RunRepository(engine)
+                run_repository = RunRepository(repository)
         elif repository is not None:
             self.stage_repository = repository
+            if self.engine is None:
+                found_engine = getattr(repository, "engine", None)
+                if isinstance(found_engine, Engine):
+                    self.engine = found_engine
         else:
             self.stage_repository = stage_repository
+            if self.stage_repository is None and self.engine is not None:
+                self.stage_repository = StageRunRepository(self.engine)
 
         if state_machine is not None:
             self.state_machine: RunStateMachine | None = state_machine
@@ -376,6 +384,13 @@ class Orchestrator:
             else:
                 self.state_machine = None
                 self.run_repository = None
+
+        if self.engine is None:
+            for candidate in (self.stage_repository, self.run_repository):
+                found_engine = getattr(candidate, "engine", None)
+                if isinstance(found_engine, Engine):
+                    self.engine = found_engine
+                    break
 
     async def execute(
         self,
@@ -414,6 +429,7 @@ class Orchestrator:
                 storage=self.storage,
                 logger=self.logger.getChild(stage.name),
                 run=run_record,
+                engine=self.engine,
             )
             expected_input = compute_input_hash(
                 stage,
