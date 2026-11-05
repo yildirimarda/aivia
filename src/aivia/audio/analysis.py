@@ -149,9 +149,7 @@ class SilenceMap:
     @property
     def intervals(self) -> tuple[tuple[float, float], ...]:
         """The spans as plain ``(start, end)`` pairs."""
-        return tuple(
-            (span.start_seconds, span.end_seconds) for span in self.spans
-        )
+        return tuple((span.start_seconds, span.end_seconds) for span in self.spans)
 
     @property
     def total_seconds(self) -> float:
