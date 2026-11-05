@@ -4,16 +4,28 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from sqlalchemy import Engine
 
 from aivia.audio import VoiceStage, VoiceStageResult
 from aivia.compose import Timeline, compositions_from_timeline
+from aivia.core.cost import CostTracker
+from aivia.core.db import (
+    RunRepository,
+    StageRunRepository,
+    create_database_engine,
+    upgrade_database,
+)
 from aivia.core.errors import ConfigError
+from aivia.core.models import Run, StageState
+from aivia.core.orchestrator import Orchestrator
+from aivia.core.resume import compute_input_hash
+from aivia.core.run_state import RunStateMachine
 from aivia.core.stages import StageContext
 from aivia.providers.protocols.tts import TTSRequest
 
@@ -78,6 +90,16 @@ def _write_script(run_dir: Path, value: dict[str, Any]) -> Path:
 
 def _context(run_dir: Path, *, config: Any = None) -> StageContext:
     return StageContext(run_dir=run_dir, config=config or {})
+
+
+@pytest.fixture
+def engine() -> Iterator[Engine]:
+    created = create_database_engine(url="sqlite+pysqlite:///:memory:")
+    upgrade_database(engine=created)
+    try:
+        yield created
+    finally:
+        created.dispose()
 
 
 def test_beat_mode_voices_each_beat_with_gaps_and_real_durations(
@@ -292,3 +314,98 @@ def test_stage_reads_only_the_requested_language(tmp_path: Path) -> None:
         json.loads((tmp_path / "timeline.json").read_text(encoding="utf-8"))
     )
     assert [language.language for language in timeline.languages] == ["de"]
+
+
+def test_stage_declares_each_language_script_file_as_an_input() -> None:
+    stage = VoiceStage(options={"languages": ["en", "de"]})
+
+    assert stage.inputs == ("script.en.json", "script.de.json")
+
+
+def test_stage_declares_script_inputs_using_the_configured_pattern() -> None:
+    stage = VoiceStage(
+        options={
+            "languages": ["en"],
+            "script_filename_pattern": "scripts/{code}/script.json",
+        }
+    )
+
+    assert stage.inputs == ("scripts/en/script.json",)
+
+
+def test_stage_declares_no_script_inputs_when_scripts_are_injected() -> None:
+    stage = VoiceStage(
+        scripts={"en": _script({"text": "Hello."})},
+        options={"languages": ["en"]},
+    )
+
+    assert stage.inputs == ()
+
+
+def test_editing_a_language_script_changes_the_stage_input_hash(
+    tmp_path: Path,
+) -> None:
+    _write_script(tmp_path, _script({"text": "First."}, language="en"))
+    _write_script(tmp_path, _script({"text": "Erste."}, language="de"))
+    stage = VoiceStage(options={"languages": ["en", "de"]})
+    original = compute_input_hash(stage, base_dir=tmp_path)
+
+    _write_script(tmp_path, _script({"text": "Changed."}, language="de"))
+    assert compute_input_hash(stage, base_dir=tmp_path) != original
+
+    _write_script(tmp_path, _script({"text": "Erste."}, language="de"))
+    assert compute_input_hash(stage, base_dir=tmp_path) == original
+
+
+def test_editing_a_discovered_script_changes_the_stage_input_hash(
+    tmp_path: Path,
+) -> None:
+    _write_script(tmp_path, _script({"text": "First."}, language="en"))
+    stage = VoiceStage()
+    original = compute_input_hash(stage, base_dir=tmp_path)
+
+    _write_script(tmp_path, _script({"text": "Changed."}, language="en"))
+
+    assert compute_input_hash(stage, base_dir=tmp_path) != original
+
+
+def test_editing_a_script_reruns_the_voice_stage_on_resume(
+    tmp_path: Path,
+    engine: Engine,
+) -> None:
+    _write_script(tmp_path, _script({"text": "First."}, language="en"))
+    machine = RunStateMachine(RunRepository(engine))
+    run = machine.create(Run())
+    speech = FakeSpeech()
+    stage = VoiceStage(speech=speech)
+
+    def execute() -> Any:
+        return Orchestrator(
+            stages=[stage],
+            run=run.id,
+            repository=StageRunRepository(engine),
+            run_dir=tmp_path,
+            config={},
+            cost=CostTracker(engine),
+            raise_on_failure=False,
+        ).execute_sync()
+
+    first = execute()
+    stored = StageRunRepository(engine).get(run.id, "voice")
+    assert first.ok is True
+    assert len(speech.requests) == 1
+    assert stored is not None
+
+    _write_script(tmp_path, _script({"text": "Changed."}, language="en"))
+    second = execute()
+
+    assert second.ok is True
+    assert len(speech.requests) == 2
+    assert second.stages[0].status is StageState.SUCCEEDED
+    assert second.stages[0].input_hash != stored.input_hash
+
+    third = execute()
+
+    assert third.ok is True
+    assert len(speech.requests) == 2
+    assert third.stages[0].status is StageState.SKIPPED
