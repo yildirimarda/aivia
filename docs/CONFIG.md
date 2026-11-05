@@ -25,6 +25,7 @@ This reference is generated from the registered configuration models, their JSON
 | `languages` | [LanguagesConfig](#languages) or null | The available languages plus the one used when none is requested. A config file may write the language entries directly under the section (``languages: {en: {...}, de: {...}}``) or nest them under ``languages``; both forms validate to the same model. |
 | `llm` | [LLMConfig](#llm) or null | Provider chain, per-role models, token prices and the repair limit. |
 | `models_file` | [ModelsFileConfig](#models_file) or null | The model catalog path, with a documented default of ``models.yaml``. A bare string is accepted as shorthand for ``{path: <string>}`` so the canonical ``models_file: models.yaml`` form in the design stays valid. |
+| `music` | [MusicConfig](#music) or null | Default music source, local library, mood, gain and ducking settings. |
 | `occasions` | [OccasionsConfig](#occasions) or null | The configured occasions and the one selected by default. Occasions may be written directly under the section (``occasions: {birthday: {...}}``) or nested under ``occasions``. |
 | `orders` | [OrdersConfig](#orders) or null | Personalized order defaults: levels, name verification and pricing. |
 | `pipeline` | [PipelineConfig](#pipeline) or null | The ordered stages a pipeline runs and the timezone used for schedules. |
@@ -240,6 +241,18 @@ The model catalog path, with a documented default of ``models.yaml``. A bare str
 | Key | Type | Default | Constraints | Description |
 | --- | --- | --- | --- | --- |
 | `path` | string | `"models.yaml"` | length >= 1 |  |
+
+## `music`
+
+Default music source, local library, mood, gain and ducking settings.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `ducking` | [MusicDuckingConfig](#musicduckingconfig) |  |  | Sidechain compression that lowers music while a voice is present. |
+| `library_path` | string | `""` |  |  |
+| `mood` | string | `""` |  |  |
+| `source` | [MusicSource](#musicsource) | `"auto"` | one of: `auto`, `library`, `provider` | Where a background music bed may come from. |
+| `volume_db` | number | `-6.0` |  |  |
 
 ## `occasions`
 
@@ -689,6 +702,24 @@ Settings for one language written natively from the shared fact base.
 | `name` | string | `""` |  |  |
 | `subtitle_font` | string | `"Lato"` | length >= 1 |  |
 | `words_per_second` | [WordsPerSecondConfig](#wordspersecondconfig) |  |  | Inclusive speaking-rate bounds used to estimate and check script length. |
+
+### MusicDuckingConfig
+
+Sidechain compression that lowers music while a voice is present.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `attack_ms` | number | `20.0` |  |  |
+| `enabled` | boolean | `true` |  |  |
+| `ratio` | number | `8.0` |  |  |
+| `release_ms` | number | `300.0` |  |  |
+| `threshold_db` | number | `-25.0` |  |  |
+
+### MusicSource
+
+Where a background music bed may come from.
+
+Allowed values: `auto`, `library`, `provider`.
 
 ### NameVerifyConfig
 

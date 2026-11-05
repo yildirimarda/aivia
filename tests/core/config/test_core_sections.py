@@ -70,6 +70,7 @@ EXPECTED_KEYS = {
     "languages",
     "llm",
     "models_file",
+    "music",
     "delivery",
     "occasions",
     "orders",

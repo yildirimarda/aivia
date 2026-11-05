@@ -24,6 +24,7 @@ from aivia.core.config.formats import FormatsConfig
 from aivia.core.config.http import HttpClientConfig
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.models_file import ModelsFileConfig
+from aivia.core.config.music import MusicConfig
 from aivia.core.config.ops import (
     JobsConfig,
     RetentionConfig,
@@ -89,6 +90,7 @@ __all__ = [
     "LLMConfig",
     "LanguageConfig",
     "LanguagesConfig",
+    "MusicConfig",
     "OccasionsConfig",
     "OnExceed",
     "OrdersConfig",
@@ -642,6 +644,7 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("reference", ReferenceConfig),
     ("character", CharacterConfig),
     ("brand", BrandKitConfig),
+    ("music", MusicConfig),
     ("retention", RetentionConfig),
     ("review", ReviewConfig),
     ("privacy", PrivacyConfig),
