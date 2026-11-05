@@ -1116,13 +1116,18 @@ class VisualQAStage(Stage):
         )
 
     def _quality(self, context: StageContext) -> VisualQA:
+        assets = self._assets
+        if assets is None:
+            assets = (
+                context.database if context.database is not None else context.engine
+            )
         return VisualQA(
             image=self._image,
             video=self._video,
             image_qa=self._image_qa,
             video_qa=self._video_qa,
             config=self._config if self._config is not None else context.config,
-            assets=self._assets,
+            assets=assets,
             **self.options,
         )
 
