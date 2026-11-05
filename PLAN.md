@@ -609,7 +609,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Resolve image beats through the media service, storing prompt hash, provider and model with the asset (tests/visuals/test_image_stage.py)
 - [x] Resolve video beats with duration clamped to the beat, a per clip cap and the platform aspect ratio (tests/visuals/test_video_stage.py)
 - [x] Run visual quality checks per asset with retries and fallback, logging every attempt with its cost (tests/visuals/test_qa_integration.py)
-- [ ] Downgrade from video to image to stock under a tight budget, emitting an alert and never exceeding the cap (tests/visuals/test_downgrade.py)
+- [x] Downgrade from video to image to stock under a tight budget, emitting an alert and never exceeding the cap (tests/visuals/test_downgrade.py)
 - [ ] Generate visuals once per run and share them across languages (tests/visuals/test_reuse.py)
 - [ ] Persist provider, model, prompt hash, license, cost links, quality score, alt text and pinned flag on every asset row (tests/visuals/test_asset_rows.py)
 - [ ] Add a visuals command printing the per beat decision, provider, cost and quality score (tests/cli/test_visuals.py)
