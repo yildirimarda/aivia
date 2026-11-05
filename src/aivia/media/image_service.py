@@ -53,6 +53,7 @@ from aivia.media.adaptation import (
     adapt_for_provider,
     cache_request_variants,
 )
+from aivia.media.provenance import alt_text_from, license_from
 from aivia.media.screening import (
     DEFAULT_PROMPT_KIND,
     ScreeningToken,
@@ -828,7 +829,13 @@ class ImageService:
                 run_id=run_id,
                 pinned=pinned,
                 seed=seeds[index],
+                license=license_from(
+                    request.metadata,
+                    response.metadata,
+                    provider=selection.provider,
+                ),
                 analysis=AssetAnalysis(width=probe.width, height=probe.height),
+                alt_text=alt_text_from(request.metadata, response.metadata),
                 cost_links=cost_links,
             )
             if use_cache and self._cache is not None:

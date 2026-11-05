@@ -33,6 +33,7 @@ from aivia.core.stages.base import Stage, StageContext
 from aivia.media.image_qa import ImageQAResult, run_image_qa
 from aivia.media.video_qa import VideoQAResult, run_video_qa
 from aivia.providers.protocols.stock import StockAsset
+from aivia.visuals.asset_rows import persist_asset_rows
 from aivia.visuals.image_stage import (
     _image_request,
     _supported_kwargs,
@@ -248,10 +249,32 @@ def _qa_values(options: Mapping[str, Any], keys: Sequence[str]) -> dict[str, Any
     return values
 
 
-def _with_quality(asset: Asset | None, score: float | None) -> Asset | None:
-    if asset is None or score is None or asset.quality_score is not None:
-        return asset
-    return asset.model_copy(update={"quality_score": score})
+def _with_quality(
+    asset: Asset | None,
+    score: float | None,
+    *,
+    alt_text: str = "",
+) -> Asset | None:
+    if asset is None:
+        return None
+    updates: dict[str, Any] = {}
+    if score is not None and asset.quality_score is None:
+        updates["quality_score"] = score
+    text = alt_text.strip()
+    if text and not asset.alt_text:
+        updates["alt_text"] = text
+    return asset.model_copy(update=updates) if updates else asset
+
+
+def _description_of(score: Any) -> str:
+    description = getattr(score, "description", "")
+    if isinstance(description, str) and description.strip():
+        return description.strip()
+    frames = getattr(score, "frames", ())
+    if frames:
+        weakest = min(frames, key=lambda frame: getattr(frame, "overall", 0.0))
+        return _description_of(weakest)
+    return ""
 
 
 class VisualQAAttempt(BaseModel):
@@ -423,7 +446,11 @@ def _from_image_qa(
         index=request.index,
         request=request,
         kind=MediaKind.IMAGE,
-        asset=_with_quality(result.asset, score),
+        asset=_with_quality(
+            result.asset,
+            score,
+            alt_text=_description_of(result.score),
+        ),
         stock=result.stock,
         score=score,
         passed=result.passed,
@@ -467,7 +494,11 @@ def _from_video_qa(
         index=request.index,
         request=request,
         kind=MediaKind.VIDEO,
-        asset=_with_quality(result.asset, score),
+        asset=_with_quality(
+            result.asset,
+            score,
+            alt_text=_description_of(result.score),
+        ),
         score=score,
         passed=result.passed,
         provider=result.provider,
@@ -583,6 +614,7 @@ class VisualQA:
         image_qa: Any = None,
         video_qa: Any = None,
         config: Any = None,
+        assets: Any = None,
         **options: Any,
     ) -> None:
         self.image = image
@@ -590,6 +622,7 @@ class VisualQA:
         self.image_qa = image_qa
         self.video_qa = video_qa
         self.config = config
+        self.assets = assets
         self.options = dict(options)
 
     def _options(self, overrides: Mapping[str, Any]) -> dict[str, Any]:
@@ -783,7 +816,7 @@ class VisualQA:
                 metadata={**dict(metadata or {}), "reason": reason},
             )
         if kind is MediaKind.VIDEO:
-            return await self._run_video(
+            result = await self._run_video(
                 request,
                 context=context,
                 run_id=run_id,
@@ -791,14 +824,22 @@ class VisualQA:
                 token=token,
                 options=options,
             )
-        return await self._run_image(
-            request,
-            context=context,
-            run_id=run_id,
-            metadata=metadata,
-            token=token,
-            options=options,
-        )
+        else:
+            result = await self._run_image(
+                request,
+                context=context,
+                run_id=run_id,
+                metadata=metadata,
+                token=token,
+                options=options,
+            )
+        self._persist(result, run_id=run_id)
+        return result
+
+    def _persist(self, result: VisualQAResult, *, run_id: str) -> None:
+        if self.assets is None:
+            return
+        persist_asset_rows(self.assets, result, run_id=run_id)
 
     __call__ = run
 
@@ -814,6 +855,7 @@ async def resolve_image_qa(
     image_service: Any = None,
     qa: Any = None,
     image_qa: Any = None,
+    assets: Any = None,
     context: StageContext | None = None,
     run_id: str = "",
     metadata: Mapping[str, Any] | None = None,
@@ -827,6 +869,7 @@ async def resolve_image_qa(
     active = VisualQA(
         image=target,
         image_qa=qa if qa is not None else image_qa,
+        assets=assets,
         **options,
     )
     request = _coerce_request(value)
@@ -847,6 +890,7 @@ async def resolve_visual_qa(
     image_qa: Any = None,
     video_qa: Any = None,
     config: Any = None,
+    assets: Any = None,
     context: StageContext | None = None,
     run_id: str = "",
     metadata: Mapping[str, Any] | None = None,
@@ -860,6 +904,7 @@ async def resolve_visual_qa(
         image_qa=image_qa,
         video_qa=video_qa,
         config=config,
+        assets=assets,
         **options,
     )
     return await active.run(
@@ -987,6 +1032,9 @@ class VisualQAStage(Stage):
         image_qa: Any = None,
         video_qa: Any = None,
         config: Any = None,
+        assets: Any = None,
+        asset_repository: Any = None,
+        engine: Any = None,
         filename: str | None = None,
         manifest_filename: str | None = None,
         **kwargs: Any,
@@ -1004,6 +1052,9 @@ class VisualQAStage(Stage):
             "image_qa": image_qa,
             "video_qa": video_qa,
             "config": config,
+            "assets": assets,
+            "asset_repository": asset_repository,
+            "engine": engine,
             "filename": filename,
             "manifest_filename": manifest_filename,
         }
@@ -1033,6 +1084,11 @@ class VisualQAStage(Stage):
         self._image_qa = merged.pop("image_qa", None)
         self._video_qa = merged.pop("video_qa", None)
         self._config = merged.pop("config", None)
+        self._assets = merged.pop("assets", None)
+        if self._assets is None:
+            self._assets = merged.pop("asset_repository", None)
+        if self._assets is None:
+            self._assets = merged.pop("engine", None)
         merged.update(kwargs)
         self.results: list[VisualQAResult] = []
         super().__init__(name=name, options=merged)
@@ -1066,6 +1122,7 @@ class VisualQAStage(Stage):
             image_qa=self._image_qa,
             video_qa=self._video_qa,
             config=self._config if self._config is not None else context.config,
+            assets=self._assets,
             **self.options,
         )
 
