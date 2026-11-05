@@ -27,6 +27,7 @@ from aivia.cli.run import build_stages
 from aivia.core import paths
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
+from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_config
 from aivia.core.cost import CostTracker
 from aivia.core.db import RunRepository, create_database_engine
@@ -34,8 +35,11 @@ from aivia.core.dry_run import apply_dry_run
 from aivia.core.errors import ConfigError, ValidationError
 from aivia.core.models import Run
 from aivia.core.orchestrator import OrchestrationResult, Orchestrator
+from aivia.core.router import Router
 from aivia.core.stages import Stage
 from aivia.llm.languages import normalize_language_code
+from aivia.providers.provider_factory import build_providers
+from aivia.providers.storage_factory import build_storage_provider
 
 __all__ = ["configure", "run_voice"]
 
@@ -143,6 +147,26 @@ def _database_path(args: argparse.Namespace, config: object) -> Path:
     return paths.resolve_paths(args.config).data_dir / filename
 
 
+def _providers_config(config: object) -> ProvidersConfig:
+    section = getattr(config, "providers", None)
+    if isinstance(section, ProvidersConfig):
+        return section
+    if isinstance(section, Mapping):
+        return ProvidersConfig.from_mapping(section)
+    if isinstance(config, Mapping):
+        raw = config.get("providers")
+        if isinstance(raw, ProvidersConfig):
+            return raw
+        if isinstance(raw, Mapping):
+            return ProvidersConfig.from_mapping(raw)
+    return ProvidersConfig()
+
+
+def _build_router(config: object) -> Router:
+    """Build the configured media router for provider speech synthesis."""
+    return Router(build_providers(_providers_config(config)))
+
+
 def _recipe(config: object, run: Run) -> FormatRecipeConfig:
     section = getattr(config, "formats", None)
     formats = section.formats if isinstance(section, FormatsConfig) else {}
@@ -242,6 +266,8 @@ def _execute(
     *,
     data_dir: Path,
     tracker: CostTracker,
+    router: Router | None = None,
+    storage: Any = None,
 ) -> OrchestrationResult:
     return Orchestrator(
         stages=stages,
@@ -251,6 +277,8 @@ def _execute(
         data_dir=data_dir,
         config=config,
         cost=tracker,
+        router=router,
+        storage=storage,
         raise_on_failure=False,
     ).execute_sync()
 
@@ -465,6 +493,11 @@ def run_voice(args: argparse.Namespace) -> int:
             stages,
             data_dir=database_path.parent,
             tracker=tracker,
+            router=_build_router(config),
+            storage=build_storage_provider(
+                getattr(config, "storage", None),
+                data_dir=database_path.parent,
+            ),
         )
         events = [
             event for event in tracker.events(run_id=run.id) if event.id not in before
