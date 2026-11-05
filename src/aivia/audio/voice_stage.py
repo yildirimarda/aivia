@@ -42,7 +42,7 @@ from aivia.core.models.run import StageResult, StageState
 from aivia.core.models.script import Beat, DialogueLine, Script
 from aivia.core.stages.base import Stage, StageContext, _normalise_inputs
 from aivia.providers.protocols.audio import AudioFormat
-from aivia.providers.protocols.tts import TTSRequest
+from aivia.providers.protocols.tts import CAPABILITY_TTS, TTSRequest
 
 __all__ = [
     "DEFAULT_GAP_SECONDS",
@@ -1030,7 +1030,7 @@ class VoiceStage(Stage):
             return await context.media.speech(
                 request,
                 run_id=run_id,
-                operation=self.name,
+                operation=CAPABILITY_TTS,
             )
         method = target
         if not callable(target):

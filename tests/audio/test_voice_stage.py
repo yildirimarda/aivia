@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 from collections.abc import Coroutine, Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,8 +15,10 @@ from sqlalchemy import Engine
 
 from aivia.audio import VoiceStage, VoiceStageResult
 from aivia.compose import Timeline, compositions_from_timeline
+from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.cost import CostTracker
 from aivia.core.db import (
+    CostEventRepository,
     RunRepository,
     StageRunRepository,
     create_database_engine,
@@ -25,9 +28,14 @@ from aivia.core.errors import ConfigError, ValidationError
 from aivia.core.models import Run, StageState
 from aivia.core.orchestrator import Orchestrator
 from aivia.core.resume import compute_input_hash
+from aivia.core.router import Router
 from aivia.core.run_state import RunStateMachine
 from aivia.core.stages import StageContext
+from aivia.media import MediaServiceFacade
+from aivia.media.tts_service import TTS_OPERATION
+from aivia.providers.mock import MockTTSProvider
 from aivia.providers.protocols.tts import TTSRequest
+from aivia.providers.storage_local import LocalStorageProvider
 
 
 def _run[T](coroutine: Coroutine[Any, Any, T]) -> T:
@@ -90,6 +98,38 @@ def _write_script(run_dir: Path, value: dict[str, Any]) -> Path:
 
 def _context(run_dir: Path, *, config: Any = None) -> StageContext:
     return StageContext(run_dir=run_dir, config=config or {})
+
+
+def _probe_runner(duration: float = 1.0) -> Any:
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        payload = json.dumps(
+            {
+                "streams": [
+                    {
+                        "index": 0,
+                        "codec_type": "audio",
+                        "codec_name": "pcm_s16le",
+                        "duration": f"{duration:.3f}",
+                        "sample_rate": "24000",
+                        "channels": 1,
+                    }
+                ],
+                "format": {
+                    "format_name": "wav",
+                    "format_long_name": "WAV",
+                    "duration": f"{duration:.3f}",
+                    "size": "12345",
+                },
+            }
+        )
+        return subprocess.CompletedProcess(
+            list(argv),
+            0,
+            stdout=payload,
+            stderr="",
+        )
+
+    return runner
 
 
 @pytest.fixture
@@ -252,6 +292,34 @@ def test_script_mode_uses_explicit_beat_durations_for_beat_starts(
         json.loads((tmp_path / "timeline.json").read_text(encoding="utf-8"))
     )
     assert [beat.start_seconds for beat in timeline.beats] == pytest.approx([0.0, 1.0])
+
+
+def test_provider_calls_are_recorded_under_the_tts_operation(
+    tmp_path: Path,
+    engine: Engine,
+) -> None:
+    _write_script(tmp_path, _script({"text": "Hello."}))
+    provider = MockTTSProvider()
+    router = Router(
+        {provider.name: provider},
+        config=CapabilityChainConfig(chain=[provider.name]),
+    )
+    tracker = CostTracker(engine)
+    context = StageContext(run_dir=tmp_path, router=router, cost=tracker)
+    context._media = MediaServiceFacade(
+        router,
+        tracker=tracker,
+        storage=LocalStorageProvider(tmp_path / "media"),
+        ffprobe_runner=_probe_runner(),
+    )
+    stage = VoiceStage(options={"mode": "script", "format": "wav"})
+
+    result = cast(VoiceStageResult, _run(stage.run(context)))
+
+    events = CostEventRepository(engine).list()
+    assert [event.operation for event in events] == [TTS_OPERATION]
+    assert events[0].amount_usd > 0
+    assert result.cost_usd == pytest.approx(events[0].amount_usd)
 
 
 def test_word_timings_are_shifted_by_the_voice_start(tmp_path: Path) -> None:
