@@ -548,3 +548,118 @@ def test_existing_results_cover_extra_beats_without_calling_a_provider(
     assert result.beat_counts == {"en": 1, "de": 2}
     assert result.by_language["de"] == result.beats
     assert result.by_language["en"] == result.beats[:1]
+
+
+def test_the_stage_applies_the_visuals_config_strategy_and_video_cap(
+    tmp_path: Path,
+) -> None:
+    image = FakeImageService()
+    video = FakeVideoService()
+    stage = VisualReuseStage(
+        scripts={"en": _script("en", ["one", "two", "three"])},
+        image=image,
+        video=video,
+    )
+    config = {"visuals": {"strategy": "image", "max_ai_video_beats": 0}}
+
+    result = cast(
+        VisualReuseStageResult,
+        _run(stage.run(StageContext(run_dir=tmp_path, config=config))),
+    )
+
+    assert video.requests == []
+    assert len(image.requests) == 3
+    assert [request.visual_type for request in result.requests] == [
+        VisualType.IMAGE,
+        VisualType.IMAGE,
+        VisualType.IMAGE,
+    ]
+
+
+def test_the_stage_applies_the_configured_video_cap_to_hybrid_visuals(
+    tmp_path: Path,
+) -> None:
+    image = FakeImageService()
+    video = FakeVideoService()
+    stage = VisualReuseStage(
+        scripts={"en": _script("en", ["one", "two", "three"])},
+        image=image,
+        video=video,
+    )
+    config = {"visuals": {"max_ai_video_beats": 1}}
+
+    result = cast(
+        VisualReuseStageResult,
+        _run(stage.run(StageContext(run_dir=tmp_path, config=config))),
+    )
+
+    assert len(video.requests) == 1
+    assert len(image.requests) == 2
+    assert [request.visual_type for request in result.requests] == [
+        VisualType.VIDEO,
+        VisualType.IMAGE,
+        VisualType.IMAGE,
+    ]
+
+
+def test_explicit_stage_options_win_over_the_visuals_config(
+    tmp_path: Path,
+) -> None:
+    image = FakeImageService()
+    video = FakeVideoService()
+    stock = FakeStockSearch()
+    stage = VisualReuseStage(
+        scripts={"en": _script("en", ["one", "two", "three"])},
+        strategy="stock",
+        max_ai_video_beats=0,
+        image=image,
+        video=video,
+        stock=stock,
+    )
+    config = {"visuals": {"strategy": "video", "max_ai_video_beats": 3}}
+
+    result = cast(
+        VisualReuseStageResult,
+        _run(stage.run(StageContext(run_dir=tmp_path, config=config))),
+    )
+
+    assert len(stock.requests) == 3
+    assert video.requests == []
+    assert image.requests == []
+    assert all(request.visual_type is VisualType.STOCK for request in result.requests)
+
+
+def test_a_stage_config_option_is_used_when_the_context_has_none(
+    tmp_path: Path,
+) -> None:
+    image = FakeImageService()
+    stage = VisualReuseStage(
+        scripts={"en": _script("en", ["one", "two"])},
+        config={"visuals": {"strategy": "image", "max_ai_video_beats": 0}},
+        image=image,
+    )
+
+    result = cast(
+        VisualReuseStageResult,
+        _run(stage.run(StageContext(run_dir=tmp_path, config={}))),
+    )
+
+    assert len(image.requests) == 2
+    assert all(request.visual_type is VisualType.IMAGE for request in result.requests)
+
+
+def test_the_reuse_helpers_apply_the_visuals_config() -> None:
+    scripts = {"en": _script("en", ["one", "two"])}
+    config = {"visuals": {"strategy": "image", "max_ai_video_beats": 0}}
+
+    requests = shared_visual_requests(scripts, config=config)
+    shared = share_visual_requests(scripts, config=config)
+
+    assert [request.visual_type for request in requests] == [
+        VisualType.IMAGE,
+        VisualType.IMAGE,
+    ]
+    assert [request.visual_type for request in shared["en"]] == [
+        VisualType.IMAGE,
+        VisualType.IMAGE,
+    ]
