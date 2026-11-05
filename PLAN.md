@@ -610,10 +610,11 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Resolve video beats with duration clamped to the beat, a per clip cap and the platform aspect ratio (tests/visuals/test_video_stage.py)
 - [x] Run visual quality checks per asset with retries and fallback, logging every attempt with its cost (tests/visuals/test_qa_integration.py)
 - [x] Downgrade from video to image to stock under a tight budget, emitting an alert and never exceeding the cap (tests/visuals/test_downgrade.py)
-- [ ] Generate visuals once per run and share them across languages (tests/visuals/test_reuse.py)
+- [x] Generate visuals once per run and share them across languages (tests/visuals/test_reuse.py)
 - [ ] Persist provider, model, prompt hash, license, cost links, quality score, alt text and pinned flag on every asset row (tests/visuals/test_asset_rows.py)
 - [ ] Add a visuals command printing the per beat decision, provider, cost and quality score (tests/cli/test_visuals.py)
 - [ ] Add a visuals config section for the default strategy and maximum AI video beats and read it in visual assignment (tests/core/config/test_visuals.py)
+- [ ] Handle language scripts with different beat counts when sharing one visual set (tests/visuals/test_reuse.py)
 
 ## Milestone 14: Formats and song pipeline
 
