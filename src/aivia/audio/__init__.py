@@ -140,6 +140,7 @@ from aivia.audio.subtitle_edit import (
     subtitle_words_by_language,
 )
 from aivia.audio.subtitle_stage import (
+    DEFAULT_PLATFORM_SUBTITLE_FILENAME_PATTERN,
     DEFAULT_SUBTITLE_FILENAME_PATTERN,
     SUBTITLE_STAGE_NAME,
     Subtitle,
@@ -184,6 +185,7 @@ __all__ = [
     "DEFAULT_MIN_DURATION_RATIO",
     "DEFAULT_MIN_WORD_CONFIDENCE",
     "DEFAULT_MUSIC_FILENAME",
+    "DEFAULT_PLATFORM_SUBTITLE_FILENAME_PATTERN",
     "DEFAULT_SCRIPT_FILENAME_PATTERN",
     "DEFAULT_SFX_DURATION_SECONDS",
     "DEFAULT_SFX_FILENAME",

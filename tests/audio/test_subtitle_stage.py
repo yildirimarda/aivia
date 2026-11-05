@@ -94,6 +94,110 @@ def test_stage_writes_one_ass_per_language_with_preset_and_safe_area(
     assert "Welt" in german
 
 
+def test_stage_writes_one_ass_per_language_and_platform(
+    tmp_path: Path,
+) -> None:
+    timeline = _timeline(
+        _subtitle_language("en", ("Hello", 0.0, 0.5)),
+        _subtitle_language("de", ("Hallo", 0.0, 0.5)),
+        platforms=["tiktok", "youtube"],
+    )
+    stage = SubtitleStage(options={"highlight": False}, timeline=timeline)
+
+    result = cast(SubtitleStageResult, _run(stage.run(_context(tmp_path))))
+
+    assert result.artifacts == [
+        "subtitle.en.tiktok.ass",
+        "subtitle.en.youtube.ass",
+        "subtitle.de.tiktok.ass",
+        "subtitle.de.youtube.ass",
+    ]
+    assert result.files == {
+        "en/tiktok": "subtitle.en.tiktok.ass",
+        "en/youtube": "subtitle.en.youtube.ass",
+        "de/tiktok": "subtitle.de.tiktok.ass",
+        "de/youtube": "subtitle.de.youtube.ass",
+    }
+    assert result.metadata["languages"] == ["en", "de"]
+    assert result.metadata["platforms"] == ["tiktok", "youtube"]
+    assert result.metadata["platform"] == ""
+    assert result.metadata["platform_files"]["tiktok"] == {
+        "en": "subtitle.en.tiktok.ass",
+        "de": "subtitle.de.tiktok.ass",
+    }
+    assert result.metadata["platform_safe_areas"]["tiktok"]["en"] == {
+        "top": 0.10,
+        "bottom": 0.25,
+        "left": 0.06,
+        "right": 0.06,
+    }
+    assert result.metadata["platform_safe_areas"]["youtube"]["en"] == {
+        "top": 0.10,
+        "bottom": 0.20,
+        "left": 0.06,
+        "right": 0.06,
+    }
+
+    tiktok = (tmp_path / "subtitle.en.tiktok.ass").read_text(encoding="utf-8")
+    youtube = (tmp_path / "subtitle.en.youtube.ass").read_text(encoding="utf-8")
+    assert "Dialogue: 0,0:00:00.00,0:00:00.50,SubtitleRegular32,,65,65,480,," in tiktok
+    assert "Dialogue: 0,0:00:00.00,0:00:00.50,SubtitleRegular32,,65,65,384,," in youtube
+
+
+def test_stage_writes_one_ass_per_platform_with_its_own_canvas(
+    tmp_path: Path,
+) -> None:
+    timeline = _timeline(
+        _subtitle_language("en", ("Hello", 0.0, 0.5)),
+        platforms=["tiktok", "x"],
+    )
+    stage = SubtitleStage(
+        options={
+            "filename_pattern": "captions.{code}.{platform}.ass",
+            "highlight": False,
+        },
+        timeline=timeline,
+    )
+
+    result = cast(SubtitleStageResult, _run(stage.run(_context(tmp_path))))
+
+    assert result.artifacts == ["captions.en.tiktok.ass", "captions.en.x.ass"]
+    assert result.metadata["canvases"] == {
+        "tiktok": {"width": 1080, "height": 1920},
+        "x": {"width": 1280, "height": 720},
+    }
+    tiktok = (tmp_path / "captions.en.tiktok.ass").read_text(encoding="utf-8")
+    x = (tmp_path / "captions.en.x.ass").read_text(encoding="utf-8")
+    assert "PlayResX: 1080" in tiktok
+    assert "PlayResY: 1920" in tiktok
+    assert "PlayResX: 1280" in x
+    assert "PlayResY: 720" in x
+    assert "Dialogue: 0,0:00:00.00,0:00:00.50,SubtitleRegular32,,65,65,480,," in tiktok
+    assert "Dialogue: 0,0:00:00.00,0:00:00.50,SubtitleRegular32,,0,0,0,," in x
+
+
+def test_stage_adds_the_platform_to_a_custom_pattern_without_one(
+    tmp_path: Path,
+) -> None:
+    timeline = _timeline(
+        _subtitle_language("en", ("Hello", 0.0, 0.5)),
+        platforms=["tiktok", "youtube"],
+    )
+    stage = SubtitleStage(
+        options={"filename_pattern": "captions.{code}.ass", "highlight": False},
+        timeline=timeline,
+    )
+
+    result = cast(SubtitleStageResult, _run(stage.run(_context(tmp_path))))
+
+    assert result.artifacts == [
+        "captions.en.tiktok.ass",
+        "captions.en.youtube.ass",
+    ]
+    assert (tmp_path / "captions.en.tiktok.ass").is_file()
+    assert (tmp_path / "captions.en.youtube.ass").is_file()
+
+
 def test_stage_uses_platform_safe_area_and_configured_resolution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
