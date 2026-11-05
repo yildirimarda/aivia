@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from aivia.audio import VoiceStage
 from aivia.cli import main
 from aivia.core.db import (
     RunRepository,
@@ -63,6 +65,28 @@ def database(tmp_path: Path) -> Path:
     path = tmp_path / "data" / "aivia.db"
     upgrade_database(path)
     return path
+
+
+@pytest.fixture
+def fake_ffprobe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """Put a deterministic ffprobe on PATH for provider generated speech."""
+    directory = tmp_path / "bin"
+    directory.mkdir()
+    script = directory / "ffprobe"
+    script.write_text(
+        """#!/bin/sh
+cat <<'JSON'
+{"streams":[{"index":0,"codec_type":"audio","codec_name":"pcm_s16le","duration":"1.000","sample_rate":"44100","channels":1}],"format":{"format_name":"wav","format_long_name":"WAV","duration":"1.000","size":"88200"}}
+JSON
+""",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{directory}{os.pathsep}{os.environ['PATH']}")
+    return script
 
 
 def seed_run(
@@ -436,3 +460,84 @@ def test_voice_requires_a_run_id(
     assert code == 2
     assert out == ""
     assert "a run id is required" in err
+
+
+def test_voice_provider_synthesis_uses_the_configured_router(
+    database: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    fake_ffprobe: Path,
+) -> None:
+    run_id = seed_run(database, tmp_path)
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.run_dir
+        run_dir = Path(run.run_dir)
+    finally:
+        engine.dispose()
+    (run_dir / "script.en.json").write_text(
+        json.dumps(
+            {
+                "language": "en",
+                "mode": "facts",
+                "beats": [{"text": "Hello."}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    provider_config = write_config(
+        tmp_path / "provider",
+        """
+providers:
+  mock:
+    type: mock
+languages:
+  default: en
+  en:
+    name: English
+formats:
+  sample:
+    description: A small audio recipe.
+    stages:
+      - stage: voice
+        options:
+          languages: [en]
+          mode: script
+          format: wav
+    capabilities: [tts]
+    output_type: video
+    handler: save
+""",
+    )
+    monkeypatch.setattr(
+        "aivia.cli.voice.build_stages",
+        lambda recipe: [
+            VoiceStage(options={"languages": ["en"], "mode": "script", "format": "wav"})
+        ],
+    )
+
+    code, out, err = voice_command(
+        capsys,
+        run_id,
+        "--config",
+        str(provider_config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0, err
+    assert "Stage: voice" in out
+    assert "Durations: en 1.000s" in out
+    assert "Duration: 1.000s" in out
+
+    engine = create_database_engine(database)
+    try:
+        stored = StageRunRepository(engine).get(run_id, "voice")
+        assert stored is not None
+        assert stored.metadata["provider"] == "mock"
+        assert stored.metadata["model"] == "mock-tts"
+    finally:
+        engine.dispose()
