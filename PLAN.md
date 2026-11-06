@@ -622,7 +622,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: composable recipes, built in formats and a song pipeline that uses the same stages -->
 
-- [ ] Add the stage registry with typed input and output contracts and rejection of duplicates or missing contracts (tests/formats/test_registry.py)
+- [x] Add the stage registry with typed input and output contracts and rejection of duplicates or missing contracts (tests/formats/test_registry.py)
 - [ ] Validate recipes so every stage input is produced by an earlier stage and errors name the stage (tests/formats/test_recipe.py)
 - [ ] Let a run execute its recipe, skipping unused stages at zero cost and loading user and packaged format files (tests/formats/test_orchestrator_recipe.py)
 - [ ] Add an input topic stage building the topic from CLI arguments, a file or research so every format runs without research (tests/formats/test_input_topic.py)
