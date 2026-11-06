@@ -1,0 +1,13 @@
+description: Single image post with a caption and a social aspect preset.
+stages:
+  - stage: input_topic
+  - stage: write
+  - stage: visuals
+    options:
+      strategy: image
+  - stage: render
+    options:
+      aspect: square
+capabilities: [llm, image_gen]
+output_type: image
+handler: save

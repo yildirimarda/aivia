@@ -1,0 +1,14 @@
+description: Multi-slide image carousel with its own text on every slide.
+stages:
+  - stage: input_topic
+  - stage: write
+  - stage: visuals
+    options:
+      strategy: image
+  - stage: render
+    options:
+      aspect: portrait
+      carousel: true
+capabilities: [llm, image_gen]
+output_type: carousel
+handler: save

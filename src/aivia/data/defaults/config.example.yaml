@@ -70,6 +70,35 @@ formats:
     capabilities: [llm, tts, image_gen]
     output_type: video
     handler: save
+  image_post:
+    description: Single image post with a caption and a social aspect preset.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: visuals
+        options:
+          strategy: image
+      - stage: render
+        options:
+          aspect: square
+    capabilities: [llm, image_gen]
+    output_type: image
+    handler: save
+  carousel:
+    description: Multi-slide image carousel with its own text on every slide.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: visuals
+        options:
+          strategy: image
+      - stage: render
+        options:
+          aspect: portrait
+          carousel: true
+    capabilities: [llm, image_gen]
+    output_type: carousel
+    handler: save
   explainer:
     description: Factual explainer with narration and a mix of AI video and images.
     stages:
