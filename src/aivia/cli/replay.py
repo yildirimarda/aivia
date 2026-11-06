@@ -25,16 +25,18 @@ from sqlalchemy.exc import SQLAlchemyError
 
 import aivia.cli.run as run_command
 from aivia.cli.registry import register_command
-from aivia.cli.run import build_stages
+from aivia.cli.run import build_router, build_stages
 from aivia.core import paths
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
+from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_app_config
 from aivia.core.cost import CostTracker
 from aivia.core.db import RunRepository, create_database_engine
 from aivia.core.errors import ConfigError
 from aivia.core.models import Run, RunState, ToolchainFingerprint
 from aivia.core.orchestrator import OrchestrationResult, Orchestrator
+from aivia.core.router import Router
 from aivia.core.run_dirs import ArtifactRecord, RunDirectories, RunDirectory
 from aivia.core.snapshot import (
     ConfigSnapshot,
@@ -368,6 +370,21 @@ def _create_replay_run(
     return RunRepository(engine).create(replay)
 
 
+def _router_for(config: object) -> Router:
+    """Build the configured router from a validated config or snapshot mapping.
+
+    A replay normally validates the recorded snapshot into an application
+    config. Masking can make that validation fail, in which case the stage sees
+    the recorded mapping and the provider section is validated on its own so
+    concrete stages can still select a provider.
+    """
+    if isinstance(config, Mapping):
+        raw = config.get("providers")
+        section = ProvidersConfig.model_validate(raw if raw is not None else {})
+        return build_router(section)
+    return build_router(config)
+
+
 def _execute_replay(
     engine: Engine,
     replay: Run,
@@ -383,6 +400,7 @@ def _execute_replay(
         data_dir=database_path.parent,
         config=config,
         cost=CostTracker(engine),
+        router=_router_for(config),
         raise_on_failure=False,
     )
     return orchestrator.execute_sync()
