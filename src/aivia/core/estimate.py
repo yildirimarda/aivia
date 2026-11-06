@@ -224,11 +224,18 @@ def stage_capability(
 
     An explicit ``capability``/``operation`` option wins. The ``visuals``
     stage chooses image, video or stock from its ``strategy`` option, falling
-    back to the recipe's declared capabilities. Every other stage uses the
-    built-in name mapping; an unknown stage that names a known capability is
-    accepted as-is, while any other unknown stage is treated as free.
+    back to the recipe's declared capabilities. A stage marked skipped or
+    disabled needs no paid call. Every other stage uses the built-in name
+    mapping; an unknown stage that names a known capability is accepted as-is,
+    while any other unknown stage is treated as free.
     """
     options = stage.options
+    if (
+        options.get("skip") is True
+        or options.get("disabled") is True
+        or options.get("enabled") is False
+    ):
+        return ""
     for key in ("capability", "operation"):
         value = options.get(key)
         if isinstance(value, str) and value.strip():
