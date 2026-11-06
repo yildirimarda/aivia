@@ -58,6 +58,16 @@ from aivia.audio.lyric_align import (
     report_lyric_mismatches,
     report_mismatches,
 )
+from aivia.audio.lyric_stage import (
+    ALIGN_STAGE_NAME,
+    DEFAULT_ALIGNMENT_FILENAME,
+    LyricAlignStage,
+    LyricStage,
+    SongAlignStage,
+    build_lyric_align_stage,
+    lyric_align_stage,
+    run_lyric_align_stage,
+)
 from aivia.audio.music_prompt import (
     MusicPromptBuilder,
     MusicPromptFactory,
@@ -208,6 +218,8 @@ from aivia.audio.voice_stage import (
 )
 
 __all__ = [
+    "ALIGN_STAGE_NAME",
+    "DEFAULT_ALIGNMENT_FILENAME",
     "DEFAULT_ANALYSIS_MAX_BPM",
     "DEFAULT_ANALYSIS_MIN_BPM",
     "DEFAULT_ANALYSIS_SILENCE_MIN_SECONDS",
@@ -255,6 +267,7 @@ __all__ = [
     "AudioSegment",
     "BackgroundMusic",
     "LyricAlign",
+    "LyricAlignStage",
     "LyricAligner",
     "LyricAlignment",
     "LyricAlignmentLine",
@@ -263,6 +276,7 @@ __all__ = [
     "LyricLine",
     "LyricLineMismatch",
     "LyricMismatch",
+    "LyricStage",
     "LyricWord",
     "LyricsAlignment",
     "MusicChoice",
@@ -286,6 +300,7 @@ __all__ = [
     "SfxStageResult",
     "SilenceMap",
     "SilenceSpan",
+    "SongAlignStage",
     "SongCandidate",
     "SongCandidateAnalysis",
     "SongCandidateConfig",
@@ -323,6 +338,7 @@ __all__ = [
     "apply_ducking",
     "apply_subtitle_edits",
     "audio_qa",
+    "build_lyric_align_stage",
     "build_music_prompt",
     "build_music_prompt_for_profile",
     "build_music_prompt_from_profile",
@@ -343,6 +359,7 @@ __all__ = [
     "lint_audio_quality",
     "load_sfx_rules",
     "load_subtitle_edit_yaml",
+    "lyric_align_stage",
     "lyric_alignment",
     "lyric_mismatches",
     "lyric_word_similarity",
@@ -363,6 +380,7 @@ __all__ = [
     "qa_audio",
     "report_lyric_mismatches",
     "report_mismatches",
+    "run_lyric_align_stage",
     "run_music_stage",
     "run_sfx_stage",
     "run_subtitle_stage",
