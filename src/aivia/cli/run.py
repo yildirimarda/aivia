@@ -41,6 +41,14 @@ from aivia.core.orchestrator import OrchestrationResult, Orchestrator
 from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import Stage
 from aivia.core.toolchain import detect_toolchain
+from aivia.formats.byo import (
+    ProvidedInputs,
+    apply_provided_inputs,
+    load_provided_inputs,
+    provided_stage_options,
+    script_pattern,
+    seed_provided_inputs,
+)
 from aivia.formats.catalog import load_formats
 from aivia.formats.input_topic import INPUT_TOPIC_STAGE_NAME, InputTopicStage
 from aivia.providers import docs as provider_docs
@@ -104,6 +112,22 @@ def _configure_run_options(parser: argparse.ArgumentParser) -> None:
         "--estimate",
         action="store_true",
         help="print the stage cost estimate and exit without running anything",
+    )
+    parser.add_argument(
+        "--text-file",
+        "--text",
+        "--topic-file",
+        "--input-file",
+        dest="text_file",
+        metavar="PATH",
+        help="read the topic from a text, JSON or YAML file instead of research",
+    )
+    parser.add_argument(
+        "--script-file",
+        "--script",
+        dest="script_file",
+        metavar="PATH",
+        help="use a prepared JSON, YAML or text script instead of writing",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -266,7 +290,7 @@ def _jobs_config(config: object) -> JobsConfig:
 
 def _resolve_plan(
     args: argparse.Namespace,
-) -> tuple[object, str, FormatRecipeConfig, RecipeEstimate, str]:
+) -> tuple[object, str, FormatRecipeConfig, RecipeEstimate, str, ProvidedInputs]:
     resolved = resolve_config(
         config_file=args.config,
         environment=args.environment,
@@ -284,15 +308,20 @@ def _resolve_plan(
         config_dir=resolved_paths.config_dir,
         defaults_dir=resolved_paths.defaults_dir,
     )
+    provided = load_provided_inputs(
+        text_file=getattr(args, "text_file", None),
+        script_file=getattr(args, "script_file", None),
+    )
+    recipe = apply_provided_inputs(recipe, provided)
     estimate = Estimator(
         provider_metadata(config),
         configs=capability_configs(config) or None,
     ).estimate(name, recipe)
-    return config, name, recipe, estimate, resolved.environment or ""
+    return config, name, recipe, estimate, resolved.environment or "", provided
 
 
 def _estimate_run(args: argparse.Namespace) -> tuple[object, RecipeEstimate]:
-    config, _name, _recipe, estimate, _environment = _resolve_plan(args)
+    config, _name, _recipe, estimate, _environment, _provided = _resolve_plan(args)
     return config, estimate
 
 
@@ -428,6 +457,32 @@ def _print_existing(run: Run) -> None:
     print(f"State: {run.state.value}")
 
 
+def _seed_provided(
+    run: Run,
+    recipe: FormatRecipeConfig,
+    provided: ProvidedInputs,
+) -> None:
+    if not provided.supplied or not run.run_dir:
+        return
+    seed_provided_inputs(
+        run.run_dir,
+        provided,
+        pattern=script_pattern(recipe),
+    )
+
+
+def _job_payload(
+    name: str,
+    run: Run,
+    provided: ProvidedInputs,
+) -> dict[str, object]:
+    payload: dict[str, object] = {"format": name, "profile": run.profile}
+    options = provided_stage_options(provided) if provided.supplied else {}
+    if options:
+        payload["stage_options"] = options
+    return payload
+
+
 def run_run(args: argparse.Namespace) -> int:
     """Create a run, execute or enqueue it, and print its id and estimate."""
     if not args.format_name:
@@ -436,7 +491,7 @@ def run_run(args: argparse.Namespace) -> int:
         return 2
 
     try:
-        config, name, recipe, estimate, environment = _resolve_plan(args)
+        config, name, recipe, estimate, environment, provided = _resolve_plan(args)
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -492,11 +547,12 @@ def run_run(args: argparse.Namespace) -> int:
                         _discard_run_directories(created_dirs)
                         _print_existing(run)
                         return 0
+                    _seed_provided(run, recipe, provided)
                     job = queue.enqueue(
                         Job(
                             kind="run",
                             run_id=run.id,
-                            payload={"format": name, "profile": run.profile},
+                            payload=_job_payload(name, run, provided),
                         ),
                         connection=connection,
                     )
@@ -512,6 +568,7 @@ def run_run(args: argparse.Namespace) -> int:
             _print_existing(run)
             return 0
 
+        _seed_provided(run, recipe, provided)
         result = _execute_run(engine, run, config, stages)
         _print_created(result.run, estimate)
         if result.failed:

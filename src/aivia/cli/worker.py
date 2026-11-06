@@ -35,6 +35,7 @@ from aivia.core.errors import AiviaError, ConfigError
 from aivia.core.jobs import JobQueue, Worker
 from aivia.core.models import Job, Run
 from aivia.core.orchestrator import Orchestrator
+from aivia.formats.byo import apply_stage_options
 
 __all__ = [
     "JobExecutionError",
@@ -141,6 +142,16 @@ def _recipe(
         raise JobExecutionError(
             f"unknown format: {name} (available: {available})",
             details={"job_id": job.id, "run_id": run.id, "format": name},
+        )
+    stage_options = payload.get("stage_options")
+    if isinstance(stage_options, Mapping):
+        recipe = apply_stage_options(
+            recipe,
+            {
+                str(stage): dict(options)
+                for stage, options in stage_options.items()
+                if isinstance(stage, str) and isinstance(options, Mapping)
+            },
         )
     return recipe
 
