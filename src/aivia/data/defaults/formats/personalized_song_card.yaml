@@ -1,0 +1,11 @@
+description: Personalized song card delivered to an order recipient.
+stages:
+  - stage: input_topic
+  - stage: write
+    options:
+      mode: lyrics
+  - stage: music
+  - stage: render
+capabilities: [llm, music_gen]
+output_type: audio
+handler: deliver

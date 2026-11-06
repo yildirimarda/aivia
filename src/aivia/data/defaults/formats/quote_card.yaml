@@ -1,0 +1,10 @@
+description: Typography-led still image.
+stages:
+  - stage: input_topic
+  - stage: write
+    options:
+      mode: quote
+  - stage: render
+capabilities: [llm, image_gen]
+output_type: image
+handler: save

@@ -1,0 +1,13 @@
+description: Song with lyrics, karaoke subtitles and visual backgrounds.
+stages:
+  - stage: input_topic
+  - stage: write
+    options:
+      mode: lyrics
+  - stage: music
+  - stage: align
+  - stage: visuals
+  - stage: render
+capabilities: [llm, music_gen, tts, image_gen]
+output_type: video
+handler: publish

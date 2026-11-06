@@ -624,7 +624,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 - [x] Add the stage registry with typed input and output contracts and rejection of duplicates or missing contracts (tests/formats/test_registry.py)
 - [x] Validate recipes so every stage input is produced by an earlier stage and errors name the stage (tests/formats/test_recipe.py)
-- [ ] Let a run execute its recipe, skipping unused stages at zero cost and loading user and packaged format files (tests/formats/test_orchestrator_recipe.py)
+- [x] Let a run execute its recipe, skipping unused stages at zero cost and loading user and packaged format files (tests/formats/test_orchestrator_recipe.py)
 - [ ] Add an input topic stage building the topic from CLI arguments, a file or research so every format runs without research (tests/formats/test_input_topic.py)
 - [ ] Allow skipping research and writing by passing a text or script file, with validation and cost reflecting the skipped stages (tests/cli/test_byo_input.py)
 - [ ] Implement the explainer video format with hybrid visuals (slow, tests/formats/test_explainer.py)
@@ -639,6 +639,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Implement the audio only format with cover art and metadata and no video cost (tests/formats/test_audio_only.py)
 - [ ] Add a smoke test running one mock pipeline per built in format and asserting artifacts, costs and sidecars (tests/e2e/test_formats.py)
 - [ ] Add a command that produces an extra language for an existing run by reusing facts and visuals with no visual recharge (tests/cli/test_add_language.py)
+- [ ] Merge user and packaged format files during config resolution so profiles can reference file-only formats (tests/core/config/test_formats.py)
+- [ ] Hash provided inputs into downstream stage input hashes so editing a supplied file invalidates resume (tests/formats/test_orchestrator_recipe.py)
 
 ## Milestone 15: Reference driven generation
 
