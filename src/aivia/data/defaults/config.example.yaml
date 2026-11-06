@@ -55,6 +55,21 @@ formats:
     capabilities: [llm, tts, image_gen]
     output_type: video
     handler: save
+  slideshow:
+    description: Image slideshow with one continuous voice track and transitions between slides.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: voice
+        options:
+          mode: script
+      - stage: visuals
+        options:
+          strategy: image
+      - stage: render
+    capabilities: [llm, tts, image_gen]
+    output_type: video
+    handler: save
   explainer:
     description: Factual explainer with narration and a mix of AI video and images.
     stages:
