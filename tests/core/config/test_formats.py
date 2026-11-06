@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -10,6 +11,8 @@ import yaml
 from aivia.core import paths
 from aivia.core.config import (
     CORE_SECTION_KEYS,
+    DEFAULT_ORIGIN,
+    USER_ORIGIN,
     FormatConfig,
     FormatHandler,
     FormatOutputType,
@@ -23,6 +26,7 @@ from aivia.core.config import (
     Stage,
     StageConfig,
     register_core_sections,
+    resolve_config,
 )
 from aivia.core.errors import ConfigError
 from aivia.core.stage_retry import StageRetryPolicy
@@ -34,6 +38,13 @@ def example_section(name: str) -> dict[str, Any]:
     )
     payload = cast(dict[str, Any], yaml.safe_load(text))
     return cast(dict[str, Any], payload[name])
+
+
+def write_recipe(directory: Path, name: str, payload: dict[str, Any]) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{name}.yaml"
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+    return path
 
 
 def test_format_recipe_defaults_to_a_saved_video_with_no_stages() -> None:
@@ -433,3 +444,113 @@ def test_the_packaged_example_declares_valid_format_recipes() -> None:
     assert {"narrated_still", "song_video", "character_short"} <= set(formats.formats)
     assert formats.formats["narrated_still"].stages[0].stage == "input_topic"
     assert formats.formats["personalized_song_card"].handler is OutputHandler.DELIVER
+
+
+def test_resolution_merges_packaged_and_user_format_files(tmp_path: Path) -> None:
+    defaults_dir = tmp_path / "defaults"
+    defaults_dir.mkdir()
+    (defaults_dir / "config.example.yaml").write_text(
+        yaml.safe_dump({"profiles": {"packaged": {"format": "packaged_only"}}}),
+        encoding="utf-8",
+    )
+    write_recipe(
+        defaults_dir / "formats",
+        "packaged_only",
+        {"stages": ["input_topic"], "output_type": "image"},
+    )
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "profiles": {
+                    "packaged": {"format": "packaged_only"},
+                    "user": {"format": "user_only"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_recipe(
+        config_dir / "formats",
+        "user_only",
+        {"stages": ["input_topic", "render"], "output_type": "audio"},
+    )
+
+    resolved = resolve_config(
+        defaults_file=defaults_dir / "config.example.yaml",
+        config_file=config_dir / "config.yaml",
+        profile="user",
+    )
+
+    assert set(resolved.values["formats"]) == {"packaged_only", "user_only"}
+    assert resolved.origins["formats.packaged_only.stages"] == DEFAULT_ORIGIN
+    assert resolved.origins["formats.user_only.stages"] == USER_ORIGIN
+    config = resolved.to_app_config()
+    assert config.profiles.get("user").format == "user_only"  # type: ignore[attr-defined]
+
+
+def test_a_user_format_file_replaces_the_packaged_recipe(tmp_path: Path) -> None:
+    defaults_dir = tmp_path / "defaults"
+    defaults_dir.mkdir()
+    (defaults_dir / "config.example.yaml").write_text("{}\n", encoding="utf-8")
+    write_recipe(
+        defaults_dir / "formats",
+        "shared",
+        {
+            "description": "packaged",
+            "stages": ["input_topic", "voice"],
+            "output_type": "video",
+        },
+    )
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "config.yaml").write_text("{}\n", encoding="utf-8")
+    write_recipe(
+        config_dir / "formats",
+        "shared",
+        {"stages": ["input_topic", "render"]},
+    )
+
+    resolved = resolve_config(
+        defaults_file=defaults_dir / "config.example.yaml",
+        config_file=config_dir / "config.yaml",
+    )
+
+    recipe = resolved.values["formats"]["shared"]
+    assert recipe["stages"] == [{"stage": "input_topic"}, {"stage": "render"}]
+    assert "description" not in recipe
+
+
+def test_an_explicit_formats_section_wins_over_format_files(
+    tmp_path: Path,
+) -> None:
+    defaults_dir = tmp_path / "defaults"
+    defaults_dir.mkdir()
+    (defaults_dir / "config.example.yaml").write_text("{}\n", encoding="utf-8")
+    write_recipe(
+        defaults_dir / "formats",
+        "shared",
+        {"stages": ["input_topic", "voice"]},
+    )
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "formats": {"shared": {"description": "configured"}},
+                "profiles": {"default": {"format": "shared"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_config(
+        defaults_file=defaults_dir / "config.example.yaml",
+        config_file=config_dir / "config.yaml",
+        profile="default",
+    )
+
+    assert resolved.values["formats"]["shared"] == {"description": "configured"}
+    assert resolved.origins["formats.shared.description"] == USER_ORIGIN
+    resolved.to_app_config()
