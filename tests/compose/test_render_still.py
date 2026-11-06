@@ -307,6 +307,22 @@ def test_sources_can_be_bytes_a_callable_or_relative_to_a_root(tmp_path: Path) -
     _assert_color(from_callable, 0, 0, (0, 128, 0, 255))
 
 
+def test_file_url_sources_open_the_local_file_they_name(tmp_path: Path) -> None:
+    source = tmp_path / "stored cover.png"
+    _solid((0, 128, 0, 255)).save(source)
+    composition = _composition(
+        layers=[{"id": "cover", "type": "image", "source": source.as_uri()}]
+    )
+
+    direct = PillowStillRenderer().render_still(composition)
+    _assert_color(direct, 0, 0, (0, 128, 0, 255))
+
+    from_callable = PillowStillRenderer(lambda name: source.as_uri()).render_still(
+        composition
+    )
+    _assert_color(from_callable, 0, 0, (0, 128, 0, 255))
+
+
 @pytest.mark.parametrize(
     ("payload", "time_seconds", "assets"),
     [

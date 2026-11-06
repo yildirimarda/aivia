@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,25 @@ def test_asset_hashes_change_when_asset_bytes_change() -> None:
     assert asset_hashes(composition, {"background.png": b"first image"}) == (
         first["background.png"],
     )
+
+
+def test_file_urls_hash_the_local_file_content(tmp_path: Path) -> None:
+    source = tmp_path / "background image.png"
+    source.write_bytes(b"first image")
+    url = source.as_uri()
+    composition = _composition(layers=[{"id": "still", "type": "image", "source": url}])
+
+    hashes = asset_hash_map(composition)
+
+    assert hashes[url] == hashlib.sha256(b"first image").hexdigest()
+    plain = _composition(
+        layers=[{"id": "still", "type": "image", "source": str(source)}]
+    )
+    assert asset_hash_map(plain)[str(source)] == hashes[url]
+
+    source.write_bytes(b"second image")
+
+    assert asset_hash_map(composition)[url] != hashes[url]
 
 
 def test_the_key_is_stable_across_equivalent_inputs() -> None:

@@ -89,6 +89,7 @@ from .transitions import (
     outgoing_transition_end,
     transition_progress,
 )
+from .urls import local_source_path
 
 __all__ = [
     "PILLOW_STILL_RENDERER_VERSION",
@@ -509,7 +510,7 @@ def _open_source(
                 )
                 opened.load()
                 return opened.convert("RGBA")
-        path = Path(source)
+        path = local_source_path(source)
         if path.stat().st_size > max_bytes:
             raise RenderError("image is above the byte cap")
         with Image.open(path) as opened:
@@ -1471,7 +1472,7 @@ class PillowStillRenderer:
             return self._assets(source)
         if self._assets is not None and source in self._assets:
             return self._assets[source]
-        path = Path(source)
+        path = local_source_path(source)
         if self._source_root is not None and not path.is_absolute():
             path = self._source_root / path
         if self._assets is not None and not path.exists():
