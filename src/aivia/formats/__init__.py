@@ -29,6 +29,8 @@ from aivia.formats.catalog import (
     packaged_formats_dir,
     resolve_format,
 )
+from aivia.formats.image_post import *  # noqa: F403
+from aivia.formats.image_post import __all__ as _image_post_all
 from aivia.formats.input_topic import (
     DEFAULT_FACT_LIST_FILENAME,
     DEFAULT_INPUT_FILENAMES,
@@ -256,4 +258,5 @@ __all__ = [
     "validate_stages",
     "write_quote_card",
     "write_template",
+    *_image_post_all,
 ]
