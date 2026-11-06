@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from aivia.cli import (
+    add_language,
     api,
     compose,
     config,
@@ -44,6 +45,7 @@ __all__ = [
     "CommandRegistry",
     "GlobalOptions",
     "ParserConfigurator",
+    "add_language",
     "api",
     "build_parser",
     "compose",
