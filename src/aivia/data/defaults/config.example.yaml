@@ -114,6 +114,20 @@ formats:
     capabilities: [llm, tts, image_gen, video_gen]
     output_type: video
     handler: save
+  ai_video_short:
+    description: Short video with one AI generated clip per beat.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: voice
+      - stage: visuals
+        options:
+          strategy: video
+          max_ai_video_beats: 1000
+      - stage: render
+    capabilities: [llm, tts, video_gen]
+    output_type: video
+    handler: save
   quote_card:
     description: Typography-led still image.
     stages:

@@ -632,7 +632,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the quote card format rendering typography templates stored as data (tests/formats/test_quote_card.py)
 - [x] Implement the slideshow format with transitions and a single voice track (slow, tests/formats/test_slideshow.py)
 - [x] Implement the image post and carousel formats with aspect presets and text per slide (tests/formats/test_image_post.py)
-- [ ] Implement the AI video short format with one generated clip per beat (slow, tests/formats/test_ai_video_short.py)
+- [x] Implement the AI video short format with one generated clip per beat (slow, tests/formats/test_ai_video_short.py)
 - [ ] Generate a music prompt from profile settings and store it with the request (tests/audio/test_music_prompt.py)
 - [ ] Generate several song candidates, prefilter and select one, recording the chosen index (tests/audio/test_song_candidates.py)
 - [ ] Implement the song video format with lyrics, music selection, alignment, karaoke subtitles and visual backgrounds (slow, tests/formats/test_song_video.py)
@@ -643,6 +643,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Hash provided inputs into downstream stage input hashes so editing a supplied file invalidates resume (tests/formats/test_orchestrator_recipe.py)
 - [ ] Wire the concrete write stage into the run stage builder so a text file run executes writing instead of enqueueing (tests/cli/test_run.py)
 - [ ] Wire the concrete render stage into the run stage builder so image and video recipes render output (tests/cli/test_run.py)
+- [ ] Wire the concrete visuals stage into the run stage builder so video recipes generate visuals instead of enqueueing (tests/cli/test_run.py)
 
 ## Milestone 15: Reference driven generation
 
