@@ -747,12 +747,7 @@ formats:
 
     digest = hashlib.sha256((run_dir / "cover.png").read_bytes()).hexdigest()
     stored = (
-        tmp_path
-        / "data"
-        / "generated-media"
-        / "image"
-        / digest[:2]
-        / f"{digest}.png"
+        tmp_path / "data" / "generated-media" / "image" / digest[:2] / f"{digest}.png"
     )
     assert stored.read_bytes() == (run_dir / "cover.png").read_bytes()
 
