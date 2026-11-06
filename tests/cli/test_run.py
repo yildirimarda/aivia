@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,7 @@ from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, Run, RunState, StageResult, StageState
 from aivia.core.run_dirs import RunDirectory
 from aivia.core.stages import Stage, StageContext
+from aivia.providers.protocols import StoragePutRequest
 
 
 def write_config(tmp_path: Path, text: str) -> Path:
@@ -124,6 +126,70 @@ def test_run_creates_and_executes_a_run_by_default(
         engine.dispose()
 
     assert Path(run.run_dir, "script.md").is_file()
+
+
+def test_run_stores_generated_media_through_the_configured_storage(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = write_config(
+        tmp_path,
+        """
+providers:
+  text:
+    type: mock-llm
+storage:
+  backend: local
+  local_dir: generated-media
+formats:
+  sample:
+    description: A recipe whose stage stores generated media.
+    stages:
+      - stage: write
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+    )
+
+    class Store(Stage):
+        name = "write"
+        artifacts = ("script.md",)
+
+        async def run(self, context: StageContext) -> StageResult:
+            assert context.storage is not None
+            (context.run_dir / "script.md").write_text("script", encoding="utf-8")
+            await context.storage.put(
+                StoragePutRequest(
+                    data=b"generated-media",
+                    key="outputs/generated.bin",
+                )
+            )
+            return StageResult(stage=self.name, artifacts=["script.md"])
+
+    monkeypatch.setattr(
+        "aivia.cli.run.build_stages",
+        lambda recipe: [Store() for _stage in recipe.stages],
+    )
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0, err
+    assert err == ""
+    assert "State: succeeded" in out
+
+    stored = tmp_path / "data" / "generated-media" / "outputs" / "generated.bin"
+    assert stored.read_bytes() == b"generated-media"
 
 
 def test_run_enqueues_a_job_without_executing(
@@ -618,6 +684,9 @@ providers:
     type: {module_name}:ScriptedLLM
   pictures:
     type: mock-image
+storage:
+  backend: local
+  local_dir: generated-media
 formats:
   sample:
     description: An audio recipe that generates a cover.
@@ -675,6 +744,12 @@ formats:
     assert manifest["title"] == "Honey"
     assert manifest["aspect_ratio"] == "1:1"
     assert manifest["cost_usd"] > 0.0
+
+    digest = hashlib.sha256((run_dir / "cover.png").read_bytes()).hexdigest()
+    stored = (
+        tmp_path / "data" / "generated-media" / "image" / digest[:2] / f"{digest}.png"
+    )
+    assert stored.read_bytes() == (run_dir / "cover.png").read_bytes()
 
 
 def test_a_text_file_run_executes_the_concrete_write_stage(
