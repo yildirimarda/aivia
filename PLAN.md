@@ -630,7 +630,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the explainer video format with hybrid visuals (slow, tests/formats/test_explainer.py)
 - [x] Implement the narrated still format with one or few images, text overlay, speech and word synced subtitles (slow, tests/formats/test_narrated_still.py)
 - [x] Implement the quote card format rendering typography templates stored as data (tests/formats/test_quote_card.py)
-- [ ] Implement the slideshow format with transitions and a single voice track (slow, tests/formats/test_slideshow.py)
+- [x] Implement the slideshow format with transitions and a single voice track (slow, tests/formats/test_slideshow.py)
 - [ ] Implement the image post and carousel formats with aspect presets and text per slide (tests/formats/test_image_post.py)
 - [ ] Implement the AI video short format with one generated clip per beat (slow, tests/formats/test_ai_video_short.py)
 - [ ] Generate a music prompt from profile settings and store it with the request (tests/audio/test_music_prompt.py)

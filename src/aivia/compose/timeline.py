@@ -39,6 +39,7 @@ from aivia.compose.schema import (
     ImageLayer,
     TextAlign,
     TextLayer,
+    Transition,
     VerticalAlign,
     VideoLayer,
 )
@@ -96,6 +97,12 @@ def _finite(
 
 def _text(value: Any) -> Any:
     return value.strip() if isinstance(value, str) else value
+
+
+def _transition(value: Any) -> Any:
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
 
 
 def _language_key(value: Any) -> str:
@@ -165,6 +172,15 @@ class TimelineAsset(_TimelineModel):
         validation_alias=AliasChoices("beat", "beat_id", "for_beat"),
     )
     fit: str = Field(default="", validation_alias=AliasChoices("fit", "fit_mode"))
+    transition: Transition | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "transition",
+            "transition_in",
+            "enter_transition",
+            "in_transition",
+        ),
+    )
     enabled: bool = Field(
         default=True, validation_alias=AliasChoices("enabled", "visible")
     )
@@ -180,6 +196,11 @@ class TimelineAsset(_TimelineModel):
     @classmethod
     def _strip_text(cls, value: Any) -> Any:
         return _text(value)
+
+    @field_validator("transition", mode="before")
+    @classmethod
+    def _validate_transition(cls, value: Any) -> Any:
+        return _transition(value)
 
     @property
     def is_video(self) -> bool:
@@ -249,6 +270,15 @@ class TimelineBeat(_TimelineModel):
         ),
     )
     fit: str = Field(default="", validation_alias=AliasChoices("fit", "fit_mode"))
+    transition: Transition | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "transition",
+            "transition_in",
+            "enter_transition",
+            "in_transition",
+        ),
+    )
     z_index: int = Field(
         default=0,
         validation_alias=AliasChoices("z_index", "z", "order_index"),
@@ -268,6 +298,11 @@ class TimelineBeat(_TimelineModel):
     @classmethod
     def _strip_text(cls, value: Any) -> Any:
         return _text(value)
+
+    @field_validator("transition", mode="before")
+    @classmethod
+    def _validate_transition(cls, value: Any) -> Any:
+        return _transition(value)
 
     @field_validator("start_seconds", "end_seconds", "duration_seconds", mode="before")
     @classmethod
@@ -1020,6 +1055,35 @@ def _beat_end(
     return min(end, duration)
 
 
+def _metadata_transition(timeline: Timeline) -> Transition | None:
+    """Return the default transition declared in the timeline metadata."""
+    metadata = timeline.metadata or {}
+    raw = metadata.get("transition")
+    if raw is None:
+        raw = metadata.get("transition_in")
+    if raw is None:
+        return None
+    if isinstance(raw, Transition):
+        return raw
+    if isinstance(raw, Mapping):
+        values = dict(raw)
+    elif isinstance(raw, (str, bool)):
+        values = {"type": raw}
+    else:
+        return None
+    for key in ("transition_duration", "transition_seconds", "duration_seconds"):
+        if key in metadata and not any(
+            name in values
+            for name in ("duration_seconds", "duration", "seconds", "length_seconds")
+        ):
+            values["duration_seconds"] = metadata[key]
+            break
+    try:
+        return Transition.model_validate(values)
+    except ValueError:
+        return None
+
+
 def _beat_layers(
     timeline: Timeline,
     language: TimelineLanguage,
@@ -1032,6 +1096,7 @@ def _beat_layers(
     }
     layers: list[ImageLayer | TextLayer | VideoLayer] = []
     used: set[str] = set()
+    default_transition = _metadata_transition(timeline)
     for position, beat in enumerate(beats):
         if not beat.enabled:
             continue
@@ -1055,6 +1120,13 @@ def _beat_layers(
             }
             if fit:
                 values["fit"] = fit
+            transition = (
+                beat.transition
+                or (asset.transition if asset is not None else None)
+                or default_transition
+            )
+            if transition is not None:
+                values["transition"] = transition
             if _is_video(source, kind):
                 values["muted"] = True
                 layers.append(VideoLayer.model_validate(values))

@@ -1391,11 +1391,15 @@ class VoiceStage(Stage):
         beats: list[dict[str, Any]] = []
         for position in range(beat_count):
             text = ""
+            transition = ""
             for script in scripts.values():
-                if position < len(script.beats):
-                    text = _beat_text(script.beats[position]) or text
-                    if text:
-                        break
+                if position >= len(script.beats):
+                    continue
+                beat = script.beats[position]
+                text = _beat_text(beat) or text
+                transition = transition or beat.transition
+                if text and transition:
+                    break
             beats.append(
                 {
                     "id": f"beat_{position}",
@@ -1404,6 +1408,7 @@ class VoiceStage(Stage):
                         first_starts[position] if position < len(first_starts) else 0.0
                     ),
                     "text": text,
+                    "transition": transition,
                 }
             )
 
