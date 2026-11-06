@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -250,6 +251,50 @@ def test_build_stages_uses_the_concrete_visuals_stage() -> None:
     assert stages[0].strategy == "image"
 
 
+def test_build_stages_uses_the_concrete_music_stage() -> None:
+    from aivia.audio import MusicSelectStage
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [
+                {
+                    "stage": "music",
+                    "options": {"lyrics_from_script": True, "duration_seconds": 6},
+                }
+            ],
+            "output_type": "audio",
+        }
+    )
+
+    stages = build_stages(recipe)
+
+    assert isinstance(stages[0], MusicSelectStage)
+    assert stages[0].name == "music"
+    assert stages[0].lyrics_from_script is True
+    assert stages[0].duration_seconds == 6
+
+
+def test_build_stages_uses_the_concrete_align_stage() -> None:
+    from aivia.audio import LyricAlignStage
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [{"stage": "align", "options": {"require_timings": False}}],
+            "output_type": "audio",
+        }
+    )
+
+    stages = build_stages(recipe)
+
+    assert isinstance(stages[0], LyricAlignStage)
+    assert stages[0].name == "align"
+    assert stages[0].require_timings is False
+
+
 def test_build_stages_uses_the_concrete_image_render_stage() -> None:
     from aivia.cli.run import build_stages
     from aivia.core.config.formats import FormatRecipeConfig
@@ -347,6 +392,193 @@ class ScriptedLLM(MockLLMProvider):
             model=request.model or "mock-llm",
         )
 """
+
+
+_LYRICS_PROVIDER = """
+import json
+
+from aivia.providers.mock import MockLLMProvider, MockSTTProvider
+from aivia.providers.protocols.audio import WordTimestamp
+from aivia.providers.protocols.llm import LLMResponse
+from aivia.providers.protocols.stt import STTResponse
+
+LYRICS = [
+    "City lights are calling me",
+    "We are running wild and free",
+]
+
+
+class LyricsLLM(MockLLMProvider):
+    async def complete(self, request):
+        return LLMResponse(
+            content=json.dumps(
+                {
+                    "title": "Neon sky",
+                    "payload": {
+                        "sections": [{"name": "verse", "lines": LYRICS}]
+                    },
+                    "beats": [{"text": line} for line in LYRICS],
+                }
+            ),
+            provider=self.name,
+            model=request.model or "mock-llm",
+        )
+
+
+class LyricsSTT(MockSTTProvider):
+    async def transcribe(self, request):
+        words = []
+        cursor = 0.0
+        for line in LYRICS:
+            for word in line.split():
+                start = cursor
+                end = start + 0.28
+                words.append(
+                    WordTimestamp(
+                        word=word,
+                        start_seconds=start,
+                        end_seconds=end,
+                    )
+                )
+                cursor = end + 0.04
+            cursor += 0.12
+        return STTResponse(
+            text=" ".join(word.word for word in words),
+            language=request.language or "en",
+            duration_seconds=cursor,
+            words=words,
+            provider=self.name,
+            model="lyrics-stt",
+        )
+"""
+
+
+def test_a_song_run_generates_and_times_audio(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = f"fake_song_provider_{tmp_path.name.replace('-', '_')}"
+    (tmp_path / f"{module_name}.py").write_text(
+        _LYRICS_PROVIDER, encoding="utf-8"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ffprobe = bin_dir / "ffprobe"
+    ffprobe.write_text(
+        """#!/bin/sh
+cat <<'JSON'
+{"streams":[{"index":0,"codec_type":"audio","codec_name":"mp3","duration":"6.000","sample_rate":"44100","channels":1}],"format":{"format_name":"mp3","format_long_name":"MP3","duration":"6.000","size":"88200"}}
+JSON
+""",
+        encoding="utf-8",
+    )
+    ffprobe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    source = tmp_path / "facts.txt"
+    source.write_text(
+        "Honey never spoils.\nBees recognise human faces.\n",
+        encoding="utf-8",
+    )
+    config = write_config(
+        tmp_path,
+        f"""
+providers:
+  text:
+    type: {module_name}:LyricsLLM
+  songs:
+    type: mock-music
+  speech:
+    type: {module_name}:LyricsSTT
+music:
+  source: provider
+formats:
+  sample:
+    description: A song recipe that generates and times audio.
+    stages:
+      - stage: input_topic
+      - stage: write
+        options:
+          mode: lyrics
+      - stage: music
+        options:
+          lyrics_from_script: true
+          duration_seconds: 6.0
+      - stage: align
+    capabilities: [llm, music_gen, stt]
+    output_type: audio
+    handler: save
+""",
+    )
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--text-file",
+        str(source),
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0, err
+    assert err == ""
+    assert "State: succeeded" in out
+    assert "Job:" not in out
+    run_id = run_id_from(out)
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+        assert JobRepository(engine).list(run_id=run_id) == []
+        music = StageRunRepository(engine).get(run_id, "music")
+        assert music is not None
+        assert music.status is StageState.SUCCEEDED
+        assert music.artifacts == ["timeline.json", "music.json"]
+        align = StageRunRepository(engine).get(run_id, "align")
+        assert align is not None
+        assert align.status is StageState.SUCCEEDED
+        assert align.artifacts == ["timeline.json", "lyrics-alignment.json"]
+    finally:
+        engine.dispose()
+
+    assert run.run_dir
+    run_dir = Path(run.run_dir)
+    music_manifest = json.loads(
+        (run_dir / "music.json").read_text(encoding="utf-8")
+    )
+    assert music_manifest["source"] == "provider"
+    selected = Path(music_manifest["selected"]["source"])
+    assert selected.is_file()
+
+    timeline = json.loads((run_dir / "timeline.json").read_text(encoding="utf-8"))
+    assert timeline["duration_seconds"] > 0
+    assert len(timeline["music"]) == 1
+    assert timeline["music"][0]["source"] == str(selected)
+    assert [beat["text"] for beat in timeline["beats"]] == [
+        "City lights are calling me",
+        "We are running wild and free",
+    ]
+    assert all(
+        beat["start_seconds"] < beat["end_seconds"] for beat in timeline["beats"]
+    )
+    subtitles = timeline["languages"][0]["subtitles"]
+    assert subtitles["metadata"]["karaoke"] is True
+    assert [cue["text"] for cue in subtitles["cues"]] == [
+        beat["text"] for beat in timeline["beats"]
+    ]
+
+    alignment = json.loads(
+        (run_dir / "lyrics-alignment.json").read_text(encoding="utf-8")
+    )
+    assert alignment["coverage"] == pytest.approx(1.0)
+    assert alignment["timeline"] == "timeline.json"
 
 
 def test_a_text_file_run_executes_the_concrete_write_stage(

@@ -11,6 +11,8 @@ from pathlib import Path
 from sqlalchemy import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from aivia.audio.lyric_stage import ALIGN_STAGE_NAME, LyricAlignStage
+from aivia.audio.music_select import MUSIC_STAGE_NAME, MusicSelectStage
 from aivia.cli.confirm import confirm_spend, confirmation_required
 from aivia.cli.registry import register_command
 from aivia.core import paths
@@ -472,6 +474,8 @@ def build_stages(
     concrete: dict[str, type[Stage]] = {
         INPUT_TOPIC_STAGE_NAME: InputTopicStage,
         WRITE_STAGE_NAME: WriteStage,
+        MUSIC_STAGE_NAME: MusicSelectStage,
+        ALIGN_STAGE_NAME: LyricAlignStage,
         **dict.fromkeys(VISUALS_STAGE_NAMES, VisualReuseStage),
     }
     stages: list[Stage] = []
