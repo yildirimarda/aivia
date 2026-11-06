@@ -20,7 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 import aivia.cli.run as run_command
 from aivia.cli.registry import register_command
-from aivia.cli.run import build_stages
+from aivia.cli.run import build_router, build_stages
 from aivia.core import paths
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
@@ -244,6 +244,7 @@ def _execute(
         data_dir=data_dir,
         config=config,
         cost=tracker,
+        router=build_router(config),
         raise_on_failure=False,
     ).execute_sync()
 
