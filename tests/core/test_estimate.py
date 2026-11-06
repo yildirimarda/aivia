@@ -272,3 +272,53 @@ def test_an_incompatible_price_unit_is_a_missing_estimate() -> None:
     assert "cannot convert" in stage.note
     assert result.complete is False
     assert result.total_usd == pytest.approx(0.10)
+
+
+def test_song_video_recipe_prices_alignment_as_transcription() -> None:
+    from aivia.formats import load_packaged_formats
+
+    providers = {
+        "text": provider("text", capability="llm", price=0.10),
+        "song": provider("song", capability="music_gen", price=0.20),
+        "speech": ProviderMeta(
+            name="speech",
+            capabilities=["stt"],
+            pricing={"stt": ProviderPrice(amount_usd=0.006, unit="minute")},
+        ),
+        "pictures": provider("pictures", capability="image_gen", price=0.30),
+    }
+
+    result = Estimator(providers).estimate(
+        "song_video",
+        load_packaged_formats().get("song_video"),
+    )
+
+    by_stage = {stage.stage: stage for stage in result.stages}
+    align = by_stage["align"]
+    assert align.capability == "stt"
+    assert align.provider == "speech"
+    assert align.free is False
+    assert align.unit_kind == "minute"
+    assert align.amount_usd == pytest.approx(0.006)
+    assert result.total_usd == pytest.approx(0.606)
+    assert result.complete is True
+
+
+def test_align_stage_prices_the_requested_transcription_duration() -> None:
+    providers = {
+        "speech": ProviderMeta(
+            name="speech",
+            capabilities=["stt"],
+            pricing={"stt": ProviderPrice(amount_usd=0.006, unit="minute")},
+        ),
+    }
+
+    result = Estimator(providers).estimate(
+        "song_video",
+        recipe({"stage": "align", "options": {"seconds": 90}}),
+    )
+
+    stage = result.stages[0]
+    assert stage.units == pytest.approx(90)
+    assert stage.unit_kind == "seconds"
+    assert stage.amount_usd == pytest.approx(0.009)

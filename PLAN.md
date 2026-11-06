@@ -652,6 +652,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Build the configured router when replaying a run so concrete stages can select providers (tests/cli/test_replay.py)
 - [ ] Build the configured storage provider when executing run and worker stages so generated media is stored (tests/cli/test_run.py)
 - [ ] Seed the song timeline from the written lyrics so the packaged song recipe runs without an injected duration (tests/formats/test_song_video.py)
+- [ ] Derive the align transcription estimate from a known song duration instead of assuming one minute (tests/core/test_estimate.py)
 
 ## Milestone 15: Reference driven generation
 
