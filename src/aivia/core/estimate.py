@@ -163,6 +163,12 @@ _UNIT_KEYS = (
     "seconds",
     "duration_seconds",
 )
+_SONG_DURATION_KEYS = (
+    "duration_seconds",
+    "duration",
+    "target_duration_seconds",
+    "target_seconds",
+)
 
 
 def _number_option(
@@ -188,6 +194,49 @@ def _number_option(
             )
         return number
     return None
+
+
+def _explicit_units(stage: StageConfig) -> bool:
+    return (
+        any(key in stage.options for key in _UNIT_KEYS)
+        or "unit" in stage.options
+        or "unit_kind" in stage.options
+    )
+
+
+def _known_song_duration(recipe: FormatRecipeConfig) -> float | None:
+    """Return the song duration a recipe already declares, if any.
+
+    A music stage may name the duration it will ask the provider for. The align
+    stage transcribes that same song, so its estimate should use the declared
+    length instead of pricing one minute regardless of the song.
+    """
+    for stage in recipe.stages:
+        if stage_capability(stage, recipe) != "music_gen":
+            continue
+        duration = _number_option(
+            stage.options,
+            _SONG_DURATION_KEYS,
+            stage=stage.stage,
+        )
+        if duration:
+            return duration
+    return None
+
+
+def _duration_value(value: Any, *, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(
+            f"{field} must be a finite, non-negative number",
+            details={"field": field, "value": value},
+        )
+    number = float(value)
+    if not math.isfinite(number) or number < 0:
+        raise ConfigError(
+            f"{field} must be a finite, non-negative number",
+            details={"field": field, "value": value},
+        )
+    return number
 
 
 def stage_units(stage: StageConfig) -> tuple[float, str]:
@@ -534,18 +583,45 @@ class Estimator:
         """The pricing resolver shared by every stage."""
         return self._resolver
 
-    def estimate(self, name: str, recipe: FormatRecipeConfig) -> RecipeEstimate:
-        """Estimate every stage of *recipe* in its declared order."""
-        stages = tuple(self._estimate_stage(stage, recipe) for stage in recipe.stages)
+    def estimate(
+        self,
+        name: str,
+        recipe: FormatRecipeConfig,
+        *,
+        duration_seconds: float | None = None,
+    ) -> RecipeEstimate:
+        """Estimate every stage of *recipe* in its declared order.
+
+        *duration_seconds* is a known song duration for a recipe that generates
+        or transcribes audio. When omitted, a duration declared by the recipe's
+        music stage is used instead.
+        """
+        song_duration = (
+            _duration_value(duration_seconds, field="duration_seconds")
+            if duration_seconds is not None
+            else _known_song_duration(recipe)
+        )
+        stages = tuple(
+            self._estimate_stage(stage, recipe, song_duration=song_duration)
+            for stage in recipe.stages
+        )
         return RecipeEstimate(format=name, stages=stages)
 
     def _estimate_stage(
         self,
         stage: StageConfig,
         recipe: FormatRecipeConfig,
+        *,
+        song_duration: float | None = None,
     ) -> StageEstimate:
         capability = stage_capability(stage, recipe)
         units, unit_kind = stage_units(stage)
+        if (
+            song_duration is not None
+            and capability == "stt"
+            and not _explicit_units(stage)
+        ):
+            units, unit_kind = song_duration, "seconds"
         explicit = _number_option(
             stage.options,
             _ESTIMATE_KEYS,
@@ -671,6 +747,7 @@ def estimate_recipe(
     chain: Iterable[str] | None = None,
     weights: Mapping[str, float] | None = None,
     seed: int | None = None,
+    duration_seconds: float | None = None,
 ) -> RecipeEstimate:
     """Estimate *recipe* without constructing a long-lived estimator."""
     return Estimator(
@@ -684,7 +761,7 @@ def estimate_recipe(
         chain=chain,
         weights=weights,
         seed=seed,
-    ).estimate(name, recipe)
+    ).estimate(name, recipe, duration_seconds=duration_seconds)
 
 
 def render_estimate(estimate: RecipeEstimate) -> str:

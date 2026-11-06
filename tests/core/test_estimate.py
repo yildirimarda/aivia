@@ -322,3 +322,72 @@ def test_align_stage_prices_the_requested_transcription_duration() -> None:
     assert stage.units == pytest.approx(90)
     assert stage.unit_kind == "seconds"
     assert stage.amount_usd == pytest.approx(0.009)
+
+
+def test_align_estimate_uses_the_song_duration_declared_by_the_music_stage() -> None:
+    providers = {
+        "song": provider("song", capability="music_gen", price=0.20),
+        "speech": ProviderMeta(
+            name="speech",
+            capabilities=["stt"],
+            pricing={"stt": ProviderPrice(amount_usd=0.006, unit="minute")},
+        ),
+    }
+
+    result = Estimator(providers).estimate(
+        "song_video",
+        recipe(
+            {"stage": "music", "options": {"duration_seconds": 90}},
+            {"stage": "align"},
+        ),
+    )
+
+    align = {stage.stage: stage for stage in result.stages}["align"]
+    assert align.units == pytest.approx(90)
+    assert align.unit_kind == "seconds"
+    assert align.amount_usd == pytest.approx(0.009)
+
+
+def test_align_estimate_accepts_a_known_song_duration() -> None:
+    providers = {
+        "speech": ProviderMeta(
+            name="speech",
+            capabilities=["stt"],
+            pricing={"stt": ProviderPrice(amount_usd=0.006, unit="minute")},
+        ),
+    }
+
+    result = Estimator(providers).estimate(
+        "song_video",
+        recipe({"stage": "align"}),
+        duration_seconds=150,
+    )
+
+    stage = result.stages[0]
+    assert stage.units == pytest.approx(150)
+    assert stage.unit_kind == "seconds"
+    assert stage.amount_usd == pytest.approx(0.015)
+
+
+def test_an_explicit_align_duration_wins_over_the_song_duration() -> None:
+    providers = {
+        "song": provider("song", capability="music_gen", price=0.20),
+        "speech": ProviderMeta(
+            name="speech",
+            capabilities=["stt"],
+            pricing={"stt": ProviderPrice(amount_usd=0.006, unit="minute")},
+        ),
+    }
+
+    result = Estimator(providers).estimate(
+        "song_video",
+        recipe(
+            {"stage": "music", "options": {"duration_seconds": 90}},
+            {"stage": "align", "options": {"seconds": 120}},
+        ),
+    )
+
+    align = {stage.stage: stage for stage in result.stages}["align"]
+    assert align.units == pytest.approx(120)
+    assert align.unit_kind == "seconds"
+    assert align.amount_usd == pytest.approx(0.012)
