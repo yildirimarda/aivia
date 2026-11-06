@@ -67,7 +67,6 @@ class EstimateSource(StrEnum):
 
 _FREE_STAGES = frozenset(
     {
-        "align",
         "compose",
         "composition",
         "deliver",
@@ -82,6 +81,7 @@ _FREE_STAGES = frozenset(
 )
 
 _CAPABILITY_BY_STAGE: dict[str, str] = {
+    "align": "stt",
     "character_trainer": "character_trainer",
     "embed": "embeddings",
     "embeddings": "embeddings",
