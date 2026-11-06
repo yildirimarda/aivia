@@ -300,6 +300,49 @@ def test_the_music_stage_reads_lyrics_from_the_written_script(
     assert timeline.music[0].source.endswith("music/music.mp3")
 
 
+def test_the_packaged_song_recipe_seeds_the_timeline_from_the_written_lyrics(
+    tmp_path: Path,
+) -> None:
+    script = _script()
+    recipe = _song_video()
+    _write_script(tmp_path, script)
+    assert "duration_seconds" not in recipe.stages[2].options
+    generator = _FakeSongGenerator(
+        b"song-bytes",
+        duration=4.0,
+        format=AudioFormat.MP3,
+    )
+
+    music = MusicStage(options=recipe.stages[2].options, music=generator)
+    _run(music.run(StageContext(run_dir=tmp_path, config={})))
+
+    timeline = Timeline.model_validate_json(
+        (tmp_path / "timeline.json").read_text(encoding="utf-8")
+    )
+    assert [beat.text for beat in timeline.beats] == [
+        beat.text for beat in script.beats
+    ]
+    assert all(
+        beat.start_seconds < (beat.end_seconds or 0.0) for beat in timeline.beats
+    )
+    assert timeline.duration_seconds is not None
+    assert timeline.duration_seconds > 0.0
+    assert generator.requests[0].duration_seconds == pytest.approx(
+        timeline.duration_seconds
+    )
+
+    align = LyricAlignStage(transcriber=_FakeSTT(_transcript(script)))
+    _run(align.run(StageContext(run_dir=tmp_path, config={})))
+
+    aligned = Timeline.model_validate_json(
+        (tmp_path / "timeline.json").read_text(encoding="utf-8")
+    )
+    assert [beat.text for beat in aligned.beats] == [beat.text for beat in script.beats]
+    assert aligned.duration_seconds == pytest.approx(
+        _transcript(script).duration_seconds
+    )
+
+
 def test_alignment_writes_timed_beats_words_and_karaoke_cues(
     tmp_path: Path,
 ) -> None:

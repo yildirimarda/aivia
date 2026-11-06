@@ -38,7 +38,7 @@ from aivia.audio.song_candidates import (
     select_song_candidate,
 )
 from aivia.compose.schema import AudioTrackRole as TimelineTrackRole
-from aivia.compose.timeline import Timeline, TimelineMusic
+from aivia.compose.timeline import Timeline, TimelineBeat, TimelineMusic
 from aivia.core.config.media import (
     DEFAULT_MUSIC_BACKGROUND_FADE_IN_SECONDS,
     DEFAULT_MUSIC_BACKGROUND_FADE_OUT_SECONDS,
@@ -73,6 +73,7 @@ from aivia.providers.protocols.music import (
     MusicResponse,
     MusicTrack,
 )
+from aivia.writing.length import estimate_duration
 from aivia.writing.schema import Script
 
 __all__ = [
@@ -1033,10 +1034,8 @@ class MusicSelectStage(Stage):
             return None, ""
         return self._profiles(context).get(name), name
 
-    def _script_lyrics(self, context: StageContext) -> str:
-        """Read lyric text from a written script in the run directory."""
-        if not self.lyrics_from_script:
-            return ""
+    def _script_paths(self, context: StageContext) -> list[Path]:
+        """Return the written script paths for the requested language first."""
         language = _text(self.script_language).replace("_", "-").lower()
         names: list[str] = []
         if language:
@@ -1050,10 +1049,36 @@ class MusicSelectStage(Stage):
         paths = [context.run_dir / name for name in names]
         paths.extend(sorted(context.run_dir.glob("script.*.json")))
         seen: set[Path] = set()
+        result: list[Path] = []
         for path in paths:
             if path in seen or not path.is_file():
                 continue
             seen.add(path)
+            result.append(path)
+        return result
+
+    def _script(self, context: StageContext) -> Script | None:
+        """Read the written script the music stage should seed its timeline from."""
+        if not self.lyrics_from_script:
+            return None
+        for path in self._script_paths(context):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(payload, Mapping):
+                continue
+            try:
+                return Script.model_validate(dict(payload))
+            except ValueError:
+                continue
+        return None
+
+    def _script_lyrics(self, context: StageContext) -> str:
+        """Read lyric text from a written script in the run directory."""
+        if not self.lyrics_from_script:
+            return ""
+        for path in self._script_paths(context):
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
@@ -1068,6 +1093,56 @@ class MusicSelectStage(Stage):
             if text:
                 return text
         return ""
+
+    def _seed_timeline_from_lyrics(
+        self,
+        context: StageContext,
+        timeline: Timeline,
+    ) -> Timeline:
+        """Seed an empty song timeline with timed beats from the written lyrics.
+
+        A song recipe has no voice stage to measure a duration, so the music
+        stage derives one from the lyric lines before asking for a track. The
+        align stage later replaces these estimated timings with the measured
+        song timings.
+        """
+        if not self.lyrics_from_script:
+            return timeline
+        if (
+            timeline.duration_seconds is not None
+            or timeline.beats
+            or timeline.languages
+            or timeline.music
+        ):
+            return timeline
+        script = self._script(context)
+        if script is None or not script.beats:
+            return timeline
+        language = _text(script.language) or self.script_language or None
+        beats: list[TimelineBeat] = []
+        cursor = 0.0
+        for position, source in enumerate(script.beats):
+            text = _text(source.text)
+            if not text:
+                continue
+            length = source.duration_seconds
+            if length is None:
+                length = estimate_duration(text, language=language)
+            length = max(float(length), _EPSILON)
+            beats.append(
+                TimelineBeat(
+                    id=f"lyric_{position}",
+                    index=position,
+                    start_seconds=cursor,
+                    end_seconds=cursor + length,
+                    duration_seconds=length,
+                    text=text,
+                )
+            )
+            cursor += length
+        if not beats:
+            return timeline
+        return timeline.model_copy(update={"beats": beats, "duration_seconds": cursor})
 
     def _lyrics(self, context: StageContext) -> str:
         """Resolve explicit lyrics, then lyrics written into the run script."""
@@ -1487,6 +1562,7 @@ class MusicSelectStage(Stage):
 
     async def run(self, context: StageContext) -> StageResult:
         timeline = self._load_timeline(context)
+        timeline = self._seed_timeline_from_lyrics(context, timeline)
         duration = self._target_duration(timeline)
         run_id = context.run.id if context.run is not None else ""
         choice = await self._select(context, duration=duration, run_id=run_id)
