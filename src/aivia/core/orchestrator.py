@@ -152,8 +152,11 @@ def _unused_file_hashes(
     in the downstream digest: editing it invalidates the resume instead of
     silently reusing stages that were built from the old contents.
     """
+    inputs = getattr(stage, "inputs", ())
+    if isinstance(inputs, (str, Path)):
+        inputs = (inputs,)
     declared: list[str] = []
-    for value in (*stage.artifacts, *getattr(stage, "inputs", ())):
+    for value in (*stage.artifacts, *inputs):
         artifact = str(value)
         if artifact not in declared:
             declared.append(artifact)
