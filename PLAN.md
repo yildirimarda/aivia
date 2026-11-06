@@ -637,7 +637,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Generate several song candidates, prefilter and select one, recording the chosen index (tests/audio/test_song_candidates.py)
 - [x] Implement the song video format with lyrics, music selection, alignment, karaoke subtitles and visual backgrounds (slow, tests/formats/test_song_video.py)
 - [x] Implement the audio only format with cover art and metadata and no video cost (tests/formats/test_audio_only.py)
-- [ ] Add a smoke test running one mock pipeline per built in format and asserting artifacts, costs and sidecars (tests/e2e/test_formats.py)
+- [x] Add a smoke test running one mock pipeline per built in format and asserting artifacts, costs and sidecars (tests/e2e/test_formats.py)
 - [ ] Add a command that produces an extra language for an existing run by reusing facts and visuals with no visual recharge (tests/cli/test_add_language.py)
 - [ ] Merge user and packaged format files during config resolution so profiles can reference file-only formats (tests/core/config/test_formats.py)
 - [ ] Hash provided inputs into downstream stage input hashes so editing a supplied file invalidates resume (tests/formats/test_orchestrator_recipe.py)
