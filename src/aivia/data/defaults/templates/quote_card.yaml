@@ -1,0 +1,198 @@
+schema_version: 1
+default: classic
+templates:
+  classic:
+    description: Centered typography on a deep gradient card.
+    canvas:
+      width: 1080
+      height: 1080
+      background: "#0b1020"
+    duration_seconds: 6
+    fps: 30
+    layers:
+      - id: backdrop
+        type: shape
+        shape: rounded_rectangle
+        x: 72
+        y: 72
+        width: 936
+        height: 936
+        radius: 56
+        fill:
+          type: linear
+          angle: 35
+          stops:
+            - color: "#6d28d9"
+              offset: 0
+            - color: "#2563eb"
+              offset: 1
+        z_index: 0
+      - id: accent
+        type: shape
+        shape: rectangle
+        x: 156
+        y: 218
+        width: 120
+        height: 10
+        fill: "#facc15"
+        z_index: 1
+      - id: quote
+        type: text
+        text: "{{ quote }}"
+        x: 156
+        y: 300
+        width: 768
+        height: 380
+        font_family: Lato
+        font_size: 96
+        font_weight: bold
+        color: "#ffffff"
+        align: center
+        vertical_align: middle
+        line_height: 1.05
+        letter_spacing: -1
+        shrink_to_fit: true
+        z_index: 2
+      - id: attribution
+        type: text
+        text: "— {{ attribution }}"
+        x: 156
+        y: 820
+        width: 768
+        height: 60
+        font_family: Lato
+        font_size: 34
+        color: "#e2e8f0"
+        align: center
+        z_index: 3
+  square: &square
+    description: A square card with editorial serif typography.
+    canvas:
+      width: 1080
+      height: 1080
+      background: "#f8f5ef"
+    duration_seconds: 6
+    fps: 30
+    layers:
+      - id: quote
+        type: text
+        text: "{{ quote }}"
+        x: 120
+        y: 190
+        width: 840
+        height: 560
+        font_family: Lato
+        font_size: 88
+        font_weight: bold
+        color: "#111827"
+        align: center
+        vertical_align: middle
+        line_height: 1.1
+        shrink_to_fit: true
+        z_index: 0
+      - id: attribution
+        type: text
+        text: "— {{ attribution }}"
+        x: 120
+        y: 810
+        width: 840
+        height: 80
+        font_family: Lato
+        font_size: 32
+        color: "#4b5563"
+        align: center
+        z_index: 1
+  portrait:
+    description: A vertical card with room for a longer quotation.
+    canvas:
+      width: 1080
+      height: 1920
+      background: "#101827"
+    duration_seconds: 6
+    fps: 30
+    layers:
+      - id: quote
+        type: text
+        text: "{{ quote }}"
+        x: 120
+        y: 520
+        width: 840
+        height: 820
+        font_family: Lato
+        font_size: 104
+        font_weight: bold
+        color: "#ffffff"
+        align: center
+        vertical_align: middle
+        line_height: 1.08
+        shrink_to_fit: true
+        z_index: 0
+      - id: attribution
+        type: text
+        text: "— {{ attribution }}"
+        x: 120
+        y: 1420
+        width: 840
+        height: 90
+        font_family: Lato
+        font_size: 38
+        color: "#cbd5e1"
+        align: center
+        z_index: 1
+  landscape:
+    description: A wide card for banners and link previews.
+    canvas:
+      width: 1920
+      height: 1080
+      background: "#111827"
+    duration_seconds: 6
+    fps: 30
+    layers:
+      - id: quote
+        type: text
+        text: "{{ quote }}"
+        x: 240
+        y: 250
+        width: 1440
+        height: 480
+        font_family: Lato
+        font_size: 100
+        font_weight: bold
+        color: "#f9fafb"
+        align: center
+        vertical_align: middle
+        line_height: 1.08
+        shrink_to_fit: true
+        z_index: 0
+      - id: attribution
+        type: text
+        text: "— {{ attribution }}"
+        x: 240
+        y: 790
+        width: 1440
+        height: 80
+        font_family: Lato
+        font_size: 36
+        color: "#d1d5db"
+        align: center
+        z_index: 1
+  minimal:
+    description: Plain typography on a solid background.
+    canvas:
+      width: 1080
+      height: 1080
+      background: "#ffffff"
+    quote:
+      font_family: Lato
+      font_size: 82
+      font_weight: bold
+      color: "#111827"
+      align: center
+      vertical_align: middle
+      line_height: 1.12
+      shrink_to_fit: true
+    attribution:
+      font_family: Lato
+      font_size: 30
+      color: "#6b7280"
+      align: center

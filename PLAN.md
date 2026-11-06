@@ -642,6 +642,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Merge user and packaged format files during config resolution so profiles can reference file-only formats (tests/core/config/test_formats.py)
 - [ ] Hash provided inputs into downstream stage input hashes so editing a supplied file invalidates resume (tests/formats/test_orchestrator_recipe.py)
 - [ ] Wire the concrete write stage into the run stage builder so a text file run executes writing instead of enqueueing (tests/cli/test_run.py)
+- [ ] Wire the concrete render stage into the run stage builder so image and video recipes render output (tests/cli/test_run.py)
 
 ## Milestone 15: Reference driven generation
 

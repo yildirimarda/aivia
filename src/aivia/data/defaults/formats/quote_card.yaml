@@ -5,6 +5,8 @@ stages:
     options:
       mode: quote
   - stage: render
+    options:
+      template: classic
 capabilities: [llm, image_gen]
 output_type: image
 handler: save
