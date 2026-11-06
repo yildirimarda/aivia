@@ -17,6 +17,7 @@ from aivia.core.db import (
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, JobState, RunState, StageResult
 from aivia.core.stages import Stage, StageContext
+from aivia.providers.protocols import StoragePutRequest
 
 
 def write_config(tmp_path: Path, text: str) -> Path:
@@ -160,6 +161,67 @@ def test_worker_claims_and_runs_a_queued_run_job(
 
     assert run is not None and run.run_dir
     assert Path(run.run_dir, "script.md").is_file()
+
+
+def test_worker_stores_generated_media_through_the_configured_storage(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = write_config(
+        tmp_path,
+        """
+storage:
+  backend: local
+  local_dir: generated-media
+formats:
+  sample:
+    description: A recipe whose stage stores generated media.
+    stages:
+      - stage: write
+    output_type: video
+    handler: save
+""",
+    )
+
+    class Store(Stage):
+        name = "write"
+        artifacts = ("script.md",)
+
+        async def run(self, context: StageContext) -> StageResult:
+            assert context.storage is not None
+            (context.run_dir / "script.md").write_text("script", encoding="utf-8")
+            await context.storage.put(
+                StoragePutRequest(
+                    data=b"generated-media",
+                    key="outputs/generated.bin",
+                )
+            )
+            return StageResult(stage=self.name, artifacts=["script.md"])
+
+    monkeypatch.setattr(
+        "aivia.cli.run.build_stages",
+        lambda recipe: [Store() for _stage in recipe.stages],
+    )
+    run_id = enqueue_run(capsys, config, database)
+
+    code, out, err = worker_command(capsys, config, database, "--once")
+
+    assert code == 0
+    assert err == ""
+    assert "1 succeeded" in out
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+    finally:
+        engine.dispose()
+
+    stored = tmp_path / "data" / "generated-media" / "outputs" / "generated.bin"
+    assert stored.read_bytes() == b"generated-media"
 
 
 def test_worker_runs_jobs_until_the_maximum_is_reached(

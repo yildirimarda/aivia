@@ -36,6 +36,7 @@ from aivia.core.jobs import JobQueue, Worker
 from aivia.core.models import Job, Run
 from aivia.core.orchestrator import Orchestrator
 from aivia.formats.byo import apply_stage_options
+from aivia.providers.storage_factory import build_storage_provider
 
 __all__ = [
     "JobExecutionError",
@@ -250,6 +251,10 @@ async def execute_job(
         config=config,
         cost=CostTracker(engine),
         router=run_command.build_router(config),
+        storage=build_storage_provider(
+            getattr(config, "storage", None),
+            data_dir=_data_dir(run, database_path),
+        ),
         raise_on_failure=False,
     )
     result = await orchestrator.execute()

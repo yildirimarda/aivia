@@ -28,6 +28,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel
 
@@ -268,30 +269,38 @@ def _sources(value: Any) -> tuple[Any, ...]:
     return tuple(result)
 
 
+def _local_path(value: str) -> str:
+    """Return a local filesystem path for a ``file://`` URL, else *value*."""
+    parsed = urlsplit(value)
+    if parsed.scheme.lower() == "file":
+        return str(Path(unquote(parsed.path)))
+    return value
+
+
 def _path_of(value: Any) -> str:
     if isinstance(value, (str, Path)):
-        return str(value)
+        return _local_path(str(value))
     if isinstance(value, Mapping):
         for name in ("path", "source", "url", "file"):
             raw = value.get(name)
             if isinstance(raw, str) and raw.strip():
-                return raw.strip()
+                return _local_path(raw.strip())
         paths = value.get("paths")
         if isinstance(paths, Sequence) and not isinstance(paths, (str, bytes)):
             for item in paths:
                 if isinstance(item, str) and item.strip():
-                    return item.strip()
+                    return _local_path(item.strip())
         return ""
     for source in _sources(value):
         for name in ("path", "source", "url", "file"):
             raw = getattr(source, name, None)
             if isinstance(raw, str) and raw.strip():
-                return raw.strip()
+                return _local_path(raw.strip())
         paths = getattr(source, "paths", None)
         if isinstance(paths, Sequence) and not isinstance(paths, (str, bytes)):
             for item in paths:
                 if isinstance(item, str) and item.strip():
-                    return item.strip()
+                    return _local_path(item.strip())
     return ""
 
 

@@ -65,6 +65,7 @@ from aivia.formats.song_video import SONG_VIDEO_STAGE_NAME, SongVideoStage
 from aivia.providers import docs as provider_docs
 from aivia.providers.provider_factory import build_providers
 from aivia.providers.registry import registry as provider_registry
+from aivia.providers.storage_factory import build_storage_provider
 from aivia.visuals.reuse import VISUAL_REUSE_STAGE_NAME, VisualReuseStage
 from aivia.writing.stage import WRITE_STAGE_NAME, WriteStage
 
@@ -508,6 +509,10 @@ def _execute_run(
         config=config,
         cost=CostTracker(engine),
         router=build_router(config),
+        storage=build_storage_provider(
+            getattr(config, "storage", None),
+            data_dir=_data_dir_from_run(run),
+        ),
         raise_on_failure=False,
     )
     return asyncio.run(orchestrator.execute())

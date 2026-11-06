@@ -15,6 +15,7 @@ import shutil
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from aivia.compose.audio_outputs import (
     AudioMetadata,
@@ -228,6 +229,9 @@ def cover_art_source(value: Any, *, run_dir: Path | None = None) -> Path | None:
         text = str(value).strip()
         if not text:
             return None
+        parsed = urlsplit(text)
+        if parsed.scheme.lower() == "file":
+            return Path(unquote(parsed.path))
         path = Path(text)
         if not path.is_absolute() and run_dir is not None:
             path = run_dir / path
