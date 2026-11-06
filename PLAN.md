@@ -650,6 +650,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Keep every per language script registered when writing only one language for an existing run (tests/cli/test_write.py)
 - [ ] Build the configured router for the write and add language commands so the concrete stage can select an LLM (tests/cli/test_write.py)
 - [ ] Build the configured router when replaying a run so concrete stages can select providers (tests/cli/test_replay.py)
+- [ ] Build the configured storage provider when executing run and worker stages so generated media is stored (tests/cli/test_run.py)
 
 ## Milestone 15: Reference driven generation
 

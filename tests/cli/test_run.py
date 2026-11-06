@@ -231,6 +231,25 @@ def test_build_stages_uses_the_concrete_write_stage() -> None:
     assert stages[0].options["languages"] == ["en"]
 
 
+def test_build_stages_uses_the_concrete_visuals_stage() -> None:
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+    from aivia.visuals import VisualReuseStage
+
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [{"stage": "visuals", "options": {"strategy": "image"}}],
+            "output_type": "video",
+        }
+    )
+
+    stages = build_stages(recipe)
+
+    assert isinstance(stages[0], VisualReuseStage)
+    assert stages[0].name == "visuals"
+    assert stages[0].strategy == "image"
+
+
 def test_build_stages_uses_the_concrete_image_render_stage() -> None:
     from aivia.cli.run import build_stages
     from aivia.core.config.formats import FormatRecipeConfig
@@ -554,6 +573,85 @@ formats:
 
     assert run.run_dir
     assert (Path(run.run_dir) / "song-video.yaml").is_file()
+
+
+def test_a_video_run_generates_visuals_instead_of_enqueueing(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = f"fake_visuals_writer_{tmp_path.name.replace('-', '_')}"
+    (tmp_path / f"{module_name}.py").write_text(_SCRIPTED_PROVIDER, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    source = tmp_path / "facts.txt"
+    source.write_text(
+        "Honey never spoils.\nBees recognise human faces.\n",
+        encoding="utf-8",
+    )
+    config = write_config(
+        tmp_path,
+        f"""
+providers:
+  text:
+    type: {module_name}:ScriptedLLM
+  pictures:
+    type: mock-image
+formats:
+  sample:
+    description: A text file feeding a video visuals stage.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: visuals
+        options:
+          strategy: image
+    capabilities: [llm, image_gen]
+    output_type: video
+    handler: save
+""",
+    )
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--text-file",
+        str(source),
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "State: succeeded" in out
+    assert "Job:" not in out
+    run_id = run_id_from(out)
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+        assert JobRepository(engine).list(run_id=run_id) == []
+        stage = StageRunRepository(engine).get(run_id, "visuals")
+        assert stage is not None
+        assert stage.status is StageState.SUCCEEDED
+        assert stage.artifacts == ["visual-reuse.json", "shared-visuals.json"]
+    finally:
+        engine.dispose()
+
+    assert run.run_dir
+    manifest = json.loads(
+        (Path(run.run_dir) / "visual-reuse.json").read_text(encoding="utf-8")
+    )
+    assert manifest["stage"] == "visuals"
+    assert len(manifest["beats"]) == 1
+    assert manifest["beats"][0]["request"]["visual_type"] == "image"
+    assert manifest["beats"][0]["provider"] == "pictures"
+    assert manifest["beats"][0]["asset"] is not None
 
 
 def test_run_requires_a_format(

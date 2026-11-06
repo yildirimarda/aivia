@@ -59,6 +59,7 @@ from aivia.formats.song_video import SONG_VIDEO_STAGE_NAME, SongVideoStage
 from aivia.providers import docs as provider_docs
 from aivia.providers.provider_factory import build_providers
 from aivia.providers.registry import registry as provider_registry
+from aivia.visuals.reuse import VISUAL_REUSE_STAGE_NAME, VisualReuseStage
 from aivia.writing.stage import WRITE_STAGE_NAME, WriteStage
 
 __all__ = [
@@ -411,6 +412,9 @@ def _discard_run_directories(directories: list[Path]) -> None:
 RENDER_STAGE_NAME = SONG_VIDEO_STAGE_NAME
 """The recipe stage name served by the concrete render implementations."""
 
+VISUALS_STAGE_NAMES = frozenset({"visual", "visuals", VISUAL_REUSE_STAGE_NAME})
+"""The recipe stage names served by the concrete visual reuse implementation."""
+
 _RENDER_STAGES: dict[str, type[Stage]] = {
     "image_post": ImagePostStage,
     "carousel": CarouselStage,
@@ -468,6 +472,7 @@ def build_stages(
     concrete: dict[str, type[Stage]] = {
         INPUT_TOPIC_STAGE_NAME: InputTopicStage,
         WRITE_STAGE_NAME: WriteStage,
+        **dict.fromkeys(VISUALS_STAGE_NAMES, VisualReuseStage),
     }
     stages: list[Stage] = []
     for item in recipe.stages:
