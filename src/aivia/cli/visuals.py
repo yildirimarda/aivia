@@ -38,6 +38,7 @@ from aivia.core.orchestrator import OrchestrationResult, Orchestrator
 from aivia.core.router import Router
 from aivia.core.stages import Stage
 from aivia.providers.provider_factory import build_providers
+from aivia.visuals.reuse import VisualReuseStage
 
 __all__ = [
     "VISUAL_STAGE_NAMES",
@@ -271,6 +272,16 @@ def _is_implemented(stage: Stage) -> bool:
         return False
     function = getattr(run_method, "__func__", run_method)
     return function is not Stage.run
+
+
+def _has_visual_input(run: Run, stage: Stage) -> bool:
+    """Whether the run directory holds the input a concrete visual stage reads."""
+    run_dir = Path(run.run_dir).expanduser() if run.run_dir else None
+    if run_dir is None or not run_dir.is_dir():
+        return False
+    if isinstance(stage, VisualReuseStage):
+        return any(run_dir.glob("script.*.json"))
+    return True
 
 
 def _execute(
@@ -755,7 +766,11 @@ def run_visuals(args: argparse.Namespace) -> int:
         except ConfigError:
             stages = []
 
-        executable = [stage for stage in stages if _is_implemented(stage)]
+        executable = [
+            stage
+            for stage in stages
+            if _is_implemented(stage) and _has_visual_input(run, stage)
+        ]
         result: OrchestrationResult | None = None
         if executable:
             try:
