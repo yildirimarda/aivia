@@ -15,7 +15,7 @@ from aivia.core.db import (
     upgrade_database,
 )
 from aivia.core.models import Run, RunState, StageResult
-from aivia.core.run_dirs import RunDirectories
+from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import Stage, StageContext
 
 
@@ -324,3 +324,80 @@ formats:
     assert code == 1
     assert out == ""
     assert "format has no write stage" in err
+
+
+class PerLanguageWrite(Stage):
+    """A write stage that writes one script file per requested language."""
+
+    name = "write"
+    artifacts = ()
+
+    async def run(self, context: StageContext) -> StageResult:
+        assert context.run is not None
+        languages = list(self.options.get("languages") or ["en"])
+        artifacts: list[str] = []
+        for language in languages:
+            relative = f"script.{language}.json"
+            (context.run_dir / relative).write_text(
+                f'{{"language": "{language}"}}', encoding="utf-8"
+            )
+            artifacts.append(relative)
+        return StageResult(
+            run_id=context.run.id,
+            stage=self.name,
+            artifacts=artifacts,
+        )
+
+
+def test_write_keeps_the_other_registered_language_scripts(
+    config: Path,
+    database: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = seed_run(database, tmp_path)
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.run_dir
+        run_dir = Path(run.run_dir)
+    finally:
+        engine.dispose()
+
+    existing = ["script.en.json", "script.de.json"]
+    for relative in existing:
+        (run_dir / relative).write_text('{"language": "en"}', encoding="utf-8")
+    RunDirectory(run_dir, run_id=run_id).register("write", existing)
+
+    stage = PerLanguageWrite(options={"languages": ["en", "de"]})
+    monkeypatch.setattr(
+        "aivia.cli.write.build_stages",
+        lambda recipe: [stage],
+    )
+
+    code, out, err = write_command(
+        capsys,
+        run_id,
+        "--language",
+        "en",
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "Languages: en" in out
+    registered = [record.path for record in RunDirectory(run_dir).artifacts("write")]
+    assert registered == existing
+
+    engine = create_database_engine(database)
+    try:
+        result = StageRunRepository(engine).get(run_id, "write")
+        assert result is not None
+        assert result.artifacts == existing
+    finally:
+        engine.dispose()

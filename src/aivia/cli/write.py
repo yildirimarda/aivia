@@ -199,6 +199,7 @@ def _apply_language_filter(stage: Stage, languages: list[str]) -> None:
     if not languages:
         return
     stage.options["languages"] = list(languages)
+    stage.preserve_artifacts = True
     if len(languages) == 1:
         stage.options["language"] = languages[0]
     else:
