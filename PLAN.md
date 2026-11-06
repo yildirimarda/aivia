@@ -628,7 +628,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add an input topic stage building the topic from CLI arguments, a file or research so every format runs without research (tests/formats/test_input_topic.py)
 - [x] Allow skipping research and writing by passing a text or script file, with validation and cost reflecting the skipped stages (tests/cli/test_byo_input.py)
 - [x] Implement the explainer video format with hybrid visuals (slow, tests/formats/test_explainer.py)
-- [ ] Implement the narrated still format with one or few images, text overlay, speech and word synced subtitles (slow, tests/formats/test_narrated_still.py)
+- [x] Implement the narrated still format with one or few images, text overlay, speech and word synced subtitles (slow, tests/formats/test_narrated_still.py)
 - [ ] Implement the quote card format rendering typography templates stored as data (tests/formats/test_quote_card.py)
 - [ ] Implement the slideshow format with transitions and a single voice track (slow, tests/formats/test_slideshow.py)
 - [ ] Implement the image post and carousel formats with aspect presets and text per slide (tests/formats/test_image_post.py)
