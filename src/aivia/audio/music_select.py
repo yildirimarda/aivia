@@ -72,6 +72,7 @@ from aivia.providers.protocols.music import (
     MusicResponse,
     MusicTrack,
 )
+from aivia.writing.schema import Script
 
 __all__ = [
     "DEFAULT_MUSIC_FILENAME",
@@ -821,10 +822,11 @@ class MusicSelectStage(Stage):
     ``options`` may carry ``source`` (``auto``, ``library`` or ``provider``),
     ``library``/``library_path``, ``mood``, ``genre``, ``tags``, ``tempo_bpm``,
     ``duration_seconds``, ``match_duration``, ``commercial_only``, ``prompt``,
-    ``instrumental``, ``profile``, ``volume_db``, ``fade_in_seconds``,
-    ``fade_out_seconds``, ``loop``, ``duck``, ``ducking``,
-    ``timeline_filename`` and ``music_filename``. A caller may inject a
-    ``music`` callable/service instead of calling the configured provider.
+    ``instrumental``, ``lyrics``, ``lyrics_from_script``, ``script_language``,
+    ``profile``, ``volume_db``, ``fade_in_seconds``, ``fade_out_seconds``,
+    ``loop``, ``duck``, ``ducking``, ``timeline_filename`` and
+    ``music_filename``. A caller may inject a ``music`` callable/service
+    instead of calling the configured provider.
     """
 
     name = MUSIC_STAGE_NAME
@@ -851,6 +853,8 @@ class MusicSelectStage(Stage):
         prompt: str | None = None,
         instrumental: bool | None = None,
         lyrics: Any = None,
+        lyrics_from_script: bool | None = None,
+        script_language: str | None = None,
         profile: Any = None,
         music: Any = None,
         generator: Any = None,
@@ -877,6 +881,8 @@ class MusicSelectStage(Stage):
             "prompt": prompt,
             "instrumental": instrumental,
             "lyrics": lyrics,
+            "lyrics_from_script": lyrics_from_script,
+            "script_language": script_language,
             "profile": profile,
             "music": music,
             "generator": generator,
@@ -918,6 +924,10 @@ class MusicSelectStage(Stage):
         self.prompt = _text(merged.get("prompt"))
         self.instrumental = bool(merged.get("instrumental", True))
         self.lyrics = merged.get("lyrics")
+        self.lyrics_from_script = bool(merged.get("lyrics_from_script", False))
+        self.script_language = _text(
+            merged.get("script_language") or merged.get("language")
+        )
         self.profile = merged.get("profile")
         self.music = merged.get("music") or merged.get("generator")
         self.duck = bool(merged.get("duck", True))
@@ -1014,9 +1024,50 @@ class MusicSelectStage(Stage):
             return None, ""
         return self._profiles(context).get(name), name
 
+    def _script_lyrics(self, context: StageContext) -> str:
+        """Read lyric text from a written script in the run directory."""
+        if not self.lyrics_from_script:
+            return ""
+        language = _text(self.script_language).replace("_", "-").lower()
+        names: list[str] = []
+        if language:
+            names.extend(
+                (
+                    f"script.{language}.json",
+                    f"script_{language}.json",
+                )
+            )
+        names.append("script.json")
+        paths = [context.run_dir / name for name in names]
+        paths.extend(sorted(context.run_dir.glob("script.*.json")))
+        seen: set[Path] = set()
+        for path in paths:
+            if path in seen or not path.is_file():
+                continue
+            seen.add(path)
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            script = None
+            if isinstance(payload, Mapping):
+                try:
+                    script = Script.model_validate(dict(payload))
+                except ValueError:
+                    script = None
+            text = lyrics_text(script if script is not None else payload)
+            if text:
+                return text
+        return ""
+
+    def _lyrics(self, context: StageContext) -> str:
+        """Resolve explicit lyrics, then lyrics written into the run script."""
+        return lyrics_text(self.lyrics) or self._script_lyrics(context)
+
     def _music_inputs(self, context: StageContext) -> dict[str, Any]:
         """Resolve the prompt and style filters from explicit options and profile."""
         profile, profile_name = self._profile(context)
+        lyrics = self._lyrics(context)
         profile_values = _profile_music_values(profile)
         mood = _first_text(
             self._value(context, self.mood, "mood"),
@@ -1036,13 +1087,14 @@ class MusicSelectStage(Stage):
             mood=self._value(context, self.mood, "mood"),
             genre=self._value(context, self.genre, "genre"),
             tags=self._value(context, self.tags, "tags"),
-            instrumental=self.instrumental and not lyrics_text(self.lyrics),
+            instrumental=self.instrumental and not lyrics,
         )
         return {
             "prompt": prompt,
             "mood": mood,
             "genre": genre,
             "tags": tags,
+            "lyrics": lyrics,
             "profile": profile_name,
         }
 
@@ -1125,7 +1177,7 @@ class MusicSelectStage(Stage):
         }
         if inputs["profile"]:
             metadata["profile"] = inputs["profile"]
-        lyrics = lyrics_text(self.lyrics)
+        lyrics = inputs["lyrics"]
         values: dict[str, Any] = {
             "prompt": prompt,
             "instrumental": self.instrumental and not lyrics,
@@ -1260,7 +1312,7 @@ class MusicSelectStage(Stage):
         selection: SongCandidateSelection = select_song_candidate(
             response,
             self.candidate_config,
-            lyrics=self.lyrics,
+            lyrics=self._lyrics(context),
             analyzer=self.analyzer,
             ffmpeg_runner=self.ffmpeg_runner,
             ffprobe_runner=self.ffprobe_runner,

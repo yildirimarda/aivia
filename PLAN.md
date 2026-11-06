@@ -635,7 +635,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the AI video short format with one generated clip per beat (slow, tests/formats/test_ai_video_short.py)
 - [x] Generate a music prompt from profile settings and store it with the request (tests/audio/test_music_prompt.py)
 - [x] Generate several song candidates, prefilter and select one, recording the chosen index (tests/audio/test_song_candidates.py)
-- [ ] Implement the song video format with lyrics, music selection, alignment, karaoke subtitles and visual backgrounds (slow, tests/formats/test_song_video.py)
+- [x] Implement the song video format with lyrics, music selection, alignment, karaoke subtitles and visual backgrounds (slow, tests/formats/test_song_video.py)
 - [ ] Implement the audio only format with cover art and metadata and no video cost (tests/formats/test_audio_only.py)
 - [ ] Add a smoke test running one mock pipeline per built in format and asserting artifacts, costs and sidecars (tests/e2e/test_formats.py)
 - [ ] Add a command that produces an extra language for an existing run by reusing facts and visuals with no visual recharge (tests/cli/test_add_language.py)
@@ -644,6 +644,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Wire the concrete write stage into the run stage builder so a text file run executes writing instead of enqueueing (tests/cli/test_run.py)
 - [ ] Wire the concrete render stage into the run stage builder so image and video recipes render output (tests/cli/test_run.py)
 - [ ] Wire the concrete visuals stage into the run stage builder so video recipes generate visuals instead of enqueueing (tests/cli/test_run.py)
+- [ ] Wire the concrete music and align stages into the run stage builder so song recipes generate and time audio (tests/cli/test_run.py)
+- [ ] Price the align stage through speech to text so song runs estimate transcription instead of zero (tests/core/test_estimate.py)
 
 ## Milestone 15: Reference driven generation
 

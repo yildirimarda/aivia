@@ -5,9 +5,13 @@ stages:
     options:
       mode: lyrics
   - stage: music
+    options:
+      lyrics_from_script: true
   - stage: align
   - stage: visuals
+    options:
+      strategy: image
   - stage: render
-capabilities: [llm, music_gen, tts, image_gen]
+capabilities: [llm, music_gen, stt, image_gen]
 output_type: video
 handler: publish

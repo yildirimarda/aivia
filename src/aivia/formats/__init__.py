@@ -135,6 +135,8 @@ from aivia.formats.registry import (
     stage_contract_registry,
     stage_registry,
 )
+from aivia.formats.song_video import *  # noqa: F403
+from aivia.formats.song_video import __all__ as _song_video_all
 
 __all__ = [
     "DEFAULT_FACT_LIST_FILENAME",
@@ -259,4 +261,5 @@ __all__ = [
     "write_quote_card",
     "write_template",
     *_image_post_all,
+    *_song_video_all,
 ]
