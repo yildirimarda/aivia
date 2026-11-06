@@ -9,9 +9,16 @@ from typing import Any, ClassVar
 
 import pytest
 
+from aivia.core.db import (
+    RunRepository,
+    StageRunRepository,
+    create_database_engine,
+    upgrade_database,
+)
 from aivia.core.errors import ConfigError
 from aivia.core.models.run import Run, StageResult, StageState
 from aivia.core.orchestrator import Orchestrator, execute_recipe
+from aivia.core.run_state import RunStateMachine
 from aivia.core.stages import Stage, StageContext
 from aivia.formats import (
     FormatCatalog,
@@ -161,10 +168,11 @@ def _orchestrator(
     catalog: FormatCatalog,
     *,
     format_name: str = "custom",
+    run: Run | str | None = None,
     **options: Any,
 ) -> Orchestrator:
     return Orchestrator(
-        run=Run(format=format_name),
+        run=Run(format=format_name) if run is None else run,
         run_dir=tmp_path / "run",
         catalog=catalog,
         registry=_registry(),
@@ -303,6 +311,78 @@ def test_a_provided_output_skips_the_stage_that_would_produce_it(
     assert skipped.status is StageState.SKIPPED
     assert skipped.cost_usd == 0.0
     assert result.run.cost_usd == pytest.approx(2.25)
+
+
+def test_editing_a_provided_input_invalidates_downstream_resume(
+    tmp_path: Path,
+) -> None:
+    engine = create_database_engine(url="sqlite+pysqlite:///:memory:")
+    upgrade_database(engine=engine)
+    try:
+        catalog = _catalog(tmp_path)
+        run = RunStateMachine(RunRepository(engine)).create(Run(format="custom"))
+        repository = StageRunRepository(engine)
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        script = run_dir / "script.md"
+        script.write_text("first", encoding="utf-8")
+
+        first = asyncio.run(
+            _orchestrator(
+                tmp_path,
+                catalog,
+                run=run,
+                repository=repository,
+                provided_inputs=(Script,),
+            ).execute()
+        )
+
+        assert Recording.events == ["voice", "render"]
+        first_write = next(item for item in first.stages if item.stage == "write")
+        first_voice = next(item for item in first.stages if item.stage == "voice")
+        assert first_write.status is StageState.SKIPPED
+        assert first_write.output_hash
+        assert first_voice.status is StageState.SUCCEEDED
+
+        Recording.events.clear()
+        script.write_text("second", encoding="utf-8")
+        second = asyncio.run(
+            _orchestrator(
+                tmp_path,
+                catalog,
+                run=run.id,
+                repository=repository,
+                provided_inputs=(Script,),
+            ).execute()
+        )
+
+        assert Recording.events == ["voice", "render"]
+        second_write = next(item for item in second.stages if item.stage == "write")
+        second_voice = next(item for item in second.stages if item.stage == "voice")
+        assert second_write.status is StageState.SKIPPED
+        assert second_write.output_hash != first_write.output_hash
+        assert second_voice.status is StageState.SUCCEEDED
+        assert second_voice.input_hash != first_voice.input_hash
+
+        Recording.events.clear()
+        third = asyncio.run(
+            _orchestrator(
+                tmp_path,
+                catalog,
+                run=run.id,
+                repository=repository,
+                provided_inputs=(Script,),
+            ).execute()
+        )
+
+        assert Recording.events == []
+        assert [item.status for item in third.stages] == [
+            StageState.SKIPPED,
+            StageState.SKIPPED,
+            StageState.SKIPPED,
+        ]
+    finally:
+        engine.dispose()
 
 
 def test_a_format_name_can_be_passed_to_execute_recipe(tmp_path: Path) -> None:
