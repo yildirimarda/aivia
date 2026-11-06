@@ -295,6 +295,25 @@ def test_build_stages_uses_the_concrete_align_stage() -> None:
     assert stages[0].require_timings is False
 
 
+def test_build_stages_uses_the_concrete_cover_art_stage() -> None:
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+    from aivia.formats.audio_only import CoverArtStage
+
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [{"stage": "cover", "options": {"aspect_ratio": "1:1"}}],
+            "output_type": "audio",
+        }
+    )
+
+    stages = build_stages(recipe)
+
+    assert isinstance(stages[0], CoverArtStage)
+    assert stages[0].name == "cover"
+    assert stages[0].aspect_ratio == "1:1"
+
+
 def test_build_stages_uses_the_concrete_image_render_stage() -> None:
     from aivia.cli.run import build_stages
     from aivia.core.config.formats import FormatRecipeConfig
@@ -575,6 +594,87 @@ formats:
     )
     assert alignment["coverage"] == pytest.approx(1.0)
     assert alignment["timeline"] == "timeline.json"
+
+
+def test_an_audio_run_generates_cover_art_instead_of_enqueueing(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = f"fake_cover_writer_{tmp_path.name.replace('-', '_')}"
+    (tmp_path / f"{module_name}.py").write_text(_SCRIPTED_PROVIDER, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    source = tmp_path / "facts.txt"
+    source.write_text(
+        "Honey never spoils.\nBees recognise human faces.\n",
+        encoding="utf-8",
+    )
+    config = write_config(
+        tmp_path,
+        f"""
+providers:
+  text:
+    type: {module_name}:ScriptedLLM
+  pictures:
+    type: mock-image
+formats:
+  sample:
+    description: An audio recipe that generates a cover.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: cover
+        options:
+          aspect_ratio: "1:1"
+    capabilities: [llm, image_gen]
+    output_type: audio
+    handler: save
+""",
+    )
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--text-file",
+        str(source),
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0, err
+    assert err == ""
+    assert "State: succeeded" in out
+    assert "Job:" not in out
+    run_id = run_id_from(out)
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+        assert JobRepository(engine).list(run_id=run_id) == []
+        stage = StageRunRepository(engine).get(run_id, "cover")
+        assert stage is not None
+        assert stage.status is StageState.SUCCEEDED
+        assert stage.artifacts == ["cover.png", "cover.json"]
+        assert stage.cost_usd > 0.0
+    finally:
+        engine.dispose()
+
+    assert run.run_dir
+    run_dir = Path(run.run_dir)
+    assert (run_dir / "cover.png").is_file()
+    manifest = json.loads((run_dir / "cover.json").read_text(encoding="utf-8"))
+    assert manifest["stage"] == "cover"
+    assert manifest["cover"] == "cover.png"
+    assert manifest["provider"] == "pictures"
+    assert manifest["title"] == "Honey"
+    assert manifest["aspect_ratio"] == "1:1"
+    assert manifest["cost_usd"] > 0.0
 
 
 def test_a_text_file_run_executes_the_concrete_write_stage(
