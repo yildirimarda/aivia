@@ -37,6 +37,9 @@ from aivia.compose.schema import (
     Canvas,
     Composition,
     ImageLayer,
+    TextAlign,
+    TextLayer,
+    VerticalAlign,
     VideoLayer,
 )
 from aivia.compose.subtitles import SubtitleTrack, SubtitleWord
@@ -882,15 +885,22 @@ def _is_video(source: str, kind: str) -> bool:
     return any(lowered.endswith(extension) for extension in _VIDEO_EXTENSIONS)
 
 
-def _layer_id(beat: TimelineBeat, position: int, used: set[str]) -> str:
-    base = beat.id.strip() or f"beat_{position}"
-    candidate = base
+def _unique_layer_id(base: str, used: set[str]) -> str:
+    candidate = base.strip() or "layer"
+    if candidate not in used:
+        used.add(candidate)
+        return candidate
     suffix = 2
+    original = candidate
     while candidate in used:
-        candidate = f"{base}_{suffix}"
+        candidate = f"{original}_{suffix}"
         suffix += 1
     used.add(candidate)
     return candidate
+
+
+def _layer_id(beat: TimelineBeat, position: int, used: set[str]) -> str:
+    return _unique_layer_id(beat.id or f"beat_{position}", used)
 
 
 def _track_id(
@@ -1015,12 +1025,12 @@ def _beat_layers(
     language: TimelineLanguage,
     beats: Sequence[TimelineBeat],
     duration: float,
-) -> list[ImageLayer | VideoLayer]:
+) -> list[ImageLayer | TextLayer | VideoLayer]:
     assets_by_id = {asset.id: asset for asset in timeline.assets if asset.id}
     assets_by_beat = {
         asset.beat: asset for asset in timeline.assets if asset.beat and asset.enabled
     }
-    layers: list[ImageLayer | VideoLayer] = []
+    layers: list[ImageLayer | TextLayer | VideoLayer] = []
     used: set[str] = set()
     for position, beat in enumerate(beats):
         if not beat.enabled:
@@ -1028,30 +1038,43 @@ def _beat_layers(
         end = _beat_end(beat, position, beats, language, duration)
         if end <= beat.start_seconds:
             continue
+        z_index = beat.z_index if "z_index" in beat.model_fields_set else position
         asset = assets_by_id.get(beat.asset) if beat.asset else None
         if asset is None and not beat.asset:
             asset = assets_by_beat.get(beat.id)
         source = asset.source if asset is not None else beat.asset
-        if not source:
-            continue
-        kind = beat.asset_kind or (asset.kind if asset is not None else "")
-        fit = beat.fit or (asset.fit if asset is not None else "")
-        values: dict[str, Any] = {
-            "id": _layer_id(beat, position, used),
-            "source": source,
-            "start_seconds": beat.start_seconds,
-            "end_seconds": end,
-            "z_index": (
-                beat.z_index if "z_index" in beat.model_fields_set else position
-            ),
-        }
-        if fit:
-            values["fit"] = fit
-        if _is_video(source, kind):
-            values["muted"] = True
-            layers.append(VideoLayer.model_validate(values))
-        else:
-            layers.append(ImageLayer.model_validate(values))
+        if source:
+            kind = beat.asset_kind or (asset.kind if asset is not None else "")
+            fit = beat.fit or (asset.fit if asset is not None else "")
+            values: dict[str, Any] = {
+                "id": _layer_id(beat, position, used),
+                "source": source,
+                "start_seconds": beat.start_seconds,
+                "end_seconds": end,
+                "z_index": z_index,
+            }
+            if fit:
+                values["fit"] = fit
+            if _is_video(source, kind):
+                values["muted"] = True
+                layers.append(VideoLayer.model_validate(values))
+            else:
+                layers.append(ImageLayer.model_validate(values))
+        if beat.text:
+            base = beat.id or f"beat_{position}"
+            layers.append(
+                TextLayer.model_validate(
+                    {
+                        "id": _unique_layer_id(f"{base}_text", used),
+                        "text": beat.text,
+                        "start_seconds": beat.start_seconds,
+                        "end_seconds": end,
+                        "z_index": z_index + 1,
+                        "align": TextAlign.CENTER,
+                        "vertical_align": VerticalAlign.TOP,
+                    }
+                )
+            )
     return layers
 
 
