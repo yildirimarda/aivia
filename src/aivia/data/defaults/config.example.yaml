@@ -159,6 +159,26 @@ formats:
     capabilities: [llm, music_gen, stt, image_gen]
     output_type: video
     handler: publish
+  audio_only:
+    description: Audio track with generated cover art and embedded metadata.
+    stages:
+      - stage: input_topic
+      - stage: write
+        options:
+          mode: lyrics
+      - stage: music
+        options:
+          lyrics_from_script: true
+      - stage: cover
+        options:
+          aspect_ratio: "1:1"
+      - stage: render
+        options:
+          output_format: mp3
+          embed_cover_art: true
+    capabilities: [llm, music_gen, image_gen]
+    output_type: audio
+    handler: save
   character_short:
     description: Short video built around a consistent character.
     stages:

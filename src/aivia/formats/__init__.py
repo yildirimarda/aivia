@@ -1,5 +1,7 @@
 """Composable format recipes and the stage contracts they build on."""
 
+from aivia.formats.audio_only import *  # noqa: F403
+from aivia.formats.audio_only import __all__ as _audio_only_all
 from aivia.formats.byo import (
     ProvidedInputs,
     apply_provided_inputs,
@@ -260,6 +262,7 @@ __all__ = [
     "validate_stages",
     "write_quote_card",
     "write_template",
+    *_audio_only_all,
     *_image_post_all,
     *_song_video_all,
 ]

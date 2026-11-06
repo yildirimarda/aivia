@@ -98,6 +98,9 @@ _LOSSLESS_CODECS = frozenset(
     {"pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "flac"}
 )
 
+_COVER_ART_FORMATS = frozenset({"mp3", "m4a", "flac"})
+"""Containers whose muxers accept an embedded attached picture."""
+
 _METADATA_FIELDS = (
     "title",
     "artist",
@@ -223,11 +226,17 @@ class AudioRenderResult:
     format: str
     codec: str
     metadata: AudioMetadata
+    cover_art: Path | None = None
 
     @property
     def path(self) -> Path:
         """Alias for :attr:`output`."""
         return self.output
+
+    @property
+    def has_cover_art(self) -> bool:
+        """Whether the output carries embedded cover art."""
+        return self.cover_art is not None
 
     @property
     def duration_seconds(self) -> float | None:
@@ -350,6 +359,17 @@ def _audio_inputs(composition: Composition) -> tuple[FFmpegInput, ...]:
     return tuple(inputs)
 
 
+def _cover_input(cover_art: str | Path | None) -> FFmpegInput | None:
+    if cover_art is None:
+        return None
+    if not isinstance(cover_art, (str, Path)):
+        raise AudioOutputError("cover_art must be a path")
+    source = str(cover_art).strip()
+    if not source:
+        raise AudioOutputError("cover_art must not be empty")
+    return FFmpegInput(source=source, layer_id="cover")
+
+
 def _settings(
     composition: Composition,
     *,
@@ -408,6 +428,7 @@ def build_audio_command(
     video: Any | None = None,
     platform: str | None = None,
     profile: str | None = None,
+    cover_art: str | Path | None = None,
     overwrite: bool = True,
 ) -> FFmpegCommand:
     """Build an audio-only ffmpeg argv for *composition* without executing it.
@@ -415,7 +436,9 @@ def build_audio_command(
     The output suffix selects the container and its default encoder. An
     explicit *audio_codec* must be compatible with that container. The
     composition's duration is enforced by padding silence and trimming, and
-    every requested metadata tag is written to the output.
+    every requested metadata tag is written to the output. When *cover_art*
+    names an image, it is embedded as an attached picture instead of a video
+    stream, so the result stays audio-only.
     """
     if not isinstance(executable, str) or not executable.strip():
         raise AudioOutputError("executable must be a non-empty string")
@@ -445,6 +468,12 @@ def build_audio_command(
             audio_codec = resolved.audio_codec
 
     codec = _codec_for(fmt, audio_codec)
+    if cover_art is not None and fmt not in _COVER_ART_FORMATS:
+        allowed = ", ".join(sorted(_COVER_ART_FORMATS))
+        raise AudioOutputError(
+            f"cover art cannot be embedded in a {fmt!r} container; "
+            f"expected one of {allowed}"
+        )
     if audio_bitrate is not None:
         audio_bitrate = _positive_int(audio_bitrate, "audio_bitrate")
     if sample_rate is not None:
@@ -459,6 +488,9 @@ def build_audio_command(
         raise AudioOutputError(
             "an audio-only output needs at least one enabled audio track"
         )
+    cover = _cover_input(cover_art)
+    all_inputs = (*inputs, cover) if cover is not None else inputs
+    cover_index = len(inputs)
     active = _settings(
         value,
         audio_settings=audio_settings,
@@ -490,7 +522,7 @@ def build_audio_command(
     argv: list[str] = [executable.strip(), "-hide_banner", "-loglevel", "error"]
     if overwrite:
         argv.append("-y")
-    for item in inputs:
+    for item in all_inputs:
         argv.extend(item.argv())
     argv.extend(
         [
@@ -498,9 +530,29 @@ def build_audio_command(
             graph,
             "-map",
             "[aout]",
+        ]
+    )
+    if cover is not None:
+        argv.extend(
+            [
+                "-map",
+                f"{cover_index}:v:0",
+                "-c:v",
+                "copy",
+                "-disposition:v",
+                "attached_pic",
+                "-metadata:s:v:0",
+                "title=Album cover",
+                "-metadata:s:v:0",
+                "comment=Cover (front)",
+            ]
+        )
+    else:
+        argv.append("-vn")
+    argv.extend(
+        [
             "-t",
             f"{duration:.6f}",
-            "-vn",
             "-map_metadata",
             "-1",
             "-c:a",
@@ -522,7 +574,7 @@ def build_audio_command(
         argv,
         filtergraph=graph,
         output=str(output),
-        inputs=inputs,
+        inputs=all_inputs,
     )
 
 
@@ -583,14 +635,28 @@ class AudioRenderer:
         codec: str,
         metadata: AudioMetadata,
         probe: FFprobeInfo,
+        cover_art: Path | None = None,
     ) -> None:
         streams = probe.audio_streams
         if not streams:
             raise AudioOutputError("the rendered file has no audio stream")
-        if probe.video_streams:
+        video_streams = probe.video_streams
+        if cover_art is None and video_streams:
             raise AudioOutputError(
                 "an audio-only output must not contain a video stream"
             )
+        if cover_art is not None:
+            if not video_streams:
+                raise AudioOutputError("the rendered audio is missing its cover art")
+            if len(video_streams) > 1:
+                raise AudioOutputError(
+                    "the rendered audio has more than one cover art stream"
+                )
+            cover_stream = video_streams[0]
+            if cover_stream.width is not None and cover_stream.width <= 0:
+                raise AudioOutputError("the rendered cover art has invalid dimensions")
+            if cover_stream.height is not None and cover_stream.height <= 0:
+                raise AudioOutputError("the rendered cover art has invalid dimensions")
         stream = streams[0]
         expected_codec = _expected_codec_name(codec)
         if stream.codec_name != expected_codec:
@@ -635,6 +701,21 @@ class AudioRenderer:
         destination.parent.mkdir(parents=True, exist_ok=True)
         options = dict(command_options)
         options.pop("executable", None)
+        cover_art = options.get("cover_art")
+        cover_path = (
+            Path(cover_art)
+            if isinstance(cover_art, (str, Path)) and str(cover_art).strip()
+            else None
+        )
+        if (
+            cover_path is not None
+            and self.ffmpeg_runner is None
+            and not cover_path.is_file()
+        ):
+            raise AudioOutputError(
+                f"cover art does not exist: {cover_path}",
+                details={"cover_art": str(cover_path)},
+            )
         fmt = audio_output_format(destination, options.get("output_format"))
         handle, temporary_name = tempfile.mkstemp(
             prefix=f".{destination.stem}-",
@@ -683,6 +764,7 @@ class AudioRenderer:
                 codec=codec,
                 metadata=metadata,
                 probe=probe,
+                cover_art=cover_path,
             )
             os.replace(temporary, destination)
         finally:
@@ -694,6 +776,7 @@ class AudioRenderer:
             format=fmt,
             codec=codec,
             metadata=metadata,
+            cover_art=cover_path,
         )
 
 
