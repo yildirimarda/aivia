@@ -627,7 +627,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Let a run execute its recipe, skipping unused stages at zero cost and loading user and packaged format files (tests/formats/test_orchestrator_recipe.py)
 - [x] Add an input topic stage building the topic from CLI arguments, a file or research so every format runs without research (tests/formats/test_input_topic.py)
 - [x] Allow skipping research and writing by passing a text or script file, with validation and cost reflecting the skipped stages (tests/cli/test_byo_input.py)
-- [ ] Implement the explainer video format with hybrid visuals (slow, tests/formats/test_explainer.py)
+- [x] Implement the explainer video format with hybrid visuals (slow, tests/formats/test_explainer.py)
 - [ ] Implement the narrated still format with one or few images, text overlay, speech and word synced subtitles (slow, tests/formats/test_narrated_still.py)
 - [ ] Implement the quote card format rendering typography templates stored as data (tests/formats/test_quote_card.py)
 - [ ] Implement the slideshow format with transitions and a single voice track (slow, tests/formats/test_slideshow.py)
@@ -868,3 +868,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Break the media probe import cycle so its test module collects without importing providers first (tests/core/test_media_probe.py)
 - [ ] Fix the placement test helper typing so mypy passes on the compose suite (tests/compose/test_placement.py)
 - [ ] Exclude injected writer and provider objects from the stage input hash so resume is stable across processes (tests/writing/test_write_stage.py)
+- [ ] Estimate hybrid visuals by pricing capped AI video beats separately from image beats (tests/cli/test_estimate.py)
