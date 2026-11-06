@@ -868,3 +868,4 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Break the media probe import cycle so its test module collects without importing providers first (tests/core/test_media_probe.py)
 - [ ] Fix the placement test helper typing so mypy passes on the compose suite (tests/compose/test_placement.py)
 - [ ] Exclude injected writer and provider objects from the stage input hash so resume is stable across processes (tests/writing/test_write_stage.py)
+- [ ] Estimate hybrid visuals by pricing capped AI video beats separately from image beats (tests/cli/test_estimate.py)
