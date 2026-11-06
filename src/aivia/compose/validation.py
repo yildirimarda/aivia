@@ -14,7 +14,7 @@ from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -26,6 +26,7 @@ from aivia.compose.overlays import (
 )
 from aivia.compose.safe_area import effective_safe_area, warn_safe_area_violations
 from aivia.compose.schema import Composition, Layer
+from aivia.compose.urls import file_url_path
 from aivia.core.errors import ValidationError
 
 __all__ = [
@@ -276,20 +277,6 @@ def _mask_source(layer: Layer) -> str | None:
 _REMOTE_SCHEMES = frozenset({"http", "https"})
 
 
-def _file_url_path(source: str) -> str | None:
-    """Return the local path named by a ``file://`` URL, or ``None``."""
-    try:
-        parsed = urlsplit(source)
-    except ValueError:
-        return None
-    if parsed.scheme.lower() != "file":
-        return None
-    if parsed.netloc and parsed.netloc.lower() not in {"", "localhost"}:
-        return None
-    path = unquote(parsed.path)
-    return path or None
-
-
 def _url_aware_checker(checker: AssetCheck) -> AssetCheck:
     """Resolve storage URLs before asking *checker* whether an asset exists.
 
@@ -308,10 +295,10 @@ def _url_aware_checker(checker: AssetCheck) -> AssetCheck:
         if scheme in _REMOTE_SCHEMES:
             return bool(parsed.netloc)
         if scheme == "file":
-            local = _file_url_path(source)
+            local = file_url_path(source)
             if local is None:
                 return False
-            return checker(local) or checker(source)
+            return checker(str(local)) or checker(source)
         return checker(source)
 
     return check

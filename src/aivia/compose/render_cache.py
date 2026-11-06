@@ -37,6 +37,7 @@ from aivia.core.models.run import ToolchainFingerprint
 from .io import composition_to_dict
 from .render import PILLOW_STILL_RENDERER_VERSION, RENDERER_VERSION
 from .schema import Composition
+from .urls import local_source_path
 
 __all__ = [
     "RENDERER_VERSION",
@@ -163,7 +164,7 @@ def _resolve_asset(
         return assets(source)
     if isinstance(assets, Mapping) and source in assets:
         return assets[source]
-    path = Path(source)
+    path = local_source_path(source)
     if source_root is not None and not path.is_absolute():
         path = Path(source_root) / path
     return path
@@ -209,7 +210,7 @@ def _hash_asset(value: Any, source: str) -> str:
         text = value.strip()
         if _HEX_DIGEST.fullmatch(text):
             return text.lower()
-        path = Path(text)
+        path = local_source_path(text)
         if path.is_file():
             return _hash_file(path)
         return _digest_text(text)

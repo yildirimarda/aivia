@@ -221,13 +221,12 @@ def test_file_urls_are_resolved_before_checking_asset_existence(
     )
 
     seen: list[str] = []
-    assert (
-        validate_composition(
-            composition,
-            asset_exists=lambda source: seen.append(source) or True,
-        )
-        == []
-    )
+
+    def check(source: str) -> bool:
+        seen.append(source)
+        return True
+
+    assert validate_composition(composition, asset_exists=check) == []
     assert seen == [str(asset)]
     assert validate_composition(composition, assets=tmp_path) == []
     assert _codes(validate_composition(composition, assets=set())) == ["missing_asset"]
