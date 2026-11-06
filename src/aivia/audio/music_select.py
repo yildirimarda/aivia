@@ -25,7 +25,7 @@ import math
 import os
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -79,8 +79,14 @@ __all__ = [
     "SelectedMusic",
     "apply_ducking",
     "build_music_prompt",
+    "build_music_prompt_from_profile",
     "build_music_stage",
+    "build_profile_music_prompt",
+    "music_prompt",
+    "music_prompt_for_profile",
+    "music_prompt_from_profile",
     "music_stage",
+    "profile_music_prompt",
     "run_music_stage",
     "select_library_music",
     "select_music",
@@ -378,6 +384,7 @@ class BackgroundMusic:
     model: str = ""
     score: float = 0.0
     cost_usd: float = 0.0
+    prompt: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -425,6 +432,7 @@ class BackgroundMusic:
             "model": self.model,
             "score": self.score,
             "cost_usd": self.cost_usd,
+            "prompt": self.prompt,
             "license": self.license.model_dump(mode="json"),
             "commercial_cleared": self.is_cleared,
             "metadata": dict(self.metadata),
@@ -441,29 +449,166 @@ MusicSelection = BackgroundMusic
 """Alias for :class:`BackgroundMusic`."""
 
 
+_PROFILE_MUSIC_FIELDS: dict[str, tuple[str, ...]] = {
+    "prompt": ("prompt", "music_prompt"),
+    "mood": ("mood", "tone"),
+    "genre": ("genre",),
+    "tags": ("tags", "keywords"),
+    "style": ("style", "style_bible"),
+    "brief": ("brief", "instruction"),
+    "niche": ("niche", "subject"),
+    "instrumental": ("instrumental",),
+}
+"""Profile fields that may steer a generated music prompt.
+
+A content profile has no music section of its own, so its tone, brief, niche,
+keywords and style bible are used as the deterministic style inputs. A profile
+may also carry a nested ``music`` mapping, either directly or under
+``overrides``, whose values take precedence over the flat fields.
+"""
+
+
+def _profile_mapping(value: Any) -> Mapping[str, Any] | None:
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, BaseModel):
+        dumped = value.model_dump()
+        return dumped if isinstance(dumped, Mapping) else None
+    return None
+
+
+def _profile_music_values(profile: Any) -> dict[str, Any]:
+    """Return the music inputs a profile supplies, without calling a model."""
+    if profile is None or isinstance(profile, str):
+        return {}
+    mapping = _profile_mapping(profile)
+    if mapping is None:
+        return {}
+
+    values: dict[str, Any] = {}
+    for container in (mapping, mapping.get("overrides"), mapping.get("config")):
+        nested = _profile_mapping(container)
+        if nested is None:
+            continue
+        music = nested.get("music")
+        music_values = _profile_mapping(music)
+        if music_values is None:
+            continue
+        for name in _PROFILE_MUSIC_FIELDS:
+            raw = music_values.get(name)
+            if raw is not None:
+                values.setdefault(name, raw)
+
+    for name, aliases in _PROFILE_MUSIC_FIELDS.items():
+        for alias in aliases:
+            raw = mapping.get(alias)
+            if raw is not None:
+                values.setdefault(name, raw)
+                break
+    return values
+
+
+def _first_text(*values: Any) -> str:
+    for value in values:
+        text = _text(value)
+        if text:
+            return text
+    return ""
+
+
+def _first_tags(*values: Any) -> tuple[str, ...]:
+    for value in values:
+        if value is None:
+            continue
+        tags = _tags(value)
+        if tags:
+            return tags
+    return ()
+
+
 def build_music_prompt(
+    profile: Any = None,
     *,
     prompt: Any = None,
     mood: Any = None,
     genre: Any = None,
     tags: Any = None,
-    instrumental: bool = True,
+    instrumental: bool | None = None,
+    brief: Any = None,
+    niche: Any = None,
+    style: Any = None,
 ) -> str:
-    """Build a deterministic provider prompt from the mood and style filters."""
+    """Build a deterministic provider prompt from a profile and style filters.
+
+    An explicit *prompt* always wins. Otherwise explicit mood, genre, tags,
+    brief, niche and style values override the matching content profile
+    settings, and the profile fills whatever is still missing. The result is a
+    stable sentence with no provider name, model id or price in it.
+    """
     explicit = _text(prompt)
     if explicit:
         return explicit
+    if isinstance(profile, str):
+        if _text(profile):
+            return profile.strip()
+        profile = None
+
+    profile_values = _profile_music_values(profile)
+    profile_prompt = _text(profile_values.get("prompt"))
+    if profile_prompt and not any(
+        (
+            _text(mood),
+            _text(genre),
+            _tags(tags),
+            _text(brief),
+            _text(niche),
+            _text(style),
+        )
+    ):
+        return profile_prompt
+
+    profile_instrumental = profile_values.get("instrumental")
+    if instrumental is None:
+        instrumental = (
+            profile_instrumental if isinstance(profile_instrumental, bool) else True
+        )
+
+    mood_text = _first_text(mood, profile_values.get("mood"))
+    genre_text = _first_text(genre, profile_values.get("genre"))
+    tag_values = _first_tags(tags, profile_values.get("tags"))
+    brief_text = _first_text(brief, profile_values.get("brief"))
+    niche_text = _first_text(niche, profile_values.get("niche"))
+    style_text = _first_text(style, profile_values.get("style"))
+
     parts = ["Instrumental background music" if instrumental else "Background music"]
-    mood_text = _text(mood)
-    genre_text = _text(genre)
     if mood_text:
         parts.append(f"{mood_text} mood")
     if genre_text:
         parts.append(f"{genre_text} genre")
-    tag_values = _tags(tags)
     if tag_values:
         parts.append("style: " + ", ".join(tag_values))
+    if style_text and style_text.casefold() not in {
+        genre_text.casefold(),
+        mood_text.casefold(),
+    }:
+        parts.append(f"inspired by {style_text}")
+    if niche_text:
+        parts.append(f"theme: {niche_text}")
+    if brief_text:
+        parts.append(f"brief: {brief_text}")
     return ", ".join(parts)
+
+
+def build_profile_music_prompt(profile: Any, **values: Any) -> str:
+    """Build a music prompt from *profile*, letting explicit values win."""
+    return build_music_prompt(profile, **values)
+
+
+build_music_prompt_from_profile = build_profile_music_prompt
+music_prompt_for_profile = build_profile_music_prompt
+music_prompt_from_profile = build_profile_music_prompt
+profile_music_prompt = build_profile_music_prompt
+music_prompt = build_profile_music_prompt
 
 
 def _from_library_match(match: MusicLibraryMatch) -> BackgroundMusic:
@@ -669,10 +814,10 @@ class MusicSelectStage(Stage):
     ``options`` may carry ``source`` (``auto``, ``library`` or ``provider``),
     ``library``/``library_path``, ``mood``, ``genre``, ``tags``, ``tempo_bpm``,
     ``duration_seconds``, ``match_duration``, ``commercial_only``, ``prompt``,
-    ``instrumental``, ``volume_db``, ``fade_in_seconds``, ``fade_out_seconds``,
-    ``loop``, ``duck``, ``ducking``, ``timeline_filename`` and
-    ``music_filename``. A caller may inject a ``music`` callable/service instead
-    of calling the configured provider.
+    ``instrumental``, ``profile``, ``volume_db``, ``fade_in_seconds``,
+    ``fade_out_seconds``, ``loop``, ``duck``, ``ducking``,
+    ``timeline_filename`` and ``music_filename``. A caller may inject a
+    ``music`` callable/service instead of calling the configured provider.
     """
 
     name = MUSIC_STAGE_NAME
@@ -698,6 +843,7 @@ class MusicSelectStage(Stage):
         commercial_only: bool | None = None,
         prompt: str | None = None,
         instrumental: bool | None = None,
+        profile: Any = None,
         music: Any = None,
         generator: Any = None,
         ducking: DuckingSettings | Mapping[str, Any] | None = None,
@@ -722,6 +868,7 @@ class MusicSelectStage(Stage):
             "commercial_only": commercial_only,
             "prompt": prompt,
             "instrumental": instrumental,
+            "profile": profile,
             "music": music,
             "generator": generator,
             "ducking": ducking,
@@ -761,6 +908,7 @@ class MusicSelectStage(Stage):
         self.commercial_only = bool(merged.get("commercial_only", False))
         self.prompt = _text(merged.get("prompt"))
         self.instrumental = bool(merged.get("instrumental", True))
+        self.profile = merged.get("profile")
         self.music = merged.get("music") or merged.get("generator")
         self.duck = bool(merged.get("duck", True))
         self.ducking = DuckingSettings.from_value(merged.get("ducking"))
@@ -815,6 +963,71 @@ class MusicSelectStage(Stage):
         if own not in (None, ""):
             return own
         return _config_value(context, *names)
+
+    def _profiles(self, context: StageContext) -> Mapping[str, Any]:
+        """Return the configured content profiles, however they are nested."""
+        section = _section(context.config, "profiles")
+        if isinstance(section, Mapping):
+            nested = section.get("profiles")
+            if isinstance(nested, Mapping):
+                return nested
+            return section
+        nested = _field(section, "profiles")
+        return nested if isinstance(nested, Mapping) else {}
+
+    def _profile_name(self, context: StageContext) -> str:
+        own = self.profile
+        if isinstance(own, str) and own.strip():
+            return own.strip()
+        run = context.run
+        name = _text(getattr(run, "profile", "")) if run is not None else ""
+        if name:
+            return name
+        return _text(_config_value(context, "profile", "profile_name"))
+
+    def _profile(self, context: StageContext) -> tuple[Any, str]:
+        """Return the active content profile and its name, when one is selected."""
+        own = self.profile
+        name = self._profile_name(context)
+        if own not in (None, "", {}):
+            if isinstance(own, str):
+                return self._profiles(context).get(name), name
+            return own, name
+        if not name:
+            return None, ""
+        return self._profiles(context).get(name), name
+
+    def _music_inputs(self, context: StageContext) -> dict[str, Any]:
+        """Resolve the prompt and style filters from explicit options and profile."""
+        profile, profile_name = self._profile(context)
+        profile_values = _profile_music_values(profile)
+        mood = _first_text(
+            self._value(context, self.mood, "mood"),
+            profile_values.get("mood"),
+        )
+        genre = _first_text(
+            self._value(context, self.genre, "genre"),
+            profile_values.get("genre"),
+        )
+        tags = _first_tags(
+            self._value(context, self.tags, "tags"),
+            profile_values.get("tags"),
+        )
+        prompt = build_music_prompt(
+            profile,
+            prompt=self._value(context, self.prompt, "prompt"),
+            mood=self._value(context, self.mood, "mood"),
+            genre=self._value(context, self.genre, "genre"),
+            tags=self._value(context, self.tags, "tags"),
+            instrumental=self.instrumental,
+        )
+        return {
+            "prompt": prompt,
+            "mood": mood,
+            "genre": genre,
+            "tags": tags,
+            "profile": profile_name,
+        }
 
     def _load_timeline(self, context: StageContext) -> Timeline:
         path = context.run_dir / self.timeline_filename
@@ -881,27 +1094,26 @@ class MusicSelectStage(Stage):
         context: StageContext,
         duration: float,
     ) -> MusicRequest:
-        mood = _text(self._value(context, self.mood, "mood"))
-        genre = _text(self._value(context, self.genre, "genre"))
-        tags = self._value(context, self.tags, "tags")
-        prompt = build_music_prompt(
-            prompt=self._value(context, self.prompt, "prompt"),
-            mood=mood,
-            genre=genre,
-            tags=tags,
-            instrumental=self.instrumental,
-        )
+        inputs = self._music_inputs(context)
+        prompt = inputs["prompt"]
+        mood = inputs["mood"]
+        genre = inputs["genre"]
+        tags = inputs["tags"]
+        metadata: dict[str, Any] = {
+            "stage": self.name,
+            "prompt": prompt,
+            "mood": mood,
+            "genre": genre,
+            "tags": list(tags),
+        }
+        if inputs["profile"]:
+            metadata["profile"] = inputs["profile"]
         values: dict[str, Any] = {
             "prompt": prompt,
             "instrumental": self.instrumental,
             "duration_seconds": duration,
             "count": self.count,
-            "metadata": {
-                "stage": self.name,
-                "mood": mood,
-                "genre": genre,
-                "tags": list(_tags(tags)),
-            },
+            "metadata": metadata,
         }
         tempo = self.tempo_bpm
         if tempo is None:
@@ -935,6 +1147,9 @@ class MusicSelectStage(Stage):
         duration: float,
         mood: str,
         genre: str,
+        prompt: str = "",
+        tags: Sequence[str] = (),
+        profile: str = "",
     ) -> BackgroundMusic:
         source = _path_of(value)
         if not source:
@@ -948,6 +1163,13 @@ class MusicSelectStage(Stage):
             source = str(path)
         license = _license_of(value)
         measured = _duration_of(value)
+        metadata: dict[str, Any] = {
+            "source": "provider",
+            "prompt": prompt,
+            "tags": list(tags),
+        }
+        if profile:
+            metadata["profile"] = profile
         return BackgroundMusic(
             id=self.track_id,
             source=source,
@@ -961,7 +1183,8 @@ class MusicSelectStage(Stage):
             provider=_provider_of(value),
             model=_model_of(value),
             cost_usd=_cost_of(value),
-            metadata={"source": "provider"},
+            prompt=prompt,
+            metadata=metadata,
         )
 
     async def _select(
@@ -971,9 +1194,12 @@ class MusicSelectStage(Stage):
         duration: float,
         run_id: str,
     ) -> BackgroundMusic:
-        mood = _text(self._value(context, self.mood, "mood"))
-        genre = _text(self._value(context, self.genre, "genre"))
-        tags = self._value(context, self.tags, "tags")
+        inputs = self._music_inputs(context)
+        mood = inputs["mood"]
+        genre = inputs["genre"]
+        tags = inputs["tags"]
+        prompt = inputs["prompt"]
+        profile_name = inputs["profile"]
         library_source = self._library_source(context)
         library: MusicLibrary | None = None
         if library_source is not None:
@@ -987,7 +1213,7 @@ class MusicSelectStage(Stage):
 
         if self.source in ("auto", "library") and library is not None:
             try:
-                return select_library_music(
+                choice = select_library_music(
                     library,
                     mood=mood,
                     genre=genre,
@@ -997,6 +1223,12 @@ class MusicSelectStage(Stage):
                     match_duration=self.match_duration,
                     commercial_only=self.commercial_only,
                 )
+                metadata = dict(choice.metadata)
+                metadata["prompt"] = prompt
+                metadata["tags"] = list(tags)
+                if profile_name:
+                    metadata["profile"] = profile_name
+                return replace(choice, prompt=prompt, metadata=metadata)
             except MusicLibraryError as exc:
                 if self.source == "library":
                     raise ConfigError(
@@ -1022,6 +1254,9 @@ class MusicSelectStage(Stage):
             duration=duration,
             mood=mood,
             genre=genre,
+            prompt=prompt,
+            tags=tags,
+            profile=profile_name,
         )
 
     def _timeline_track(
@@ -1056,6 +1291,7 @@ class MusicSelectStage(Stage):
                 "provider": choice.provider,
                 "model": choice.model,
                 "cost_usd": choice.cost_usd,
+                "prompt": choice.prompt,
                 "license": choice.license.model_dump(mode="json"),
                 "license_name": choice.license_name,
                 "attribution": choice.attribution,
@@ -1120,6 +1356,8 @@ class MusicSelectStage(Stage):
             "cost_usd": choice.cost_usd,
             "provider": choice.provider,
             "model": choice.model,
+            "prompt": choice.prompt,
+            "profile": choice.metadata.get("profile", ""),
         }
         _write_json(context.run_dir / self.music_filename, manifest)
         self.artifacts = (self.timeline_filename, self.music_filename)
@@ -1143,6 +1381,8 @@ class MusicSelectStage(Stage):
             "cost_usd": choice.cost_usd,
             "provider": choice.provider,
             "model": choice.model,
+            "prompt": choice.prompt,
+            "profile": choice.metadata.get("profile", ""),
             "calls": 1 if choice.origin == "provider" else 0,
             "timeline": self.timeline_filename,
             "manifest": self.music_filename,
