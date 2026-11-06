@@ -44,7 +44,11 @@ from aivia.core.router import Router
 from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import Stage
 from aivia.core.toolchain import detect_toolchain
-from aivia.formats.audio_only import AudioOnlyStage
+from aivia.formats.audio_only import (
+    COVER_ART_STAGE_NAME,
+    AudioOnlyStage,
+    CoverArtStage,
+)
 from aivia.formats.byo import (
     ProvidedInputs,
     apply_provided_inputs,
@@ -476,6 +480,7 @@ def build_stages(
         WRITE_STAGE_NAME: WriteStage,
         MUSIC_STAGE_NAME: MusicSelectStage,
         ALIGN_STAGE_NAME: LyricAlignStage,
+        COVER_ART_STAGE_NAME: CoverArtStage,
         **dict.fromkeys(VISUALS_STAGE_NAMES, VisualReuseStage),
     }
     stages: list[Stage] = []
