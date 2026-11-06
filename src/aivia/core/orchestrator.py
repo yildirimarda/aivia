@@ -16,6 +16,7 @@ repository, the run state machine and the artifact registry.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import tempfile
@@ -137,6 +138,51 @@ def _contract_names(
         if isinstance(name, str) and name:
             names.add(name)
     return frozenset(names)
+
+
+def _unused_file_hashes(
+    stage: Stage,
+    directory: RunDirectory,
+) -> tuple[str, list[str]]:
+    """Hash the files an unused stage's outputs were supplied as.
+
+    A stage skipped because its outputs were provided never runs, so it has no
+    registered artifacts to contribute to later stages' input hashes. Hashing
+    the files at its declared artifact and input paths keeps a supplied script
+    in the downstream digest: editing it invalidates the resume instead of
+    silently reusing stages that were built from the old contents.
+    """
+    inputs = getattr(stage, "inputs", ())
+    if isinstance(inputs, (str, Path)):
+        inputs = (inputs,)
+    declared: list[str] = []
+    for value in (*stage.artifacts, *inputs):
+        artifact = str(value)
+        if artifact not in declared:
+            declared.append(artifact)
+    rows: list[dict[str, Any]] = []
+    for artifact in declared:
+        try:
+            path = directory.resolve(artifact)
+            name = path.relative_to(directory.path).as_posix()
+        except ValueError:
+            path = Path(artifact).expanduser()
+            name = str(artifact)
+        if not path.is_file():
+            continue
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+                    size += len(chunk)
+        except OSError:
+            continue
+        rows.append({"path": name, "sha256": digest.hexdigest(), "size_bytes": size})
+    if not rows:
+        return "", []
+    return compute_output_hash(rows), [row["path"] for row in rows]
 
 
 @dataclass(frozen=True, slots=True)
@@ -530,6 +576,7 @@ class Orchestrator:
                     index,
                     expected_input,
                     unused_reason,
+                    directory,
                 )
                 stored = self._persist_result(unused)
                 results.append(stored)
@@ -823,14 +870,21 @@ class Orchestrator:
         index: int,
         input_hash: str,
         reason: str,
+        directory: RunDirectory | None = None,
     ) -> StageResult:
         moment = self.clock()
+        output_hash = ""
+        artifacts: list[str] = []
+        if directory is not None:
+            output_hash, artifacts = _unused_file_hashes(stage, directory)
         return StageResult(
             run_id=run.id,
             stage=stage.name,
             status=StageState.SKIPPED,
             index=index,
             input_hash=input_hash,
+            output_hash=output_hash,
+            artifacts=artifacts,
             cost_usd=0.0,
             started_at=moment,
             finished_at=moment,
