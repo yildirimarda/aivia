@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -169,10 +170,27 @@ def test_run_enqueues_a_job_without_executing(
 
 
 def test_run_enqueues_when_no_stage_implementation_is_registered(
-    config: Path,
+    tmp_path: Path,
     database: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    config = write_config(
+        tmp_path,
+        """
+providers:
+  text:
+    type: mock-llm
+formats:
+  sample:
+    description: A recipe whose only stage is not implemented yet.
+    stages:
+      - stage: render
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+    )
+
     code, out, err = run_command(
         capsys,
         "--format",
@@ -196,6 +214,108 @@ def test_run_enqueues_when_no_stage_implementation_is_registered(
         assert len(JobRepository(engine).list(run_id=run_id)) == 1
     finally:
         engine.dispose()
+
+
+def test_build_stages_uses_the_concrete_write_stage() -> None:
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+    from aivia.writing import WriteStage
+
+    recipe = FormatRecipeConfig.model_validate(
+        {"stages": [{"stage": "write", "options": {"languages": ["en"]}}]}
+    )
+
+    stages = build_stages(recipe)
+
+    assert isinstance(stages[0], WriteStage)
+    assert stages[0].options["languages"] == ["en"]
+
+
+_SCRIPTED_PROVIDER = """
+from aivia.providers.mock import MockLLMProvider
+from aivia.providers.protocols.llm import LLMResponse
+
+
+class ScriptedLLM(MockLLMProvider):
+    async def complete(self, request):
+        return LLMResponse(
+            content=(
+                '{"title": "Honey", "hook": "Honey keeps forever.", '
+                '"beats": [{"text": "Honey never spoils."}]}'
+            ),
+            provider=self.name,
+            model=request.model or "mock-llm",
+        )
+"""
+
+
+def test_a_text_file_run_executes_the_concrete_write_stage(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = f"fake_writer_{tmp_path.name.replace('-', '_')}"
+    (tmp_path / f"{module_name}.py").write_text(_SCRIPTED_PROVIDER, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    source = tmp_path / "facts.txt"
+    source.write_text(
+        "Honey never spoils.\nBees recognise human faces.\n",
+        encoding="utf-8",
+    )
+    config = write_config(
+        tmp_path,
+        f"""
+providers:
+  text:
+    type: {module_name}:ScriptedLLM
+formats:
+  sample:
+    description: A text file feeding the concrete write stage.
+    stages:
+      - stage: input_topic
+      - stage: write
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+    )
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--text-file",
+        str(source),
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "State: succeeded" in out
+    assert "Job:" not in out
+    run_id = run_id_from(out)
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+        assert JobRepository(engine).list(run_id=run_id) == []
+        stage = StageRunRepository(engine).get(run_id, "write")
+        assert stage is not None
+        assert stage.status is StageState.SUCCEEDED
+    finally:
+        engine.dispose()
+
+    assert run.run_dir
+    script = json.loads(
+        (Path(run.run_dir) / "script.en.json").read_text(encoding="utf-8")
+    )
+    assert script["hook"] == "Honey keeps forever."
 
 
 def test_run_requires_a_format(

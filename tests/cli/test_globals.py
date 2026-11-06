@@ -213,13 +213,13 @@ def test_global_yes_is_honoured_by_a_costly_run(
     config.write_text(
         """
 providers:
-  text:
-    type: mock-llm
+  search:
+    type: mock-search
 formats:
   sample:
     stages:
-      - stage: write
-    capabilities: [llm]
+      - stage: research
+    capabilities: [search]
 budget:
   confirm_above: 0.000001
 """.lstrip(),
