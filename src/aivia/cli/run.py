@@ -18,7 +18,7 @@ from aivia.core.config.budget import BudgetConfig
 from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.embeddings import EmbeddingsConfig
-from aivia.core.config.formats import FormatRecipeConfig
+from aivia.core.config.formats import FormatRecipeConfig, OutputType
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.ops import JobsConfig
 from aivia.core.config.providers import ProvidersConfig
@@ -42,6 +42,7 @@ from aivia.core.router import Router
 from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import Stage
 from aivia.core.toolchain import detect_toolchain
+from aivia.formats.audio_only import AudioOnlyStage
 from aivia.formats.byo import (
     ProvidedInputs,
     apply_provided_inputs,
@@ -51,7 +52,10 @@ from aivia.formats.byo import (
     seed_provided_inputs,
 )
 from aivia.formats.catalog import load_formats
+from aivia.formats.image_post import CarouselStage, ImagePostStage
 from aivia.formats.input_topic import INPUT_TOPIC_STAGE_NAME, InputTopicStage
+from aivia.formats.quote_card import QuoteCardRenderStage
+from aivia.formats.song_video import SONG_VIDEO_STAGE_NAME, SongVideoStage
 from aivia.providers import docs as provider_docs
 from aivia.providers.provider_factory import build_providers
 from aivia.providers.registry import registry as provider_registry
@@ -404,7 +408,57 @@ def _discard_run_directories(directories: list[Path]) -> None:
         shutil.rmtree(directories.pop(), ignore_errors=True)
 
 
-def build_stages(recipe: FormatRecipeConfig) -> list[Stage]:
+RENDER_STAGE_NAME = SONG_VIDEO_STAGE_NAME
+"""The recipe stage name served by the concrete render implementations."""
+
+_RENDER_STAGES: dict[str, type[Stage]] = {
+    "image_post": ImagePostStage,
+    "carousel": CarouselStage,
+    "quote_card": QuoteCardRenderStage,
+    "song_video": SongVideoStage,
+    "audio_only": AudioOnlyStage,
+    "personalized_song_card": AudioOnlyStage,
+}
+
+
+def _render_stage_class(
+    recipe: FormatRecipeConfig,
+    format_name: str | None = None,
+) -> type[Stage]:
+    """Choose the concrete renderer for a recipe's output and format.
+
+    A named built-in format pins its own renderer. Otherwise the output type
+    selects it: a carousel uses the carousel renderer, an image the image post
+    renderer unless a typography template marks it as a quote card, audio the
+    audio-only renderer and video the timeline renderer. An unknown output
+    type keeps the base stage so the run is queued instead of failing.
+    """
+    name = (format_name or "").strip().lower()
+    if name in _RENDER_STAGES:
+        return _RENDER_STAGES[name]
+
+    options = next(
+        (item.options for item in recipe.stages if item.stage == RENDER_STAGE_NAME),
+        {},
+    )
+    output = recipe.output_type
+    if output is OutputType.CAROUSEL or options.get("carousel") is True:
+        return CarouselStage
+    if output is OutputType.IMAGE:
+        if "template" in options or "typography" in options:
+            return QuoteCardRenderStage
+        return ImagePostStage
+    if output is OutputType.AUDIO:
+        return AudioOnlyStage
+    if output is OutputType.VIDEO:
+        return SongVideoStage
+    return Stage
+
+
+def build_stages(
+    recipe: FormatRecipeConfig,
+    format_name: str | None = None,
+) -> list[Stage]:
     """Build the stage objects a recipe executes.
 
     Concrete stages arrive with the stage registry. Until then the base stage
@@ -415,10 +469,14 @@ def build_stages(recipe: FormatRecipeConfig) -> list[Stage]:
         INPUT_TOPIC_STAGE_NAME: InputTopicStage,
         WRITE_STAGE_NAME: WriteStage,
     }
-    return [
-        concrete.get(item.stage, Stage)(item.stage, **item.to_stage_kwargs())
-        for item in recipe.stages
-    ]
+    stages: list[Stage] = []
+    for item in recipe.stages:
+        if item.stage == RENDER_STAGE_NAME:
+            stage_class = _render_stage_class(recipe, format_name)
+        else:
+            stage_class = concrete.get(item.stage, Stage)
+        stages.append(stage_class(name=item.stage, **item.to_stage_kwargs()))
+    return stages
 
 
 def _execute_run(

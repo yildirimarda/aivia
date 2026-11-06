@@ -184,7 +184,7 @@ formats:
   sample:
     description: A recipe whose only stage is not implemented yet.
     stages:
-      - stage: render
+      - stage: publish
     capabilities: [llm]
     output_type: video
     handler: save
@@ -229,6 +229,87 @@ def test_build_stages_uses_the_concrete_write_stage() -> None:
 
     assert isinstance(stages[0], WriteStage)
     assert stages[0].options["languages"] == ["en"]
+
+
+def test_build_stages_uses_the_concrete_image_render_stage() -> None:
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+    from aivia.formats.image_post import ImagePostStage
+
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [{"stage": "render", "options": {"aspect": "square"}}],
+            "output_type": "image",
+        }
+    )
+
+    stages = build_stages(recipe)
+
+    assert isinstance(stages[0], ImagePostStage)
+    assert stages[0].options["aspect"] == "square"
+
+
+def test_build_stages_uses_the_concrete_quote_card_render_stage() -> None:
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+    from aivia.formats.quote_card import QuoteCardRenderStage
+
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [{"stage": "render", "options": {"template": "classic"}}],
+            "output_type": "image",
+        }
+    )
+
+    stages = build_stages(recipe)
+
+    assert isinstance(stages[0], QuoteCardRenderStage)
+    assert stages[0].options["template"] == "classic"
+
+
+def test_build_stages_uses_the_concrete_carousel_render_stage() -> None:
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+    from aivia.formats.image_post import CarouselStage
+
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [{"stage": "render", "options": {"carousel": True}}],
+            "output_type": "carousel",
+        }
+    )
+
+    stages = build_stages(recipe)
+
+    assert isinstance(stages[0], CarouselStage)
+
+
+def test_build_stages_uses_the_concrete_video_render_stage() -> None:
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+    from aivia.formats.song_video import SongVideoStage
+
+    recipe = FormatRecipeConfig.model_validate(
+        {"stages": [{"stage": "render"}], "output_type": "video"}
+    )
+
+    stages = build_stages(recipe)
+
+    assert isinstance(stages[0], SongVideoStage)
+
+
+def test_build_stages_pins_a_named_formats_renderer() -> None:
+    from aivia.cli.run import build_stages
+    from aivia.core.config.formats import FormatRecipeConfig
+    from aivia.formats.quote_card import QuoteCardRenderStage
+
+    recipe = FormatRecipeConfig.model_validate(
+        {"stages": [{"stage": "render"}], "output_type": "video"}
+    )
+
+    stages = build_stages(recipe, "quote_card")
+
+    assert isinstance(stages[0], QuoteCardRenderStage)
 
 
 _SCRIPTED_PROVIDER = """
@@ -316,6 +397,163 @@ formats:
         (Path(run.run_dir) / "script.en.json").read_text(encoding="utf-8")
     )
     assert script["hook"] == "Honey keeps forever."
+
+
+def test_an_image_run_executes_the_concrete_render_stage(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = f"fake_image_writer_{tmp_path.name.replace('-', '_')}"
+    (tmp_path / f"{module_name}.py").write_text(_SCRIPTED_PROVIDER, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    source = tmp_path / "facts.txt"
+    source.write_text(
+        "Honey never spoils.\nBees recognise human faces.\n",
+        encoding="utf-8",
+    )
+    config = write_config(
+        tmp_path,
+        f"""
+providers:
+  text:
+    type: {module_name}:ScriptedLLM
+formats:
+  sample:
+    description: A text file feeding an image render.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: render
+        options:
+          aspect: square
+    capabilities: [llm]
+    output_type: image
+    handler: save
+""",
+    )
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--text-file",
+        str(source),
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "State: succeeded" in out
+    assert "Job:" not in out
+    run_id = run_id_from(out)
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+        assert JobRepository(engine).list(run_id=run_id) == []
+        stage = StageRunRepository(engine).get(run_id, "render")
+        assert stage is not None
+        assert stage.status is StageState.SUCCEEDED
+        assert stage.artifacts == ["image-post.yaml", "image-post.png"]
+    finally:
+        engine.dispose()
+
+    assert run.run_dir
+    assert (Path(run.run_dir) / "image-post.png").is_file()
+
+
+def test_a_video_run_executes_the_concrete_render_stage(
+    tmp_path: Path,
+    database: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = f"fake_video_writer_{tmp_path.name.replace('-', '_')}"
+    (tmp_path / f"{module_name}.py").write_text(_SCRIPTED_PROVIDER, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    source = tmp_path / "facts.txt"
+    source.write_text(
+        "Honey never spoils.\nBees recognise human faces.\n",
+        encoding="utf-8",
+    )
+    timeline = tmp_path / "timeline.json"
+    timeline.write_text(
+        json.dumps(
+            {
+                "beats": [
+                    {
+                        "id": "beat-1",
+                        "start_seconds": 0.0,
+                        "duration_seconds": 1.0,
+                        "text": "Honey never spoils.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = write_config(
+        tmp_path,
+        f"""
+providers:
+  text:
+    type: {module_name}:ScriptedLLM
+formats:
+  sample:
+    description: A text file feeding a video render.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: render
+        options:
+          timeline: {timeline}
+          render: false
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+    )
+
+    code, out, err = run_command(
+        capsys,
+        "--format",
+        "sample",
+        "--text-file",
+        str(source),
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "State: succeeded" in out
+    assert "Job:" not in out
+    run_id = run_id_from(out)
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.state is RunState.SUCCEEDED
+        assert JobRepository(engine).list(run_id=run_id) == []
+        stage = StageRunRepository(engine).get(run_id, "render")
+        assert stage is not None
+        assert stage.status is StageState.SUCCEEDED
+        assert stage.artifacts == ["song-video.yaml"]
+    finally:
+        engine.dispose()
+
+    assert run.run_dir
+    assert (Path(run.run_dir) / "song-video.yaml").is_file()
 
 
 def test_run_requires_a_format(
