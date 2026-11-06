@@ -1182,7 +1182,9 @@ class Orchestrator:
         *,
         require_exists: bool = True,
     ) -> StageResult:
-        artifacts = result.artifacts or list(stage.artifacts)
+        artifacts = list(result.artifacts or list(stage.artifacts))
+        if stage.preserve_artifacts:
+            artifacts = self._preserved_artifacts(stage, directory) + artifacts
         directory.register(
             stage.name,
             artifacts,
@@ -1190,6 +1192,23 @@ class Orchestrator:
             require_exists=require_exists,
         )
         return result
+
+    @staticmethod
+    def _preserved_artifacts(stage: Stage, directory: RunDirectory) -> list[str]:
+        """Return the stage's earlier artifacts that still exist on disk."""
+        try:
+            records = directory.artifacts(stage.name)
+        except (OSError, ValueError):
+            return []
+        paths: list[str] = []
+        for record in records:
+            try:
+                path = directory.resolve(record.path)
+            except ValueError:
+                continue
+            if path.is_file():
+                paths.append(record.path)
+        return paths
 
     def _apply_cost(self, run: Run, total: float) -> Run:
         if total == run.cost_usd:

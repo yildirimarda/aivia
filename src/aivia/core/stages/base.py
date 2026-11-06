@@ -211,11 +211,14 @@ class Stage:
     The base :meth:`run` raises :class:`NotImplementedError`; the base
     :meth:`estimate` reports a free stage so a deterministic step does not have
     to override it. ``options`` holds the per-recipe options for this stage.
+    ``preserve_artifacts`` keeps artifacts a previous run of the same stage
+    registered when this run writes only a subset of them.
     """
 
     name: str = ""
     version: int | str = 1
     artifacts: tuple[str, ...] = ()
+    preserve_artifacts: bool = False
     inputs: tuple[str, ...] = ()
     timeout_seconds: float | None = None
     max_attempts: int = 1
