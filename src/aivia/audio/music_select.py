@@ -31,6 +31,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from aivia.audio.song_candidates import (
+    SongCandidateSelection,
+    lyrics_text,
+    select_song_candidate,
+)
 from aivia.compose.schema import AudioTrackRole as TimelineTrackRole
 from aivia.compose.timeline import Timeline, TimelineMusic
 from aivia.core.config.media import (
@@ -64,6 +69,8 @@ from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.music import (
     CAPABILITY_MUSIC_GEN,
     MusicRequest,
+    MusicResponse,
+    MusicTrack,
 )
 
 __all__ = [
@@ -843,6 +850,7 @@ class MusicSelectStage(Stage):
         commercial_only: bool | None = None,
         prompt: str | None = None,
         instrumental: bool | None = None,
+        lyrics: Any = None,
         profile: Any = None,
         music: Any = None,
         generator: Any = None,
@@ -868,6 +876,7 @@ class MusicSelectStage(Stage):
             "commercial_only": commercial_only,
             "prompt": prompt,
             "instrumental": instrumental,
+            "lyrics": lyrics,
             "profile": profile,
             "music": music,
             "generator": generator,
@@ -908,6 +917,7 @@ class MusicSelectStage(Stage):
         self.commercial_only = bool(merged.get("commercial_only", False))
         self.prompt = _text(merged.get("prompt"))
         self.instrumental = bool(merged.get("instrumental", True))
+        self.lyrics = merged.get("lyrics")
         self.profile = merged.get("profile")
         self.music = merged.get("music") or merged.get("generator")
         self.duck = bool(merged.get("duck", True))
@@ -936,6 +946,13 @@ class MusicSelectStage(Stage):
         self.replace = bool(merged.get("replace", True))
         self.format = merged.get("format")
         self.count = int(merged.get("count", 1))
+        self.prefilter = bool(merged.get("prefilter", self.count > 1))
+        self.candidate_config = merged.get("candidate_config") or merged.get(
+            "song_candidates"
+        )
+        self.analyzer = merged.get("analyzer")
+        self.ffmpeg_runner = merged.get("ffmpeg_runner")
+        self.ffprobe_runner = merged.get("ffprobe_runner")
         self.timeline_filename = timeline_name
         self.music_filename = music_name
 
@@ -1019,7 +1036,7 @@ class MusicSelectStage(Stage):
             mood=self._value(context, self.mood, "mood"),
             genre=self._value(context, self.genre, "genre"),
             tags=self._value(context, self.tags, "tags"),
-            instrumental=self.instrumental,
+            instrumental=self.instrumental and not lyrics_text(self.lyrics),
         )
         return {
             "prompt": prompt,
@@ -1108,13 +1125,17 @@ class MusicSelectStage(Stage):
         }
         if inputs["profile"]:
             metadata["profile"] = inputs["profile"]
+        lyrics = lyrics_text(self.lyrics)
         values: dict[str, Any] = {
             "prompt": prompt,
-            "instrumental": self.instrumental,
+            "instrumental": self.instrumental and not lyrics,
             "duration_seconds": duration,
             "count": self.count,
             "metadata": metadata,
         }
+        if lyrics:
+            values["lyrics"] = lyrics
+            metadata["lyrics"] = True
         tempo = self.tempo_bpm
         if tempo is None:
             tempo = _optional_finite(
@@ -1187,6 +1208,98 @@ class MusicSelectStage(Stage):
             metadata=metadata,
         )
 
+    def _response_of(self, value: Any) -> MusicResponse | None:
+        """Normalise a provider result into a response of song candidates."""
+        if isinstance(value, MusicResponse):
+            return value
+        response = getattr(value, "response", None)
+        if isinstance(response, MusicResponse):
+            return response
+        if isinstance(value, MusicTrack):
+            return MusicResponse(tracks=[value])
+        tracks = getattr(value, "tracks", None)
+        if isinstance(tracks, Sequence) and not isinstance(tracks, (str, bytes)):
+            items = list(tracks)
+            if items and all(isinstance(item, MusicTrack) for item in items):
+                return MusicResponse(
+                    tracks=items,
+                    provider=_provider_of(value),
+                    model=_model_of(value),
+                )
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            items = list(value)
+            if items and all(isinstance(item, MusicTrack) for item in items):
+                return MusicResponse(tracks=items)
+        return None
+
+    def _select_provider_candidate(
+        self,
+        result: Any,
+        context: StageContext,
+        *,
+        duration: float,
+        mood: str,
+        genre: str,
+        prompt: str,
+        tags: Sequence[str],
+        profile: str,
+    ) -> BackgroundMusic:
+        """Prefilter generated song candidates and keep the chosen one."""
+        response = self._response_of(result)
+        if response is None:
+            return self._provider_choice(
+                result,
+                context,
+                duration=duration,
+                mood=mood,
+                genre=genre,
+                prompt=prompt,
+                tags=tags,
+                profile=profile,
+            )
+        selection: SongCandidateSelection = select_song_candidate(
+            response,
+            self.candidate_config,
+            lyrics=self.lyrics,
+            analyzer=self.analyzer,
+            ffmpeg_runner=self.ffmpeg_runner,
+            ffprobe_runner=self.ffprobe_runner,
+        )
+        if not selection.ok or selection.track is None:
+            raise ConfigError(
+                "no song candidate passed the prefilter",
+                details={
+                    "candidates": [
+                        candidate.to_dict() for candidate in selection.candidates
+                    ]
+                },
+            )
+        choice = self._provider_choice(
+            selection.track,
+            context,
+            duration=duration,
+            mood=mood,
+            genre=genre,
+            prompt=prompt,
+            tags=tags,
+            profile=profile,
+        )
+        metadata = dict(choice.metadata)
+        metadata["chosen_index"] = selection.chosen_index
+        metadata["candidate_count"] = len(selection.candidates)
+        metadata["candidates"] = [
+            candidate.to_dict() for candidate in selection.candidates
+        ]
+        license = _license_of(result)
+        return replace(
+            choice,
+            license=license if license.is_known else choice.license,
+            provider=_provider_of(result) or choice.provider,
+            model=_model_of(result) or choice.model,
+            cost_usd=_cost_of(result),
+            metadata=metadata,
+        )
+
     async def _select(
         self,
         context: StageContext,
@@ -1248,6 +1361,17 @@ class MusicSelectStage(Stage):
 
         request = self._provider_request(context, duration)
         result = await self._call_music(request, context, run_id=run_id)
+        if self.prefilter or self.count > 1:
+            return self._select_provider_candidate(
+                result,
+                context,
+                duration=duration,
+                mood=mood,
+                genre=genre,
+                prompt=prompt,
+                tags=tags,
+                profile=profile_name,
+            )
         return self._provider_choice(
             result,
             context,
@@ -1358,6 +1482,9 @@ class MusicSelectStage(Stage):
             "model": choice.model,
             "prompt": choice.prompt,
             "profile": choice.metadata.get("profile", ""),
+            "chosen_index": choice.metadata.get("chosen_index"),
+            "candidate_count": choice.metadata.get("candidate_count", 1),
+            "candidates": choice.metadata.get("candidates", []),
         }
         _write_json(context.run_dir / self.music_filename, manifest)
         self.artifacts = (self.timeline_filename, self.music_filename)
@@ -1384,6 +1511,9 @@ class MusicSelectStage(Stage):
             "prompt": choice.prompt,
             "profile": choice.metadata.get("profile", ""),
             "calls": 1 if choice.origin == "provider" else 0,
+            "chosen_index": choice.metadata.get("chosen_index"),
+            "candidate_count": choice.metadata.get("candidate_count", 1),
+            "candidates": choice.metadata.get("candidates", []),
             "timeline": self.timeline_filename,
             "manifest": self.music_filename,
         }

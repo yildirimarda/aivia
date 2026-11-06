@@ -634,7 +634,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the image post and carousel formats with aspect presets and text per slide (tests/formats/test_image_post.py)
 - [x] Implement the AI video short format with one generated clip per beat (slow, tests/formats/test_ai_video_short.py)
 - [x] Generate a music prompt from profile settings and store it with the request (tests/audio/test_music_prompt.py)
-- [ ] Generate several song candidates, prefilter and select one, recording the chosen index (tests/audio/test_song_candidates.py)
+- [x] Generate several song candidates, prefilter and select one, recording the chosen index (tests/audio/test_song_candidates.py)
 - [ ] Implement the song video format with lyrics, music selection, alignment, karaoke subtitles and visual backgrounds (slow, tests/formats/test_song_video.py)
 - [ ] Implement the audio only format with cover art and metadata and no video cost (tests/formats/test_audio_only.py)
 - [ ] Add a smoke test running one mock pipeline per built in format and asserting artifacts, costs and sidecars (tests/e2e/test_formats.py)
