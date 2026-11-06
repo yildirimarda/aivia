@@ -38,6 +38,7 @@ from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, Run, RunKind, RunState, StageResult
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.orchestrator import OrchestrationResult, Orchestrator
+from aivia.core.router import Router
 from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import Stage
 from aivia.core.toolchain import detect_toolchain
@@ -52,9 +53,12 @@ from aivia.formats.byo import (
 from aivia.formats.catalog import load_formats
 from aivia.formats.input_topic import INPUT_TOPIC_STAGE_NAME, InputTopicStage
 from aivia.providers import docs as provider_docs
+from aivia.providers.provider_factory import build_providers
 from aivia.providers.registry import registry as provider_registry
+from aivia.writing.stage import WRITE_STAGE_NAME, WriteStage
 
 __all__ = [
+    "build_router",
     "build_stages",
     "capability_configs",
     "configure",
@@ -288,6 +292,15 @@ def _jobs_config(config: object) -> JobsConfig:
     return section if isinstance(section, JobsConfig) else JobsConfig()
 
 
+def _providers_config(config: object) -> ProvidersConfig:
+    section = getattr(config, "providers", None)
+    return section if isinstance(section, ProvidersConfig) else ProvidersConfig()
+
+
+def build_router(config: object) -> Router:
+    return Router(build_providers(_providers_config(config)))
+
+
 def _resolve_plan(
     args: argparse.Namespace,
 ) -> tuple[object, str, FormatRecipeConfig, RecipeEstimate, str, ProvidedInputs]:
@@ -400,6 +413,7 @@ def build_stages(recipe: FormatRecipeConfig) -> list[Stage]:
     """
     concrete: dict[str, type[Stage]] = {
         INPUT_TOPIC_STAGE_NAME: InputTopicStage,
+        WRITE_STAGE_NAME: WriteStage,
     }
     return [
         concrete.get(item.stage, Stage)(item.stage, **item.to_stage_kwargs())
@@ -421,6 +435,7 @@ def _execute_run(
         data_dir=_data_dir_from_run(run),
         config=config,
         cost=CostTracker(engine),
+        router=build_router(config),
         raise_on_failure=False,
     )
     return asyncio.run(orchestrator.execute())

@@ -249,6 +249,7 @@ async def execute_job(
         data_dir=_data_dir(run, database_path),
         config=config,
         cost=CostTracker(engine),
+        router=run_command.build_router(config),
         raise_on_failure=False,
     )
     result = await orchestrator.execute()
