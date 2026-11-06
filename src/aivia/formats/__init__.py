@@ -1,5 +1,18 @@
 """Composable format recipes and the stage contracts they build on."""
 
+from aivia.formats.recipe import (
+    RecipeError,
+    RecipeIssue,
+    RecipeIssues,
+    RecipeValidationError,
+    RecipeValidator,
+    check_recipe,
+    check_recipe_stages,
+    validate_recipe,
+    validate_recipe_or_raise,
+    validate_recipe_stages,
+    validate_stages,
+)
 from aivia.formats.registry import (
     Contract,
     ContractType,
@@ -26,6 +39,11 @@ __all__ = [
     "ContractType",
     "InputContract",
     "OutputContract",
+    "RecipeError",
+    "RecipeIssue",
+    "RecipeIssues",
+    "RecipeValidationError",
+    "RecipeValidator",
     "Registry",
     "StageContract",
     "StageContractRegistration",
@@ -34,10 +52,16 @@ __all__ = [
     "StageRegistration",
     "StageRegistry",
     "StageSpec",
+    "check_recipe",
+    "check_recipe_stages",
     "contract_for",
     "register_stage",
     "registry",
     "resolve_stage",
     "stage_contract_registry",
     "stage_registry",
+    "validate_recipe",
+    "validate_recipe_or_raise",
+    "validate_recipe_stages",
+    "validate_stages",
 ]
