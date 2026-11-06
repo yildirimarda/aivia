@@ -401,3 +401,92 @@ def test_write_keeps_the_other_registered_language_scripts(
         assert result.artifacts == existing
     finally:
         engine.dispose()
+
+
+_SCRIPTED_PROVIDER = """
+from aivia.providers.mock import MockLLMProvider
+from aivia.providers.protocols.llm import LLMResponse
+
+
+class ScriptedLLM(MockLLMProvider):
+    async def complete(self, request):
+        return LLMResponse(
+            content=(
+                '{"title": "Honey", "hook": "Honey keeps forever.", '
+                '"beats": [{"text": "Honey never spoils."}]}'
+            ),
+            provider=self.name,
+            model=request.model or "mock-llm",
+        )
+"""
+
+
+def test_write_selects_an_llm_through_the_configured_router(
+    database: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = f"scripted_writer_{tmp_path.name.replace('-', '_')}"
+    (tmp_path / f"{module_name}.py").write_text(_SCRIPTED_PROVIDER, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    config = write_config(
+        tmp_path,
+        f"""
+languages:
+  default: en
+  en:
+    name: English
+providers:
+  text:
+    type: {module_name}:ScriptedLLM
+formats:
+  sample:
+    description: A writing recipe backed by a configured provider.
+    stages:
+      - stage: write
+        options:
+          languages: [en]
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+    )
+    run_id = seed_run(database, tmp_path)
+
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).get(run_id)
+        assert run is not None
+        assert run.run_dir
+        run_dir = Path(run.run_dir)
+    finally:
+        engine.dispose()
+    (run_dir / "facts.json").write_text(
+        '{"title": "Honey", "claims": [{"text": "Honey never spoils."}]}',
+        encoding="utf-8",
+    )
+
+    code, out, err = write_command(
+        capsys,
+        run_id,
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0
+    assert err == ""
+    assert "Stage: write" in out
+    assert "Languages: en" in out
+    assert (run_dir / "script.en.json").is_file()
+
+    engine = create_database_engine(database)
+    try:
+        result = StageRunRepository(engine).get(run_id, "write")
+        assert result is not None
+        assert result.metadata["provider"] == "text"
+        assert result.metadata["model"] == "mock-llm"
+    finally:
+        engine.dispose()

@@ -648,7 +648,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Price the align stage through speech to text so song runs estimate transcription instead of zero (tests/core/test_estimate.py)
 - [x] Wire the concrete cover art stage into the run stage builder so audio recipes generate cover art (tests/cli/test_run.py)
 - [x] Keep every per language script registered when writing only one language for an existing run (tests/cli/test_write.py)
-- [ ] Build the configured router for the write and add language commands so the concrete stage can select an LLM (tests/cli/test_write.py)
+- [x] Build the configured router for the write and add language commands so the concrete stage can select an LLM (tests/cli/test_write.py)
 - [ ] Build the configured router when replaying a run so concrete stages can select providers (tests/cli/test_replay.py)
 - [ ] Build the configured storage provider when executing run and worker stages so generated media is stored (tests/cli/test_run.py)
 - [ ] Seed the song timeline from the written lyrics so the packaged song recipe runs without an injected duration (tests/formats/test_song_video.py)
