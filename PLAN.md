@@ -640,7 +640,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a smoke test running one mock pipeline per built in format and asserting artifacts, costs and sidecars (tests/e2e/test_formats.py)
 - [x] Add a command that produces an extra language for an existing run by reusing facts and visuals with no visual recharge (tests/cli/test_add_language.py)
 - [x] Merge user and packaged format files during config resolution so profiles can reference file-only formats (tests/core/config/test_formats.py)
-- [ ] Hash provided inputs into downstream stage input hashes so editing a supplied file invalidates resume (tests/formats/test_orchestrator_recipe.py)
+- [x] Hash provided inputs into downstream stage input hashes so editing a supplied file invalidates resume (tests/formats/test_orchestrator_recipe.py)
 - [ ] Wire the concrete write stage into the run stage builder so a text file run executes writing instead of enqueueing (tests/cli/test_run.py)
 - [ ] Wire the concrete render stage into the run stage builder so image and video recipes render output (tests/cli/test_run.py)
 - [ ] Wire the concrete visuals stage into the run stage builder so video recipes generate visuals instead of enqueueing (tests/cli/test_run.py)
