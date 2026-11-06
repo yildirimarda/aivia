@@ -644,7 +644,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Wire the concrete write stage into the run stage builder so a text file run executes writing instead of enqueueing (tests/cli/test_run.py)
 - [x] Wire the concrete render stage into the run stage builder so image and video recipes render output (tests/cli/test_run.py)
 - [x] Wire the concrete visuals stage into the run stage builder so video recipes generate visuals instead of enqueueing (tests/cli/test_run.py)
-- [ ] Wire the concrete music and align stages into the run stage builder so song recipes generate and time audio (tests/cli/test_run.py)
+- [x] Wire the concrete music and align stages into the run stage builder so song recipes generate and time audio (tests/cli/test_run.py)
 - [ ] Price the align stage through speech to text so song runs estimate transcription instead of zero (tests/core/test_estimate.py)
 - [ ] Wire the concrete cover art stage into the run stage builder so audio recipes generate cover art (tests/cli/test_run.py)
 - [ ] Keep every per language script registered when writing only one language for an existing run (tests/cli/test_write.py)
