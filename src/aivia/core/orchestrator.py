@@ -54,6 +54,9 @@ from aivia.core.stage_retry import (
     execute_stage_with_retry,
 )
 from aivia.core.stages import Stage, StageContext
+from aivia.formats.catalog import FormatCatalog, load_formats
+from aivia.formats.recipe import validate_recipe
+from aivia.formats.registry import ContractType, StageRegistry
 from aivia.providers.protocols.storage import StorageProvider
 
 __all__ = [
@@ -74,12 +77,14 @@ __all__ = [
     "StageFailure",
     "StageOrchestrator",
     "StageRunner",
+    "execute_format",
     "execute_recipe",
     "execute_stages",
     "orchestrate",
     "resume_recipe",
     "resume_run",
     "resume_stages",
+    "run_format",
     "run_recipe",
     "run_stages",
 ]
@@ -112,6 +117,26 @@ def _error_code(error: BaseException) -> str:
 def _message(error: BaseException) -> str:
     text = str(error).strip()
     return text or type(error).__name__
+
+
+def _contract_names(
+    values: Iterable[ContractType] | ContractType | None,
+) -> frozenset[str]:
+    if values is None:
+        return frozenset()
+    if isinstance(values, (str, type)):
+        values = (values,)
+    names: set[str] = set()
+    for value in values:
+        if isinstance(value, str):
+            name = value.strip()
+        elif isinstance(value, type):
+            name = value.__name__
+        else:
+            name = getattr(value, "__name__", "")
+        if isinstance(name, str) and name:
+            names.add(name)
+    return frozenset(names)
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,17 +270,47 @@ RecipeExecutionResult = OrchestrationResult
 """Alias for :class:`OrchestrationResult`."""
 
 
-def _coerce_stage(item: StageLike | type[Stage]) -> Stage:
+def _registered_stage(
+    name: str,
+    registry: StageRegistry | None,
+) -> type[Stage] | None:
+    if registry is None:
+        return None
+    try:
+        registration = registry.registration(name)
+    except ConfigError:
+        return None
+    candidate = registration.stage
+    if isinstance(candidate, type) and issubclass(candidate, Stage):
+        return candidate
+    return None
+
+
+def _build_stage(
+    name: str,
+    kwargs: Mapping[str, Any],
+    registry: StageRegistry | None,
+) -> Stage:
+    stage_class = _registered_stage(name, registry)
+    if stage_class is None:
+        return Stage(name, **kwargs)
+    return stage_class(**kwargs)
+
+
+def _coerce_stage(
+    item: StageLike | type[Stage],
+    registry: StageRegistry | None = None,
+) -> Stage:
     if isinstance(item, Stage):
         return item
     if isinstance(item, type) and issubclass(item, Stage):
         return item()
     if isinstance(item, StageConfig):
-        return Stage(item.stage, **item.to_stage_kwargs())
+        return _build_stage(item.stage, item.to_stage_kwargs(), registry)
     if isinstance(item, str):
-        return Stage(item)
+        return _build_stage(item, {}, registry)
     if isinstance(item, Mapping):
-        return _coerce_stage(StageConfig.model_validate(dict(item)))
+        return _coerce_stage(StageConfig.model_validate(dict(item)), registry)
     raise TypeError(
         "stages must be Stage instances, StageConfig entries or stage names"
     )
@@ -268,6 +323,7 @@ def _coerce_stages(
         | FormatRecipeConfig
         | None
     ),
+    registry: StageRegistry | None = None,
 ) -> list[Stage]:
     if stages is None:
         return []
@@ -284,7 +340,7 @@ def _coerce_stages(
     recipe: list[Stage] = []
     seen: set[str] = set()
     for item in items:
-        stage = _coerce_stage(item)
+        stage = _coerce_stage(item, registry)
         if stage.name in seen:
             raise ConfigError(f"duplicate stage in recipe: {stage.name}")
         seen.add(stage.name)
@@ -333,11 +389,38 @@ class Orchestrator:
         clock: Callable[[], datetime] = utcnow,
         sleep: Callable[[float], Awaitable[None]] | None = None,
         raise_on_failure: bool = True,
+        recipe: FormatRecipeConfig | Mapping[str, Any] | str | None = None,
+        format_name: str | None = None,
+        catalog: FormatCatalog | None = None,
+        registry: StageRegistry | None = None,
+        stage_registry: StageRegistry | None = None,
+        skip_stages: Iterable[str] | None = None,
+        unused_stages: Iterable[str] | None = None,
+        inputs: Iterable[ContractType] | ContractType = (),
+        provided_inputs: Iterable[ContractType] | ContractType | None = None,
     ) -> None:
-        if isinstance(stages, (Run, str)) and run is not None:
+        if isinstance(stages, Run) and run is not None:
             stages, run = cast(Any, run), cast(Any, stages)
+        if isinstance(stages, str) and recipe is None and format_name is None:
+            format_name, stages = stages, None
 
         self.stages = stages
+        self.recipe = recipe
+        self.format_name = format_name
+        self.catalog = catalog
+        self.registry = stage_registry or registry
+        self.skip_stages = frozenset(
+            name.strip()
+            for name in (skip_stages or ())
+            if isinstance(name, str) and name.strip()
+        ) | frozenset(
+            name.strip()
+            for name in (unused_stages or ())
+            if isinstance(name, str) and name.strip()
+        )
+        self.provided_inputs = _contract_names(
+            inputs if provided_inputs is None else provided_inputs
+        )
         self._run = run
         self.run_dir = run_dir
         self.data_dir = Path(data_dir).expanduser() if data_dir is not None else None
@@ -407,8 +490,10 @@ class Orchestrator:
             self._run = run
         if stages is not None:
             self.stages = stages
-        recipe = _coerce_stages(self.stages)
+        recipe, _recipe_config = self._stage_plan()
         run_record = self._resolve_run()
+        if not recipe and run_record.format:
+            recipe, _recipe_config = self._stage_plan(run_record)
         directory = self._resolve_run_dir(run_record)
         run_record = self._start_run(run_record)
         run_record = self._save_snapshot(run_record, directory)
@@ -437,6 +522,28 @@ class Orchestrator:
                 upstream=upstream,
                 base_dir=directory.path,
             )
+            unused_reason = self._unused_reason(stage)
+            if unused_reason is not None:
+                unused = self._unused_result(
+                    stage,
+                    run_record,
+                    index,
+                    expected_input,
+                    unused_reason,
+                )
+                stored = self._persist_result(unused)
+                results.append(stored)
+                upstream.append(stored)
+                self.logger.info(
+                    "stage skipped",
+                    extra={
+                        "run_id": run_record.id,
+                        "stage": stage.name,
+                        "index": index,
+                        "reason": unused_reason,
+                    },
+                )
+                continue
             previous = self._previous_result(
                 run_record.id,
                 stage.name,
@@ -622,6 +729,118 @@ class Orchestrator:
     def run_sync(self) -> OrchestrationResult:
         """Alias for :meth:`execute_sync`."""
         return self.execute_sync()
+
+    def _catalog(self) -> FormatCatalog:
+        if self.catalog is None:
+            self.catalog = load_formats(config=self.config)
+        return self.catalog
+
+    def _stage_plan(
+        self,
+        run: Run | None = None,
+    ) -> tuple[list[Stage], FormatRecipeConfig | None]:
+        source = self.stages if self.stages is not None else self.recipe
+        if source is None:
+            name = self.format_name or (
+                run.format
+                if run is not None
+                else self._run.format
+                if isinstance(self._run, Run)
+                else ""
+            )
+            if not name:
+                return [], None
+            source = name
+
+        if isinstance(source, str):
+            recipe = self._catalog().get(source)
+            self._validate_recipe(recipe)
+            return _coerce_stages(recipe, self.registry), recipe
+
+        if isinstance(source, FormatRecipeConfig):
+            self._validate_recipe(source)
+            return _coerce_stages(source, self.registry), source
+
+        if isinstance(source, StageConfig):
+            source = [source]
+
+        if isinstance(source, Mapping):
+            if {"stages", "steps", "pipeline"} & set(source):
+                recipe = FormatRecipeConfig.from_mapping(dict(source))
+                self._validate_recipe(recipe)
+                return _coerce_stages(recipe, self.registry), recipe
+            return _coerce_stages(source, self.registry), None
+
+        items = list(source)
+        if all(isinstance(item, (str, StageConfig, Mapping)) for item in items):
+            recipe = FormatRecipeConfig.from_mapping({"stages": items})
+            self._validate_recipe(recipe)
+            return _coerce_stages(recipe, self.registry), recipe
+        return _coerce_stages(items, self.registry), None
+
+    def _validate_recipe(self, recipe: FormatRecipeConfig) -> None:
+        if self.registry is None:
+            return
+        available = set(self.provided_inputs)
+        remaining: list[StageConfig] = []
+        for stage in recipe.stages:
+            try:
+                registration = self.registry.registration(stage.stage)
+            except ConfigError:
+                remaining.append(stage)
+                continue
+            outputs = set(registration.output_names)
+            if outputs and outputs <= available:
+                available.update(outputs)
+                continue
+            remaining.append(stage)
+        checked = recipe.model_copy(update={"stages": remaining})
+        validate_recipe(checked, self.registry, inputs=available)
+
+    def _unused_reason(self, stage: Stage) -> str | None:
+        if stage.name in self.skip_stages:
+            return "listed as unused"
+        options = stage.options
+        if options.get("skip") is True or options.get("disabled") is True:
+            return "disabled by the recipe"
+        if options.get("enabled") is False:
+            return "disabled by the recipe"
+        if self.provided_inputs and self.registry is not None:
+            try:
+                registration = self.registry.registration(stage.name)
+            except ConfigError:
+                registration = None
+            if registration is not None:
+                outputs = set(registration.output_names)
+                if outputs and outputs <= self.provided_inputs:
+                    return "outputs already provided"
+        return None
+
+    def _unused_result(
+        self,
+        stage: Stage,
+        run: Run,
+        index: int,
+        input_hash: str,
+        reason: str,
+    ) -> StageResult:
+        moment = self.clock()
+        return StageResult(
+            run_id=run.id,
+            stage=stage.name,
+            status=StageState.SKIPPED,
+            index=index,
+            input_hash=input_hash,
+            cost_usd=0.0,
+            started_at=moment,
+            finished_at=moment,
+            metadata={
+                "unused": True,
+                "skipped": True,
+                "reason": reason,
+                "cost_usd": 0.0,
+            },
+        )
 
     def _resolve_run(self) -> Run:
         if self._run is None:
@@ -967,10 +1186,19 @@ async def execute_recipe(
         Iterable[StageLike | type[Stage]]
         | Mapping[str, StageLike | type[Stage]]
         | FormatRecipeConfig
-    ),
+        | str
+        | None
+    ) = None,
     **options: Any,
 ) -> OrchestrationResult:
-    """Execute *stages* for *run* with the given orchestrator options."""
+    """Execute *stages* for *run* with the given orchestrator options.
+
+    A string in place of *stages* names a format recipe, which is loaded from
+    the configured catalog just like a run's ``format`` field.
+    """
+    if isinstance(stages, str):
+        options.setdefault("format_name", stages)
+        stages = None
     return await Orchestrator(stages=stages, run=run, **options).execute()
 
 
@@ -980,7 +1208,9 @@ async def run_recipe(
         Iterable[StageLike | type[Stage]]
         | Mapping[str, StageLike | type[Stage]]
         | FormatRecipeConfig
-    ),
+        | str
+        | None
+    ) = None,
     **options: Any,
 ) -> OrchestrationResult:
     """Alias for :func:`execute_recipe`."""
@@ -993,7 +1223,9 @@ async def resume_recipe(
         Iterable[StageLike | type[Stage]]
         | Mapping[str, StageLike | type[Stage]]
         | FormatRecipeConfig
-    ),
+        | str
+        | None
+    ) = None,
     **options: Any,
 ) -> OrchestrationResult:
     """Resume *run*, reusing succeeded stages whose inputs are unchanged."""
@@ -1014,3 +1246,9 @@ run_stages = execute_recipe
 
 orchestrate = execute_recipe
 """Alias for :func:`execute_recipe`."""
+
+run_format = execute_recipe
+"""Alias for :func:`execute_recipe` for a named format recipe."""
+
+execute_format = execute_recipe
+"""Alias for :func:`execute_recipe` for a named format recipe."""

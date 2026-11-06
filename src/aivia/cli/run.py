@@ -18,7 +18,7 @@ from aivia.core.config.budget import BudgetConfig
 from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.embeddings import EmbeddingsConfig
-from aivia.core.config.formats import FormatRecipeConfig, FormatsConfig
+from aivia.core.config.formats import FormatRecipeConfig
 from aivia.core.config.llm import LLMConfig
 from aivia.core.config.ops import JobsConfig
 from aivia.core.config.providers import ProvidersConfig
@@ -41,6 +41,7 @@ from aivia.core.orchestrator import OrchestrationResult, Orchestrator
 from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import Stage
 from aivia.core.toolchain import detect_toolchain
+from aivia.formats.catalog import load_formats
 from aivia.providers import docs as provider_docs
 from aivia.providers.registry import registry as provider_registry
 
@@ -225,18 +226,19 @@ def capability_configs(config: object) -> dict[str, CapabilityChainConfig]:
     return configs
 
 
-def _resolve_recipe(config: object, name: str) -> tuple[str, FormatRecipeConfig]:
-    section = getattr(config, "formats", None)
-    formats: dict[str, FormatRecipeConfig] = (
-        section.formats if isinstance(section, FormatsConfig) else {}
+def _resolve_recipe(
+    config: object,
+    name: str,
+    *,
+    config_dir: str | Path | None = None,
+    defaults_dir: str | Path | None = None,
+) -> tuple[str, FormatRecipeConfig]:
+    catalog = load_formats(
+        config=config,
+        config_dir=config_dir,
+        defaults_dir=defaults_dir,
     )
-    recipe = formats.get(name)
-    if recipe is None:
-        available = ", ".join(sorted(formats)) or "none"
-        raise ConfigError(
-            f"unknown format: {name} (available: {available})",
-            details={"format": name, "available": sorted(formats)},
-        )
+    recipe = catalog.get(name)
     return name, recipe
 
 
@@ -274,7 +276,13 @@ def _resolve_plan(
     config = resolved.to_app_config()
     if getattr(args, "dry_run", False):
         config = apply_dry_run(config)
-    name, recipe = _resolve_recipe(config, args.format_name)
+    resolved_paths = paths.resolve_paths(args.config)
+    name, recipe = _resolve_recipe(
+        config,
+        args.format_name,
+        config_dir=resolved_paths.config_dir,
+        defaults_dir=resolved_paths.defaults_dir,
+    )
     estimate = Estimator(
         provider_metadata(config),
         configs=capability_configs(config) or None,
