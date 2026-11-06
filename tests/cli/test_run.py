@@ -460,9 +460,7 @@ def test_a_song_run_generates_and_times_audio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module_name = f"fake_song_provider_{tmp_path.name.replace('-', '_')}"
-    (tmp_path / f"{module_name}.py").write_text(
-        _LYRICS_PROVIDER, encoding="utf-8"
-    )
+    (tmp_path / f"{module_name}.py").write_text(_LYRICS_PROVIDER, encoding="utf-8")
     monkeypatch.syspath_prepend(str(tmp_path))
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -550,9 +548,7 @@ formats:
 
     assert run.run_dir
     run_dir = Path(run.run_dir)
-    music_manifest = json.loads(
-        (run_dir / "music.json").read_text(encoding="utf-8")
-    )
+    music_manifest = json.loads((run_dir / "music.json").read_text(encoding="utf-8"))
     assert music_manifest["source"] == "provider"
     selected = Path(music_manifest["selected"]["source"])
     assert selected.is_file()
