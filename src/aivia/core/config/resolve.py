@@ -30,7 +30,7 @@ from __future__ import annotations
 import copy
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -90,6 +90,7 @@ PRECEDENCE = (
 
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _MISSING = object()
+_FORMAT_REPLACEMENTS: frozenset[tuple[str, ...]] = frozenset({("formats",)})
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,11 +194,16 @@ def _merge_mapping(
     *,
     origin: str,
     prefix: tuple[str, ...] = (),
+    replace_under: frozenset[tuple[str, ...]] = frozenset(),
 ) -> None:
     for key, value in incoming.items():
         existing = target.get(key, _MISSING)
         if isinstance(value, Mapping):
-            if isinstance(existing, Mapping):
+            if prefix in replace_under and isinstance(existing, Mapping):
+                _clear_origins(origins, prefix, key)
+                child: dict[str, Any] = {}
+                target[key] = child
+            elif isinstance(existing, Mapping):
                 child = cast(dict[str, Any], existing)
             else:
                 if existing is not _MISSING:
@@ -210,6 +216,7 @@ def _merge_mapping(
                 value,
                 origin=origin,
                 prefix=(*prefix, str(key)),
+                replace_under=replace_under,
             )
             if not value:
                 origins[_dotted(prefix, key)] = origin
@@ -221,13 +228,77 @@ def _merge_mapping(
         origins[_dotted(prefix, key)] = origin
 
 
-def merge_layers(layers: Sequence[Layer]) -> tuple[dict[str, Any], dict[str, str]]:
-    """Deep-merge *layers* in order, replacing lists and tracking leaf origins."""
+def merge_layers(
+    layers: Sequence[Layer],
+    *,
+    replace_mappings_under: Iterable[tuple[str, ...]] = (),
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Deep-merge *layers* in order, replacing lists and tracking leaf origins.
+
+    Mappings directly under any prefix in *replace_mappings_under* replace the
+    lower value instead of merging into it. Format recipes use this so a named
+    recipe from a higher layer is a complete replacement, not a patch.
+    """
+    replace_under = frozenset(tuple(parts) for parts in replace_mappings_under)
     values: dict[str, Any] = {}
     origins: dict[str, str] = {}
     for layer in layers:
-        _merge_mapping(values, origins, layer.values, origin=layer.origin)
+        _merge_mapping(
+            values,
+            origins,
+            layer.values,
+            origin=layer.origin,
+            replace_under=replace_under,
+        )
     return values, origins
+
+
+def _format_file_values(base: Path) -> dict[str, Any]:
+    """Load the recipes in ``<base>/formats`` as raw configuration values."""
+    from aivia.formats.catalog import load_format_directory
+
+    recipes = load_format_directory(base / "formats")
+    return {
+        name: recipe.model_dump(
+            mode="json",
+            exclude_unset=True,
+            exclude_none=True,
+        )
+        for name, recipe in recipes.items()
+    }
+
+
+def _with_format_files(
+    values: Mapping[str, Any],
+    recipes: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merge *recipes* below an explicit ``formats`` section in *values*.
+
+    An explicit configuration section wins over the files. The result uses the
+    canonical direct-mapping shape so later layers can replace recipes whole.
+    """
+    merged = dict(values)
+    if not recipes:
+        return merged
+    explicit = merged.get("formats")
+    if explicit is None:
+        merged["formats"] = dict(recipes)
+        return merged
+    if not isinstance(explicit, Mapping):
+        return merged
+    for key in ("formats", "recipes"):
+        nested = explicit.get(key)
+        if isinstance(nested, Mapping):
+            combined = dict(recipes)
+            combined.update(nested)
+            others = {name: value for name, value in explicit.items() if name != key}
+            others.update(combined)
+            merged["formats"] = others
+            return merged
+    combined = dict(recipes)
+    combined.update(explicit)
+    merged["formats"] = combined
+    return merged
 
 
 def profile_overrides(values: Mapping[str, Any], profile: str) -> Mapping[str, Any]:
@@ -464,26 +535,35 @@ def resolve_config(
         else Path(selected_defaults).expanduser().resolve()
     )
 
+    default_values = _with_format_files(
+        load_config_file(
+            resolved_defaults,
+            origin=DEFAULT_ORIGIN,
+            required=True,
+        ),
+        _format_file_values(resolved_defaults.parent),
+    )
     layers: list[Layer] = [
         Layer(
             DEFAULT_ORIGIN,
-            load_config_file(
-                resolved_defaults,
-                origin=DEFAULT_ORIGIN,
-                required=True,
-            ),
+            default_values,
             resolved_defaults,
         )
     ]
     sources: list[Path] = [resolved_defaults]
 
-    user_values = load_config_file(
+    user_file_values = load_config_file(
         resolved_config,
         origin=USER_ORIGIN,
         required=False,
     )
+    user_values = _with_format_files(
+        user_file_values,
+        _format_file_values(resolved_config.parent),
+    )
     if user_values:
         layers.append(Layer(USER_ORIGIN, user_values, resolved_config))
+    if user_file_values:
         sources.append(resolved_config)
 
     if selected_environment is not None:
@@ -516,7 +596,10 @@ def resolve_config(
             )
             sources.append(environment_path)
 
-    values, origins = merge_layers(layers)
+    values, origins = merge_layers(
+        layers,
+        replace_mappings_under=_FORMAT_REPLACEMENTS,
+    )
 
     from aivia.core.presets import select_preset
 
@@ -541,6 +624,7 @@ def resolve_config(
                 origins,
                 profile_values,
                 origin=f"{PROFILE_ORIGIN_PREFIX}{selected_profile}",
+                replace_under=_FORMAT_REPLACEMENTS,
             )
 
     if selected_preset is not None and selected_preset.overrides:
@@ -549,13 +633,20 @@ def resolve_config(
             origins,
             selected_preset.overrides,
             origin=f"{PRESET_ORIGIN_PREFIX}{selected_preset.name}",
+            replace_under=_FORMAT_REPLACEMENTS,
         )
 
     cli_overrides = parse_set_overrides(
         _pick_set_values(set_values, set_overrides, overrides)
     )
     if cli_overrides:
-        _merge_mapping(values, origins, cli_overrides, origin=CLI_ORIGIN)
+        _merge_mapping(
+            values,
+            origins,
+            cli_overrides,
+            origin=CLI_ORIGIN,
+            replace_under=_FORMAT_REPLACEMENTS,
+        )
 
     origin_files = {
         layer.origin: str(layer.path) for layer in layers if layer.path is not None
