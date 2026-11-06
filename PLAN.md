@@ -626,7 +626,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Validate recipes so every stage input is produced by an earlier stage and errors name the stage (tests/formats/test_recipe.py)
 - [x] Let a run execute its recipe, skipping unused stages at zero cost and loading user and packaged format files (tests/formats/test_orchestrator_recipe.py)
 - [x] Add an input topic stage building the topic from CLI arguments, a file or research so every format runs without research (tests/formats/test_input_topic.py)
-- [ ] Allow skipping research and writing by passing a text or script file, with validation and cost reflecting the skipped stages (tests/cli/test_byo_input.py)
+- [x] Allow skipping research and writing by passing a text or script file, with validation and cost reflecting the skipped stages (tests/cli/test_byo_input.py)
 - [ ] Implement the explainer video format with hybrid visuals (slow, tests/formats/test_explainer.py)
 - [ ] Implement the narrated still format with one or few images, text overlay, speech and word synced subtitles (slow, tests/formats/test_narrated_still.py)
 - [ ] Implement the quote card format rendering typography templates stored as data (tests/formats/test_quote_card.py)
