@@ -234,9 +234,7 @@ def test_the_explainer_renders_its_hybrid_visuals_to_a_video(tmp_path: Path) -> 
     )
 
     _run(stage.run(StageContext(run_dir=tmp_path, config={})))
-    manifest = json.loads(
-        (tmp_path / "visual-reuse.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((tmp_path / "visual-reuse.json").read_text(encoding="utf-8"))
     beats: list[dict[str, Any]] = []
     assets: list[dict[str, Any]] = []
     for position, beat in enumerate(manifest["beats"]):
