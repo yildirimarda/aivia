@@ -629,7 +629,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Allow skipping research and writing by passing a text or script file, with validation and cost reflecting the skipped stages (tests/cli/test_byo_input.py)
 - [x] Implement the explainer video format with hybrid visuals (slow, tests/formats/test_explainer.py)
 - [x] Implement the narrated still format with one or few images, text overlay, speech and word synced subtitles (slow, tests/formats/test_narrated_still.py)
-- [ ] Implement the quote card format rendering typography templates stored as data (tests/formats/test_quote_card.py)
+- [x] Implement the quote card format rendering typography templates stored as data (tests/formats/test_quote_card.py)
 - [ ] Implement the slideshow format with transitions and a single voice track (slow, tests/formats/test_slideshow.py)
 - [ ] Implement the image post and carousel formats with aspect presets and text per slide (tests/formats/test_image_post.py)
 - [ ] Implement the AI video short format with one generated clip per beat (slow, tests/formats/test_ai_video_short.py)
@@ -642,6 +642,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Merge user and packaged format files during config resolution so profiles can reference file-only formats (tests/core/config/test_formats.py)
 - [ ] Hash provided inputs into downstream stage input hashes so editing a supplied file invalidates resume (tests/formats/test_orchestrator_recipe.py)
 - [ ] Wire the concrete write stage into the run stage builder so a text file run executes writing instead of enqueueing (tests/cli/test_run.py)
+- [ ] Wire the concrete render stage into the run stage builder so image and video recipes render output (tests/cli/test_run.py)
 
 ## Milestone 15: Reference driven generation
 
