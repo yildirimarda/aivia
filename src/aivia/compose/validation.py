@@ -14,6 +14,7 @@ from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -272,12 +273,56 @@ def _mask_source(layer: Layer) -> str | None:
     return _reference_source(mask)
 
 
+_REMOTE_SCHEMES = frozenset({"http", "https"})
+
+
+def _file_url_path(source: str) -> str | None:
+    """Return the local path named by a ``file://`` URL, or ``None``."""
+    try:
+        parsed = urlsplit(source)
+    except ValueError:
+        return None
+    if parsed.scheme.lower() != "file":
+        return None
+    if parsed.netloc and parsed.netloc.lower() not in {"", "localhost"}:
+        return None
+    path = unquote(parsed.path)
+    return path or None
+
+
+def _url_aware_checker(checker: AssetCheck) -> AssetCheck:
+    """Resolve storage URLs before asking *checker* whether an asset exists.
+
+    A local ``file://`` URL is checked as the path it names. A remote
+    ``http(s)`` URL is a stored object that cannot be verified offline, so it
+    is accepted as present. Other strings, including unknown schemes, are
+    passed through unchanged.
+    """
+
+    def check(source: str) -> bool:
+        try:
+            parsed = urlsplit(source)
+        except ValueError:
+            return checker(source)
+        scheme = parsed.scheme.lower()
+        if scheme in _REMOTE_SCHEMES:
+            return bool(parsed.netloc)
+        if scheme == "file":
+            local = _file_url_path(source)
+            if local is None:
+                return False
+            return checker(local) or checker(source)
+        return checker(source)
+
+    return check
+
+
 def _asset_checker(
     assets: AssetLookup | None,
     asset_exists: AssetCheck | None,
 ) -> AssetCheck | None:
     if asset_exists is not None:
-        return asset_exists
+        return _url_aware_checker(asset_exists)
     if assets is None:
         return None
     if isinstance(assets, (str, Path)):
@@ -289,14 +334,14 @@ def _asset_checker(
                 return candidate.exists()
             return (root / candidate).exists()
 
-        return check_path
+        return _url_aware_checker(check_path)
     if isinstance(assets, Mapping):
         known = {str(key) for key in assets}
     elif callable(assets):
-        return assets
+        return _url_aware_checker(assets)
     else:
         known = {str(item) for item in assets}
-    return known.__contains__
+    return _url_aware_checker(known.__contains__)
 
 
 def _check_assets(
@@ -823,11 +868,13 @@ def validate_composition(
 
     ``assets`` may be a collection of known asset ids, a mapping whose keys are
     known ids, a directory to resolve relative paths against, or a callable.
-    When neither ``assets`` nor ``asset_exists`` is given, asset existence is
-    not checked. A mapping is parsed first; any schema errors are returned as
-    issues with their dotted paths instead of raising. Manual text or sticker
-    coordinates outside the platform safe area emit a :class:`SafeAreaWarning`
-    unless *warn_safe_area* is false.
+    ``file://`` URLs are resolved to their local path and remote ``http(s)``
+    storage URLs are accepted as present because they cannot be checked
+    offline. When neither ``assets`` nor ``asset_exists`` is given, asset
+    existence is not checked. A mapping is parsed first; any schema errors are
+    returned as issues with their dotted paths instead of raising. Manual text
+    or sticker coordinates outside the platform safe area emit a
+    :class:`SafeAreaWarning` unless *warn_safe_area* is false.
     """
     try:
         loaded = _load(composition)
