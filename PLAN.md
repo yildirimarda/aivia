@@ -653,7 +653,8 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Build the configured storage provider when executing run and worker stages so generated media is stored (tests/cli/test_run.py)
 - [x] Seed the song timeline from the written lyrics so the packaged song recipe runs without an injected duration (tests/formats/test_song_video.py)
 - [x] Derive the align transcription estimate from a known song duration instead of assuming one minute (tests/core/test_estimate.py)
-- [ ] Resolve file and remote storage URLs in composition validation so stored visual assets render (tests/compose/test_validation.py)
+- [x] Resolve file and remote storage URLs in composition validation so stored visual assets render (tests/compose/test_validation.py)
+- [ ] Resolve local file URLs in the still renderer and asset hashing so stored visuals open (tests/compose/test_render_still.py)
 
 ## Milestone 15: Reference driven generation
 

@@ -211,6 +211,70 @@ def test_asset_existence_can_use_a_callable_mapping_or_directory(
     assert not validate_composition(composition, assets=tmp_path)
 
 
+def test_file_urls_are_resolved_before_checking_asset_existence(
+    tmp_path: Path,
+) -> None:
+    asset = tmp_path / "background image.png"
+    asset.write_bytes(b"image")
+    composition = _composition(
+        layers=[{"id": "bg", "type": "image", "source": asset.as_uri()}]
+    )
+
+    seen: list[str] = []
+    assert (
+        validate_composition(
+            composition,
+            asset_exists=lambda source: seen.append(source) or True,
+        )
+        == []
+    )
+    assert seen == [str(asset)]
+    assert validate_composition(composition, assets=tmp_path) == []
+    assert _codes(validate_composition(composition, assets=set())) == ["missing_asset"]
+
+    asset.unlink()
+
+    issues = validate_composition(composition, assets=tmp_path)
+
+    assert _codes(issues) == ["missing_asset"]
+    assert issues[0].path == "layers[0].source"
+
+
+def test_remote_storage_urls_are_accepted_without_network() -> None:
+    source = "https://storage.example.test/objects/ab/hash.png?X-Amz-Signature=abc"
+    mask = "https://storage.example.test/objects/cd/mask.png?X-Amz-Signature=def"
+    composition = _composition(
+        layers=[
+            {
+                "id": "bg",
+                "type": "image",
+                "source": source,
+                "mask": {"source": mask},
+            }
+        ],
+        audio_tracks=[{"id": "voice", "source": source}],
+    )
+
+    assert validate_composition(composition, assets=set()) == []
+
+
+def test_unknown_url_schemes_are_still_checked_as_assets() -> None:
+    composition = _composition(
+        layers=[
+            {
+                "id": "bg",
+                "type": "image",
+                "source": "ftp://storage.example.test/bg.png",
+            }
+        ]
+    )
+
+    issues = validate_composition(composition, assets=set())
+
+    assert _codes(issues) == ["missing_asset"]
+    assert issues[0].path == "layers[0].source"
+
+
 def test_missing_mask_assets_are_reported_with_the_layer_source() -> None:
     composition = _composition(
         layers=[
