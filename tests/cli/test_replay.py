@@ -10,6 +10,7 @@ import pytest
 from aivia.cli import main
 from aivia.core.db import (
     RunRepository,
+    StageRunRepository,
     create_database_engine,
     upgrade_database,
 )
@@ -742,3 +743,108 @@ def test_replay_reports_a_run_without_a_snapshot(
     assert code == 1
     assert out == ""
     assert "run has no replay snapshot: run_without_snapshot" in err
+
+
+_SCRIPTED_PROVIDER = """
+from aivia.providers.mock import MockLLMProvider
+from aivia.providers.protocols.llm import LLMResponse
+
+
+class ScriptedLLM(MockLLMProvider):
+    async def complete(self, request):
+        return LLMResponse(
+            content=(
+                '{"title": "Honey", "hook": "Honey keeps forever.", '
+                '"beats": [{"text": "Honey never spoils."}]}'
+            ),
+            provider=self.name,
+            model=request.model or "mock-llm",
+        )
+"""
+
+
+def test_replay_builds_the_configured_router_for_concrete_stages(
+    database: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = f"scripted_replay_{tmp_path.name.replace('-', '_')}"
+    (tmp_path / f"{module_name}.py").write_text(_SCRIPTED_PROVIDER, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    config = write_config(
+        tmp_path,
+        f"""
+languages:
+  default: en
+  en:
+    name: English
+providers:
+  text:
+    type: {module_name}:ScriptedLLM
+formats:
+  sample:
+    description: A replayable writing recipe backed by a provider.
+    stages:
+      - stage: input_topic
+        options:
+          topic: Honey never spoils.
+      - stage: write
+        options:
+          languages: [en]
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+    )
+
+    code, out, err = command(
+        capsys,
+        "run",
+        "--format",
+        "sample",
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+    assert code == 0, err
+    original_id = run_id_from(out)
+
+    write_config(
+        config.parent,
+        """
+formats:
+  sample:
+    stages:
+      - stage: input_topic
+      - stage: write
+    capabilities: [llm]
+    output_type: video
+    handler: save
+""",
+    )
+
+    code, out, err = command(
+        capsys,
+        "replay",
+        original_id,
+        "--config",
+        str(config),
+        "--database",
+        str(database),
+    )
+
+    assert code == 0, err
+    assert err == ""
+    assert "State: succeeded" in out
+    _, replay_id = replay_ids_from(out)
+
+    engine = create_database_engine(database)
+    try:
+        result = StageRunRepository(engine).get(replay_id, "write")
+        assert result is not None
+        assert result.metadata["provider"] == "text"
+        assert result.metadata["model"] == "mock-llm"
+    finally:
+        engine.dispose()
