@@ -42,6 +42,7 @@ from aivia.core.run_dirs import RunDirectories, RunDirectory
 from aivia.core.stages import Stage
 from aivia.core.toolchain import detect_toolchain
 from aivia.formats.catalog import load_formats
+from aivia.formats.input_topic import INPUT_TOPIC_STAGE_NAME, InputTopicStage
 from aivia.providers import docs as provider_docs
 from aivia.providers.registry import registry as provider_registry
 
@@ -368,7 +369,13 @@ def build_stages(recipe: FormatRecipeConfig) -> list[Stage]:
     keeps the execution path wired and testable, and a caller may replace this
     function to supply implementations.
     """
-    return [Stage(item.stage, **item.to_stage_kwargs()) for item in recipe.stages]
+    concrete: dict[str, type[Stage]] = {
+        INPUT_TOPIC_STAGE_NAME: InputTopicStage,
+    }
+    return [
+        concrete.get(item.stage, Stage)(item.stage, **item.to_stage_kwargs())
+        for item in recipe.stages
+    ]
 
 
 def _execute_run(
