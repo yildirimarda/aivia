@@ -861,6 +861,7 @@ def render_video(
             "video",
             "platform",
             "profile",
+            "cover_art",
             "overwrite",
         }
         audio = {
