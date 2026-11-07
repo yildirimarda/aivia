@@ -29,6 +29,8 @@ __all__ = [
     "DEFAULT_NGRAM_SIMILARITY_THRESHOLD",
     "DEFAULT_TEXT_SIMILARITY_THRESHOLD",
     "DEFAULT_TITLE_SIMILARITY_THRESHOLD",
+    "DEFAULT_VIDEO_FRAME_CAP",
+    "DEFAULT_VIDEO_SCENE_MATCH_TOLERANCE_SECONDS",
     "DEFAULT_VISUAL_SIMILARITY_THRESHOLD",
     "DownloadPolicy",
     "ReferenceConfig",
@@ -48,6 +50,12 @@ DEFAULT_TITLE_SIMILARITY_THRESHOLD = 0.85
 
 DEFAULT_NGRAM_SIMILARITY_THRESHOLD = 0.6
 """Default word-trigram overlap at or above which wording is considered reused."""
+
+DEFAULT_VIDEO_FRAME_CAP = 12
+"""The most frames one video reference may send to a vision model."""
+
+DEFAULT_VIDEO_SCENE_MATCH_TOLERANCE_SECONDS = 0.75
+"""How far a vision scene start may drift from the measured cut, in seconds."""
 
 
 class SimilarityLevel(StrEnum):
