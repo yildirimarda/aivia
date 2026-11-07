@@ -680,7 +680,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Enforce rights policy so unowned references are used for style and structure only and high similarity requires an owned flag (tests/reference/test_rights.py)
 - [x] Add a match evaluator scoring structure, pacing, look and mood with bounded regenerations (tests/reference/test_evaluator.py)
 - [x] Add an optional spec review step that shows the extracted style spec for edit or confirmation before any paid generation (tests/e2e/test_reference.py)
-- [ ] Probe remote reference URLs through the configured download policy before analysis (tests/reference/test_inputs.py)
+- [x] Probe remote reference URLs through the configured download policy before analysis (tests/reference/test_inputs.py)
 - [ ] Add an audio input part to the LLM protocol so audio references reach an audio capable model (tests/contracts/test_llm_providers.py)
 - [ ] Apply only visual and motion prompt suffixes to image and motion prompts so audio and writing guidance stay out (tests/writing/test_media_prompts.py)
 
