@@ -26,6 +26,7 @@ from pydantic import Field, field_validator, model_validator
 from aivia.core.config.base import ConfigModel
 
 __all__ = [
+    "DEFAULT_MATCH_THRESHOLD",
     "DEFAULT_NGRAM_SIMILARITY_THRESHOLD",
     "DEFAULT_STRUCTURE_MATCH_TOLERANCE_SECONDS",
     "DEFAULT_TEXT_SIMILARITY_THRESHOLD",
@@ -39,6 +40,9 @@ __all__ = [
     "ReferenceDownloadPolicy",
     "SimilarityLevel",
 ]
+
+DEFAULT_MATCH_THRESHOLD = 0.7
+"""Overall score at or above which a candidate matches the reference."""
 
 DEFAULT_TEXT_SIMILARITY_THRESHOLD = 0.85
 """Default maximum text similarity to a reference before regeneration."""
