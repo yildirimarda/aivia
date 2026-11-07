@@ -667,7 +667,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Analyze audio references for genre, tempo, mood, instrumentation, vocal type and structure while storing no verbatim lyrics or melody data (tests/reference/test_analyze_audio.py)
 - [x] Analyze text references for tone, structure, hook pattern and language (tests/reference/test_analyze_text.py)
 - [x] Merge several references keeping common traits and reporting conflicts for a documented resolution (tests/reference/test_merge.py)
-- [ ] Store style specs as editable YAML in the user directory, validated on load and reloadable by name (tests/reference/test_store.py)
+- [x] Store style specs as editable YAML in the user directory, validated on load and reloadable by name (tests/reference/test_store.py)
 - [ ] Translate a style spec into style bible entries and prompt suffixes (tests/reference/test_style_prompts.py)
 - [ ] Convert a style spec into a validated format recipe, style bible and preset (tests/reference/test_to_format.py)
 - [ ] Filter providers by reference capabilities and fall back to prompt only style transfer with a warning (tests/reference/test_capabilities.py)
