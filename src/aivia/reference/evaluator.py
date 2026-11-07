@@ -24,6 +24,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from aivia.core.config.reference import DEFAULT_MATCH_THRESHOLD
 from aivia.core.errors import ValidationError
 from aivia.reference.schema import (
     AspectSpec,
@@ -50,9 +51,6 @@ __all__ = [
     "structure_score",
     "typography_score",
 ]
-
-DEFAULT_MATCH_THRESHOLD = 0.7
-"""Overall score at or above which a candidate matches the reference."""
 
 _DEFAULT_SECTION_WEIGHTS = {
     "structure": 0.25,
@@ -145,13 +143,13 @@ def _clamped_ratio(left: float | None, right: float | None, label: str) -> float
 
 def _validate_weights(weights: Mapping[str, float], label: str) -> dict[str, float]:
     normalised: dict[str, float] = {}
-    for name, weight in weights.items():
+    for name, w in weights.items():
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"{label} weight names must be non-empty")
-        _finite_ratio(weight, f"{label} weight for {name!r}")
-        if weight < 0:
+        _finite_ratio(w, f"{label} weight for {name!r}")
+        if w < 0:
             raise ValueError(f"{label} weight for {name!r} must not be negative")
-        normalised[name.strip()] = float(weight)
+        normalised[name.strip()] = float(w)
     if not normalised:
         raise ValueError(f"{label} weights must not be empty")
     total = sum(normalised.values())
@@ -212,11 +210,11 @@ def structure_score(reference: StructureSpec, candidate: StructureSpec) -> Secti
     candidate_scenes = list(candidate.scenes)
 
     if not reference_scenes and not candidate_scenes:
-        count_score = 1.0
+        count_value = 1.0
     elif not reference_scenes or not candidate_scenes:
-        count_score = 0.0
+        count_value = 0.0
     else:
-        count_score = min(len(reference_scenes), len(candidate_scenes)) / max(
+        count_value = min(len(reference_scenes), len(candidate_scenes)) / max(
             len(reference_scenes), len(candidate_scenes)
         )
 
@@ -250,11 +248,11 @@ def structure_score(reference: StructureSpec, candidate: StructureSpec) -> Secti
     candidate_types = [
         scene.shot_type for scene in candidate_scenes if scene.shot_type is not None
     ]
-    types_score = _jaccard(reference_types, candidate_types)
-    if types_score is None:
-        types_score = 1.0
+    types_value = _jaccard(reference_types, candidate_types)
+    if types_value is None:
+        types_value = 1.0
 
-    score = _mean([count_score, duration_score, types_score])
+    score = _mean([count_value, duration_score, types_value])
     detail = (
         f"scenes {len(reference_scenes)} vs {len(candidate_scenes)}, "
         f"shot types {_types_summary(reference_types)} vs "
@@ -548,15 +546,15 @@ def _section_scores(
 def _overall_score(
     section_scores: Sequence[SectionScore], weights: Mapping[str, float]
 ) -> float:
-    weighted = 0.0
-    total_weight = 0.0
+    accumulated = 0.0
+    total = 0.0
     for section in section_scores:
         weight = weights.get(section.name, 0.0)
-        weighted += section.score * weight
-        total_weight += weight
-    if total_weight <= 0.0:
+        accumulated += section.score * weight
+        total += weight
+    if total <= 0.0:
         return 0.0
-    return weighted / total_weight
+    return accumulated / total
 
 
 async def evaluate_match(
@@ -596,7 +594,7 @@ async def evaluate_match(
         raise ValueError("max_regenerations must not be negative")
 
     current = candidate
-    regenerations = 0
+    regen_count = 0
 
     while True:
         sections = _section_scores(reference, current, effective_weights)
@@ -607,11 +605,11 @@ async def evaluate_match(
                 score=score,
                 threshold=level,
                 section_scores=sections,
-                regenerations=regenerations,
+                regenerations=regen_count,
                 refused=False,
                 reason=None,
             )
-        if regenerations >= count:
+        if regen_count >= count:
             reason = (
                 f"match score {score:.3f} is below the threshold "
                 f"{level:g} after {count} regeneration(s)"
@@ -621,7 +619,7 @@ async def evaluate_match(
                 score=score,
                 threshold=level,
                 section_scores=sections,
-                regenerations=regenerations,
+                regenerations=regen_count,
                 refused=True,
                 reason=reason,
             )
@@ -635,9 +633,9 @@ async def evaluate_match(
                 score=score,
                 threshold=level,
                 section_scores=sections,
-                regenerations=regenerations,
+                regenerations=regen_count,
                 refused=True,
                 reason=reason,
             )
         current = await regenerate()
-        regenerations += 1
+        regen_count += 1
