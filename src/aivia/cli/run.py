@@ -27,13 +27,14 @@ from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_app_config, resolve_config
 from aivia.core.cost import CostTracker
 from aivia.core.db import (
+    ReferenceRepository,
     RunRepository,
     StageRunRepository,
     create_database_engine,
     upgrade_database,
 )
 from aivia.core.dry_run import apply_dry_run
-from aivia.core.errors import ConfigError, QuotaError
+from aivia.core.errors import ConfigError, QuotaError, ValidationError
 from aivia.core.estimate import Estimator, RecipeEstimate, render_estimate
 from aivia.core.idempotency import IdempotencyConflict, IdempotentRun, create_run_once
 from aivia.core.jobs import JobQueue
@@ -66,6 +67,7 @@ from aivia.providers import docs as provider_docs
 from aivia.providers.provider_factory import build_providers
 from aivia.providers.registry import registry as provider_registry
 from aivia.providers.storage_factory import build_storage_provider
+from aivia.reference import ReferenceSpec, load_reference_inputs
 from aivia.visuals.reuse import VISUAL_REUSE_STAGE_NAME, VisualReuseStage
 from aivia.writing.stage import WRITE_STAGE_NAME, WriteStage
 
@@ -144,6 +146,15 @@ def _configure_run_options(parser: argparse.ArgumentParser) -> None:
         dest="script_file",
         metavar="PATH",
         help="use a prepared JSON, YAML or text script instead of writing",
+    )
+    parser.add_argument(
+        "--reference",
+        "--ref",
+        dest="references",
+        action="append",
+        default=None,
+        metavar="PATH_OR_URL",
+        help="reference image, video, audio or text to learn from; repeatable",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -315,7 +326,15 @@ def build_router(config: object) -> Router:
 
 def _resolve_plan(
     args: argparse.Namespace,
-) -> tuple[object, str, FormatRecipeConfig, RecipeEstimate, str, ProvidedInputs]:
+) -> tuple[
+    object,
+    str,
+    FormatRecipeConfig,
+    RecipeEstimate,
+    str,
+    ProvidedInputs,
+    list[ReferenceSpec],
+]:
     resolved = resolve_config(
         config_file=args.config,
         environment=args.environment,
@@ -337,16 +356,27 @@ def _resolve_plan(
         text_file=getattr(args, "text_file", None),
         script_file=getattr(args, "script_file", None),
     )
+    references = load_reference_inputs(getattr(args, "references", None))
     recipe = apply_provided_inputs(recipe, provided)
     estimate = Estimator(
         provider_metadata(config),
         configs=capability_configs(config) or None,
     ).estimate(name, recipe)
-    return config, name, recipe, estimate, resolved.environment or "", provided
+    return (
+        config,
+        name,
+        recipe,
+        estimate,
+        resolved.environment or "",
+        provided,
+        references,
+    )
 
 
 def _estimate_run(args: argparse.Namespace) -> tuple[object, RecipeEstimate]:
-    config, _name, _recipe, estimate, _environment, _provided = _resolve_plan(args)
+    config, _name, _recipe, estimate, _environment, _provided, _references = (
+        _resolve_plan(args)
+    )
     return config, estimate
 
 
@@ -563,15 +593,51 @@ def _seed_provided(
     )
 
 
+def _store_references(
+    engine: Engine,
+    references: list[ReferenceSpec],
+    *,
+    connection: Connection | None = None,
+) -> list[str]:
+    """Persist validated references, reusing an existing row by content hash."""
+    if not references:
+        return []
+    repository = ReferenceRepository(engine)
+    identifiers: list[str] = []
+    for reference in references:
+        if reference.content_hash:
+            existing = (
+                repository.list_in(connection, content_hash=reference.content_hash)
+                if connection is not None
+                else repository.list(content_hash=reference.content_hash)
+            )
+            if existing:
+                identifiers.append(str(existing[0]["id"]))
+                continue
+        record = reference.model_dump(mode="json")
+        stored = (
+            repository.create_in(connection, record)
+            if connection is not None
+            else repository.create(record)
+        )
+        identifiers.append(str(stored["id"]))
+    return identifiers
+
+
 def _job_payload(
     name: str,
     run: Run,
     provided: ProvidedInputs,
+    references: list[ReferenceSpec] | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {"format": name, "profile": run.profile}
     options = provided_stage_options(provided) if provided.supplied else {}
     if options:
         payload["stage_options"] = options
+    if references:
+        payload["references"] = [
+            reference.model_dump(mode="json") for reference in references
+        ]
     return payload
 
 
@@ -583,8 +649,16 @@ def run_run(args: argparse.Namespace) -> int:
         return 2
 
     try:
-        config, name, recipe, estimate, environment, provided = _resolve_plan(args)
-    except ConfigError as exc:
+        (
+            config,
+            name,
+            recipe,
+            estimate,
+            environment,
+            provided,
+            references,
+        ) = _resolve_plan(args)
+    except (ConfigError, ValidationError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
@@ -639,12 +713,13 @@ def run_run(args: argparse.Namespace) -> int:
                         _discard_run_directories(created_dirs)
                         _print_existing(run)
                         return 0
+                    _store_references(engine, references, connection=connection)
                     _seed_provided(run, recipe, provided)
                     job = queue.enqueue(
                         Job(
                             kind="run",
                             run_id=run.id,
-                            payload=_job_payload(name, run, provided),
+                            payload=_job_payload(name, run, provided, references),
                         ),
                         connection=connection,
                     )
@@ -660,6 +735,7 @@ def run_run(args: argparse.Namespace) -> int:
             _print_existing(run)
             return 0
 
+        _store_references(engine, references)
         _seed_provided(run, recipe, provided)
         result = _execute_run(engine, run, config, stages)
         _print_created(result.run, estimate)

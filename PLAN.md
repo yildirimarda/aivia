@@ -661,7 +661,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 <!-- goal: learn structure and style from an example, generate something new, never copy -->
 
 - [x] Define the reference and style spec schemas covering structure, pacing, palette, typography, music mood and aspect (tests/reference/test_schema.py)
-- [ ] Accept repeatable reference inputs from the CLI and API with type validation by extension and probe (tests/cli/test_reference_input.py)
+- [x] Accept repeatable reference inputs from the CLI and API with type validation by extension and probe (tests/cli/test_reference_input.py)
 - [ ] Analyze an image reference into composition, palette, style and typography plus a generic reproducing prompt that names no original subject (tests/reference/test_analyze_image.py)
 - [ ] Sample video scenes with a frame cap and analyze cuts, shot types, captions, on screen text, hook structure, aspect and duration (tests/reference/test_analyze_video.py)
 - [ ] Analyze audio references for genre, tempo, mood, instrumentation, vocal type and structure while storing no verbatim lyrics or melody data (tests/reference/test_analyze_audio.py)
@@ -680,6 +680,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Enforce rights policy so unowned references are used for style and structure only and high similarity requires an owned flag (tests/reference/test_rights.py)
 - [ ] Add a match evaluator scoring structure, pacing, look and mood with bounded regenerations (tests/reference/test_evaluator.py)
 - [ ] Add an optional spec review step that shows the extracted style spec for edit or confirmation before any paid generation (tests/e2e/test_reference.py)
+- [ ] Probe remote reference URLs through the configured download policy before analysis (tests/reference/test_inputs.py)
 
 ## Milestone 16: Characters and brand kits
 

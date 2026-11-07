@@ -14,23 +14,31 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+)
 from sqlalchemy import Connection, Engine
 
 from aivia.core.config import JobsConfig
 from aivia.core.cost import CostAggregator, CostTracker
 from aivia.core.db import (
     JobRepository,
+    ReferenceRepository,
     RunRepository,
     StageRunRepository,
     create_database_engine,
     upgrade_database,
 )
-from aivia.core.errors import QuotaError
+from aivia.core.errors import QuotaError, ValidationError
 from aivia.core.idempotency import IdempotencyConflict, create_run_once
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, Run, RunKind, StageResult
 from aivia.core.toolchain import detect_toolchain
+from aivia.reference import ReferenceSpec, load_reference_inputs
 
 __all__ = ["JobSubmission", "register_job_routes"]
 
@@ -58,7 +66,8 @@ class JobSubmission(BaseModel):
     ``kind`` is the job kind. Run-specific fields may be supplied directly,
     through :attr:`run`, or through aliases the run model accepts. A submission
     without an explicit run id creates a new run so the caller can immediately
-    inspect it and its costs.
+    inspect it and its costs. ``references`` is a repeatable list of paths,
+    URLs or reference mappings that is validated before the run is queued.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -79,6 +88,15 @@ class JobSubmission(BaseModel):
     config_snapshot: dict[str, Any] = Field(default_factory=dict)
     estimated_cost_usd: float | None = None
     toolchain_fingerprint: dict[str, Any] | str | None = None
+    references: list[Any] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices(
+            "references",
+            "reference",
+            "refs",
+            "reference_inputs",
+        ),
+    )
 
     @field_validator("kind")
     @classmethod
@@ -142,12 +160,14 @@ def register_job_routes(
         """Queue a job and return its identifier and initial status."""
         target = database()
         queue = queue_for(target)
+        references = _validated_references(submission)
         try:
             run, job = _submit_atomically(
                 queue,
                 submission,
                 requested_run_id=submission.run_id or None,
                 job_id=submission.id,
+                references=references,
                 environment=environment,
                 profile=profile,
             )
@@ -170,6 +190,7 @@ def register_job_routes(
         target = database()
         queue = queue_for(target)
         requested = submission.run_id or submission.id or None
+        references = _validated_references(submission)
         try:
             run, job = _submit_atomically(
                 queue,
@@ -177,6 +198,7 @@ def register_job_routes(
                 requested_run_id=requested,
                 job_id=None,
                 require_run=True,
+                references=references,
                 environment=environment,
                 profile=profile,
             )
@@ -274,6 +296,39 @@ def register_job_routes(
         }
 
 
+def _validated_references(submission: JobSubmission) -> list[ReferenceSpec]:
+    """Validate a submission's repeatable references before anything is stored."""
+    try:
+        return load_reference_inputs(submission.references)
+    except ValidationError as exc:
+        detail = {"message": exc.message, "code": exc.code, **exc.details}
+        raise HTTPException(status_code=422, detail=detail) from exc
+
+
+def _store_references(
+    engine: Engine,
+    references: list[ReferenceSpec],
+    connection: Connection,
+) -> list[str]:
+    """Persist references inside the submission transaction, reusing hashes."""
+    if not references:
+        return []
+    repository = ReferenceRepository(engine)
+    identifiers: list[str] = []
+    for reference in references:
+        existing = (
+            repository.list_in(connection, content_hash=reference.content_hash)
+            if reference.content_hash
+            else []
+        )
+        if existing:
+            identifiers.append(str(existing[0]["id"]))
+            continue
+        stored = repository.create_in(connection, reference.model_dump(mode="json"))
+        identifiers.append(str(stored["id"]))
+    return identifiers
+
+
 def _submit_atomically(
     queue: JobQueue,
     submission: JobSubmission,
@@ -281,11 +336,17 @@ def _submit_atomically(
     requested_run_id: str | None,
     job_id: str | None,
     require_run: bool = False,
+    references: list[ReferenceSpec] | None = None,
     environment: str = "",
     profile: str = "",
 ) -> tuple[Run | None, Job]:
     """Create or reuse the run and enqueue its job under one write lock."""
     with queue.write_transaction() as connection:
+        reference_ids = _store_references(
+            queue.engine,
+            references or [],
+            connection,
+        )
         run, _created, reused = _create_or_attach_run(
             queue.engine,
             submission,
@@ -308,6 +369,8 @@ def _submit_atomically(
             submission,
             run,
             job_id=job_id,
+            references=references or [],
+            reference_ids=reference_ids,
             connection=connection,
         )
         return run, job
@@ -403,12 +466,21 @@ def _enqueue_job(
     run: Run | None,
     *,
     job_id: str | None,
+    references: list[ReferenceSpec] | None = None,
+    reference_ids: list[str] | None = None,
     connection: Connection | None = None,
 ) -> Job:
+    payload = dict(submission.payload)
+    if references:
+        payload["references"] = [
+            reference.model_dump(mode="json") for reference in references
+        ]
+    if reference_ids:
+        payload["reference_ids"] = list(reference_ids)
     values: dict[str, Any] = {
         "kind": submission.kind,
         "run_id": run.id if run is not None else submission.run_id,
-        "payload": submission.payload,
+        "payload": payload,
         "metadata": submission.metadata,
         "max_attempts": submission.max_attempts,
         "not_before": submission.not_before,
