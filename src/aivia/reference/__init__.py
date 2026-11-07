@@ -17,6 +17,8 @@ from aivia.reference.capabilities import *  # noqa: F403
 from aivia.reference.capabilities import __all__ as _capabilities_all
 from aivia.reference.conditioned import *  # noqa: F403
 from aivia.reference.conditioned import __all__ as _conditioned_all
+from aivia.reference.evaluator import *  # noqa: F403
+from aivia.reference.evaluator import __all__ as _evaluator_all
 from aivia.reference.identity import *  # noqa: F403
 from aivia.reference.identity import __all__ as _identity_all
 from aivia.reference.inputs import *  # noqa: F403
@@ -45,6 +47,7 @@ from aivia.reference.visual_gate import __all__ as _visual_gate_all
 __all__ = [
     *_schema_all,
     *_similarity_all,
+    *_evaluator_all,
     *_rights_all,
     *_inputs_all,
     *_analyze_all,
