@@ -664,7 +664,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Accept repeatable reference inputs from the CLI and API with type validation by extension and probe (tests/cli/test_reference_input.py)
 - [x] Analyze an image reference into composition, palette, style and typography plus a generic reproducing prompt that names no original subject (tests/reference/test_analyze_image.py)
 - [x] Sample video scenes with a frame cap and analyze cuts, shot types, captions, on screen text, hook structure, aspect and duration (tests/reference/test_analyze_video.py)
-- [ ] Analyze audio references for genre, tempo, mood, instrumentation, vocal type and structure while storing no verbatim lyrics or melody data (tests/reference/test_analyze_audio.py)
+- [x] Analyze audio references for genre, tempo, mood, instrumentation, vocal type and structure while storing no verbatim lyrics or melody data (tests/reference/test_analyze_audio.py)
 - [ ] Analyze text references for tone, structure, hook pattern and language (tests/reference/test_analyze_text.py)
 - [ ] Merge several references keeping common traits and reporting conflicts for a documented resolution (tests/reference/test_merge.py)
 - [ ] Store style specs as editable YAML in the user directory, validated on load and reloadable by name (tests/reference/test_store.py)
