@@ -17,6 +17,8 @@ from aivia.reference.capabilities import *  # noqa: F403
 from aivia.reference.capabilities import __all__ as _capabilities_all
 from aivia.reference.conditioned import *  # noqa: F403
 from aivia.reference.conditioned import __all__ as _conditioned_all
+from aivia.reference.identity import *  # noqa: F403
+from aivia.reference.identity import __all__ as _identity_all
 from aivia.reference.inputs import *  # noqa: F403
 from aivia.reference.inputs import __all__ as _inputs_all
 from aivia.reference.merge import *  # noqa: F403
@@ -55,4 +57,5 @@ __all__ = [
     *_capabilities_all,
     *_conditioned_all,
     *_visual_gate_all,
+    *_identity_all,
 ]
