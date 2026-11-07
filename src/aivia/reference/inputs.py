@@ -5,25 +5,32 @@ A reference may arrive as a bare path, a URL, a mapping or an already validated
 twice: once by its extension and once by probing the bytes. The two answers must
 agree, so a video renamed to ``.png`` is rejected before any paid analysis runs.
 Images are checked from their header, video and audio through ffprobe, and text
-by decoding it as UTF-8. Remote references are classified by extension because
-their content is only available after a download.
+by decoding it as UTF-8. Remote references are classified by extension when no
+download policy is configured, and downloaded through the configured download
+policy when one is supplied.
 
 The module returns plain :class:`~aivia.reference.schema.ReferenceSpec` values.
-It never calls a provider, writes a file or imports the media services.
+It never calls a provider or imports the media services.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import mimetypes
-from collections.abc import Mapping, Sequence
+import os
+import tempfile
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import unquote, urlsplit
 
+import httpx
 from pydantic import ValidationError as PydanticValidationError
 
+from aivia.core.config.reference import DownloadPolicy, ReferenceDownloadConfig
 from aivia.core.errors import ValidationError
+from aivia.core.http import HttpClient, HttpClientConfig
 from aivia.core.media_probe import (
     FFprobeRunner,
     MediaCategory,
@@ -36,8 +43,11 @@ from aivia.reference.schema import ReferenceKind, ReferenceSpec
 __all__ = [
     "collect_references",
     "load_reference",
+    "load_reference_async",
     "load_reference_inputs",
+    "load_reference_inputs_async",
     "probe_reference",
+    "probe_reference_async",
 ]
 
 _CATEGORY_KINDS = {
@@ -58,6 +68,11 @@ def load_reference_inputs(
     ffprobe_runner: FFprobeRunner | None = None,
     ffprobe_executable: str = "ffprobe",
     max_bytes: int | None = None,
+    download_policy: ReferenceDownloadConfig | None = None,
+    confirm_download: Callable[[str], bool] | None = None,
+    http: HttpClient | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    temp_dir: str | Path | None = None,
 ) -> list[ReferenceSpec]:
     """Return one validated reference per entry in *values*.
 
@@ -66,7 +81,15 @@ def load_reference_inputs(
     preserved. ``probe=False`` validates only the extension, which is useful
     when the content is not on this machine yet; a remote URL is never probed
     here.
+
+    When *download_policy* is supplied, remote URLs are fetched through it
+    before the result is returned: ``deny`` rejects them, ``ask`` requires
+    *confirm_download*, and ``allow`` downloads and probes the content into a
+    local reference spec. Pass an *http* client or *transport* to avoid the
+    network in tests.
     """
+    if http is not None and transport is not None:
+        raise TypeError("pass either an http client or a transport, not both")
     entries = _entries(values)
     return [
         load_reference(
@@ -76,6 +99,47 @@ def load_reference_inputs(
             ffprobe_runner=ffprobe_runner,
             ffprobe_executable=ffprobe_executable,
             max_bytes=max_bytes,
+            download_policy=download_policy,
+            confirm_download=confirm_download,
+            http=http,
+            transport=transport,
+            temp_dir=temp_dir,
+        )
+        for entry in entries
+    ]
+
+
+async def load_reference_inputs_async(
+    values: Sequence[Any] | Any | None,
+    *,
+    probe: bool = True,
+    limits: MediaLimits | None = None,
+    ffprobe_runner: FFprobeRunner | None = None,
+    ffprobe_executable: str = "ffprobe",
+    max_bytes: int | None = None,
+    download_policy: ReferenceDownloadConfig | None = None,
+    confirm_download: Callable[[str], bool] | None = None,
+    http: HttpClient | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    temp_dir: str | Path | None = None,
+) -> list[ReferenceSpec]:
+    """Async variant of :func:`load_reference_inputs` for running event loops."""
+    if http is not None and transport is not None:
+        raise TypeError("pass either an http client or a transport, not both")
+    entries = _entries(values)
+    return [
+        await load_reference_async(
+            entry,
+            probe=probe,
+            limits=limits,
+            ffprobe_runner=ffprobe_runner,
+            ffprobe_executable=ffprobe_executable,
+            max_bytes=max_bytes,
+            download_policy=download_policy,
+            confirm_download=confirm_download,
+            http=http,
+            transport=transport,
+            temp_dir=temp_dir,
         )
         for entry in entries
     ]
@@ -93,6 +157,11 @@ def load_reference(
     ffprobe_runner: FFprobeRunner | None = None,
     ffprobe_executable: str = "ffprobe",
     max_bytes: int | None = None,
+    download_policy: ReferenceDownloadConfig | None = None,
+    confirm_download: Callable[[str], bool] | None = None,
+    http: HttpClient | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    temp_dir: str | Path | None = None,
 ) -> ReferenceSpec:
     """Validate one reference value and return its normalized spec.
 
@@ -100,6 +169,11 @@ def load_reference(
     :class:`~aivia.reference.schema.ReferenceSpec`. A local path is probed
     unless *probe* is false. The inferred kind must match both the extension
     and, when probed, the content.
+
+    When *download_policy* is supplied and *value* is a remote URL, the URL is
+    fetched through the policy before the result is returned: ``deny`` rejects
+    it, ``ask`` requires *confirm_download*, and ``allow`` downloads and probes
+    the content into a local reference spec.
     """
     spec, explicit_kind = _coerce(value)
     if spec.path:
@@ -113,7 +187,67 @@ def load_reference(
             max_bytes=max_bytes,
         )
     if spec.url:
-        return _remote_reference(spec, explicit_kind=explicit_kind)
+        if download_policy is None:
+            return _remote_reference(spec, explicit_kind=explicit_kind)
+        return _run_async(
+            _download_reference(
+                spec,
+                explicit_kind=explicit_kind,
+                download_policy=download_policy,
+                confirm_download=confirm_download,
+                http=http,
+                transport=transport,
+                ffprobe_runner=ffprobe_runner,
+                ffprobe_executable=ffprobe_executable,
+                temp_dir=temp_dir,
+            )
+        )
+    raise ValidationError(
+        "a reference needs a path or a URL",
+        details={"reference": _safe_repr(value)},
+    )
+
+
+async def load_reference_async(
+    value: Any,
+    *,
+    probe: bool = True,
+    limits: MediaLimits | None = None,
+    ffprobe_runner: FFprobeRunner | None = None,
+    ffprobe_executable: str = "ffprobe",
+    max_bytes: int | None = None,
+    download_policy: ReferenceDownloadConfig | None = None,
+    confirm_download: Callable[[str], bool] | None = None,
+    http: HttpClient | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    temp_dir: str | Path | None = None,
+) -> ReferenceSpec:
+    """Async variant of :func:`load_reference` for running event loops."""
+    spec, explicit_kind = _coerce(value)
+    if spec.path:
+        return _local_reference(
+            spec,
+            explicit_kind=explicit_kind,
+            probe=probe,
+            limits=limits,
+            ffprobe_runner=ffprobe_runner,
+            ffprobe_executable=ffprobe_executable,
+            max_bytes=max_bytes,
+        )
+    if spec.url:
+        if download_policy is None:
+            return _remote_reference(spec, explicit_kind=explicit_kind)
+        return await _download_reference(
+            spec,
+            explicit_kind=explicit_kind,
+            download_policy=download_policy,
+            confirm_download=confirm_download,
+            http=http,
+            transport=transport,
+            ffprobe_runner=ffprobe_runner,
+            ffprobe_executable=ffprobe_executable,
+            temp_dir=temp_dir,
+        )
     raise ValidationError(
         "a reference needs a path or a URL",
         details={"reference": _safe_repr(value)},
@@ -138,6 +272,42 @@ def probe_reference(
         ffprobe_executable=ffprobe_executable,
         max_bytes=max_bytes,
     )
+
+
+async def probe_reference_async(
+    path: str | Path,
+    *,
+    limits: MediaLimits | None = None,
+    ffprobe_runner: FFprobeRunner | None = None,
+    ffprobe_executable: str = "ffprobe",
+    max_bytes: int | None = None,
+) -> ReferenceSpec:
+    """Async variant of :func:`probe_reference` for running event loops."""
+    return probe_reference(
+        path,
+        limits=limits,
+        ffprobe_runner=ffprobe_runner,
+        ffprobe_executable=ffprobe_executable,
+        max_bytes=max_bytes,
+    )
+
+
+T = TypeVar("T")
+
+
+def _run_async[T](coro: Coroutine[Any, Any, T]) -> T:
+    """Run an async download on a fresh event loop, or fail inside a running one."""
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is not None and running.is_running():
+        raise ValidationError(
+            "remote reference download cannot run inside a running event loop; "
+            "use the async loader or download before calling",
+            details={"policy": "download"},
+        )
+    return asyncio.run(coro)
 
 
 def _entries(values: Sequence[Any] | Any | None) -> list[Any]:
@@ -292,6 +462,160 @@ def _remote_reference(
             "metadata": metadata,
         }
     )
+
+
+async def _download_reference(
+    spec: ReferenceSpec,
+    *,
+    explicit_kind: ReferenceKind | None,
+    download_policy: ReferenceDownloadConfig,
+    confirm_download: Callable[[str], bool] | None,
+    http: HttpClient | None,
+    transport: httpx.AsyncBaseTransport | None,
+    ffprobe_runner: FFprobeRunner | None,
+    ffprobe_executable: str,
+    temp_dir: str | Path | None,
+) -> ReferenceSpec:
+    """Fetch one remote reference through *download_policy* and probe it."""
+    url = spec.url.strip()
+    parsed = urlsplit(url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise ValidationError(
+            f"unsupported reference URL: {url}",
+            details={"url": url},
+        )
+
+    mode = download_policy.mode
+    if mode is DownloadPolicy.DENY:
+        raise ValidationError(
+            "remote references are not allowed by the download policy",
+            details={"url": url, "policy": mode.value},
+        )
+    if mode is DownloadPolicy.ASK and (
+        confirm_download is None or not confirm_download(url)
+    ):
+        raise ValidationError(
+            "remote reference download requires confirmation",
+            details={"url": url, "policy": mode.value},
+        )
+
+    host = (parsed.hostname or "").lower()
+    allowed_hosts = download_policy.allowed_hosts
+    if host and allowed_hosts and host not in allowed_hosts:
+        raise ValidationError(
+            "remote host is not in the download policy allowlist",
+            details={
+                "url": url,
+                "host": host,
+                "allowed_hosts": list(download_policy.allowed_hosts),
+            },
+        )
+
+    active_limits = MediaLimits(max_bytes=download_policy.max_bytes)
+    client = http or HttpClient(
+        config=HttpClientConfig(follow_redirects=download_policy.follow_redirects),
+        transport=transport,
+    )
+    owns_client = http is None
+    try:
+        try:
+            response = await client.get(
+                url,
+                timeout=download_policy.timeout_seconds,
+                raise_for_status=True,
+            )
+            try:
+                declared = response.headers.get("content-length", "").strip()
+                if declared.isdigit() and int(declared) > active_limits.max_bytes:
+                    raise ValidationError(
+                        f"download declares {declared} bytes, above the "
+                        f"{active_limits.max_bytes} byte cap",
+                        details={
+                            "url": url,
+                            "size_bytes": int(declared),
+                            "limit": active_limits.max_bytes,
+                        },
+                    )
+                payload = response.content
+            finally:
+                await response.aclose()
+        except ValidationError:
+            raise
+        except Exception as exc:  # httpx transport/timeout/auth/budget errors
+            raise ValidationError(
+                f"could not download reference {url}: {type(exc).__name__}",
+                details={"url": url, "error": type(exc).__name__},
+            ) from exc
+
+        if len(payload) > active_limits.max_bytes:
+            raise ValidationError(
+                f"download is {len(payload)} bytes, above the "
+                f"{active_limits.max_bytes} byte cap",
+                details={
+                    "url": url,
+                    "size_bytes": len(payload),
+                    "limit": active_limits.max_bytes,
+                },
+            )
+
+        target = _write_temp(payload, temp_dir, url)
+        try:
+            detected = _probe_payload(
+                payload,
+                path=target,
+                limits=active_limits,
+                ffprobe_runner=ffprobe_runner,
+                ffprobe_executable=ffprobe_executable,
+            )
+        except ValidationError:
+            target.unlink(missing_ok=True)
+            raise
+        if detected is None:
+            target.unlink(missing_ok=True)
+            raise ValidationError(
+                f"downloaded reference content is not recognizable: {url}",
+                details={"url": url},
+            )
+
+        _check_kind("extension", ReferenceKind.from_path(url), detected, url)
+        _check_kind("declared kind", explicit_kind, detected, url)
+
+        mime_type = _mime_type(target, detected, payload)
+        metadata = dict(spec.metadata)
+        metadata.setdefault("probe", "download")
+        metadata.setdefault("source_url", url)
+        return spec.model_copy(
+            update={
+                "kind": detected,
+                "path": str(target),
+                "url": "",
+                "mime_type": mime_type,
+                "size_bytes": len(payload),
+                "content_hash": hashlib.sha256(payload).hexdigest(),
+                "metadata": metadata,
+            }
+        )
+    finally:
+        if owns_client:
+            await client.aclose()
+
+
+def _write_temp(payload: bytes, temp_dir: str | Path | None, url: str) -> Path:
+    directory = Path(temp_dir) if temp_dir is not None else Path(tempfile.gettempdir())
+    directory.mkdir(parents=True, exist_ok=True)
+    suffix = _extension_for_temp(url) or ".download"
+    fd, name = tempfile.mkstemp(prefix="aivia-reference-", suffix=suffix, dir=directory)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(payload)
+    return Path(name)
+
+
+def _extension_for_temp(url: str) -> str:
+    parsed = urlsplit(url)
+    name = parsed.path.split("?", 1)[0].split("#", 1)[0].rsplit("/", 1)[-1]
+    if "." not in name:
+        return ""
+    return "." + name.rsplit(".", 1)[-1].lower()
 
 
 def _probe_payload(
