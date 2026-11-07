@@ -23,6 +23,8 @@ from aivia.reference.inputs import *  # noqa: F403
 from aivia.reference.inputs import __all__ as _inputs_all
 from aivia.reference.merge import *  # noqa: F403
 from aivia.reference.merge import __all__ as _merge_all
+from aivia.reference.rights import *  # noqa: F403
+from aivia.reference.rights import __all__ as _rights_all
 from aivia.reference.schema import *  # noqa: F403
 from aivia.reference.schema import __all__ as _schema_all
 from aivia.reference.similarity import *  # noqa: F403
@@ -43,6 +45,7 @@ from aivia.reference.visual_gate import __all__ as _visual_gate_all
 __all__ = [
     *_schema_all,
     *_similarity_all,
+    *_rights_all,
     *_inputs_all,
     *_analyze_all,
     *_analyze_video_all,
