@@ -41,6 +41,7 @@ __all__ = [
     "strip_identity",
 ]
 
+
 class IdentityAction(StrEnum):
     """What to do with an identified element in a reference."""
 
@@ -304,8 +305,7 @@ def enforce_identity(
             ),
             details={
                 "identity": [
-                    element.label or str(element.box)
-                    for element in identity.elements
+                    element.label or str(element.box) for element in identity.elements
                 ]
             },
         )
