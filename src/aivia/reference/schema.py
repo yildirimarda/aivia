@@ -756,7 +756,15 @@ class SceneSpec(_SpecModel):
     )
     description: str = Field(
         default="",
-        validation_alias=AliasChoices("description", "summary", "prompt"),
+        validation_alias=AliasChoices(
+            "description",
+            "summary",
+            "prompt",
+            "name",
+            "label",
+            "section",
+            "section_type",
+        ),
     )
     text: str = Field(
         default="",
@@ -860,7 +868,13 @@ class StructureSpec(_SpecModel):
 
     scenes: list[SceneSpec] = Field(
         default_factory=list,
-        validation_alias=AliasChoices("scenes", "shots", "segments", "timeline"),
+        validation_alias=AliasChoices(
+            "scenes",
+            "shots",
+            "segments",
+            "timeline",
+            "sections",
+        ),
     )
     scene_count: int | None = Field(
         default=None,
@@ -906,10 +920,18 @@ class StructureSpec(_SpecModel):
         if not isinstance(data, Mapping):
             return data
         values = dict(data)
-        scenes = _first(values, "scenes", "shots", "segments", "timeline")
+        scenes = _first(
+            values,
+            "scenes",
+            "shots",
+            "segments",
+            "timeline",
+            "sections",
+        )
         if scenes is not None:
             values["scenes"] = scenes
             values.pop("shots", None)
+            values.pop("sections", None)
         duration = _first(
             values,
             "total_duration_seconds",
@@ -1425,7 +1447,13 @@ class MusicMoodSpec(_SpecModel):
     )
     vocals: str = Field(
         default="",
-        validation_alias=AliasChoices("vocals", "vocal", "voice"),
+        validation_alias=AliasChoices(
+            "vocals",
+            "vocal",
+            "voice",
+            "vocal_type",
+            "vocal_style",
+        ),
     )
     energy: float | None = Field(default=None, ge=0.0, le=1.0)
     valence: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -1491,6 +1519,16 @@ class MusicMoodSpec(_SpecModel):
     def beat_rate(self) -> float | None:
         """Alias for :attr:`bpm`."""
         return self.bpm
+
+    @property
+    def vocal_type(self) -> str:
+        """Alias for :attr:`vocals`."""
+        return self.vocals
+
+    @property
+    def instrumentation(self) -> list[str]:
+        """Alias for :attr:`instruments`."""
+        return self.instruments
 
     @property
     def is_instrumental(self) -> bool:
