@@ -31,6 +31,8 @@ from aivia.reference.structure import *  # noqa: F403
 from aivia.reference.structure import __all__ as _structure_all
 from aivia.reference.style_prompts import *  # noqa: F403
 from aivia.reference.style_prompts import __all__ as _style_prompts_all
+from aivia.reference.text_gate import *  # noqa: F403
+from aivia.reference.text_gate import __all__ as _text_gate_all
 from aivia.reference.to_format import *  # noqa: F403
 from aivia.reference.to_format import __all__ as _to_format_all
 from aivia.reference.visual_gate import *  # noqa: F403
@@ -48,6 +50,7 @@ __all__ = [
     *_store_all,
     *_structure_all,
     *_style_prompts_all,
+    *_text_gate_all,
     *_to_format_all,
     *_capabilities_all,
     *_conditioned_all,
