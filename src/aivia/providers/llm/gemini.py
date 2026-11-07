@@ -49,6 +49,7 @@ from aivia.providers.llm.web_search import (
 )
 from aivia.providers.protocols.llm import (
     CAPABILITY_LLM,
+    AudioPart,
     ChatMessage,
     FinishReason,
     ImagePart,
@@ -327,6 +328,17 @@ def _image_part(part: ImagePart) -> dict[str, Any]:
     }
 
 
+def _audio_part(part: AudioPart) -> dict[str, Any]:
+    if part.url is not None:
+        return {"fileData": {"fileUri": part.url}}
+    return {
+        "inlineData": {
+            "mimeType": part.media_type,
+            "data": part.data,
+        }
+    }
+
+
 def _content_parts(message: ChatMessage) -> list[dict[str, Any]]:
     if isinstance(message.content, str):
         return [_text_part(message.content)] if message.content else []
@@ -336,6 +348,8 @@ def _content_parts(message: ChatMessage) -> list[dict[str, Any]]:
             parts.append(_text_part(part.text))
         elif isinstance(part, ImagePart):
             parts.append(_image_part(part))
+        elif isinstance(part, AudioPart):
+            parts.append(_audio_part(part))
     return parts
 
 

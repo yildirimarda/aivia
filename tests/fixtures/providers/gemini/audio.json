@@ -1,0 +1,77 @@
+{
+  "provider": "gemini",
+  "case": "audio",
+  "captured_at": "2026-10-29T00:00:00+00:00",
+  "input": {
+    "messages": [
+      {"role": "user", "content": [
+        {"type": "text", "text": "What is this sound?"},
+        {"type": "audio", "data": "UklGRnY=", "media_type": "audio/wav"}
+      ]}
+    ],
+    "model": "gemini-test",
+    "max_tokens": 64,
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "stop": ["END"],
+    "seed": 7
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent",
+    "headers": {
+      "accept": "application/json",
+      "content-type": "application/json",
+      "x-goog-api-key": "test-key"
+    },
+    "body": {
+      "contents": [
+        {"role": "user", "parts": [
+          {"text": "What is this sound?"},
+          {"inlineData": {"mimeType": "audio/wav", "data": "UklGRnY="}}
+        ]}
+      ],
+      "generationConfig": {
+        "maxOutputTokens": 64,
+        "temperature": 0.2,
+        "topP": 0.9,
+        "stopSequences": ["END"],
+        "seed": 7
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {"content-type": "application/json"},
+    "body": {
+      "candidates": [
+        {
+          "content": {"role": "model", "parts": [{"text": "That sounds like rain."}]},
+          "finishReason": "STOP"
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 12,
+        "candidatesTokenCount": 5,
+        "cachedContentTokenCount": 3,
+        "totalTokenCount": 17
+      },
+      "modelVersion": "gemini-test",
+      "responseId": "resp_audio"
+    }
+  },
+  "expected": {
+    "content": "That sounds like rain.",
+    "model": "gemini-test",
+    "provider": "gemini",
+    "usage": {
+      "input_tokens": 12,
+      "output_tokens": 5,
+      "cached_input_tokens": 3
+    },
+    "finish_reason": "stop",
+    "tool_calls": [],
+    "request_id": "resp_audio",
+    "metadata": {"finish_reason": "STOP"}
+  }
+}
