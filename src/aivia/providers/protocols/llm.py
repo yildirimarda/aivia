@@ -25,6 +25,7 @@ from aivia.providers.protocols.base import (
 
 __all__ = [
     "CAPABILITY_LLM",
+    "AudioPart",
     "ChatMessage",
     "ContentPart",
     "FinishReason",
@@ -139,7 +140,46 @@ class ImagePart(ProtocolModel):
         return self
 
 
-ContentPart = Annotated[TextPart | ImagePart, Field(discriminator="type")]
+class AudioPart(ProtocolModel):
+    """An audio input supplied either by URL or as base64 data.
+
+    Exactly one of ``url`` and ``data`` must be set. ``media_type`` is required
+    with inline data so an adapter never has to guess the encoding.
+    """
+
+    type: Literal["audio"] = "audio"
+    url: str | None = None
+    data: str | None = None
+    media_type: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return validate_http_url(value, field="audio url")
+
+    @field_validator("data", "media_type", mode="before")
+    @classmethod
+    def _strip_optional_text(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            text = value.strip()
+            return text or None
+        return value
+
+    @model_validator(mode="after")
+    def _validate_source(self) -> Self:
+        sources = (self.url is not None, self.data is not None)
+        if sum(sources) != 1:
+            raise ValueError("audio part needs exactly one of url or data")
+        if self.data is not None and self.media_type is None:
+            raise ValueError("inline audio data requires media_type")
+        if self.media_type is not None and not self.media_type.startswith("audio/"):
+            raise ValueError("media_type must start with 'audio/'")
+        return self
+
+
+ContentPart = Annotated[TextPart | ImagePart | AudioPart, Field(discriminator="type")]
 """One typed segment of a multimodal message."""
 
 
@@ -235,9 +275,21 @@ class ChatMessage(ProtocolModel):
         return [part for part in self.content if isinstance(part, ImagePart)]
 
     @property
+    def audios(self) -> list[AudioPart]:
+        """Every audio part in the message, in order."""
+        if isinstance(self.content, str):
+            return []
+        return [part for part in self.content if isinstance(part, AudioPart)]
+
+    @property
     def has_images(self) -> bool:
         """Whether the message carries at least one image part."""
         return bool(self.images)
+
+    @property
+    def has_audio(self) -> bool:
+        """Whether the message carries at least one audio part."""
+        return bool(self.audios)
 
 
 class LLMUsage(ProtocolModel):
@@ -369,9 +421,19 @@ class LLMRequest(ProtocolModel):
         return [image for message in self.messages for image in message.images]
 
     @property
+    def audios(self) -> list[AudioPart]:
+        """Every audio part across the conversation, in order."""
+        return [audio for message in self.messages for audio in message.audios]
+
+    @property
     def has_images(self) -> bool:
         """Whether the request carries at least one image part."""
         return any(message.has_images for message in self.messages)
+
+    @property
+    def has_audio(self) -> bool:
+        """Whether the request carries at least one audio part."""
+        return any(message.has_audio for message in self.messages)
 
     @property
     def requires_vision(self) -> bool:
@@ -382,6 +444,16 @@ class LLMRequest(ProtocolModel):
     def needs_vision(self) -> bool:
         """Alias for :attr:`requires_vision`."""
         return self.requires_vision
+
+    @property
+    def requires_audio(self) -> bool:
+        """Whether the request can only be served by an audio capable model."""
+        return self.has_audio
+
+    @property
+    def needs_audio(self) -> bool:
+        """Alias for :attr:`requires_audio`."""
+        return self.requires_audio
 
 
 class LLMResponse(ProtocolModel):

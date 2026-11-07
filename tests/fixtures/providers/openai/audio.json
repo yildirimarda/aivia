@@ -1,0 +1,79 @@
+{
+  "provider": "openai",
+  "case": "audio",
+  "captured_at": "2026-10-29T00:00:00+00:00",
+  "input": {
+    "messages": [
+      {"role": "user", "content": [
+        {"type": "text", "text": "What is this sound?"},
+        {"type": "audio", "data": "UklGRnY=", "media_type": "audio/wav"}
+      ]}
+    ],
+    "model": "gpt-test",
+    "max_tokens": 64,
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "stop": ["END"],
+    "seed": 7
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "headers": {
+      "accept": "application/json",
+      "authorization": "Bearer test-key",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "gpt-test",
+      "max_tokens": 64,
+      "messages": [
+        {"role": "user", "content": [
+          {"type": "text", "text": "What is this sound?"},
+          {"type": "input_audio", "input_audio": {"data": "UklGRnY=", "format": "audio/wav"}}
+        ]}
+      ],
+      "temperature": 0.2,
+      "top_p": 0.9,
+      "stop": ["END"],
+      "seed": 7
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {"content-type": "application/json"},
+    "body": {
+      "id": "chatcmpl_audio",
+      "object": "chat.completion",
+      "created": 1700000000,
+      "model": "gpt-test",
+      "choices": [
+        {
+          "index": 0,
+          "message": {"role": "assistant", "content": "That sounds like rain."},
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 12,
+        "completion_tokens": 5,
+        "total_tokens": 17,
+        "prompt_tokens_details": {"cached_tokens": 3}
+      }
+    }
+  },
+  "expected": {
+    "content": "That sounds like rain.",
+    "model": "gpt-test",
+    "provider": "openai",
+    "usage": {
+      "input_tokens": 12,
+      "output_tokens": 5,
+      "cached_input_tokens": 3
+    },
+    "finish_reason": "stop",
+    "tool_calls": [],
+    "request_id": "chatcmpl_audio",
+    "metadata": {"finish_reason": "stop"}
+  }
+}

@@ -67,6 +67,7 @@ from aivia.providers.protocols.lipsync import (
 )
 from aivia.providers.protocols.llm import (
     CAPABILITY_LLM,
+    AudioPart,
     ChatMessage,
     ContentPart,
     FinishReason,
@@ -230,6 +231,7 @@ __all__ = [
     "CAPABILITY_VOICE_CLONE",
     "CAPABILITY_VOICE_CLONING",
     "AudioFormat",
+    "AudioPart",
     "CapabilityProvider",
     "CharacterTrainer",
     "CharacterTrainerRequest",
