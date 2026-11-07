@@ -409,11 +409,7 @@ def _scenes_from_cuts(
     span: float | None,
 ) -> list[SceneSpec]:
     unique = sorted(
-        {
-            round(cut, 3)
-            for cut in cuts
-            if cut > 0 and (span is None or cut < span)
-        }
+        {round(cut, 3) for cut in cuts if cut > 0 and (span is None or cut < span)}
     )
     if span is None:
         if not unique:
@@ -459,9 +455,7 @@ def _pacing_from_scenes(
     span: float | None,
 ) -> PacingSpec:
     durations = [
-        scene.duration_seconds
-        for scene in scenes
-        if scene.duration_seconds is not None
+        scene.duration_seconds for scene in scenes if scene.duration_seconds is not None
     ]
     values: dict[str, Any] = {}
     if span is not None and span > 0:

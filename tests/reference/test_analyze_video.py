@@ -250,8 +250,7 @@ def test_offline_analysis_reads_cuts_pacing_aspect_and_duration() -> None:
 
 def test_frame_cap_bounds_sampling_without_losing_detected_cuts() -> None:
     scene_stderr = "".join(
-        f"[Parsed_showinfo_1 @ 0x1] n:{index} pts:0 "
-        f"pts_time:{index * 0.5:.3f} pos:0\n"
+        f"[Parsed_showinfo_1 @ 0x1] n:{index} pts:0 pts_time:{index * 0.5:.3f} pos:0\n"
         for index in range(1, 10)
     )
     calls: list[list[str]] = []
