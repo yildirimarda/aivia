@@ -106,6 +106,10 @@ _WHITESPACE = re.compile(r"\s+", re.UNICODE)
 _AVOID_KEYS = frozenset(
     {"avoid", "negative", "negative-prompt", "exclude", "forbidden", "no"}
 )
+_VISUAL_KEYS = frozenset(
+    {"style", "visual", "visuals", "palette", "typography", "aspect", "pacing"}
+)
+_MOTION_KEYS = frozenset({"motion", "pacing", "camera", "video"})
 
 
 def _clean(value: Any) -> str:
@@ -259,6 +263,28 @@ def _avoid_suffixes(bible: StyleBible) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
 
 
+def _visual_suffixes(bible: StyleBible) -> str:
+    """Return the bible's visual prompt suffixes, top-level suffix first."""
+    parts = [bible.prompt_suffix]
+    parts.extend(
+        entry.prompt_suffix
+        for entry in bible.entries
+        if entry.prompt_suffix and _normalise_key(entry.key) in _VISUAL_KEYS
+    )
+    return _clean(" ".join(part for part in parts if part))
+
+
+def _motion_suffixes(bible: StyleBible) -> str:
+    """Return the bible's motion prompt suffixes."""
+    return _clean(
+        " ".join(
+            entry.prompt_suffix
+            for entry in bible.entries
+            if entry.prompt_suffix and _normalise_key(entry.key) in _MOTION_KEYS
+        )
+    )
+
+
 class MediaPromptBuilder:
     """Build provider agnostic image and motion prompts from beats.
 
@@ -323,13 +349,11 @@ class MediaPromptBuilder:
         self,
         subject: str,
         guidance: str,
+        suffix: str,
         *,
         language: str | None,
     ) -> str:
-        parts = [subject, guidance]
-        style = self.style
-        if style:
-            parts.append(style)
+        parts = [subject, guidance, suffix]
         text = _clean(" ".join(part for part in parts if part))
         text = self.glossary.apply(text, language=language or self.language or None)
         if self.include_definitions:
@@ -366,6 +390,7 @@ class MediaPromptBuilder:
         prompt = self._finish(
             subject,
             self.image_guidance,
+            _visual_suffixes(self.style_bible),
             language=self.language or None,
         )
         return ImagePrompt(
@@ -394,6 +419,7 @@ class MediaPromptBuilder:
         prompt = self._finish(
             subject,
             self.motion_guidance,
+            _motion_suffixes(self.style_bible),
             language=self.language or None,
         )
         return MotionPrompt(
