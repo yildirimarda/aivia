@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from aivia.media.image_service import ImageOutcome, ImageService
 from aivia.media.video_service import VideoOutcome, VideoService
@@ -28,7 +28,13 @@ from aivia.providers.protocols import (
     MediaInput,
     VideoRequest,
 )
-from aivia.reference.schema import ReferenceAnalysis, ReferenceSpec, SceneSpec
+from aivia.reference.review import SpecReview, review_style_spec
+from aivia.reference.schema import (
+    ReferenceAnalysis,
+    ReferenceSpec,
+    SceneSpec,
+    StyleSpec,
+)
 
 __all__ = [
     "CAPABILITY_IMAGE_GEN",
@@ -37,11 +43,13 @@ __all__ = [
     "CAPABILITY_VIDEO_GEN",
     "CAPABILITY_VIDEO_INPUT",
     "ConditionedPathResult",
+    "SpecReview",
     "generate_first_frame_to_video_conditioned",
     "generate_image_to_image_conditioned",
     "generate_text_to_image_conditioned",
     "generate_video_to_video_conditioned",
     "rebuild_scene_by_scene",
+    "review_style_spec",
 ]
 
 
@@ -61,6 +69,8 @@ class ConditionedPathResult:
     rebuilt: bool
     warning: str | None
     used_references: bool
+    review_declined: bool = False
+    """True when spec review was enabled and declined, so no generation ran."""
 
 
 def _scenes_of(reference: ReferenceAnalysis | ReferenceSpec | None) -> list[SceneSpec]:
@@ -98,6 +108,27 @@ def _media_from_reference(
     return []
 
 
+def _spec_from_reference(
+    reference: ReferenceAnalysis | ReferenceSpec | None,
+) -> StyleSpec | None:
+    """Return the learned style spec carried by *reference*, if any.
+
+    A :class:`ReferenceAnalysis` is itself a style spec; a :class:`ReferenceSpec`
+    carries one in ``analysis``. A spec with no learned sections is not worth
+    reviewing.
+    """
+    if reference is None:
+        return None
+    analysis = getattr(reference, "analysis", None)
+    if analysis is None:
+        analysis = getattr(reference, "style_spec", None)
+    if analysis is None:
+        return None
+    if getattr(analysis, "is_empty", True):
+        return None
+    return cast(StyleSpec, analysis)
+
+
 def _providers_support(
     providers: Sequence[Provider],
     capability: str,
@@ -131,6 +162,8 @@ async def _conditioned_path(
     default_token: Any,
     run_id: str,
     generate_values: Mapping[str, Any],
+    review_enabled: bool = False,
+    review_confirm: bool | None = None,
 ) -> ConditionedPathResult:
     """Run one reference conditioned path end to end.
 
@@ -138,9 +171,27 @@ async def _conditioned_path(
     sent with a single request. Otherwise the output is rebuilt scene by scene,
     or rendered once prompt-only with the reference stripped when the reference
     holds a single scene.
+
+    When *review_enabled* is true the extracted style spec is shown for edit or
+    confirmation before any paid generation. A declined review returns without
+    calling the provider.
     """
     scenes = _scenes_of(reference)
     scene_count = len(scenes) or 1
+
+    if review_enabled:
+        spec = _spec_from_reference(reference)
+        if spec is not None:
+            review = review_style_spec(spec, enabled=True, confirm=review_confirm)
+            if not review.confirmed:
+                return ConditionedPathResult(
+                    outcomes=(),
+                    scene_count=scene_count,
+                    rebuilt=False,
+                    warning="style spec review declined; no paid generation",
+                    used_references=False,
+                    review_declined=True,
+                )
 
     forwardable = bool(media and supported)
 
@@ -296,6 +347,8 @@ async def generate_text_to_image_conditioned(
     screening_token: Any = None,
     screen_token: Any = None,
     run_id: str = "",
+    review_enabled: bool = False,
+    review_confirm: bool | None = None,
     **values: Any,
 ) -> ConditionedPathResult:
     """Generate an image from a text prompt conditioned on a reference.
@@ -304,6 +357,10 @@ async def generate_text_to_image_conditioned(
     :data:`~aivia.providers.protocols.CAPABILITY_IMAGE_INPUT`. When no
     configured provider can consume them the reference is rebuilt scene by
     scene: one image per scene, each rendered prompt-only.
+
+    When *review_enabled* is true the extracted style spec is shown for edit or
+    confirmation before any paid generation. A declined review returns without
+    calling the provider.
     """
     active_token = token if token is not None else screening_token or screen_token
     if active_token is None:
@@ -334,6 +391,8 @@ async def generate_text_to_image_conditioned(
         default_token=active_token,
         run_id=run_id,
         generate_values=values,
+        review_enabled=review_enabled,
+        review_confirm=review_confirm,
     )
 
 
@@ -347,6 +406,8 @@ async def generate_image_to_image_conditioned(
     screening_token: Any = None,
     screen_token: Any = None,
     run_id: str = "",
+    review_enabled: bool = False,
+    review_confirm: bool | None = None,
     **values: Any,
 ) -> ConditionedPathResult:
     """Generate an image from an input image conditioned on a reference.
@@ -355,6 +416,10 @@ async def generate_image_to_image_conditioned(
     result. References are forwarded to a provider that declares
     :data:`CAPABILITY_IMAGE_INPUT`; otherwise the output is rebuilt scene by
     scene.
+
+    When *review_enabled* is true the extracted style spec is shown for edit or
+    confirmation before any paid generation. A declined review returns without
+    calling the provider.
     """
     active_token = token if token is not None else screening_token or screen_token
     if active_token is None:
@@ -385,6 +450,8 @@ async def generate_image_to_image_conditioned(
         default_token=active_token,
         run_id=run_id,
         generate_values=values,
+        review_enabled=review_enabled,
+        review_confirm=review_confirm,
     )
 
 
@@ -398,6 +465,8 @@ async def generate_first_frame_to_video_conditioned(
     screening_token: Any = None,
     screen_token: Any = None,
     run_id: str = "",
+    review_enabled: bool = False,
+    review_confirm: bool | None = None,
     **values: Any,
 ) -> ConditionedPathResult:
     """Generate a video from a first frame conditioned on a reference.
@@ -407,6 +476,10 @@ async def generate_first_frame_to_video_conditioned(
     :data:`~aivia.providers.protocols.CAPABILITY_VIDEO_FIRST_FRAME`. When no
     configured provider can consume it the reference is rebuilt scene by scene:
     one clip per scene, each rendered prompt-only.
+
+    When *review_enabled* is true the extracted style spec is shown for edit or
+    confirmation before any paid generation. A declined review returns without
+    calling the provider.
     """
     active_token = token if token is not None else screening_token or screen_token
     if active_token is None:
@@ -433,6 +506,8 @@ async def generate_first_frame_to_video_conditioned(
         default_token=active_token,
         run_id=run_id,
         generate_values=values,
+        review_enabled=review_enabled,
+        review_confirm=review_confirm,
     )
 
 
@@ -446,6 +521,8 @@ async def generate_video_to_video_conditioned(
     screening_token: Any = None,
     screen_token: Any = None,
     run_id: str = "",
+    review_enabled: bool = False,
+    review_confirm: bool | None = None,
     **values: Any,
 ) -> ConditionedPathResult:
     """Restyle a source video conditioned on a reference.
@@ -455,6 +532,10 @@ async def generate_video_to_video_conditioned(
     :data:`~aivia.providers.protocols.CAPABILITY_VIDEO_INPUT`. When no
     configured provider can consume it the reference is rebuilt scene by scene:
     one clip per scene, each rendered prompt-only.
+
+    When *review_enabled* is true the extracted style spec is shown for edit or
+    confirmation before any paid generation. A declined review returns without
+    calling the provider.
     """
     active_token = token if token is not None else screening_token or screen_token
     if active_token is None:
@@ -481,4 +562,6 @@ async def generate_video_to_video_conditioned(
         default_token=active_token,
         run_id=run_id,
         generate_values=values,
+        review_enabled=review_enabled,
+        review_confirm=review_confirm,
     )

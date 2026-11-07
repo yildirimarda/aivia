@@ -25,6 +25,8 @@ from aivia.reference.inputs import *  # noqa: F403
 from aivia.reference.inputs import __all__ as _inputs_all
 from aivia.reference.merge import *  # noqa: F403
 from aivia.reference.merge import __all__ as _merge_all
+from aivia.reference.review import *  # noqa: F403
+from aivia.reference.review import __all__ as _review_all
 from aivia.reference.rights import *  # noqa: F403
 from aivia.reference.rights import __all__ as _rights_all
 from aivia.reference.schema import *  # noqa: F403
@@ -49,6 +51,7 @@ __all__ = [
     *_similarity_all,
     *_evaluator_all,
     *_rights_all,
+    *_review_all,
     *_inputs_all,
     *_analyze_all,
     *_analyze_video_all,
