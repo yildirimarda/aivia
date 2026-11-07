@@ -668,7 +668,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Analyze text references for tone, structure, hook pattern and language (tests/reference/test_analyze_text.py)
 - [x] Merge several references keeping common traits and reporting conflicts for a documented resolution (tests/reference/test_merge.py)
 - [x] Store style specs as editable YAML in the user directory, validated on load and reloadable by name (tests/reference/test_store.py)
-- [ ] Translate a style spec into style bible entries and prompt suffixes (tests/reference/test_style_prompts.py)
+- [x] Translate a style spec into style bible entries and prompt suffixes (tests/reference/test_style_prompts.py)
 - [ ] Convert a style spec into a validated format recipe, style bible and preset (tests/reference/test_to_format.py)
 - [ ] Filter providers by reference capabilities and fall back to prompt only style transfer with a warning (tests/reference/test_capabilities.py)
 - [ ] Implement reference conditioned paths for text to image, image to image, first frame to video and video to video, rebuilding scene by scene when unsupported (tests/reference/test_conditioned.py)
@@ -682,6 +682,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Add an optional spec review step that shows the extracted style spec for edit or confirmation before any paid generation (tests/e2e/test_reference.py)
 - [ ] Probe remote reference URLs through the configured download policy before analysis (tests/reference/test_inputs.py)
 - [ ] Add an audio input part to the LLM protocol so audio references reach an audio capable model (tests/contracts/test_llm_providers.py)
+- [ ] Apply only visual and motion prompt suffixes to image and motion prompts so audio and writing guidance stay out (tests/writing/test_media_prompts.py)
 
 ## Milestone 16: Characters and brand kits
 
