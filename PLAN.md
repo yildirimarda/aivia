@@ -691,7 +691,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Define the character schema and loader reading a character file and assets from the user directory with errors naming file and field (tests/characters/test_schema.py)
 - [x] Add a character create command that validates supplied images and stores version one (tests/cli/test_character_create.py)
 - [x] Generate a canonical character sheet with a vision model, editable by hand and re-analyzed only on request (tests/characters/test_sheet.py)
-- [ ] Version characters so sheet, pose and voice changes bump the version while runs pin an older one (tests/characters/test_versioning.py)
+- [x] Version characters so sheet, pose and voice changes bump the version while runs pin an older one (tests/characters/test_versioning.py)
 - [ ] Load and bind brand kits with colors, fonts, logo, watermark, intro, outro and caption style (tests/characters/test_brand_kit.py)
 - [ ] Resolve character opt in by CLI flag, then order or instruction field, then profile, running no character code when none is selected (tests/characters/test_select.py)
 - [ ] Support several characters per run with host, sidekick and narrator roles (tests/characters/test_roles.py)

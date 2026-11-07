@@ -11,7 +11,7 @@ pose or voice changes while runs pin an older one.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Self
 
 from pydantic import (
     BaseModel,
@@ -107,3 +107,13 @@ class Character(BaseModel):
     def schema_version(self) -> int:
         """The schema version this character was written against."""
         return self.version
+
+    def bump_version(self) -> Self:
+        """Return a copy of this character with its version incremented by one.
+
+        Sheet, pose and voice changes are published as a new character version.
+        Callers bump the version when any of those change so a run can pin the
+        older one and keep reproducing the same output. The original character
+        is left untouched.
+        """
+        return self.model_copy(update={"version": self.version + 1})
