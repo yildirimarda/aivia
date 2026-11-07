@@ -1706,6 +1706,19 @@ class StyleSpec(_SpecModel):
         return self.aspect.ratio
 
     @property
+    def composition(self) -> StructureSpec:
+        """Alias for :attr:`structure`."""
+        return self.structure
+
+    @property
+    def style(self) -> str:
+        """The analyser's style phrase, falling back to the prompt suffix."""
+        value = self.metadata.get("style")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return self.prompt_suffix or self.description
+
+    @property
     def is_empty(self) -> bool:
         """Whether the spec carries no name and no extracted section."""
         if self.name or self.description or self.prompt_suffix:
@@ -1857,11 +1870,33 @@ class ReferenceAnalysis(StyleSpec):
     reference_id: str = ""
     kind: ReferenceKind | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
-    detected_text: str = ""
-    language: str = ""
+    detected_text: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "detected_text",
+            "ocr_text",
+            "on_screen_text",
+            "text",
+        ),
+    )
+    language: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "language",
+            "language_code",
+            "lang",
+        ),
+    )
     provider: str = ""
     model: str = ""
-    subject: str = ""
+    subject: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "subject",
+            "original_subject",
+            "main_subject",
+        ),
+    )
     reproducing_prompt: str = Field(
         default="",
         validation_alias=AliasChoices(
@@ -1870,6 +1905,57 @@ class ReferenceAnalysis(StyleSpec):
             "style_prompt",
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fold_analysis_aliases(cls, data: Any) -> Any:
+        """Accept the words an analyser naturally uses for these sections."""
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(data)
+
+        composition = _first(values, "composition", "layout", "frame")
+        if composition is not None and "structure" not in values:
+            if isinstance(composition, Mapping):
+                values["structure"] = composition
+            elif isinstance(composition, str) and composition.strip():
+                values.setdefault("description", composition.strip())
+        for key in ("composition", "layout", "frame"):
+            values.pop(key, None)
+
+        style = _first(values, "style", "visual_style", "look", "aesthetic")
+        if style is not None:
+            if isinstance(style, str) and style.strip():
+                values.setdefault("description", style.strip())
+                values.setdefault("prompt_suffix", style.strip())
+            elif isinstance(style, Mapping):
+                for key in (
+                    "name",
+                    "description",
+                    "prompt_suffix",
+                    "structure",
+                    "pacing",
+                    "palette",
+                    "typography",
+                    "music",
+                    "aspect",
+                    "caption_style",
+                ):
+                    if key in style and key not in values:
+                        values[key] = style[key]
+            metadata = dict(values.get("metadata") or {})
+            metadata.setdefault("style", style)
+            values["metadata"] = metadata
+        for key in ("style", "visual_style", "look", "aesthetic"):
+            values.pop(key, None)
+
+        subject = _first(values, "subject", "original_subject", "main_subject")
+        if subject is not None:
+            values["subject"] = subject
+        for key in ("original_subject", "main_subject"):
+            values.pop(key, None)
+
+        return values
 
     @field_validator(
         "reference_id",
@@ -1891,6 +1977,11 @@ class ReferenceAnalysis(StyleSpec):
         if value is None:
             return None
         return _ratio_unit(value, "confidence")
+
+    @property
+    def analysis(self) -> ReferenceAnalysis:
+        """Return this analysis itself for callers holding a spec-like value."""
+        return self
 
 
 class ReferenceSpec(_SpecModel):
