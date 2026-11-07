@@ -697,7 +697,17 @@ class ImageService:
         )
         write_cost = self._record_cost if record_cost is None else bool(record_cost)
 
-        required = (CAPABILITY_IMAGE_INPUT,) if request.reference_images else None
+        required = None
+        if request.reference_images:
+            from aivia.reference import reference_providers_for_request
+
+            _supported, _fallback = reference_providers_for_request(
+                self._router.providers.values(), request
+            )
+            if _fallback is not None:
+                request = request.model_copy(update={"reference_images": []})
+            else:
+                required = (CAPABILITY_IMAGE_INPUT,)
         if use_cache:
             cached = await self._cached_outcome(
                 cache_request_variants(

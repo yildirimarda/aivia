@@ -13,6 +13,8 @@ from aivia.reference.analyze_text import *  # noqa: F403
 from aivia.reference.analyze_text import __all__ as _analyze_text_all
 from aivia.reference.analyze_video import *  # noqa: F403
 from aivia.reference.analyze_video import __all__ as _analyze_video_all
+from aivia.reference.capabilities import *  # noqa: F403
+from aivia.reference.capabilities import __all__ as _capabilities_all
 from aivia.reference.inputs import *  # noqa: F403
 from aivia.reference.inputs import __all__ as _inputs_all
 from aivia.reference.merge import *  # noqa: F403
@@ -37,4 +39,5 @@ __all__ = [
     *_store_all,
     *_style_prompts_all,
     *_to_format_all,
+    *_capabilities_all,
 ]
