@@ -25,6 +25,8 @@ from aivia.reference.schema import *  # noqa: F403
 from aivia.reference.schema import __all__ as _schema_all
 from aivia.reference.store import *  # noqa: F403
 from aivia.reference.store import __all__ as _store_all
+from aivia.reference.structure import *  # noqa: F403
+from aivia.reference.structure import __all__ as _structure_all
 from aivia.reference.style_prompts import *  # noqa: F403
 from aivia.reference.style_prompts import __all__ as _style_prompts_all
 from aivia.reference.to_format import *  # noqa: F403
@@ -39,6 +41,7 @@ __all__ = [
     *_analyze_text_all,
     *_merge_all,
     *_store_all,
+    *_structure_all,
     *_style_prompts_all,
     *_to_format_all,
     *_capabilities_all,

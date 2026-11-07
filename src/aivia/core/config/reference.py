@@ -27,6 +27,7 @@ from aivia.core.config.base import ConfigModel
 
 __all__ = [
     "DEFAULT_NGRAM_SIMILARITY_THRESHOLD",
+    "DEFAULT_STRUCTURE_MATCH_TOLERANCE_SECONDS",
     "DEFAULT_TEXT_SIMILARITY_THRESHOLD",
     "DEFAULT_TITLE_SIMILARITY_THRESHOLD",
     "DEFAULT_VIDEO_FRAME_CAP",
@@ -56,6 +57,9 @@ DEFAULT_VIDEO_FRAME_CAP = 12
 
 DEFAULT_VIDEO_SCENE_MATCH_TOLERANCE_SECONDS = 0.75
 """How far a vision scene start may drift from the measured cut, in seconds."""
+
+DEFAULT_STRUCTURE_MATCH_TOLERANCE_SECONDS = 0.5
+"""Default tolerance in seconds for scene duration matching."""
 
 
 class SimilarityLevel(StrEnum):
