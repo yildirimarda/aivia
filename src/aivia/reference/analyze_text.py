@@ -323,9 +323,7 @@ def _coerce_source(reference: Any) -> tuple[ReferenceSpec, str]:
             spec = ReferenceSpec.model_validate({**data, "kind": ReferenceKind.TEXT})
             spec = spec.model_copy(
                 update={
-                    "content_hash": hashlib.sha256(
-                        content.encode("utf-8")
-                    ).hexdigest(),
+                    "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
                     "size_bytes": len(content.encode("utf-8")),
                     "mime_type": spec.mime_type or "text/plain",
                 }
@@ -491,9 +489,7 @@ def _sample(
     )
     paragraph_count = len(paragraphs)
     if section_names:
-        paragraph_count = sum(
-            len(_paragraphs(body)) for _, body in _sections(text)
-        )
+        paragraph_count = sum(len(_paragraphs(body)) for _, body in _sections(text))
     pattern, formula = _hook_pattern(hook)
     return TextReferenceSample(
         spec=spec,

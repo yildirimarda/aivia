@@ -327,9 +327,7 @@ def test_sync_wrapper_and_reusable_analyzer_share_the_result() -> None:
     assert reusable.hook_pattern == "contrarian"
 
 
-def test_the_default_prompt_names_every_required_section_and_forbids_copying() -> (
-    None
-):
+def test_the_default_prompt_names_every_required_section_and_forbids_copying() -> None:
     prompt = DEFAULT_REFERENCE_TEXT_PROMPT.lower()
 
     for word in (
