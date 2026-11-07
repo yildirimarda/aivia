@@ -15,6 +15,8 @@ from aivia.reference.analyze_video import *  # noqa: F403
 from aivia.reference.analyze_video import __all__ as _analyze_video_all
 from aivia.reference.inputs import *  # noqa: F403
 from aivia.reference.inputs import __all__ as _inputs_all
+from aivia.reference.merge import *  # noqa: F403
+from aivia.reference.merge import __all__ as _merge_all
 from aivia.reference.schema import *  # noqa: F403
 from aivia.reference.schema import __all__ as _schema_all
 
@@ -25,4 +27,5 @@ __all__ = [
     *_analyze_video_all,
     *_analyze_audio_all,
     *_analyze_text_all,
+    *_merge_all,
 ]
