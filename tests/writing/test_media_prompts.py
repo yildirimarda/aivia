@@ -99,17 +99,61 @@ def test_prompts_are_provider_agnostic_and_deterministic() -> None:
             assert "model id" not in text
 
 
-def test_the_style_bible_suffix_reaches_both_prompt_kinds() -> None:
-    bible = load_style_bible(STYLE)
+def test_only_visual_and_motion_suffixes_reach_media_prompts() -> None:
+    bible = {
+        "name": "house",
+        "description": "A calm documentary look.",
+        "prompt_suffix": "Muted palette and soft window light.",
+        "entries": [
+            {
+                "key": "visuals",
+                "text": "Prefer natural light.",
+                "prompt_suffix": "Natural textures, simple composition.",
+            },
+            {
+                "key": "motion",
+                "text": "Camera moves slowly.",
+                "prompt_suffix": "Slow camera push, subtle movement.",
+            },
+            {
+                "key": "audio",
+                "text": "Ambient sound.",
+                "prompt_suffix": "Ambient drone, soft music.",
+            },
+            {
+                "key": "writing",
+                "text": "One idea per beat.",
+                "prompt_suffix": "Short sentences, one idea per beat.",
+            },
+            {
+                "key": "avoid",
+                "text": "Avoid visual clutter.",
+                "prompt_suffix": "No neon gradients or on-screen text.",
+            },
+        ],
+    }
+    bible = load_style_bible(bible)
     script = build_media_prompts(_script(), style_bible=bible)
 
     for beat in script.beats:
         assert beat.image_prompt is not None
         assert beat.motion_prompt is not None
-        for prompt in (beat.image_prompt, beat.motion_prompt):
-            assert bible.suffix in prompt.prompt
-            assert prompt.style == "house"
-        assert "No neon gradients" in (beat.image_prompt.negative_prompt or "")
+        image, motion = beat.image_prompt, beat.motion_prompt
+
+        # The bible-level and visual entry suffixes reach the image prompt.
+        assert "Muted palette and soft window light." in image.prompt
+        assert "Natural textures, simple composition." in image.prompt
+        # The motion entry suffix reaches the motion prompt.
+        assert "Slow camera push, subtle movement." in motion.prompt
+        # Audio and writing guidance stay out of both prompts.
+        for prompt in (image, motion):
+            assert "Ambient drone, soft music." not in prompt.prompt
+            assert "Short sentences, one idea per beat." not in prompt.prompt
+        # Avoid guidance reaches the negative prompt of both, never the prompt.
+        assert "No neon gradients" in (image.negative_prompt or "")
+        assert "No neon gradients" in (motion.negative_prompt or "")
+        assert "No neon gradients" not in image.prompt
+        assert "No neon gradients" not in motion.prompt
 
 
 def test_the_prompt_carries_the_beat_text_and_its_dialogue() -> None:
