@@ -671,7 +671,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Translate a style spec into style bible entries and prompt suffixes (tests/reference/test_style_prompts.py)
 - [x] Convert a style spec into a validated format recipe, style bible and preset (tests/reference/test_to_format.py)
 - [x] Filter providers by reference capabilities and fall back to prompt only style transfer with a warning (tests/reference/test_capabilities.py)
-- [ ] Implement reference conditioned paths for text to image, image to image, first frame to video and video to video, rebuilding scene by scene when unsupported (tests/reference/test_conditioned.py)
+- [x] Implement reference conditioned paths for text to image, image to image, first frame to video and video to video, rebuilding scene by scene when unsupported (tests/reference/test_conditioned.py)
 - [ ] Reproduce the reference structure with matching scene count and durations within tolerance, regenerating once on deviation (tests/reference/test_structure.py)
 - [ ] Map low, medium and high similarity levels to enforced spec fields with global, profile and CLI precedence (tests/reference/test_similarity_levels.py)
 - [ ] Gate visual similarity with perceptual hash and embeddings, regenerating or refusing above the configured limit (tests/reference/test_visual_gate.py)
