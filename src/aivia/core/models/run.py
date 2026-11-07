@@ -338,6 +338,14 @@ class Run(ModelBase):
     )
     profile: str = ""
     environment: str = ""
+    character_version: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "character_version",
+            "character",
+            "character_id",
+        ),
+    )
     format: str = Field(
         default="",
         validation_alias=AliasChoices("format", "format_name", "recipe"),
