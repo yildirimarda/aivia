@@ -1899,8 +1899,9 @@ class ReferenceAnalysis(StyleSpec):
     """The style spec plus what the analyser saw in one reference.
 
     ``confidence`` is the analyser's own confidence in the extraction,
-    ``detected_text`` is OCR or transcript text and ``reproducing_prompt`` is a
-    generic prompt that describes the style without naming the original
+    ``detected_text`` is OCR or transcript text, ``tone`` and ``hook_pattern``
+    carry the writing traits of a text reference, and ``reproducing_prompt`` is
+    a generic prompt that describes the style without naming the original
     subject. The remaining provenance fields name the analyser, not a vendor
     that will generate the new content.
     """
@@ -1923,6 +1924,22 @@ class ReferenceAnalysis(StyleSpec):
             "language",
             "language_code",
             "lang",
+        ),
+    )
+    tone: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "tone",
+            "voice_tone",
+            "register",
+        ),
+    )
+    hook_pattern: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "hook_pattern",
+            "hook_formula",
+            "opening_pattern",
         ),
     )
     provider: str = ""
@@ -1999,6 +2016,8 @@ class ReferenceAnalysis(StyleSpec):
         "reference_id",
         "detected_text",
         "language",
+        "tone",
+        "hook_pattern",
         "provider",
         "model",
         "subject",

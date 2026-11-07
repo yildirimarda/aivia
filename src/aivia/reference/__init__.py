@@ -9,6 +9,8 @@ from aivia.reference.analyze import *  # noqa: F403
 from aivia.reference.analyze import __all__ as _analyze_all
 from aivia.reference.analyze_audio import *  # noqa: F403
 from aivia.reference.analyze_audio import __all__ as _analyze_audio_all
+from aivia.reference.analyze_text import *  # noqa: F403
+from aivia.reference.analyze_text import __all__ as _analyze_text_all
 from aivia.reference.analyze_video import *  # noqa: F403
 from aivia.reference.analyze_video import __all__ as _analyze_video_all
 from aivia.reference.inputs import *  # noqa: F403
@@ -22,4 +24,5 @@ __all__ = [
     *_analyze_all,
     *_analyze_video_all,
     *_analyze_audio_all,
+    *_analyze_text_all,
 ]
