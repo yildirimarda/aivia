@@ -680,6 +680,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [ ] Enforce rights policy so unowned references are used for style and structure only and high similarity requires an owned flag (tests/reference/test_rights.py)
 - [ ] Add a match evaluator scoring structure, pacing, look and mood with bounded regenerations (tests/reference/test_evaluator.py)
 - [ ] Add an optional spec review step that shows the extracted style spec for edit or confirmation before any paid generation (tests/e2e/test_reference.py)
+- [ ] Probe remote reference URLs through the configured download policy before analysis (tests/reference/test_inputs.py)
 
 ## Milestone 16: Characters and brand kits
 
