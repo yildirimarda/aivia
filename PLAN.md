@@ -675,7 +675,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Reproduce the reference structure with matching scene count and durations within tolerance, regenerating once on deviation (tests/reference/test_structure.py)
 - [x] Map low, medium and high similarity levels to enforced spec fields with global, profile and CLI precedence (tests/reference/test_similarity_levels.py)
 - [x] Gate visual similarity with perceptual hash and embeddings, regenerating or refusing above the configured limit (tests/reference/test_visual_gate.py)
-- [ ] Gate text similarity by n gram overlap against the reference and rewrite above the limit (tests/reference/test_text_gate.py)
+- [x] Gate text similarity by n gram overlap against the reference and rewrite above the limit (tests/reference/test_text_gate.py)
 - [ ] Detect identifiable faces, logos and trademarks in references and strip them or block with a clear message (tests/reference/test_identity.py)
 - [ ] Enforce rights policy so unowned references are used for style and structure only and high similarity requires an owned flag (tests/reference/test_rights.py)
 - [ ] Add a match evaluator scoring structure, pacing, look and mood with bounded regenerations (tests/reference/test_evaluator.py)
