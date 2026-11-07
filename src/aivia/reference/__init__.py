@@ -33,6 +33,8 @@ from aivia.reference.style_prompts import *  # noqa: F403
 from aivia.reference.style_prompts import __all__ as _style_prompts_all
 from aivia.reference.to_format import *  # noqa: F403
 from aivia.reference.to_format import __all__ as _to_format_all
+from aivia.reference.visual_gate import *  # noqa: F403
+from aivia.reference.visual_gate import __all__ as _visual_gate_all
 
 __all__ = [
     *_schema_all,
@@ -49,4 +51,5 @@ __all__ = [
     *_to_format_all,
     *_capabilities_all,
     *_conditioned_all,
+    *_visual_gate_all,
 ]
