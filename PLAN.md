@@ -698,7 +698,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Load and bind brand kits with colors, fonts, logo, watermark, intro, outro and caption style (tests/characters/test_brand_kit.py)
 - [x] Resolve character opt in by CLI flag, then order or instruction field, then profile, running no character code when none is selected (tests/characters/test_select.py)
 - [x] Support several characters per run with host, sidekick and narrator roles (tests/characters/test_roles.py)
-- [ ] Inject the character sheet, art style, negatives and per scene pose only into scenes that include the character (tests/characters/test_prompt_injection.py)
+- [x] Inject the character sheet, art style, negatives and per scene pose only into scenes that include the character (tests/characters/test_prompt_injection.py)
 - [ ] Filter providers by character capability flags and enforce the maximum reference image count (tests/characters/test_capabilities.py)
 - [ ] Run the configured strategy chain per scene and record which strategy produced each asset (tests/characters/test_chain.py)
 - [ ] Store a pose library of named cutouts with alpha, anchors and tags including edge cleanup (tests/characters/test_poses_lib.py)
