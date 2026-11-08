@@ -65,9 +65,7 @@ def test_adapter_from_job_builds_from_a_ready_training_job() -> None:
 
 
 def test_adapter_from_job_with_no_model_id_is_unusable() -> None:
-    adapter = TrainerAdapter.from_job(
-        _job(model_id=None, state=TrainingState.PENDING)
-    )
+    adapter = TrainerAdapter.from_job(_job(model_id=None, state=TrainingState.PENDING))
 
     assert adapter.model_id == ""
     assert adapter.is_usable is False
