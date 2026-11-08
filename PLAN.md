@@ -702,7 +702,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Filter providers by character capability flags and enforce the maximum reference image count (tests/characters/test_capabilities.py)
 - [x] Run the configured strategy chain per scene and record which strategy produced each asset (tests/characters/test_chain.py)
 - [x] Store a pose library of named cutouts with alpha, anchors and tags including edge cleanup (tests/characters/test_poses_lib.py)
-- [ ] Add a build poses command that generates, checks and stores a standard pose and expression set with cost recorded (tests/cli/test_build_poses.py)
+- [x] Add a build poses command that generates, checks and stores a standard pose and expression set with cost recorded (tests/cli/test_build_poses.py)
 - [ ] Place cutouts in compositions with anchor, scale, flip, shadow, safe area awareness and idle animation (tests/characters/test_composite.py)
 - [ ] Attach character reference images where the provider supports it, adapting the request per provider (tests/characters/test_reference_strategy.py)
 - [ ] Add a trainer adapter interface storing model id, trigger words and training cost and skipping unusable adapters with a reason (tests/characters/test_adapter.py)
