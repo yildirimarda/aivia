@@ -14,7 +14,9 @@
       "Bash(terraform destroy)",
       "Bash(terraform destroy:*)",
       "Edit(.github/workflows/**)",
-      "Write(.github/workflows/**)"
+      "Write(.github/workflows/**)",
+      "Edit(.agents/skills/agentloop-*/**)",
+      "Write(.agents/skills/agentloop-*/**)"
     ]
   }
 }

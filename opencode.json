@@ -15,7 +15,8 @@
     },
     "edit": {
       "*": "allow",
-      ".github/workflows/**": "deny"
+      ".github/workflows/**": "deny",
+      ".agents/skills/agentloop-*/**": "deny"
     }
   },
   "mcp": {

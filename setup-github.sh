@@ -16,18 +16,20 @@ command -v gh >/dev/null || { echo "error: gh CLI not found"; exit 1; }
 gh auth status >/dev/null 2>&1 || { echo "error: no gh credentials (login with 'gh auth login' or provide GH_TOKEN)"; exit 1; }
 
 REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
-CHECK="${CHECK:-}"       # empty = auto-detect from the checks that ran on main
+BASE="${BASE_BRANCH:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || true)}"
+BASE="${BASE:-main}"      # the repository's default branch
+CHECK="${CHECK:-}"       # empty = auto-detect from the checks that ran on $BASE
 
 # ── Resolve the required status check name ───────────────────────────────────
 # Branch protection that requires a check which never reports = nothing ever
 # merges, silently. So instead of guessing, ask GitHub which checks actually
-# ran on main and validate/auto-detect against that list.
+# ran on $BASE and validate/auto-detect against that list.
 #
 # Source: Actions job names via the workflow-runs API (a job's name IS its
 # status-check context). Not the check-runs API — fine-grained PATs have no
 # "Checks" permission, but "Actions: Read-only" covers this.
 detect_checks() {
-  gh api "repos/$REPO/actions/runs?branch=main&per_page=10" \
+  gh api "repos/$REPO/actions/runs?branch=$BASE&per_page=10" \
       --jq '.workflow_runs[].id' 2>/dev/null \
     | head -5 \
     | while read -r run_id; do
@@ -39,7 +41,7 @@ NAMES="$(detect_checks || true)"
 
 # CHECK accepts a comma-separated list: CHECK="Lint & Format,Tests (3.12)".
 # IMPORTANT: only require checks that run on EVERY pull request. A job that
-# only runs on main, tags or releases (deploy, release-please, publish...)
+# only runs on $BASE, tags or releases (deploy, release-please, publish...)
 # will never report on a PR — requiring it means nothing can ever merge.
 CHECK_LIST=()
 if [[ -n "$CHECK" ]]; then
@@ -49,8 +51,8 @@ if [[ -n "$CHECK" ]]; then
   done
   for c in "${CHECK_LIST[@]}"; do
     if [[ -n "$NAMES" ]] && ! grep -qxF "$c" <<<"$NAMES"; then
-      echo "error: no check named '$c' has reported on main." >&2
-      echo "Checks seen on main:" >&2
+      echo "error: no check named '$c' has reported on $BASE." >&2
+      echo "Checks seen on $BASE:" >&2
       sed 's/^/  - /' <<<"$NAMES" >&2
       echo "Re-run with CHECK set to one or more of the above (comma-separated)." >&2
       exit 1
@@ -60,13 +62,13 @@ elif [[ -n "$NAMES" ]] && grep -qxF "ci" <<<"$NAMES"; then
   CHECK_LIST=(ci)
 elif [[ -n "$NAMES" && "$(wc -l <<<"$NAMES" | tr -d ' ')" == "1" ]]; then
   CHECK_LIST=("$NAMES")
-  echo "note: auto-detected required check '$NAMES' (the only check reporting on main)"
+  echo "note: auto-detected required check '$NAMES' (the only check reporting on $BASE)"
 elif [[ -z "$NAMES" ]]; then
   CHECK_LIST=(ci)
-  echo "note: no check runs found on main yet — defaulting to 'ci'."
+  echo "note: no check runs found on $BASE yet — defaulting to 'ci'."
   echo "      If your CI job is named differently, re-run with CHECK=<name>."
 else
-  echo "error: several checks report on main and none is named 'ci':" >&2
+  echo "error: several checks report on $BASE and none is named 'ci':" >&2
   sed 's/^/  - /' <<<"$NAMES" >&2
   echo "Pick the one(s) that must gate merges — comma-separated, and ONLY jobs" >&2
   echo "that run on every pull request (never release/deploy-only jobs):" >&2
@@ -83,16 +85,16 @@ echo
 if [[ "${AGENTLOOP_YES:-}" == "1" ]]; then
   echo "AGENTLOOP_YES=1 — proceeding without confirmation."
 else
-  read -rp "This will lock down main and enable auto-merge. Continue? [y/N] " ans
+  read -rp "This will lock down $BASE and enable auto-merge. Continue? [y/N] " ans
   [[ "$ans" == "y" || "$ans" == "Y" ]] || { echo "aborted."; exit 0; }
 fi
 
 echo
-echo "> branch protection (main)"
+echo "> branch protection ($BASE)"
 # Tolerant: on private repos under the Free plan GitHub rejects branch
 # protection (403). Warn and continue — labels and the rest still matter.
 set +e
-gh api -X PUT "repos/$REPO/branches/main/protection" \
+gh api -X PUT "repos/$REPO/branches/$BASE/protection" \
   --input - <<EOF
 {
   "required_status_checks": {
@@ -109,20 +111,32 @@ gh api -X PUT "repos/$REPO/branches/main/protection" \
   "allow_deletions": false
 }
 EOF
-echo "  OK  main protected: force push off, CI required"
-
-echo
-echo "> repository settings"
+# Capture the status of the API call itself — reading $? any later (after an
+# echo) always yields 0, which used to print "OK" over a failed protection.
 PROT_RC=$?
-if [[ $PROT_RC -ne 0 ]]; then
+if [[ $PROT_RC -eq 0 ]]; then
+  echo "  OK  $BASE protected: force push off, CI required"
+else
   echo "  WARN branch protection failed (private repo on the Free plan?)."
   echo "       Merges will not be gated by required checks; the automerge"
   echo "       workflow falls back to watching CI itself. Continuing."
 fi
-gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge \
-  || echo "  WARN could not enable repo auto-merge (plan limitation) — the automerge workflow's fallback covers this"
+
+echo
+echo "> repository settings"
+if gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge; then
+  echo "  OK  auto-merge + squash + delete branch on merge"
+else
+  # One API call sets all three, so a plan that lacks auto-merge rejects the
+  # other two as well — apply those on their own.
+  echo "  WARN could not enable repo auto-merge (plan limitation) — the automerge workflow's fallback covers this"
+  if gh repo edit --enable-squash-merge --delete-branch-on-merge; then
+    echo "  OK  squash + delete branch on merge"
+  else
+    echo "  WARN could not enable squash merge / delete-branch-on-merge"
+  fi
+fi
 set -e
-echo "  OK  squash + delete branch on merge (auto-merge: see above)"
 
 echo
 echo "> labels"
@@ -148,6 +162,8 @@ Done. Two manual steps remain:
      · Permissions -> Pull requests: Read and write
      · Permissions -> Actions: Read-only   (CI verdict polling — note:
        GitHub offers no "Checks" permission on fine-grained PATs)
+     · Permissions -> Issues: Read-only    (optional: ./run.sh --issue N
+       on private repos)
      · Select NOTHING else (no admin, no org scopes)
 
    Then store it in the keychain:

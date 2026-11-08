@@ -50,6 +50,36 @@ The default test run must never touch the network or spend money.
 8. `gh pr create --fill --label automated`
 9. STOP. Do not wait for CI, do not merge, do not release, do not poll, do not start the next item.
 
+## Skills
+
+Situational know-how lives in skills: `.agents/skills/<name>/SKILL.md`. Your
+engine lists them by name and description; load one when it applies — with
+your skill tool, or simply by reading the file. When the prompt names a skill,
+load it before you start.
+
+| Skill | Load it when |
+|---|---|
+| `agentloop-graph-navigation` | Finding where to work; before changing a symbol |
+| `agentloop-testing` | Writing tests, or a test is flaky or slow |
+| `agentloop-pull-request` | Right before opening the PR, or when you are stuck |
+| `agentloop-plan-items` | Writing or appending `PLAN.md` items |
+| `agentloop-merge-conflicts` | A push is rejected or a merge conflicts |
+| `agentloop-dependencies` | Adding, removing or upgrading a dependency |
+| `agentloop-ci-fix` | CI failed on your pull request |
+| `agentloop-ci-proposals` | The item is about CI or `.github/workflows/` |
+| `agentloop-skill-authoring` | You learned something the next session will need |
+
+`agentloop-*` skills are maintained by agentloop and replaced on every update —
+never edit them. Every other skill in that directory belongs to this project;
+some were recorded by earlier sessions.
+
+**Record what you learn.** When you work out something non-obvious and
+reusable about this project — how to run, test, debug or seed part of it, or a
+trap that cost you several attempts — save it as a project skill so the next
+session does not rediscover it (`agentloop-skill-authoring`). At most one new
+skill per session; prefer updating an existing one. Name it in the PR
+description.
+
 ## Growing the plan
 You are expected to add work, not only consume it: a missing edge case, a required migration, error handling
 that was hand-waved, a prerequisite a later item will need.
@@ -84,10 +114,11 @@ Every byte printed is re-sent to the model on every later step.
 ## Prohibited
 - No direct pushes to `main` or `release/*`. No `git push --force`.
 - Do not modify `.github/workflows/` (see "CI changes").
+- Do not create or edit `agentloop-*` skills (they are replaced on every agentloop update).
 - Do not restructure `PLAN.md` beyond ticking your item and appending new ones. If the plan is wrong, say so in
   the PR description and stop.
 - Do not delete, skip or disable tests to make them pass.
-- Never commit secrets, tokens or `.env` contents.
+- Never commit secrets, tokens or `.env` contents, and never print environment variables into files or logs.
 - Justify any new dependency in the PR description.
 
 ## CI changes
