@@ -38,6 +38,7 @@ _GLOBAL_DESTINATIONS = (
     "no_cache",
     "live",
     "verbose",
+    "character",
 )
 
 
@@ -49,6 +50,7 @@ class GlobalOptions:
     environment: str | None = None
     profile: str | None = None
     preset: str | None = None
+    character: str | None = None
     set_values: tuple[str, ...] = ()
     estimate: bool = False
     dry_run: bool = False
@@ -72,6 +74,7 @@ class GlobalOptions:
             environment=_text(getattr(namespace, "environment", None)),
             profile=_text(getattr(namespace, "profile", None)),
             preset=_text(getattr(namespace, "preset", None)),
+            character=_text(getattr(namespace, "character", None)),
             set_values=set_values,
             estimate=bool(getattr(namespace, "estimate", False)),
             dry_run=bool(getattr(namespace, "dry_run", False)),
@@ -162,6 +165,13 @@ def add_global_options(
             metavar="NAME",
             default=default(None),
             help="merge the overrides of a named preset after the profile",
+        )
+    if missing("--character"):
+        parser.add_argument(
+            "--character",
+            metavar="NAME",
+            default=default(None),
+            help="opt into a recurring character for this run",
         )
     if missing("--set"):
         parser.add_argument(
