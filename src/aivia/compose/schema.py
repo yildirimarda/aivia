@@ -70,6 +70,7 @@ __all__ = [
     "FaceBox",
     "FilterType",
     "FitMode",
+    "Flip",
     "Gradient",
     "GradientStop",
     "GradientType",
@@ -285,6 +286,46 @@ class Anchor(StrEnum):
             "southeast": cls.BOTTOM_RIGHT,
             "se": cls.BOTTOM_RIGHT,
             "south_east": cls.BOTTOM_RIGHT,
+        }
+        return aliases.get(key)
+
+
+class Flip(StrEnum):
+    """How an overlay layer is mirrored before it is composited."""
+
+    NONE = "none"
+    HORIZONTAL = "horizontal"
+    VERTICAL = "vertical"
+    BOTH = "both"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> Flip | None:
+        if not isinstance(value, str):
+            return None
+        key = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "none": cls.NONE,
+            "off": cls.NONE,
+            "false": cls.NONE,
+            "no": cls.NONE,
+            "horizontal": cls.HORIZONTAL,
+            "left_right": cls.HORIZONTAL,
+            "lr": cls.HORIZONTAL,
+            "x": cls.HORIZONTAL,
+            "flip_x": cls.HORIZONTAL,
+            "mirror_horizontal": cls.HORIZONTAL,
+            "vertical": cls.VERTICAL,
+            "top_bottom": cls.VERTICAL,
+            "tb": cls.VERTICAL,
+            "y": cls.VERTICAL,
+            "flip_y": cls.VERTICAL,
+            "mirror_vertical": cls.VERTICAL,
+            "both": cls.BOTH,
+            "xy": cls.BOTH,
+            "yx": cls.BOTH,
+            "flip_both": cls.BOTH,
+            "true": cls.BOTH,
+            "yes": cls.BOTH,
         }
         return aliases.get(key)
 
@@ -1548,6 +1589,10 @@ class _OverlayLayer(_AssetLayer):
     anchor: Anchor = Field(
         default=Anchor.CENTER,
         validation_alias=AliasChoices("anchor", "corner", "alignment"),
+    )
+    flip: Flip = Field(
+        default=Flip.NONE,
+        validation_alias=AliasChoices("flip", "flipped"),
     )
     margin: float | tuple[float, float] = Field(
         default=0.0,
