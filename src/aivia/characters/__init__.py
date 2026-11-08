@@ -6,7 +6,16 @@ schema and :class:`~aivia.characters.loader.CharacterLibrary` loads and
 validates one, naming the file and field in every error.
 """
 
+from aivia.characters.brand_kit import (
+    CURRENT_BRAND_KIT_SCHEMA_VERSION,
+    BrandKit,
+    BrandKitLibrary,
+    load_brand_kit_file,
+)
 from aivia.characters.errors import (
+    BrandKitError,
+    BrandKitNotFoundError,
+    BrandKitSchemaError,
     CharacterError,
     CharacterNotFoundError,
     CharacterSchemaError,
@@ -18,11 +27,18 @@ from aivia.characters.schema import (
 )
 
 __all__ = [
+    "CURRENT_BRAND_KIT_SCHEMA_VERSION",
     "CURRENT_CHARACTER_SCHEMA_VERSION",
+    "BrandKit",
+    "BrandKitError",
+    "BrandKitLibrary",
+    "BrandKitNotFoundError",
+    "BrandKitSchemaError",
     "Character",
     "CharacterError",
     "CharacterLibrary",
     "CharacterNotFoundError",
     "CharacterSchemaError",
+    "load_brand_kit_file",
     "load_character_file",
 ]
