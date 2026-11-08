@@ -708,7 +708,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a trainer adapter interface storing model id, trigger words and training cost and skipping unusable adapters with a reason (tests/characters/test_adapter.py)
 - [x] Fall back to prompt only as the last strategy with an explicit warning in logs and review messages (tests/characters/test_prompt_only.py)
 - [x] Check character consistency with vision feature checks and embedding similarity, retrying then moving to the next strategy (tests/characters/test_qa.py)
-- [ ] Plan character scenes per beat with action, pose, expression, position and size inside safe areas (tests/characters/test_scene_plan.py)
+- [x] Plan character scenes per beat with action, pose, expression, position and size inside safe areas (tests/characters/test_scene_plan.py)
 - [ ] Support per language character voices, pin the exact provider voice id across runs and gate cloning behind consent (tests/characters/test_voices_consent.py)
 - [ ] Add a lip sync provider adapter plus a no AI fallback using audio reactive pose swaps, blinking and idle motion with sprite sheet support (tests/characters/test_lipsync.py)
 - [ ] Give each character a music identity with style prompts, personality lyrics and a reusable jingle or intro (tests/characters/test_music_identity.py)
