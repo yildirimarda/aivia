@@ -4,14 +4,17 @@ pacing, look and mood, and regenerates up to a bounded limit on mismatch."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Coroutine
+from typing import Any
 
 import pytest
 
 from aivia.reference import (
     DEFAULT_MATCH_THRESHOLD,
     DEFAULT_MATCH_WEIGHTS,
+    AspectOrientation,
     AspectSpec,
+    ColorTemperature,
     MatchResult,
     MusicMoodSpec,
     PacingSpec,
@@ -29,7 +32,7 @@ from aivia.reference import (
 DEFAULT_WEIGHTS = dict(DEFAULT_MATCH_WEIGHTS)
 
 
-def _run[T](coroutine: Awaitable[T]) -> T:
+def _run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 
@@ -73,13 +76,13 @@ def _pacing(
 
 def _palette(
     colors: list[str] | None = None,
-    temperature=None,
+    temperature: ColorTemperature | str | None = None,
     saturation: float | None = None,
     contrast: float | None = None,
 ) -> PaletteSpec:
     return PaletteSpec(
         colors=colors or [],
-        temperature=temperature,
+        temperature=ColorTemperature(temperature) if temperature is not None else None,
         saturation=saturation,
         contrast=contrast,
     )
@@ -117,7 +120,9 @@ def _music(
     )
 
 
-def _aspect(ratio: str = "", orientation=None) -> AspectSpec:
+def _aspect(
+    ratio: str = "", orientation: AspectOrientation | None = None
+) -> AspectSpec:
     return AspectSpec(ratio=ratio, orientation=orientation)
 
 
@@ -402,6 +407,7 @@ def test_refuses_after_exhausting_regenerations() -> None:
     assert result.refused is True
     assert result.regenerations == 2
     assert calls == 2
+    assert result.reason is not None
     assert "after 2 regeneration(s)" in result.reason
 
 
@@ -464,7 +470,9 @@ def test_rejects_bad_threshold() -> None:
     with pytest.raises(TypeError):
         _run(
             evaluate_match(
-                reference=StyleSpec(), candidate=StyleSpec(), threshold="high"
+                reference=StyleSpec(),
+                candidate=StyleSpec(),
+                threshold="high",  # type: ignore[arg-type]
             )
         )
     with pytest.raises(ValueError):
@@ -483,7 +491,7 @@ def test_rejects_bad_max_regenerations() -> None:
             evaluate_match(
                 reference=StyleSpec(),
                 candidate=StyleSpec(),
-                max_regenerations="two",
+                max_regenerations="two",  # type: ignore[arg-type]
             )
         )
     with pytest.raises(ValueError):

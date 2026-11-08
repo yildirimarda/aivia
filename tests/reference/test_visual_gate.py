@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -89,7 +90,7 @@ def test_average_hash_rejects_bad_size() -> None:
     with pytest.raises(ValueError, match="hash size must be a positive integer"):
         average_hash(image, size=0)
     with pytest.raises(ValueError, match="hash size must be a positive integer"):
-        average_hash(image, size=True)  # type: ignore[arg-type]
+        average_hash(image, size=True)
 
 
 def test_hamming_similarity_identical_is_one() -> None:
@@ -119,7 +120,7 @@ def test_perceptual_similarity_different_is_lower() -> None:
     assert 0.0 <= score < 1.0
 
 
-def test_perceptual_similarity_accepts_bytes_and_path(tmp_path) -> None:
+def test_perceptual_similarity_accepts_bytes_and_path(tmp_path: Path) -> None:
     red_bytes = _gradient_png()
     path = tmp_path / "red.png"
     path.write_bytes(red_bytes)
@@ -265,6 +266,10 @@ def test_gate_refuses_immediately_when_no_regenerator() -> None:
     assert "no regenerator is configured" in result.reason
 
 
+async def _regenerate_gradient() -> bytes:
+    return _transposed_gradient_png()
+
+
 def test_gate_zero_regenerations_refuses_above_limit() -> None:
     reference = _gradient_png()
     result = _run(
@@ -273,7 +278,7 @@ def test_gate_zero_regenerations_refuses_above_limit() -> None:
             candidate=reference,
             threshold=0.9,
             max_regenerations=0,
-            regenerate=lambda: _transposed_gradient_png(),
+            regenerate=_regenerate_gradient,
         )
     )
     assert result.passed is False

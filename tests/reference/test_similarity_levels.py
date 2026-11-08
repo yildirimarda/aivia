@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 import pytest
 import yaml
 
 from aivia.core.config import resolve_config
 from aivia.core.config.reference import ReferenceConfig, SimilarityLevel
-from aivia.core.config.resolve import CLI_ORIGIN, PROFILE_ORIGIN_PREFIX, USER_ORIGIN
+from aivia.core.config.resolve import (
+    CLI_ORIGIN,
+    PROFILE_ORIGIN_PREFIX,
+    USER_ORIGIN,
+    ResolvedConfig,
+)
 from aivia.reference import ENFORCED_SECTIONS, enforced_fields
 from aivia.reference.schema import StyleSpec
 
 
-def write_yaml(path, payload):
+def write_yaml(path: Path, payload: str | dict[str, Any]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = payload if isinstance(payload, str) else yaml.safe_dump(payload)
     path.write_text(text, encoding="utf-8")
@@ -43,7 +51,14 @@ def test_unknown_similarity_level_is_rejected() -> None:
         enforced_fields("identical")  # type: ignore[arg-type]
 
 
-def _resolve(tmp_path, *, defaults=None, user=None, profile=None, set_values=None):
+def _resolve(
+    tmp_path: Path,
+    *,
+    defaults: dict[str, Any] | None = None,
+    user: dict[str, Any] | None = None,
+    profile: str | None = None,
+    set_values: list[str] | None = None,
+) -> ResolvedConfig:
     defaults_path = write_yaml(
         tmp_path / "defaults" / "config.example.yaml",
         defaults or {"schema_version": 1, "reference": {"similarity_level": "medium"}},
@@ -59,21 +74,21 @@ def _resolve(tmp_path, *, defaults=None, user=None, profile=None, set_values=Non
     )
 
 
-def test_defaults_give_medium_similarity_level(tmp_path) -> None:
+def test_defaults_give_medium_similarity_level(tmp_path: Path) -> None:
     resolved = _resolve(tmp_path)
 
     assert resolved.values["reference"]["similarity_level"] == "medium"
     assert resolved.origins["reference.similarity_level"] == "defaults"
 
 
-def test_user_config_overrides_the_global_default(tmp_path) -> None:
+def test_user_config_overrides_the_global_default(tmp_path: Path) -> None:
     resolved = _resolve(tmp_path, user={"reference": {"similarity_level": "low"}})
 
     assert resolved.values["reference"]["similarity_level"] == "low"
     assert resolved.origins["reference.similarity_level"] == USER_ORIGIN
 
 
-def test_profile_overrides_the_user_config(tmp_path) -> None:
+def test_profile_overrides_the_user_config(tmp_path: Path) -> None:
     resolved = _resolve(
         tmp_path,
         user={
@@ -95,7 +110,7 @@ def test_profile_overrides_the_user_config(tmp_path) -> None:
     )
 
 
-def test_cli_set_wins_over_profile_and_global(tmp_path) -> None:
+def test_cli_set_wins_over_profile_and_global(tmp_path: Path) -> None:
     resolved = _resolve(
         tmp_path,
         defaults={"schema_version": 1, "reference": {"similarity_level": "medium"}},
@@ -117,7 +132,7 @@ def test_cli_set_wins_over_profile_and_global(tmp_path) -> None:
     assert resolved.origins["reference.similarity_level"] == CLI_ORIGIN
 
 
-def test_cli_set_wins_without_a_profile(tmp_path) -> None:
+def test_cli_set_wins_without_a_profile(tmp_path: Path) -> None:
     resolved = _resolve(
         tmp_path,
         user={"reference": {"similarity_level": "low"}},
@@ -128,7 +143,7 @@ def test_cli_set_wins_without_a_profile(tmp_path) -> None:
     assert resolved.origins["reference.similarity_level"] == CLI_ORIGIN
 
 
-def test_enforced_fields_follow_the_effective_level(tmp_path) -> None:
+def test_enforced_fields_follow_the_effective_level(tmp_path: Path) -> None:
     resolved = _resolve(
         tmp_path,
         defaults={"schema_version": 1, "reference": {"similarity_level": "medium"}},
