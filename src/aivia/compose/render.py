@@ -65,6 +65,7 @@ from .schema import (
     Composition,
     FilterType,
     FitMode,
+    Flip,
     Gradient,
     ImageMask,
     Layer,
@@ -241,6 +242,23 @@ def _anchor_value(value: Any) -> Anchor:
         return Anchor(value)
     except ValueError as exc:
         raise RenderError(f"unsupported anchor {value!r}") from exc
+
+
+def _flip_value(value: Any) -> Flip:
+    if value is None:
+        return Flip.NONE
+    try:
+        return Flip(value)
+    except ValueError as exc:
+        raise RenderError(f"unsupported flip {value!r}") from exc
+
+
+def _flip_image(image: Image.Image, flip: Flip) -> Image.Image:
+    if flip is Flip.HORIZONTAL or flip is Flip.BOTH:
+        image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    if flip is Flip.VERTICAL or flip is Flip.BOTH:
+        image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    return image
 
 
 def _overlay_target_size(layer: Layer, natural: tuple[int, int]) -> tuple[int, int]:
@@ -1592,6 +1610,10 @@ class PillowStillRenderer:
         except ValueError as exc:
             raise RenderError(f"unsupported fit mode {raw_fit!r}") from exc
         fitted = _fit(image, target, fit)
+
+        flip = _flip_value(_layer_value(layer, "flip", "flipped"))
+        if flip is not Flip.NONE:
+            fitted = _flip_image(fitted, flip)
 
         tracks = _tracks_for_layer(layer, composition)
         scale = _sample(tracks, AnimatedProperty.SCALE, time_seconds)

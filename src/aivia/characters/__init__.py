@@ -19,6 +19,12 @@ from aivia.characters.chain import (
     Strategy,
     run_strategy_chain,
 )
+from aivia.characters.composite import (
+    Flip,
+    PlaceCutoutError,
+    idle_motion,
+    place_cutout,
+)
 from aivia.characters.errors import (
     BrandKitError,
     BrandKitNotFoundError,
@@ -66,6 +72,8 @@ __all__ = [
     "CharacterLibrary",
     "CharacterNotFoundError",
     "CharacterSchemaError",
+    "Flip",
+    "PlaceCutoutError",
     "Pose",
     "PoseError",
     "PoseLibrary",
@@ -75,9 +83,11 @@ __all__ = [
     "SceneResult",
     "Strategy",
     "cleanup_edges",
+    "idle_motion",
     "load_brand_kit_file",
     "load_character_file",
     "load_pose_library",
+    "place_cutout",
     "run_strategy_chain",
     "select_character",
     "select_characters",
