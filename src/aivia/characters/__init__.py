@@ -21,6 +21,11 @@ from aivia.characters.errors import (
     CharacterSchemaError,
 )
 from aivia.characters.loader import CharacterLibrary, load_character_file
+from aivia.characters.roles import (
+    CHARACTER_ROLES,
+    CharacterCast,
+    select_characters,
+)
 from aivia.characters.schema import (
     CURRENT_CHARACTER_SCHEMA_VERSION,
     Character,
@@ -28,6 +33,7 @@ from aivia.characters.schema import (
 from aivia.characters.select import select_character
 
 __all__ = [
+    "CHARACTER_ROLES",
     "CURRENT_BRAND_KIT_SCHEMA_VERSION",
     "CURRENT_CHARACTER_SCHEMA_VERSION",
     "BrandKit",
@@ -36,6 +42,7 @@ __all__ = [
     "BrandKitNotFoundError",
     "BrandKitSchemaError",
     "Character",
+    "CharacterCast",
     "CharacterError",
     "CharacterLibrary",
     "CharacterNotFoundError",
@@ -43,4 +50,5 @@ __all__ = [
     "load_brand_kit_file",
     "load_character_file",
     "select_character",
+    "select_characters",
 ]
