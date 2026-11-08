@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import cast
 
 import pytest
 from PIL import Image, ImageDraw
@@ -257,10 +258,10 @@ def test_cleanup_edges_removes_background(tmp_path: Path) -> None:
     assert image.mode == "RGBA"
     width, height = image.size
     # Background corners are transparent.
-    assert image.getpixel((0, 0))[3] == 0
-    assert image.getpixel((width - 1, height - 1))[3] == 0
+    assert cast("tuple[int, ...]", image.getpixel((0, 0)))[3] == 0
+    assert cast("tuple[int, ...]", image.getpixel((width - 1, height - 1)))[3] == 0
     # Foreground centre is opaque.
-    assert image.getpixel((32, 24))[3] == 255
+    assert cast("tuple[int, ...]", image.getpixel((32, 24)))[3] == 255
 
 
 def test_store_with_edge_cleanup_writes_alpha_png(tmp_path: Path) -> None:
@@ -280,7 +281,7 @@ def test_store_with_edge_cleanup_writes_alpha_png(tmp_path: Path) -> None:
     stored = (library.poses_dir / "idle.png").read_bytes()
     image = _load_rgba(stored)
     assert image.mode == "RGBA"
-    assert image.getpixel((0, 0))[3] == 0
+    assert cast("tuple[int, ...]", image.getpixel((0, 0)))[3] == 0
 
 
 def test_store_rejects_an_escaping_image_name(tmp_path: Path) -> None:
