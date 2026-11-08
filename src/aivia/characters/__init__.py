@@ -70,6 +70,7 @@ from aivia.characters.scene_plan import (
 from aivia.characters.schema import (
     CURRENT_CHARACTER_SCHEMA_VERSION,
     Character,
+    resolve_character_voice,
 )
 from aivia.characters.select import select_character
 
@@ -118,6 +119,7 @@ __all__ = [
     "place_cutout",
     "plan_scenes",
     "pose_of",
+    "resolve_character_voice",
     "run_strategy_chain",
     "select_character",
     "select_characters",
