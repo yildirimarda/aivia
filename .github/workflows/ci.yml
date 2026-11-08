@@ -1,3 +1,12 @@
+# Proposal: run mypy on tests as well as src in CI.
+#
+# Change versus the live .github/workflows/ci.yml: the Type check step now runs
+# `mypy` (no path argument) so it checks both `src` and `tests` per the mypy
+# config, matching `make type` (`uv run mypy`). The job name stays `ci`.
+#
+# Apply with:
+#   git mv ci-proposals/ci.yml .github/workflows/ci.yml
+#
 name: ci
 
 on:
@@ -87,7 +96,7 @@ jobs:
 
       - name: Type check
         if: steps.py.outputs.found == 'true'
-        run: uv run --no-sync mypy src
+        run: uv run --no-sync mypy
 
       # The default suite is offline and must never touch the network or spend
       # money. Live tests are opt-in only and are excluded here.
