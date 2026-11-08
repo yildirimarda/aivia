@@ -12,6 +12,13 @@ from aivia.characters.brand_kit import (
     BrandKitLibrary,
     load_brand_kit_file,
 )
+from aivia.characters.chain import (
+    Asset,
+    Scene,
+    SceneResult,
+    Strategy,
+    run_strategy_chain,
+)
 from aivia.characters.errors import (
     BrandKitError,
     BrandKitNotFoundError,
@@ -36,6 +43,7 @@ __all__ = [
     "CHARACTER_ROLES",
     "CURRENT_BRAND_KIT_SCHEMA_VERSION",
     "CURRENT_CHARACTER_SCHEMA_VERSION",
+    "Asset",
     "BrandKit",
     "BrandKitError",
     "BrandKitLibrary",
@@ -47,8 +55,12 @@ __all__ = [
     "CharacterLibrary",
     "CharacterNotFoundError",
     "CharacterSchemaError",
+    "Scene",
+    "SceneResult",
+    "Strategy",
     "load_brand_kit_file",
     "load_character_file",
+    "run_strategy_chain",
     "select_character",
     "select_characters",
 ]
