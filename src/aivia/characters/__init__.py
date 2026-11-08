@@ -48,6 +48,12 @@ from aivia.characters.pose import (
     cleanup_edges,
     load_pose_library,
 )
+from aivia.characters.qa import (
+    CharacterQA,
+    CharacterQAResult,
+    VisionScorer,
+    check_character_consistency,
+)
 from aivia.characters.roles import (
     CHARACTER_ROLES,
     CharacterCast,
@@ -76,6 +82,8 @@ __all__ = [
     "CharacterError",
     "CharacterLibrary",
     "CharacterNotFoundError",
+    "CharacterQA",
+    "CharacterQAResult",
     "CharacterSchemaError",
     "Flip",
     "PlaceCutoutError",
@@ -88,6 +96,8 @@ __all__ = [
     "SceneResult",
     "Strategy",
     "TrainerAdapter",
+    "VisionScorer",
+    "check_character_consistency",
     "cleanup_edges",
     "idle_motion",
     "load_brand_kit_file",
