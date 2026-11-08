@@ -40,6 +40,7 @@ from aivia.characters.errors import (
     PoseNotFoundError,
     PoseSchemaError,
 )
+from aivia.characters.lipsync import LipSyncAdapter, LipSyncError
 from aivia.characters.loader import CharacterLibrary, load_character_file
 from aivia.characters.pose import (
     POSE_LIBRARY_SCHEMA_VERSION,
@@ -96,6 +97,8 @@ __all__ = [
     "CharacterScene",
     "CharacterSchemaError",
     "Flip",
+    "LipSyncAdapter",
+    "LipSyncError",
     "PlaceCutoutError",
     "Pose",
     "PoseError",
