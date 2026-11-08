@@ -19,6 +19,9 @@ __all__ = [
     "CharacterError",
     "CharacterNotFoundError",
     "CharacterSchemaError",
+    "PoseError",
+    "PoseNotFoundError",
+    "PoseSchemaError",
 ]
 
 
@@ -84,3 +87,21 @@ class BrandKitSchemaError(ValidationError):
         merged.setdefault("file", "")
         merged.setdefault("field", "")
         super().__init__(message, details=merged)
+
+
+class PoseError(CharacterError):
+    """A pose cutout or its library could not be loaded or stored."""
+
+    code = "pose"
+
+
+class PoseNotFoundError(PoseError):
+    """No pose cutout exists for the requested name."""
+
+    code = "pose_not_found"
+
+
+class PoseSchemaError(CharacterSchemaError):
+    """A pose cutout failed validation or references a missing asset."""
+
+    code = "pose_schema"
