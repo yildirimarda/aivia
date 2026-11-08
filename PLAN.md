@@ -692,6 +692,14 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a character create command that validates supplied images and stores version one (tests/cli/test_character_create.py)
 - [x] Generate a canonical character sheet with a vision model, editable by hand and re-analyzed only on request (tests/characters/test_sheet.py)
 - [x] Version characters so sheet, pose and voice changes bump the version while runs pin an older one (tests/characters/test_versioning.py)
+- [ ] Fix the strict mypy errors in tests/reference (test_visual_gate, test_structure, test_similarity_levels, test_rights, test_evaluator) so `uv run mypy tests/reference` reports no errors (tests/reference)
+  - give every test function and helper full annotations; make fake callables async where the code under test expects an awaitable instead of changing the code under test
+  - `SimilarityLevel` is imported from `aivia.reference.similarity` but not explicitly exported: add it to `__all__` there or import it from where it is defined
+  - no blanket `# type: ignore`, no mypy config relaxation, no weakened or skipped tests; remove `type: ignore` comments mypy reports as unused
+- [ ] Fix the strict mypy errors in tests/characters (test_schema, test_sheet), tests/llm (test_vision) and tests/writing (test_media_prompts) so `make type` reports no errors for the whole project (make type)
+  - same rules as the previous item; run `make check` and keep ruff and pytest green
+- [ ] Propose running mypy on the tests as well as src in CI: change the "Type check" step in ci.yml from `mypy src` to `mypy` so it matches `make type`, delivered as ci-proposals/ci.yml with the job still named `ci` (CI)
+  - this must land after the two items above, otherwise the check would fail on the existing errors
 - [ ] Load and bind brand kits with colors, fonts, logo, watermark, intro, outro and caption style (tests/characters/test_brand_kit.py)
 - [ ] Resolve character opt in by CLI flag, then order or instruction field, then profile, running no character code when none is selected (tests/characters/test_select.py)
 - [ ] Support several characters per run with host, sidekick and narrator roles (tests/characters/test_roles.py)
