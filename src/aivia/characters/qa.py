@@ -50,7 +50,7 @@ class CharacterQAResult:
     embedding_score: float | None
     overall_score: float
     reason: str
-    attempts: int = 1
+    checks: int = 1
 
     @property
     def score(self) -> float:
@@ -133,14 +133,14 @@ class CharacterQA:
             return None
         best = 0.0
         for reference in references:
-            score = await _maybe_await(self._vision_scorer(asset, reference))
-            if isinstance(score, bool) or not isinstance(score, (int, float)):
+            value = await _maybe_await(self._vision_scorer(asset, reference))
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise TypeError("vision scorer must return a number")
-            score = float(score)
-            if not 0.0 <= score <= 1.0:
+            value = float(value)
+            if not 0.0 <= value <= 1.0:
                 raise ValueError("vision score must be between 0 and 1")
-            if score > best:
-                best = score
+            if value > best:
+                best = value
         return best
 
     async def _embedding(
@@ -203,7 +203,7 @@ class CharacterQA:
             embedding_score=embedding,
             overall_score=overall,
             reason=reason,
-            attempts=1,
+            checks=1,
         )
 
     async def run(
