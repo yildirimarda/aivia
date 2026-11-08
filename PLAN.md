@@ -700,7 +700,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Support several characters per run with host, sidekick and narrator roles (tests/characters/test_roles.py)
 - [x] Inject the character sheet, art style, negatives and per scene pose only into scenes that include the character (tests/characters/test_prompt_injection.py)
 - [x] Filter providers by character capability flags and enforce the maximum reference image count (tests/characters/test_capabilities.py)
-- [ ] Run the configured strategy chain per scene and record which strategy produced each asset (tests/characters/test_chain.py)
+- [x] Run the configured strategy chain per scene and record which strategy produced each asset (tests/characters/test_chain.py)
 - [ ] Store a pose library of named cutouts with alpha, anchors and tags including edge cleanup (tests/characters/test_poses_lib.py)
 - [ ] Add a build poses command that generates, checks and stores a standard pose and expression set with cost recorded (tests/cli/test_build_poses.py)
 - [ ] Place cutouts in compositions with anchor, scale, flip, shadow, safe area awareness and idle animation (tests/characters/test_composite.py)
