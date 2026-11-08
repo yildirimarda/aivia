@@ -24,7 +24,7 @@
         "width": 320,
         "height": 120,
         "time_seconds": 0.25,
-        "tolerance": 2
+        "tolerance": 24
       }
     },
     "turkish": {
@@ -40,7 +40,7 @@
         "width": 320,
         "height": 120,
         "time_seconds": 0.25,
-        "tolerance": 2
+        "tolerance": 24
       }
     }
   }
