@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -166,18 +167,49 @@ def _extract_frame(
     )
 
 
+ARTIFACTS_ENV = "AIVA_GOLDEN_ARTIFACTS"
+
+
+def _artifact_directory() -> Path | None:
+    """Where CI wants rendered frames kept when a comparison fails."""
+    target = os.environ.get(ARTIFACTS_ENV)
+    if not target:
+        return None
+    folder = Path(target)
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _describe_difference(difference: Image.Image, tolerance: int) -> str:
+    """Say WHERE and HOW MUCH a render differs, not only the maximum."""
+    gray = difference.convert("L")
+    mask = gray.point([0 if level <= tolerance else 255 for level in range(256)])
+    over = mask.histogram()[255]
+    return f"{over} pixels above tolerance, bounding box {mask.getbbox()}"
+
+
 def _assert_matches(
     rendered: Image.Image,
     expected: Image.Image,
     tolerance: int,
+    label: str = "image",
 ) -> None:
     assert rendered.size == expected.size
     difference = ImageChops.difference(rendered, expected)
     maximum = max(
         int(band[1]) for band in difference.getextrema() if isinstance(band, tuple)
     )
+    if maximum > tolerance:
+        folder = _artifact_directory()
+        if folder is not None:
+            rendered.save(folder / f"{label}-rendered.png")
+            expected.save(folder / f"{label}-expected.png")
+            boost = [min(255, level * 4) for level in range(256)] * 3
+            amplified = difference.convert("RGB").point(boost)
+            amplified.save(folder / f"{label}-difference-x4.png")
     assert maximum <= tolerance, (
-        f"golden differs by {maximum} channel levels (tolerance {tolerance})"
+        f"{label}: golden differs by {maximum} channel levels (tolerance "
+        f"{tolerance}); {_describe_difference(difference, tolerance)}"
     )
 
 
@@ -229,7 +261,7 @@ def test_the_still_render_matches_the_golden_image(case_id: str) -> None:
     expected = Image.open(GOLDEN_DIR / entry["file"]).convert("RGBA")
 
     assert rendered.size == (entry["width"], entry["height"])
-    _assert_matches(rendered, expected, int(entry["tolerance"]))
+    _assert_matches(rendered, expected, int(entry["tolerance"]), f"still-{case_id}")
 
 
 @pytest.mark.parametrize("case_id", sorted(GLYPH_CASES))
@@ -244,7 +276,7 @@ def test_the_video_frame_matches_the_golden_image(
     output = tmp_path / f"{case_id}.mp4"
     frame = tmp_path / f"{case_id}.png"
 
-    render_video(
+    result = render_video(
         _video_composition(case_id),
         output,
         ffmpeg_executable=ffmpeg,
@@ -254,8 +286,24 @@ def test_the_video_frame_matches_the_golden_image(
     )
     _extract_frame(ffmpeg, output, frame, float(entry["time_seconds"]))
 
+    folder = _artifact_directory()
+    if folder is not None:
+        # Enough to tell a toolchain difference (architecture, build flags,
+        # filters) from a rendering difference when a comparison fails.
+        version = subprocess.run(
+            [ffmpeg, "-hide_banner", "-version"],
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout
+        command = getattr(result, "command", None)
+        (folder / f"video-{case_id}-ffmpeg.txt").write_text(
+            f"{platform.machine()}\n{version}\n{command}\n", encoding="utf-8"
+        )
+        shutil.copy(output, folder / f"video-{case_id}.mp4")
+
     rendered = Image.open(frame).convert("RGBA")
     expected = Image.open(GOLDEN_DIR / entry["file"]).convert("RGBA")
 
     assert rendered.size == (entry["width"], entry["height"])
-    _assert_matches(rendered, expected, int(entry["tolerance"]))
+    _assert_matches(rendered, expected, int(entry["tolerance"]), f"video-{case_id}")

@@ -81,6 +81,18 @@ jobs:
         env:
           AIVA_COMPARE_GOLDENS: "1"
           AIVA_GOLDEN_REQUIRE_FFMPEG: "1"
+          AIVA_GOLDEN_ARTIFACTS: ${{ runner.temp }}/golden-artifacts
         run: |
           uv run --no-sync pytest -q tests/golden
           uv run --no-sync pytest -q -m golden tests/compose/test_render_still.py
+
+      # On a failed comparison keep what was rendered (frames, the ffmpeg
+      # command and build) so a toolchain difference can be told from a
+      # rendering difference: `gh run download <run-id> -n golden-diagnostics`.
+      - name: Upload golden diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-diagnostics
+          path: ${{ runner.temp }}/golden-artifacts
+          if-no-files-found: ignore
