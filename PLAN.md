@@ -697,7 +697,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Propose running mypy on the tests as well as src in CI: change the Type check step in ci.yml from mypy src to mypy so it matches make type, delivered as ci-proposals/ci.yml with the job still named ci; this must land after the two items above (CI)
 - [x] Load and bind brand kits with colors, fonts, logo, watermark, intro, outro and caption style (tests/characters/test_brand_kit.py)
 - [x] Resolve character opt in by CLI flag, then order or instruction field, then profile, running no character code when none is selected (tests/characters/test_select.py)
-- [ ] Support several characters per run with host, sidekick and narrator roles (tests/characters/test_roles.py)
+- [x] Support several characters per run with host, sidekick and narrator roles (tests/characters/test_roles.py)
 - [ ] Inject the character sheet, art style, negatives and per scene pose only into scenes that include the character (tests/characters/test_prompt_injection.py)
 - [ ] Filter providers by character capability flags and enforce the maximum reference image count (tests/characters/test_capabilities.py)
 - [ ] Run the configured strategy chain per scene and record which strategy produced each asset (tests/characters/test_chain.py)
