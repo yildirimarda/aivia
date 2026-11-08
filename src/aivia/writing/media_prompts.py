@@ -19,6 +19,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, overload
 
+from aivia.characters.schema import Character
+from aivia.characters.sheet import CharacterSheet
 from aivia.core.models.script import (
     Beat,
     ImagePrompt,
@@ -309,6 +311,8 @@ class MediaPromptBuilder:
         config_dir: Any = None,
         defaults_dir: Any = None,
         environ: Mapping[str, str] | None = None,
+        characters: Mapping[str, Character] | None = None,
+        sheets: Mapping[str, CharacterSheet] | None = None,
     ) -> None:
         self.style_bible = load_style_bible(
             style_bible,
@@ -334,6 +338,16 @@ class MediaPromptBuilder:
             _clean(motion_negative_prompt) or DEFAULT_MOTION_NEGATIVE_PROMPT
         )
         self.include_definitions = include_definitions
+        self.characters = {
+            name: character
+            for name, character in dict(characters or {}).items()
+            if character is not None
+        }
+        self.sheets = {
+            name: sheet
+            for name, sheet in dict(sheets or {}).items()
+            if sheet is not None
+        }
 
     @property
     def style(self) -> str:
@@ -378,6 +392,37 @@ class MediaPromptBuilder:
             language=language or self.language or None,
         )
 
+    def _characters_in_beat(self, beat: Beat) -> list[tuple[str, Character]]:
+        """Return the cast characters that appear in *beat*, by speaker name."""
+        speakers = beat.speakers
+        return [
+            (name, character)
+            for name, character in self.characters.items()
+            if name in speakers
+        ]
+
+    def _character_prefix(self, beat: Beat) -> str:
+        """Return the character sheet, art style and per-scene pose for *beat*."""
+        parts: list[str] = []
+        scene_index = beat.index if beat.index is not None else 0
+        for _, character in self._characters_in_beat(beat):
+            sheet = self.sheets.get(character.name)
+            if sheet is not None and sheet.description:
+                parts.append(sheet.description)
+            if character.art_style:
+                parts.append(f"art style {character.art_style}")
+            pose = character.pose_library.get(str(scene_index))
+            if pose:
+                parts.append(f"pose {pose}")
+        return _clean(" ".join(parts))
+
+    def _character_negatives(self, beat: Beat) -> str:
+        """Return the character negatives for *beat* as a single string."""
+        parts: list[str] = []
+        for _, character in self._characters_in_beat(beat):
+            parts.extend(character.negatives)
+        return _clean(" ".join(parts))
+
     def image_prompt_for(
         self,
         beat: Beat,
@@ -387,18 +432,31 @@ class MediaPromptBuilder:
     ) -> ImagePrompt:
         """Return the still prompt for *beat*."""
         subject = _beat_subject(beat, fallback=title)
+        prefix = self._character_prefix(beat)
+        if prefix:
+            subject = _clean(f"{subject} {prefix}")
         prompt = self._finish(
             subject,
             self.image_guidance,
             _visual_suffixes(self.style_bible),
             language=self.language or None,
         )
+        negative = self._negative(
+            _clean(
+                " ".join(
+                    part
+                    for part in (
+                        self.image_negative_prompt,
+                        self._character_negatives(beat),
+                    )
+                    if part
+                )
+            ),
+            language=self.language or None,
+        )
         return ImagePrompt(
             prompt=prompt,
-            negative_prompt=self._negative(
-                self.image_negative_prompt,
-                language=self.language or None,
-            ),
+            negative_prompt=negative,
             style=self.style_bible.name,
             aspect_ratio=(
                 _clean(aspect_ratio) if aspect_ratio is not None else self.aspect_ratio
@@ -416,18 +474,31 @@ class MediaPromptBuilder:
     ) -> MotionPrompt:
         """Return the motion prompt for *beat*."""
         subject = _beat_subject(beat, fallback=title)
+        prefix = self._character_prefix(beat)
+        if prefix:
+            subject = _clean(f"{subject} {prefix}")
         prompt = self._finish(
             subject,
             self.motion_guidance,
             _motion_suffixes(self.style_bible),
             language=self.language or None,
         )
+        negative = self._negative(
+            _clean(
+                " ".join(
+                    part
+                    for part in (
+                        self.motion_negative_prompt,
+                        self._character_negatives(beat),
+                    )
+                    if part
+                )
+            ),
+            language=self.language or None,
+        )
         return MotionPrompt(
             prompt=prompt,
-            negative_prompt=self._negative(
-                self.motion_negative_prompt,
-                language=self.language or None,
-            ),
+            negative_prompt=negative,
             style=self.style_bible.name,
             aspect_ratio=(
                 _clean(aspect_ratio) if aspect_ratio is not None else self.aspect_ratio
@@ -524,6 +595,8 @@ def _builder(
     config_dir: Any = None,
     defaults_dir: Any = None,
     environ: Mapping[str, str] | None = None,
+    characters: Mapping[str, Character] | None = None,
+    sheets: Mapping[str, CharacterSheet] | None = None,
 ) -> MediaPromptBuilder:
     return MediaPromptBuilder(
         style_bible=style_bible,
@@ -538,6 +611,8 @@ def _builder(
         config_dir=config_dir,
         defaults_dir=defaults_dir,
         environ=environ,
+        characters=characters,
+        sheets=sheets,
     )
 
 
