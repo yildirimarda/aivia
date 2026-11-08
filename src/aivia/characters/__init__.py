@@ -6,6 +6,10 @@ schema and :class:`~aivia.characters.loader.CharacterLibrary` loads and
 validates one, naming the file and field in every error.
 """
 
+from aivia.characters.adapter import (
+    AdapterUnusableError,
+    TrainerAdapter,
+)
 from aivia.characters.brand_kit import (
     CURRENT_BRAND_KIT_SCHEMA_VERSION,
     BrandKit,
@@ -60,6 +64,7 @@ __all__ = [
     "CURRENT_BRAND_KIT_SCHEMA_VERSION",
     "CURRENT_CHARACTER_SCHEMA_VERSION",
     "POSE_LIBRARY_SCHEMA_VERSION",
+    "AdapterUnusableError",
     "Asset",
     "BrandKit",
     "BrandKitError",
@@ -82,6 +87,7 @@ __all__ = [
     "Scene",
     "SceneResult",
     "Strategy",
+    "TrainerAdapter",
     "cleanup_edges",
     "idle_motion",
     "load_brand_kit_file",
