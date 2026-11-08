@@ -11,6 +11,7 @@ than allowed is rejected loudly instead of silently truncated.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -32,6 +33,8 @@ __all__ = [
 
 CAPABILITY_CHARACTER_REFERENCE = "character_reference"
 """The capability a provider declares when it accepts character reference images."""
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _metadata(
@@ -179,5 +182,6 @@ def prepare_character_request(
         f"no provider declares {CAPABILITY_CHARACTER_REFERENCE}; "
         "falling back to prompt-only generation without character references"
     )
+    _LOGGER.warning(message)
     warnings.warn(message, UserWarning, stacklevel=2)
     return candidates, message
