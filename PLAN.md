@@ -710,7 +710,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Check character consistency with vision feature checks and embedding similarity, retrying then moving to the next strategy (tests/characters/test_qa.py)
 - [x] Plan character scenes per beat with action, pose, expression, position and size inside safe areas (tests/characters/test_scene_plan.py)
 - [x] Support per language character voices, pin the exact provider voice id across runs and gate cloning behind consent (tests/characters/test_voices_consent.py)
-- [ ] Add a lip sync provider adapter plus a no AI fallback using audio reactive pose swaps, blinking and idle motion with sprite sheet support (tests/characters/test_lipsync.py)
+- [x] Add a lip sync provider adapter plus a no AI fallback using audio reactive pose swaps, blinking and idle motion with sprite sheet support (tests/characters/test_lipsync.py)
 - [ ] Give each character a music identity with style prompts, personality lyrics and a reusable jingle or intro (tests/characters/test_music_identity.py)
 - [ ] Implement the character short and character card formats that fail clearly when no character is selected (slow, tests/formats/test_character_formats.py)
 - [ ] Keep a series continuity log injected into writing with view and edit commands and contradiction warnings (tests/characters/test_series.py)
