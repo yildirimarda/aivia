@@ -25,6 +25,7 @@ from aivia.characters.schema import (
     CURRENT_CHARACTER_SCHEMA_VERSION,
     Character,
 )
+from aivia.characters.select import select_character
 
 __all__ = [
     "CURRENT_BRAND_KIT_SCHEMA_VERSION",
@@ -41,4 +42,5 @@ __all__ = [
     "CharacterSchemaError",
     "load_brand_kit_file",
     "load_character_file",
+    "select_character",
 ]
