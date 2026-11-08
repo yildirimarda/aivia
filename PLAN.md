@@ -704,7 +704,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Store a pose library of named cutouts with alpha, anchors and tags including edge cleanup (tests/characters/test_poses_lib.py)
 - [x] Add a build poses command that generates, checks and stores a standard pose and expression set with cost recorded (tests/cli/test_build_poses.py)
 - [x] Place cutouts in compositions with anchor, scale, flip, shadow, safe area awareness and idle animation (tests/characters/test_composite.py)
-- [ ] Attach character reference images where the provider supports it, adapting the request per provider (tests/characters/test_reference_strategy.py)
+- [x] Attach character reference images where the provider supports it, adapting the request per provider (tests/characters/test_reference_strategy.py)
 - [ ] Add a trainer adapter interface storing model id, trigger words and training cost and skipping unusable adapters with a reason (tests/characters/test_adapter.py)
 - [ ] Fall back to prompt only as the last strategy with an explicit warning in logs and review messages (tests/characters/test_prompt_only.py)
 - [ ] Check character consistency with vision feature checks and embedding similarity, retrying then moving to the next strategy (tests/characters/test_qa.py)
