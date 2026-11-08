@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,7 @@ from aivia.llm.structured import StructuredOutputHelper
 from aivia.providers.protocols.llm import LLMResponse, LLMUsage
 
 
-def _run(coroutine) -> Any:
+def _run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 

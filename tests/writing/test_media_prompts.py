@@ -100,39 +100,40 @@ def test_prompts_are_provider_agnostic_and_deterministic() -> None:
 
 
 def test_only_visual_and_motion_suffixes_reach_media_prompts() -> None:
-    bible = {
-        "name": "house",
-        "description": "A calm documentary look.",
-        "prompt_suffix": "Muted palette and soft window light.",
-        "entries": [
-            {
-                "key": "visuals",
-                "text": "Prefer natural light.",
-                "prompt_suffix": "Natural textures, simple composition.",
-            },
-            {
-                "key": "motion",
-                "text": "Camera moves slowly.",
-                "prompt_suffix": "Slow camera push, subtle movement.",
-            },
-            {
-                "key": "audio",
-                "text": "Ambient sound.",
-                "prompt_suffix": "Ambient drone, soft music.",
-            },
-            {
-                "key": "writing",
-                "text": "One idea per beat.",
-                "prompt_suffix": "Short sentences, one idea per beat.",
-            },
-            {
-                "key": "avoid",
-                "text": "Avoid visual clutter.",
-                "prompt_suffix": "No neon gradients or on-screen text.",
-            },
-        ],
-    }
-    bible = load_style_bible(bible)
+    bible = load_style_bible(
+        {
+            "name": "house",
+            "description": "A calm documentary look.",
+            "prompt_suffix": "Muted palette and soft window light.",
+            "entries": [
+                {
+                    "key": "visuals",
+                    "text": "Prefer natural light.",
+                    "prompt_suffix": "Natural textures, simple composition.",
+                },
+                {
+                    "key": "motion",
+                    "text": "Camera moves slowly.",
+                    "prompt_suffix": "Slow camera push, subtle movement.",
+                },
+                {
+                    "key": "audio",
+                    "text": "Ambient sound.",
+                    "prompt_suffix": "Ambient drone, soft music.",
+                },
+                {
+                    "key": "writing",
+                    "text": "One idea per beat.",
+                    "prompt_suffix": "Short sentences, one idea per beat.",
+                },
+                {
+                    "key": "avoid",
+                    "text": "Avoid visual clutter.",
+                    "prompt_suffix": "No neon gradients or on-screen text.",
+                },
+            ],
+        }
+    )
     script = build_media_prompts(_script(), style_bible=bible)
 
     for beat in script.beats:

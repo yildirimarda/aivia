@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -33,7 +34,7 @@ DEFAULT = {
 }
 
 
-def write_character(root: Path, name: str, payload: dict) -> Path:
+def write_character(root: Path, name: str, payload: dict[str, Any]) -> Path:
     path = root / "characters" / f"{name}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(payload), encoding="utf-8")
