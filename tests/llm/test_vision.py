@@ -29,6 +29,7 @@ from aivia.llm import (
 )
 from aivia.providers.protocols.llm import (
     ChatMessage,
+    ContentPart,
     ImagePart,
     LLMRequest,
     MessageRole,
@@ -55,7 +56,7 @@ def _image() -> ImagePart:
     return ImagePart(url="https://example.com/image.png", media_type="image/png")
 
 
-def _request(content: str | list[TextPart | ImagePart] = "describe") -> LLMRequest:
+def _request(content: str | list[ContentPart] = "describe") -> LLMRequest:
     return LLMRequest(
         messages=[ChatMessage(role=MessageRole.USER, content=content)],
         model="text-only",
@@ -63,12 +64,11 @@ def _request(content: str | list[TextPart | ImagePart] = "describe") -> LLMReque
 
 
 def _vision_request() -> LLMRequest:
-    return _request(
-        [
-            TextPart(text="describe this"),
-            _image(),
-        ]
-    )
+    content: list[ContentPart] = [
+        TextPart(text="describe this"),
+        _image(),
+    ]
+    return _request(content)
 
 
 def test_a_text_only_request_does_not_need_vision() -> None:
