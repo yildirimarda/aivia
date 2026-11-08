@@ -18,6 +18,7 @@ __all__ = [
     "ENFORCED_SECTIONS",
     "SIMILARITY_ENFORCED_FIELDS",
     "EnforcedSection",
+    "SimilarityLevel",
     "enforced_fields",
 ]
 

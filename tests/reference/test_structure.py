@@ -9,7 +9,7 @@ tolerance, regenerating once on deviation.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Coroutine
 from typing import Any
 
 import pytest
@@ -27,7 +27,7 @@ from aivia.reference import (
 )
 
 
-def _run[T](coroutine: Awaitable[T]) -> T:
+def _run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 
@@ -64,6 +64,10 @@ def _outcome(duration: float) -> VideoOutcome:
     result = VideoResult(data=b"fake-clip", duration_seconds=duration)
     response = VideoResponse(videos=[result], model="model", provider="provider")
     return VideoOutcome(request=VideoRequest(prompt="unused"), response=response)
+
+
+async def _fixed_outcome(request: VideoRequest, token: Any) -> VideoOutcome:
+    return _outcome(1.0)
 
 
 def _reference(scene_durations: list[float | None]) -> ReferenceAnalysis:
@@ -262,7 +266,7 @@ def test_rejects_none_reference() -> None:
             reproduce_structure(
                 reference=None,
                 request=_request(),
-                generate_one=lambda req, _t: _outcome(1.0),
+                generate_one=_fixed_outcome,
                 probe_duration=probe_duration,
             )
         )
@@ -274,7 +278,7 @@ def test_rejects_negative_tolerance() -> None:
             reproduce_structure(
                 reference=_reference([2.0]),
                 request=_request(),
-                generate_one=lambda req, _t: _outcome(1.0),
+                generate_one=_fixed_outcome,
                 probe_duration=probe_duration,
                 tolerance_seconds=-1.0,
             )
