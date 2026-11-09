@@ -25,6 +25,7 @@ from aivia.api.limits import (
 )
 from aivia.api.media import register_media_routes
 from aivia.api.security import validate_bind_host
+from aivia.api.session import register_session_routes
 from aivia.api.uploads import sanitize_filename
 from aivia.core.config import (
     ApiConfig,
@@ -161,6 +162,8 @@ def create_app(
         environment=config_environment,
         profile=config_profile,
     )
+
+    register_session_routes(app)
 
     if api.require_auth:
 

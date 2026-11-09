@@ -6,6 +6,7 @@ from aivia.api.security import (
     is_loopback_host,
     validate_bind_host,
 )
+from aivia.api.session import register_session_routes
 from aivia.api.uploads import sanitize_filename
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "create_app",
     "is_loopback_host",
     "register_media_routes",
+    "register_session_routes",
     "sanitize_filename",
     "serve",
     "validate_bind_host",
