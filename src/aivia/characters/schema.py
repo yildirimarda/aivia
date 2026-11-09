@@ -54,6 +54,9 @@ class Character(BaseModel):
     reference_images: list[str] = Field(default_factory=list)
     pose_library: dict[str, str] = Field(default_factory=dict)
     brand_kit: str = ""
+    music_style_prompts: list[str] = Field(default_factory=list)
+    personality_lyrics: str = ""
+    jingle: str = ""
     ownership_required: bool = True
     allow_real_person_likeness: bool = False
     resemblance_warning: bool = True
@@ -66,7 +69,9 @@ class Character(BaseModel):
             raise ValueError("name must be non-empty")
         return text
 
-    @field_validator("voice", "art_style", "brand_kit", mode="before")
+    @field_validator(
+        "voice", "art_style", "brand_kit", "personality_lyrics", "jingle", mode="before"
+    )
     @classmethod
     def _strip_text(cls, value: Any) -> Any:
         if isinstance(value, str):
@@ -109,6 +114,17 @@ class Character(BaseModel):
             text = entry.strip()
             if not text:
                 raise ValueError("reference images must not contain blank entries")
+            normalised.append(text)
+        return normalised
+
+    @field_validator("music_style_prompts")
+    @classmethod
+    def _normalise_music_style_prompts(cls, value: list[str]) -> list[str]:
+        normalised: list[str] = []
+        for entry in value:
+            text = entry.strip()
+            if not text:
+                raise ValueError("music style prompts must not contain blank entries")
             normalised.append(text)
         return normalised
 
