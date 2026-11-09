@@ -143,6 +143,12 @@ from aivia.core.models.script import (
     WritingMode,
     WritingModeName,
 )
+from aivia.core.models.session import (
+    Session,
+    SessionModel,
+    SessionRecord,
+    SessionVersion,
+)
 from aivia.core.models.topic import (
     Candidate,
     Claim,
@@ -264,6 +270,10 @@ __all__ = [
     "ScriptBeat",
     "ScriptMode",
     "ScriptModel",
+    "Session",
+    "SessionModel",
+    "SessionRecord",
+    "SessionVersion",
     "SourceUrls",
     "StageResult",
     "StageResultModel",

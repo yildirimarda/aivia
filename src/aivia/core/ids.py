@@ -31,6 +31,7 @@ __all__ = [
     "new_plan_id",
     "new_post_id",
     "new_run_id",
+    "new_session_id",
     "new_step_id",
     "new_voice_clone_id",
     "ulid",
@@ -174,6 +175,11 @@ def new_step_id() -> str:
 def new_composition_id() -> str:
     """Return a new composition reference identifier."""
     return f"composition_{ulid()}"
+
+
+def new_session_id() -> str:
+    """Return a new session identifier."""
+    return f"session_{ulid()}"
 
 
 def new_voice_clone_id() -> str:

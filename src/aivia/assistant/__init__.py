@@ -65,6 +65,7 @@ from aivia.assistant.tool_framework import (
     ToolUnknownError,
     ToolValidationError,
 )
+from aivia.core.models.session import Session, SessionVersion
 
 __all__ = [
     "ALL_COMPOSITION_TOOLS",
@@ -92,6 +93,8 @@ __all__ = [
     "SelfCheck",
     "SelfCheckError",
     "SelfCheckResult",
+    "Session",
+    "SessionVersion",
     "StepCache",
     "StepResult",
     "TextTool",
