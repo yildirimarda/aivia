@@ -168,9 +168,7 @@ class Series(BaseModel):
             if not (existing.category == fact.category and existing.key == fact.key)
         ]
         facts.append(fact)
-        return self.model_copy(
-            update={"facts": facts, "updated_at": datetime.now(UTC)}
-        )
+        return self.model_copy(update={"facts": facts, "updated_at": datetime.now(UTC)})
 
     def remove_fact(self, category: str, key: str) -> Series:
         """Return a copy without the fact for *category*/*key*."""
@@ -179,9 +177,7 @@ class Series(BaseModel):
             for existing in self.facts
             if not (existing.category == category and existing.key == key)
         ]
-        return self.model_copy(
-            update={"facts": facts, "updated_at": datetime.now(UTC)}
-        )
+        return self.model_copy(update={"facts": facts, "updated_at": datetime.now(UTC)})
 
 
 class SeriesContradiction(BaseModel):
