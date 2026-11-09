@@ -19,6 +19,7 @@ from aivia.assistant import (
     DeliverTool,
     ToolFramework,
     ToolNotAllowedError,
+    ToolRegistry,
     ToolUnknownError,
     ToolValidationError,
     render_tool_registry,
@@ -38,7 +39,7 @@ def _composition() -> dict[str, Any]:
     }
 
 
-def _framework(registry) -> ToolFramework:
+def _framework(registry: ToolRegistry) -> ToolFramework:
     return ToolFramework(registry)
 
 
@@ -73,7 +74,7 @@ def test_deliver_tool_registered_with_delivery_provider() -> None:
     assert registry.names() == ("render.deliver", "render.render")
 
 
-def test_render_tool_renders_to_output_file(tmp_path) -> None:
+def test_render_tool_renders_to_output_file(tmp_path: Path) -> None:
     output = tmp_path / "still.png"
     result = _framework(render_tool_registry()).execute(
         "render.render",
@@ -91,7 +92,7 @@ def test_render_tool_renders_to_output_file(tmp_path) -> None:
     assert output_payload["height"] == 720
 
 
-def test_render_tool_output_selection(tmp_path) -> None:
+def test_render_tool_output_selection(tmp_path: Path) -> None:
     output = tmp_path / "frame.png"
     result = _framework(render_tool_registry()).execute(
         "render.render",
@@ -109,7 +110,7 @@ def test_render_tool_output_selection(tmp_path) -> None:
     assert result.output["path"] == str(output)
 
 
-def test_render_tool_default_output_path(tmp_path) -> None:
+def test_render_tool_default_output_path(tmp_path: Path) -> None:
     result = _framework(render_tool_registry()).execute(
         "render.render", {"composition": _composition()}
     )
@@ -125,7 +126,7 @@ def test_render_tool_rejects_missing_composition() -> None:
     assert framework.tool_calls == 0
 
 
-def test_allowlist_restricts_render_tool(tmp_path) -> None:
+def test_allowlist_restricts_render_tool(tmp_path: Path) -> None:
     registry = render_tool_registry(_delivery_router())
     from aivia.core.config.planner import PlannerConfig
 
@@ -148,7 +149,7 @@ def test_allowlist_restricts_render_tool(tmp_path) -> None:
     assert framework.tool_calls == 1
 
 
-def test_deliver_tool_delivers_output(tmp_path) -> None:
+def test_deliver_tool_delivers_output(tmp_path: Path) -> None:
     router = _delivery_router()
     DeliverTool.bind_router(router)
     registry = render_tool_registry(router)
