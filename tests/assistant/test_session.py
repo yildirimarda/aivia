@@ -102,8 +102,9 @@ def test_session_records_versions() -> None:
     assert latest is not None
     assert latest.version == 3
     assert latest.note == "added overlay"
-    assert session.version_by_number(2) is not None
-    assert session.version_by_number(2).note == "tuned audio"
+    v2 = session.version_by_number(2)
+    assert v2 is not None
+    assert v2.note == "tuned audio"
     assert session.version_by_number(9) is None
 
 
@@ -222,5 +223,7 @@ def test_session_unknown_field_is_kept_and_warned() -> None:
         warnings.simplefilter("always")
         session = Session.model_validate({"title": "t", "not_a_real_field": 42})
 
-    assert session.not_a_real_field == 42
+    extra = session.model_extra
+    assert extra is not None
+    assert extra["not_a_real_field"] == 42
     assert any("not_a_real_field" in str(w.message) for w in recorded)
