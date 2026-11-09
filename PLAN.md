@@ -722,7 +722,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: turn an instruction plus assets into a validated plan, execute it and refine it conversationally -->
 
-- [ ] Add the asset registry with labels, hashes and read only originals, rejecting duplicate labels (tests/assistant/test_assets.py)
+- [x] Add the asset registry with labels, hashes and read only originals, rejecting duplicate labels (tests/assistant/test_assets.py)
 - [ ] Parse at labels in instructions, resolving them to assets and failing clearly on unknown labels (tests/assistant/test_labels.py)
 - [ ] Analyze registered assets for dimensions, colors, vision description, detected text and face regions (tests/assistant/test_asset_analysis.py)
 - [ ] Add the tool framework with JSON schema, estimate, execute, safety limits and allowlist enforcement (tests/assistant/test_tool_framework.py)
