@@ -1,12 +1,3 @@
-# Proposal: run mypy on tests as well as src in CI.
-#
-# Change versus the live .github/workflows/ci.yml: the Type check step now runs
-# `mypy` (no path argument) so it checks both `src` and `tests` per the mypy
-# config, matching `make type` (`uv run mypy`). The job name stays `ci`.
-#
-# Apply with:
-#   git mv ci-proposals/ci.yml .github/workflows/ci.yml
-#
 name: ci
 
 on:
