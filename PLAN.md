@@ -726,7 +726,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Parse at labels in instructions, resolving them to assets and failing clearly on unknown labels (tests/assistant/test_labels.py)
 - [x] Analyze registered assets for dimensions, colors, vision description, detected text and face regions (tests/assistant/test_asset_analysis.py)
 - [x] Add the tool framework with JSON schema, estimate, execute, safety limits and allowlist enforcement (tests/assistant/test_tool_framework.py)
-- [ ] Expose generation tools for image, image edit, background removal, upscale, video, voice and music (tests/assistant/test_generation_tools.py)
+- [x] Expose generation tools for image, image edit, background removal, upscale, video, voice and music (tests/assistant/test_generation_tools.py)
 - [ ] Expose composition tools for text, asset placement, overlays, animation and audio mixing that emit validated patches (tests/assistant/test_composition_tools.py)
 - [ ] Expose a render tool with output selection and a deliver tool registered only when delivery providers exist (tests/assistant/test_render_tools.py)
 - [ ] Define the plan schema with ordered steps, arguments, dependencies, estimate, assumptions and acyclicity checks (tests/assistant/test_plan.py)
