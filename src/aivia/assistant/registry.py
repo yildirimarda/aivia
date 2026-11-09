@@ -16,6 +16,7 @@ from typing import Any
 
 from aivia.core.ids import new_asset_id
 from aivia.core.models.asset import Asset, AssetKind
+from aivia.media.image_analysis import analyze_image_sync
 
 __all__ = [
     "AssetRegistry",
@@ -105,7 +106,7 @@ class AssetRegistry:
     Duplicate labels are rejected with :class:`DuplicateLabelError`.
     """
 
-    def __init__(self, root: str | Path | None = None) -> None:
+    def __init__(self, root: str | Path | None = None, analyzer: Any = None) -> None:
         import tempfile
 
         if root is None:
@@ -113,6 +114,7 @@ class AssetRegistry:
         self._root = Path(root)
         self._root.mkdir(parents=True, exist_ok=True)
         self._assets: dict[str, Asset] = {}
+        self._analyzer = analyzer
 
     @property
     def root(self) -> Path:
@@ -172,6 +174,9 @@ class AssetRegistry:
             path=str(stored_path),
             content_hash=content_hash,
         )
+        if self._analyzer is not None and resolved_kind is AssetKind.IMAGE:
+            analysis = analyze_image_sync(source, analyzer=self._analyzer)
+            asset.analysis = analysis.to_asset_analysis()
         self._assets[resolved_label] = asset
         return asset
 
