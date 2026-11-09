@@ -14,7 +14,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
-from aivia.assistant.tool_framework import ToolRegistry
+from aivia.assistant.tool_framework import ToolRegistry, ToolValidationError
 from aivia.core.config.planner import PlannerConfig
 from aivia.core.errors import AiviaError
 from aivia.core.models import Plan, PlanApprovalMode, PlanStep
@@ -344,6 +344,12 @@ class Planner:
             if not self._planner_config.permits(name):
                 problems.append(
                     f"tool {name!r} is not on the allowlist in step {step.id!r}"
+                )
+            try:
+                tool.validate_arguments(dict(step.arguments))
+            except ToolValidationError as error:
+                problems.append(
+                    f"invalid arguments for tool {name!r} in step {step.id!r}: {error}"
                 )
             del tool
         step_ids = {step.id for step in planned.steps}
