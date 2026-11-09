@@ -8,6 +8,17 @@ The tool framework provides an allowlisted registry of tools with JSON schemas,
 estimates, execution and safety limits.
 """
 
+from aivia.assistant.generation_tools import (
+    ALL_GENERATION_TOOLS,
+    BackgroundRemovalTool,
+    ImageEditTool,
+    ImageGenerationTool,
+    MusicGenerationTool,
+    UpscaleTool,
+    VideoGenerationTool,
+    VoiceGenerationTool,
+    generation_tool_registry,
+)
 from aivia.assistant.registry import (
     AssetRegistry,
     DuplicateLabelError,
@@ -31,8 +42,13 @@ from aivia.assistant.tool_framework import (
 )
 
 __all__ = [
+    "ALL_GENERATION_TOOLS",
     "AssetRegistry",
+    "BackgroundRemovalTool",
     "DuplicateLabelError",
+    "ImageEditTool",
+    "ImageGenerationTool",
+    "MusicGenerationTool",
     "SafetyLimits",
     "Tool",
     "ToolArguments",
@@ -47,5 +63,9 @@ __all__ = [
     "ToolUnknownError",
     "ToolValidationError",
     "UnknownLabelError",
+    "UpscaleTool",
+    "VideoGenerationTool",
+    "VoiceGenerationTool",
+    "generation_tool_registry",
     "resolve_labels",
 ]
