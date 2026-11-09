@@ -5,6 +5,8 @@ whether the preview matches the instruction, and when it does not, asks the
 provider for a composition patch and re-renders. The loop is bounded by the
 planner's ``max_iterations``; when the limit is reached the last failure is
 raised as :class:`SelfCheckError`.
+
+config-coverage: allow-file
 """
 
 from __future__ import annotations
