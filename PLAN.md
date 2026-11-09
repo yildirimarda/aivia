@@ -739,7 +739,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Ask one short clarifying question interactively and apply configured defaults in batch mode with a note (tests/assistant/test_clarify.py)
 - [x] Add a visual self check that verifies the preview against the instruction and auto fixes up to the iteration limit (tests/assistant/test_selfcheck.py)
 - [x] Add the session model holding assets, current composition, plan history and versions with a stable round trip (tests/assistant/test_session.py)
-- [ ] Add an interactive session REPL where each message refines or replans, with five sample edits mapping to patches and undo and redo including branching (tests/cli/test_session_repl.py)
+- [x] Add an interactive session REPL where each message refines or replans, with five sample edits mapping to patches and undo and redo including branching (tests/cli/test_session_repl.py)
 - [ ] Re execute only the steps affected by a change using dependency invalidation (tests/assistant/test_incremental.py)
 - [ ] Expose session HTTP routes for create, message, preview and history with session scoped asset access (tests/api/test_session_api.py)
 - [ ] Extract a reusable template from a session with suggested variables, and support template run plus CSV batch with per row cost and isolated bad rows (tests/cli/test_template.py)
