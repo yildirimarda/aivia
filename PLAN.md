@@ -741,7 +741,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the session model holding assets, current composition, plan history and versions with a stable round trip (tests/assistant/test_session.py)
 - [x] Add an interactive session REPL where each message refines or replans, with five sample edits mapping to patches and undo and redo including branching (tests/cli/test_session_repl.py)
 - [x] Isolate the tests from the developer's real config with an autouse fixture in tests/conftest.py that points XDG_CONFIG_HOME and HOME at a tmp path, so tests/llm/test_prompts.py and tests/reference/test_similarity_levels.py pass on a machine that has its own ~/.config/aivia prompts (make test)
-- [ ] Stop test_render_tool_default_output_path in tests/assistant/test_render_tools.py from writing render.png into the working directory by running it with monkeypatch.chdir into tmp_path, and add /render.png to .gitignore as a safety net (tests/assistant/test_render_tools.py)
+- [x] Stop test_render_tool_default_output_path in tests/assistant/test_render_tools.py from writing render.png into the working directory by running it with monkeypatch.chdir into tmp_path, and add /render.png to .gitignore as a safety net (tests/assistant/test_render_tools.py)
 - [ ] Re execute only the steps affected by a change using dependency invalidation (tests/assistant/test_incremental.py)
 - [ ] Expose session HTTP routes for create, message, preview and history with session scoped asset access (tests/api/test_session_api.py)
 - [ ] Extract a reusable template from a session with suggested variables, and support template run plus CSV batch with per row cost and isolated bad rows (tests/cli/test_template.py)
