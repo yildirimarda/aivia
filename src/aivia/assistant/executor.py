@@ -334,6 +334,8 @@ class Executor:
         self._sleep = sleep or asyncio.sleep
         self._clock = clock
         self._results: dict[str, StepResult] = {}
+        self._invalidated: set[str] = set()
+        self._affected: set[str] = set()
 
     @property
     def framework(self) -> ToolFramework:
@@ -361,13 +363,22 @@ class Executor:
         return dict(self._results)
 
     async def execute(
-        self, plan: Plan, *, resume: bool | None = None
+        self,
+        plan: Plan,
+        *,
+        resume: bool | None = None,
+        invalidated: set[str] | None = None,
     ) -> ExecutionResult:
         """Run *plan* and return its ordered outcomes.
 
         Steps run in dependency order, ties broken by plan order. When
         *resume* is set (or configured on the executor) a previously persisted
         state file is loaded and every step that already succeeded is skipped.
+
+        *invalidated* names step ids whose inputs changed since the last run.
+        Those steps and every step that (transitively) depends on them are
+        re-executed; every other previously-succeeded step is skipped, so only
+        the steps affected by the change run again.
         """
         if plan.has_cycles():
             raise ExecutorError(
@@ -382,7 +393,9 @@ class Executor:
             self._results.clear()
         self._cache.clear()
 
+        self._invalidated = set(invalidated or ())
         steps = self._order_steps(plan)
+        self._affected = self._affected_steps(plan, self._invalidated)
         started_at = self._clock()
         for step in steps:
             await self._execute_step(plan, step)
@@ -443,6 +456,28 @@ class Executor:
                 break
         return order
 
+    def _affected_steps(self, plan: Plan, invalidated: set[str]) -> set[str]:
+        """Return *invalidated* plus every step that transitively depends on it.
+
+        Builds the reverse dependency map and floods from the directly
+        invalidated step ids, so a change to one step invalidates every
+        downstream step whose input could have changed as a result.
+        """
+        dependents: dict[str, set[str]] = {step.id: set() for step in plan.steps}
+        for step in plan.steps:
+            for dep in step.depends_on:
+                if dep in dependents:
+                    dependents[dep].add(step.id)
+        affected = set(invalidated)
+        stack = list(invalidated)
+        while stack:
+            current = stack.pop()
+            for dependent in dependents.get(current, ()):
+                if dependent not in affected:
+                    affected.add(dependent)
+                    stack.append(dependent)
+        return affected
+
     # --- single step ------------------------------------------------------
 
     async def _execute_step(self, plan: Plan, step: PlanStep) -> None:
@@ -469,7 +504,11 @@ class Executor:
                 return
 
         existing = self._results.get(step_id)
-        if existing is not None and existing.succeeded:
+        if (
+            existing is not None
+            and existing.succeeded
+            and step_id not in self._affected
+        ):
             return
 
         cache_key = StepCache.key_for(step.tool, step.arguments)
