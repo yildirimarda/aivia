@@ -10,6 +10,7 @@ The media kind is detected from the file extension when it is not supplied.
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,8 @@ from aivia.core.models.asset import Asset, AssetKind
 __all__ = [
     "AssetRegistry",
     "DuplicateLabelError",
+    "UnknownLabelError",
+    "resolve_labels",
 ]
 
 _EXTENSION_KINDS: dict[str, AssetKind] = {
@@ -54,6 +57,35 @@ _READ_ONLY_MODE = 0o444
 
 class DuplicateLabelError(ValueError):
     """Raised when an asset is added with a label already in the registry."""
+
+
+class UnknownLabelError(ValueError):
+    """Raised when an instruction references an asset label that is not registered."""
+
+    code: str = "unknown_asset_label"
+
+
+_LABEL_RE = re.compile(r"@([A-Za-z0-9_.-]+)")
+
+
+def resolve_labels(instruction: str, registry: AssetRegistry) -> dict[str, Asset]:
+    """Resolve every ``@label`` reference in *instruction* to its asset.
+
+    Returns a mapping of label to :class:`Asset`. Each referenced label is
+    resolved once, so repeated references collapse to a single entry. Raises
+    :class:`UnknownLabelError` (a :class:`ValueError`) naming the first label
+    that is not registered, so the failure is clear and actionable.
+    """
+    found = _LABEL_RE.findall(instruction)
+    resolved: dict[str, Asset] = {}
+    for label in found:
+        if label in resolved:
+            continue
+        asset = registry.get(label)
+        if asset is None:
+            raise UnknownLabelError(f"unknown asset label: {label!r}")
+        resolved[label] = asset
+    return resolved
 
 
 def _kind_from_extension(path: Path) -> AssetKind:
