@@ -1,0 +1,6 @@
+# Default timing for a freshly assembled composition. This file is data:
+# update it instead of releasing new code when the default duration changes.
+
+schema_version: 1
+
+default_duration_seconds: 5.0

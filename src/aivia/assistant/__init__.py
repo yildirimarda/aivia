@@ -8,6 +8,7 @@ The tool framework provides an allowlisted registry of tools with JSON schemas,
 estimates, execution and safety limits.
 """
 
+from aivia.assistant.assembly import Assembly
 from aivia.assistant.composition_tools import (
     ALL_COMPOSITION_TOOLS,
     AnimationTool,
@@ -68,6 +69,7 @@ __all__ = [
     "ALL_GENERATION_TOOLS",
     "ALL_RENDER_TOOLS",
     "AnimationTool",
+    "Assembly",
     "AssetRegistry",
     "AudioMixTool",
     "BackgroundRemovalTool",
