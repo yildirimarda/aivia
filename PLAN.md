@@ -732,7 +732,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Define the plan schema with ordered steps, arguments, dependencies, estimate, assumptions and acyclicity checks (tests/assistant/test_plan.py)
 - [x] Build the planner turning an instruction, asset summary and tool schemas into a valid plan bounded by the step limit with repair then failure (tests/assistant/test_planner.py)
 - [x] Validate plans for allowlist, acyclicity, argument schemas and the instruction budget cap (tests/assistant/test_plan_validation.py)
-- [ ] Add plan preview and approval with always, ask and never modes plus an edit plan path (tests/cli/test_do_approval.py)
+- [x] Add plan preview and approval with always, ask and never modes plus an edit plan path (tests/cli/test_do_approval.py)
 - [ ] Implement the executor running steps in dependency order with caching, per step cost, retries, fallbacks and resumable partial results (tests/assistant/test_executor.py)
 - [ ] Assemble tool outputs and patches into a single composition rendered by the shared renderer (tests/assistant/test_assembly.py)
 - [ ] Add a do command resolving at labels, accepting output selection and printing a cost breakdown (tests/cli/test_do.py)
