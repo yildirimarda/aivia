@@ -730,7 +730,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Expose composition tools for text, asset placement, overlays, animation and audio mixing that emit validated patches (tests/assistant/test_composition_tools.py)
 - [x] Expose a render tool with output selection and a deliver tool registered only when delivery providers exist (tests/assistant/test_render_tools.py)
 - [x] Define the plan schema with ordered steps, arguments, dependencies, estimate, assumptions and acyclicity checks (tests/assistant/test_plan.py)
-- [ ] Build the planner turning an instruction, asset summary and tool schemas into a valid plan bounded by the step limit with repair then failure (tests/assistant/test_planner.py)
+- [x] Build the planner turning an instruction, asset summary and tool schemas into a valid plan bounded by the step limit with repair then failure (tests/assistant/test_planner.py)
 - [ ] Validate plans for allowlist, acyclicity, argument schemas and the instruction budget cap (tests/assistant/test_plan_validation.py)
 - [ ] Add plan preview and approval with always, ask and never modes plus an edit plan path (tests/cli/test_do_approval.py)
 - [ ] Implement the executor running steps in dependency order with caching, per step cost, retries, fallbacks and resumable partial results (tests/assistant/test_executor.py)
