@@ -18,6 +18,12 @@ from aivia.assistant.composition_tools import (
     TextTool,
     composition_tool_registry,
 )
+from aivia.assistant.executor import (
+    ExecutionResult,
+    Executor,
+    StepCache,
+    StepResult,
+)
 from aivia.assistant.generation_tools import (
     ALL_GENERATION_TOOLS,
     BackgroundRemovalTool,
@@ -68,6 +74,8 @@ __all__ = [
     "CompositionTool",
     "DeliverTool",
     "DuplicateLabelError",
+    "ExecutionResult",
+    "Executor",
     "ImageEditTool",
     "ImageGenerationTool",
     "MusicGenerationTool",
@@ -75,6 +83,8 @@ __all__ = [
     "PlacementTool",
     "RenderTool",
     "SafetyLimits",
+    "StepCache",
+    "StepResult",
     "TextTool",
     "Tool",
     "ToolArguments",

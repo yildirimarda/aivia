@@ -1394,6 +1394,14 @@ class PlanStep(ModelBase):
             "after",
         ),
     )
+    fallbacks: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices(
+            "fallbacks",
+            "fallback_tools",
+            "alternatives",
+        ),
+    )
     status: PlanStepState = Field(
         default=PlanStepState.PENDING,
         validation_alias=AliasChoices("status", "state", "step_state"),
@@ -1448,6 +1456,11 @@ class PlanStep(ModelBase):
     def _normalize_depends_on(cls, value: Any) -> Any:
         return _normalize_names(value)
 
+    @field_validator("fallbacks", mode="before")
+    @classmethod
+    def _normalize_fallbacks(cls, value: Any) -> Any:
+        return _normalize_names(value)
+
     @field_validator("status", mode="before")
     @classmethod
     def _normalize_status(cls, value: Any) -> Any:
@@ -1477,6 +1490,11 @@ class PlanStep(ModelBase):
     def dependencies(self) -> list[str]:
         """Alias for :attr:`depends_on`."""
         return self.depends_on
+
+    @property
+    def fallback_tools(self) -> list[str]:
+        """Alias for :attr:`fallbacks`."""
+        return self.fallbacks
 
     @property
     def state(self) -> PlanStepState:
