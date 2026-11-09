@@ -712,7 +712,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Support per language character voices, pin the exact provider voice id across runs and gate cloning behind consent (tests/characters/test_voices_consent.py)
 - [x] Add a lip sync provider adapter plus a no AI fallback using audio reactive pose swaps, blinking and idle motion with sprite sheet support (tests/characters/test_lipsync.py)
 - [x] Give each character a music identity with style prompts, personality lyrics and a reusable jingle or intro (tests/characters/test_music_identity.py)
-- [ ] Implement the character short and character card formats that fail clearly when no character is selected (slow, tests/formats/test_character_formats.py)
+- [x] Implement the character short and character card formats that fail clearly when no character is selected (slow, tests/formats/test_character_formats.py)
 - [ ] Keep a series continuity log injected into writing with view and edit commands and contradiction warnings (tests/characters/test_series.py)
 - [ ] Add a character test command rendering sample scenes across strategies and printing consistency scores and cost (tests/cli/test_character_test.py)
 - [ ] Enforce character rights: ownership flag required, real person likeness blocked without consent and an optional resemblance warning (tests/characters/test_rights.py)
