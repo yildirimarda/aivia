@@ -49,6 +49,11 @@ from aivia.assistant.render_tools import (
     RenderTool,
     render_tool_registry,
 )
+from aivia.assistant.sandbox import (
+    SandboxedEnvironment,
+    SandboxError,
+    SandboxPathError,
+)
 from aivia.assistant.selfcheck import SelfCheck, SelfCheckError, SelfCheckResult
 from aivia.assistant.tool_framework import (
     SafetyLimits,
@@ -90,6 +95,9 @@ __all__ = [
     "PlacementTool",
     "RenderTool",
     "SafetyLimits",
+    "SandboxError",
+    "SandboxPathError",
+    "SandboxedEnvironment",
     "SelfCheck",
     "SelfCheckError",
     "SelfCheckResult",
