@@ -49,6 +49,7 @@ from aivia.assistant.render_tools import (
     RenderTool,
     render_tool_registry,
 )
+from aivia.assistant.selfcheck import SelfCheck, SelfCheckError, SelfCheckResult
 from aivia.assistant.tool_framework import (
     SafetyLimits,
     Tool,
@@ -88,6 +89,9 @@ __all__ = [
     "PlacementTool",
     "RenderTool",
     "SafetyLimits",
+    "SelfCheck",
+    "SelfCheckError",
+    "SelfCheckResult",
     "StepCache",
     "StepResult",
     "TextTool",
