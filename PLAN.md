@@ -716,7 +716,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Keep a series continuity log injected into writing with view and edit commands and contradiction warnings (tests/characters/test_series.py)
 - [x] Add a character test command rendering sample scenes across strategies and printing consistency scores and cost (tests/cli/test_character_test.py)
 - [x] Enforce character rights: ownership flag required, real person likeness blocked without consent and an optional resemblance warning (tests/characters/test_rights.py)
-- [ ] Run one mock character run per strategy with the strategy recorded (tests/e2e/test_character_strategies.py)
+- [x] Run one mock character run per strategy with the strategy recorded (tests/e2e/test_character_strategies.py)
 
 ## Milestone 17: Natural language assistant
 
