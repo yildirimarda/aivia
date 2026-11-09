@@ -35,6 +35,12 @@ from aivia.assistant.registry import (
     UnknownLabelError,
     resolve_labels,
 )
+from aivia.assistant.render_tools import (
+    ALL_RENDER_TOOLS,
+    DeliverTool,
+    RenderTool,
+    render_tool_registry,
+)
 from aivia.assistant.tool_framework import (
     SafetyLimits,
     Tool,
@@ -54,17 +60,20 @@ from aivia.assistant.tool_framework import (
 __all__ = [
     "ALL_COMPOSITION_TOOLS",
     "ALL_GENERATION_TOOLS",
+    "ALL_RENDER_TOOLS",
     "AnimationTool",
     "AssetRegistry",
     "AudioMixTool",
     "BackgroundRemovalTool",
     "CompositionTool",
+    "DeliverTool",
     "DuplicateLabelError",
     "ImageEditTool",
     "ImageGenerationTool",
     "MusicGenerationTool",
     "OverlayTool",
     "PlacementTool",
+    "RenderTool",
     "SafetyLimits",
     "TextTool",
     "Tool",
@@ -85,5 +94,6 @@ __all__ = [
     "VoiceGenerationTool",
     "composition_tool_registry",
     "generation_tool_registry",
+    "render_tool_registry",
     "resolve_labels",
 ]

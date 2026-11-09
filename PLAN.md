@@ -728,7 +728,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the tool framework with JSON schema, estimate, execute, safety limits and allowlist enforcement (tests/assistant/test_tool_framework.py)
 - [x] Expose generation tools for image, image edit, background removal, upscale, video, voice and music (tests/assistant/test_generation_tools.py)
 - [x] Expose composition tools for text, asset placement, overlays, animation and audio mixing that emit validated patches (tests/assistant/test_composition_tools.py)
-- [ ] Expose a render tool with output selection and a deliver tool registered only when delivery providers exist (tests/assistant/test_render_tools.py)
+- [x] Expose a render tool with output selection and a deliver tool registered only when delivery providers exist (tests/assistant/test_render_tools.py)
 - [ ] Define the plan schema with ordered steps, arguments, dependencies, estimate, assumptions and acyclicity checks (tests/assistant/test_plan.py)
 - [ ] Build the planner turning an instruction, asset summary and tool schemas into a valid plan bounded by the step limit with repair then failure (tests/assistant/test_planner.py)
 - [ ] Validate plans for allowlist, acyclicity, argument schemas and the instruction budget cap (tests/assistant/test_plan_validation.py)
