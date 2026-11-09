@@ -51,6 +51,7 @@ def test_the_package_ships_exactly_one_default_config() -> None:
         and path.name
         not in {
             CATALOG_FILENAME,
+            "composition.yaml",
             PLATFORMS_FILENAME,
             HOOK_FORMULAS_FILENAME,
             LENGTH_PRESETS_FILENAME,

@@ -14,15 +14,32 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+import yaml
 from PIL import Image
 
 from aivia.assistant.tool_framework import ToolResult
 from aivia.compose import Canvas, Composition, render_still
 from aivia.compose.patch import CompositionPatch, apply_patch
+from aivia.core import paths
 from aivia.media import MediaResult
 
 _LAYER_KINDS = frozenset({"image", "video"})
 _TRACK_KINDS = frozenset({"voice", "music", "audio", "background", "sfx", "effects"})
+
+_COMPOSITION_DEFAULTS_FILENAME = "composition.yaml"
+
+
+def _load_default_duration_seconds() -> float:
+    """Return the default composition duration from packaged data."""
+    path = paths.package_defaults_dir() / _COMPOSITION_DEFAULTS_FILENAME
+    payload: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    value = payload.get("default_duration_seconds")
+    if value is None:
+        raise ValueError(f"missing default_duration_seconds in {path}")
+    return float(value)
+
+
+_DEFAULT_DURATION_SECONDS = _load_default_duration_seconds()
 
 
 class Assembly:
@@ -49,7 +66,7 @@ class Assembly:
         if composition is None:
             self._composition = Composition(
                 canvas=Canvas(width=1280, height=720, background="#000000"),
-                duration_seconds=5.0,
+                duration_seconds=_DEFAULT_DURATION_SECONDS,
                 layers=[],
                 audio_tracks=[],
                 effects=[],
