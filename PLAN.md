@@ -724,7 +724,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 - [x] Add the asset registry with labels, hashes and read only originals, rejecting duplicate labels (tests/assistant/test_assets.py)
 - [x] Parse at labels in instructions, resolving them to assets and failing clearly on unknown labels (tests/assistant/test_labels.py)
-- [ ] Analyze registered assets for dimensions, colors, vision description, detected text and face regions (tests/assistant/test_asset_analysis.py)
+- [x] Analyze registered assets for dimensions, colors, vision description, detected text and face regions (tests/assistant/test_asset_analysis.py)
 - [ ] Add the tool framework with JSON schema, estimate, execute, safety limits and allowlist enforcement (tests/assistant/test_tool_framework.py)
 - [ ] Expose generation tools for image, image edit, background removal, upscale, video, voice and music (tests/assistant/test_generation_tools.py)
 - [ ] Expose composition tools for text, asset placement, overlays, animation and audio mixing that emit validated patches (tests/assistant/test_composition_tools.py)
