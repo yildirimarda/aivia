@@ -9,6 +9,12 @@
 #     ./run.sh --github-setup
 #   On the host, with your own gh session:
 #     ./setup-github.sh
+#
+# Afterwards, change which checks are required WITHOUT redoing the setup:
+#   ./run.sh --github-setup --list-checks
+#   ./run.sh --github-setup --add-check "name[,name]"
+#   ./run.sh --github-setup --remove-check "name[,name]"
+# (on the host: ACTION=list|add|remove CHECK_ARG="name,name" ./setup-github.sh)
 
 set -euo pipefail
 
@@ -38,6 +44,88 @@ detect_checks() {
       done | sort -u
 }
 NAMES="$(detect_checks || true)"
+
+# ── Manage the required checks of an already protected branch ───────────────
+# ACTION=list|add|remove (default setup = the full one-time configuration
+# below). add/remove use the status-check "contexts" API, so they touch
+# NOTHING else about the protection — unlike a second full setup, which
+# rewrites it from scratch. CHECK_ARG is a comma-separated list of check names:
+#   ./run.sh --github-setup --list-checks
+#   ./run.sh --github-setup --add-check "rust (ubuntu-latest),msrv"
+#   ./run.sh --github-setup --remove-check msrv
+ACTION="${ACTION:-setup}"
+if [[ "$ACTION" != "setup" ]]; then
+  CTX_API="repos/$REPO/branches/$BASE/protection/required_status_checks"
+  if ! CURRENT="$(gh api "$CTX_API" --jq '.contexts[]' 2>/dev/null)"; then
+    echo "error: $BASE has no branch protection with required checks, so there is nothing to $ACTION." >&2
+    echo "Apply it first (on a private repo under the Free plan GitHub refuses it):" >&2
+    echo "  ./run.sh --github-setup" >&2
+    exit 1
+  fi
+  show_required() {
+    echo "required on $BASE (a PR cannot merge until all are green):"
+    if [[ -n "$CURRENT" ]]; then sed 's/^/  - /' <<<"$CURRENT"; else echo "  (none)"; fi
+  }
+  case "$ACTION" in
+    list)
+      echo "repo: $REPO"
+      show_required
+      echo
+      echo "reporting on $BASE, not required (merge does not wait for them):"
+      OPTIONAL="$(grep -vxFf <(printf '%s\n' "$CURRENT") <<<"$NAMES" || true)"
+      if [[ -n "$OPTIONAL" ]]; then sed 's/^/  - /' <<<"$OPTIONAL"; else echo "  (none)"; fi
+      if [[ -n "$CURRENT" && -n "$NAMES" ]]; then
+        MISSING="$(grep -vxFf <(printf '%s\n' "$NAMES") <<<"$CURRENT" || true)"
+        if [[ -n "$MISSING" ]]; then
+          echo
+          echo "required but NOT seen among the latest runs on $BASE (a wrong name never reports"
+          echo "and blocks every PR; ignore this if the job only runs on some paths):"
+          sed 's/^/  ! /' <<<"$MISSING"
+        fi
+      fi
+      exit 0 ;;
+    add|remove)
+      LIST=()
+      while IFS= read -r c; do
+        c="$(echo "$c" | sed 's/^ *//; s/ *$//')"
+        if [[ -n "$c" ]]; then LIST+=("$c"); fi
+      done < <(printf '%s\n' "${CHECK_ARG:-}" | tr ',' '\n')
+      if (( ${#LIST[@]} == 0 )); then
+        echo "error: name the check(s), comma-separated:  --$ACTION-check \"name[,name]\"" >&2
+        exit 1
+      fi
+      ARGS=()
+      for c in "${LIST[@]}"; do
+        present=0; grep -qxF "$c" <<<"$CURRENT" && present=1
+        if [[ "$ACTION" == "add" ]]; then
+          if (( present )); then echo "  already required: $c"; continue; fi
+          if [[ -n "$NAMES" ]] && ! grep -qxF "$c" <<<"$NAMES"; then
+            echo "error: no check named '$c' has reported on $BASE — requiring it would block every PR." >&2
+            echo "Checks seen on $BASE:" >&2
+            sed 's/^/  - /' <<<"$NAMES" >&2
+            exit 1
+          fi
+        else
+          if (( ! present )); then echo "  not required (nothing to remove): $c"; continue; fi
+        fi
+        ARGS+=(-f "contexts[]=$c")
+      done
+      if (( ${#ARGS[@]} > 0 )); then
+        if [[ "$ACTION" == "add" ]]; then
+          gh api -X POST "$CTX_API/contexts" "${ARGS[@]}" >/dev/null
+          echo "  OK  added"
+        else
+          gh api -X DELETE "$CTX_API/contexts" "${ARGS[@]}" >/dev/null
+          echo "  OK  removed"
+        fi
+        CURRENT="$(gh api "$CTX_API" --jq '.contexts[]' 2>/dev/null || true)"
+      fi
+      echo "repo: $REPO"
+      show_required
+      exit 0 ;;
+    *) echo "error: unknown ACTION '$ACTION' (setup, list, add, remove)" >&2; exit 1 ;;
+  esac
+fi
 
 # CHECK accepts a comma-separated list: CHECK="Lint & Format,Tests (3.12)".
 # IMPORTANT: only require checks that run on EVERY pull request. A job that
