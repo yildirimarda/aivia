@@ -8,6 +8,9 @@ no AI call, no network request and no asset lookup happens here.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from pathlib import Path
+
 import pytest
 import yaml
 from pydantic import ValidationError as PydanticValidationError
@@ -32,14 +35,14 @@ DEFAULT = {
 }
 
 
-def write_character(root, name, payload):
+def write_character(root: Path, name: str, payload: Mapping[str, object]) -> Path:
     path = root / "characters" / f"{name}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(payload), encoding="utf-8")
     return path
 
 
-def write_asset(root, name, content=b"fake-asset"):
+def write_asset(root: Path, name: str, content: bytes = b"fake-asset") -> Path:
     path = root / "characters" / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
@@ -118,7 +121,7 @@ def test_character_music_identity_defaults_to_empty_strings() -> None:
     assert character.jingle == ""
 
 
-def test_loader_loads_character_with_music_identity(tmp_path) -> None:
+def test_loader_loads_character_with_music_identity(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     write_character(data_dir, "mascot", DEFAULT)
 
@@ -133,7 +136,9 @@ def test_loader_loads_character_with_music_identity(tmp_path) -> None:
     assert library.names() == ("mascot",)
 
 
-def test_loader_load_character_file_directly_with_music_identity(tmp_path) -> None:
+def test_loader_load_character_file_directly_with_music_identity(
+    tmp_path: Path,
+) -> None:
     data_dir = tmp_path / "data"
     path = write_character(data_dir, "mascot", DEFAULT)
 
@@ -143,7 +148,7 @@ def test_loader_load_character_file_directly_with_music_identity(tmp_path) -> No
     assert character.jingle == DEFAULT["jingle"]
 
 
-def test_loader_unknown_character_with_music_identity(tmp_path) -> None:
+def test_loader_unknown_character_with_music_identity(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     write_character(data_dir, "mascot", DEFAULT)
 
