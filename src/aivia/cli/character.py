@@ -329,15 +329,15 @@ def run_character_test(args: argparse.Namespace) -> int:
                 [scene], config=character_config, strategies=strategies
             )[0]
             score: float | None = None
-            cost = 0.0
+            scene_cost = 0.0
             if result.asset is not None:
                 try:
                     score = scorer(result.asset)
                 except Exception:
                     score = None
-                cost = _record_cost(tracker, result.strategy, cost_per_image)
-            total_cost += cost
-            rows.append((index, scene, result, score, cost))
+                scene_cost = _record_cost(tracker, result.strategy, cost_per_image)
+            total_cost += scene_cost
+            rows.append((index, scene, result, score, scene_cost))
 
         _print_test_results(rows, total_cost)
 
