@@ -28,7 +28,7 @@ DEFAULT_FACTS = [
 ]
 
 
-def write_series(root: Path, name: str, payload: dict) -> Path:
+def write_series(root: Path, name: str, payload: dict[str, object]) -> Path:
     path = root / "series" / f"{name}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(payload), encoding="utf-8")
@@ -123,9 +123,13 @@ def test_series_add_or_replace_fact() -> None:
     replaced = series.add_or_replace_fact(
         SeriesFact(category="character", key="mascot.color", value="red")
     )
-    assert replaced.fact_for("character", "mascot.color").value == "red"
+    fact = replaced.fact_for("character", "mascot.color")
+    assert fact is not None
+    assert fact.value == "red"
     assert len(replaced.facts) == 3
-    assert series.fact_for("character", "mascot.color").value == "blue"
+    fact = series.fact_for("character", "mascot.color")
+    assert fact is not None
+    assert fact.value == "blue"
 
     added = replaced.add_or_replace_fact(
         SeriesFact(category="setting", key="city", value="Riverton")
@@ -155,7 +159,9 @@ def test_library_loads_and_saves_a_series(tmp_path: Path) -> None:
     series = library.load("adventures")
 
     assert series.name == "Adventures"
-    assert series.fact_for("character", "mascot.color").value == "blue"
+    fact = series.fact_for("character", "mascot.color")
+    assert fact is not None
+    assert fact.value == "blue"
     assert "adventures" in library
     assert library.names() == ("adventures",)
 
@@ -205,7 +211,9 @@ def test_loader_load_series_file_directly(tmp_path: Path) -> None:
     series = load_series_file(path)
 
     assert series.name == "Adventures"
-    assert series.fact_for("setting", "city").value == "Riverton"
+    fact = series.fact_for("setting", "city")
+    assert fact is not None
+    assert fact.value == "Riverton"
 
 
 def test_loader_invalid_series_yaml(tmp_path: Path) -> None:
@@ -367,9 +375,11 @@ def test_edit_command_adds_a_fact(
 
     library = SeriesLibrary(data_dir=tmp_path / "aivia" / "data")
     series = library.load("adventures")
-    assert series.fact_for("character", "mascot.color").value == "blue"
-    assert series.fact_for("character", "mascot.color").source == "handbook"
-    assert series.fact_for("character", "mascot.color").confidence == 0.9
+    fact = series.fact_for("character", "mascot.color")
+    assert fact is not None
+    assert fact.value == "blue"
+    assert fact.source == "handbook"
+    assert fact.confidence == 0.9
 
 
 def test_edit_command_removes_a_fact(
@@ -426,7 +436,9 @@ def test_edit_command_replaces_a_fact(
 
     library = SeriesLibrary(data_dir=tmp_path / "aivia" / "data")
     series = library.load("adventures")
-    assert series.fact_for("character", "mascot.color").value == "red"
+    fact = series.fact_for("character", "mascot.color")
+    assert fact is not None
+    assert fact.value == "red"
 
 
 def test_edit_command_dry_run_does_not_write(
