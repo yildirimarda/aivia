@@ -46,6 +46,7 @@ VERIFY_CMD=""            # local gate run in the container after a session (one 
 REVIEW_MODEL=""          # a second model reviews every PR before it can auto-merge
 WATCH_MIN=0              # with an empty plan: poll the default branch every N minutes
 RPM=0 RPD=0 TPM=0 TPD=0 ITPM=0 OTPM=0   # provider rate limits to stay under (0 = unlimited)
+RATE_CACHE=1                             # count cached prompt tokens (read + write) as input toward TPM/TPD/ITPM
 RATE_LEDGER="logs/.rate-usage"           # one line per model request: epoch input output
 NOTIFY=0                # notify (macOS banner / webhook) when a long run ends
 HISTORY="logs/history.tsv"
@@ -73,7 +74,7 @@ SKILLS_MOUNT="" GUARD_MOUNT=""
 # Precedence: CLI > .agentloop.local > committed defaults (opencode.json).
 SETTING_KEYS=" ENGINE MODEL SMALL_MODEL FALLBACK_MODELS CI_RETRIES TIMEOUT_MIN STALL_MIN MAX_GROWTH IMAGE
   AUTO_REPLAN HEADROOM AMBITIOUS WAIT DISCOVER LEARN USE_GRAPH GRAPH_CONTEXT GRAPH_BUDGET GIT_GUARD BASE_BRANCH
-  MAX_COST VERIFY_CMD REVIEW_MODEL WATCH_MIN NOTIFY RPM RPD TPM TPD ITPM OTPM "
+  MAX_COST VERIFY_CMD REVIEW_MODEL WATCH_MIN NOTIFY RPM RPD TPM TPD ITPM OTPM RATE_CACHE "
 SETTING_KEYS="${SETTING_KEYS//$'\n'/ }"
 apply_setting() {   # KEY VALUE [origin] — assign a validated key
   local k="$1" v="$2" origin="${3:-}"
@@ -118,11 +119,14 @@ Modes
       --trust-input         let --issue / --address-review use text from people
                             who are not maintainers (off by default: prompt
                             injection into an agent that can push)
-      --resume [BRANCH]     continue an item on the work branch a failed run kept
+      --resume [BRANCH] [N|all]
+                            continue an item on the work branch a failed run kept
                             (default: the branch checked out now, else the newest
                             agent/ branch). Restores stashed leftovers, tells the
                             session to pick up where the last one stopped, then
-                            opens/updates the PR and waits for the merge as usual
+                            opens/updates the PR and waits for the merge as usual.
+                            N|all (or -n N): go on to later items afterwards;
+                            N counts the resumed item too (--resume 5 = it + 4)
       --next                dry run: print the next item. No API calls
       --skills              list the skills sessions can load (.agents/skills/)
                             and flag malformed ones. No API calls
@@ -139,6 +143,11 @@ Modes
       --reindex             rebuild the Graphify knowledge graph from scratch
       --github-setup        run setup-github.sh inside the container using the
                             "gh-admin" keychain token (no host gh login needed)
+      --list-checks         with --github-setup's token: show the checks main
+                            requires, and those that report but are not required
+      --add-check "a,b"     require more checks (touches nothing else; the name
+                            must have reported on main, as in `--list-checks`)
+      --remove-check "a,b"  stop requiring them
 
 Options
   -e, --engine NAME         opencode (default; OpenRouter or NVIDIA NIM models),
@@ -206,6 +215,9 @@ Rate limits — stay under a free endpoint's quotas (default 0 = unlimited)
       --rpm N  --rpd N      requests per minute / per day
       --tpm N  --tpd N      tokens (input + output) per minute / per day
       --itpm N --otpm N     input / output tokens per minute
+                            Cached prompt tokens count as input (providers meter
+                            the whole prompt); --no-rate-cache / RATE_CACHE=0
+                            ignores them, for APIs where cache reads are free
                             The loop pauses the session container just before
                             the next request would break a limit and resumes
                             when the window allows; daily limits can wait for
@@ -218,6 +230,7 @@ Switches (each has an on and an off form, so a CLI flag can undo
       --graph / --no-graph            --graph-context / --no-graph-context
       --git-guard / --no-git-guard    --headroom / --no-headroom
       --wait / --no-wait              --notify / --no-notify
+      --rate-cache / --no-rate-cache
       --auto-replan / --no-auto-replan  --ambitious / --no-ambitious
       --graph-budget N  --base-branch NAME
 
@@ -245,6 +258,14 @@ EOF
 }
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
+GH_ACTION="setup" GH_CHECKS=""   # --github-setup: setup | list | add | remove (+ names)
+_gh_set_action() {   # ACTION [NAMES]
+  if [[ "$GH_ACTION" != setup && "$GH_ACTION" != "$1" ]]; then
+    echo "error: --list-checks, --add-check and --remove-check cannot be combined" >&2; exit 1
+  fi
+  GH_ACTION="$1"
+  if [[ -n "${2:-}" ]]; then GH_CHECKS="${GH_CHECKS:+$GH_CHECKS,}$2"; fi
+}
 while (( $# )); do
   case "$1" in
     -n|--tasks)     COUNT="${2:?-n needs a value}"; shift 2 ;;
@@ -254,8 +275,13 @@ while (( $# )); do
     --issue)        MODE="issue"; ISSUE_NUM="${2:?--issue needs an issue number}"; shift 2 ;;
     --address-review) MODE="review"; REVIEW_PR="${2:?--address-review needs a PR number}"; shift 2 ;;
     --trust-input)  TRUST_INPUT=1; shift ;;
-    --resume)       RESUME=1
-                    if [[ $# -gt 1 && "$2" != -* ]]; then RESUME_BRANCH="$2"; shift 2; else shift; fi ;;
+    --resume)       RESUME=1; shift
+                    # --resume [BRANCH] [N|all]: a branch name, then how many
+                    # items to do in total (the resumed one included). A bare
+                    # number or "all" is the count: --resume 5, --resume all.
+                    _cnt_re='^([0-9]+|all)$'
+                    if [[ $# -gt 0 && "$1" != -* && ! "$1" =~ $_cnt_re ]]; then RESUME_BRANCH="$1"; shift; fi
+                    if [[ $# -gt 0 && "$1" =~ $_cnt_re ]]; then COUNT="$1"; shift; fi ;;
     --next)         MODE="next"; shift ;;
     --skills)       MODE="skills"; shift ;;
     --stats)        MODE="stats"; shift ;;
@@ -264,6 +290,9 @@ while (( $# )); do
     --build)        MODE="build"; shift ;;
     --reindex)      MODE="reindex"; shift ;;
     --github-setup) MODE="ghsetup"; shift ;;
+    --list-checks)  MODE="ghsetup"; _gh_set_action list; shift ;;
+    --add-check)    MODE="ghsetup"; _gh_set_action add "${2:?--add-check needs a check name (comma-separated for several)}"; shift 2 ;;
+    --remove-check) MODE="ghsetup"; _gh_set_action remove "${2:?--remove-check needs a check name (comma-separated for several)}"; shift 2 ;;
     -f|--file)      f="${2:?-f needs a path}"
                     [[ -f "$f" ]] || { echo "error: file not found: $f" >&2; exit 1; }
                     ARG_TEXT="$(cat "$f")"; shift 2 ;;
@@ -305,6 +334,8 @@ while (( $# )); do
     --tpd)          TPD="${2:?--tpd needs a number}"; shift 2 ;;
     --itpm)         ITPM="${2:?--itpm needs a number}"; shift 2 ;;
     --otpm)         OTPM="${2:?--otpm needs a number}"; shift 2 ;;
+    --rate-cache)   RATE_CACHE=1; shift ;;
+    --no-rate-cache) RATE_CACHE=0; shift ;;
     --fallback-models) FALLBACK_MODELS="${2:?--fallback-models needs a comma-separated list}"; shift 2 ;;
     --graph)        USE_GRAPH=1; shift ;;
     --no-graph)     USE_GRAPH=0; shift ;;
@@ -442,6 +473,7 @@ skills_present() {
 ITEM_OPEN=0 ITEM_MODE="" ITEM_TEXT="" ITEM_PR="" ITEM_OUTCOME=""
 ITEM_SESSIONS=0 ITEM_TOKENS=0 ITEM_COST=0 ITEM_GRAPH=0 ITEM_START=0
 RUN_COST=0 STOP_REASON="" DONE_NOTE="" SESSIONS_RUN=0
+KEPT_BRANCH=""   # work branch a failed run left behind (see keep_branch_and_return)
 add_cost() { awk -v a="${1:-0}" -v b="${2:-0}" 'BEGIN { printf "%.4f", a + b }'; }
 
 item_begin() {   # $1 = mode (item|task|init|replan|issue|review), $2 = text
@@ -561,7 +593,7 @@ for _v in COUNT CI_RETRIES TIMEOUT_MIN STALL_MIN MAX_GROWTH GRAPH_BUDGET WATCH_M
   # no leading zeros: bash arithmetic reads 08 as a (broken) octal number
   [[ "${!_v}" =~ ^(0|[1-9][0-9]*)$ ]] || die "$_v must be a whole number (got '${!_v}')"
 done
-for _v in AUTO_REPLAN HEADROOM AMBITIOUS WAIT DISCOVER USE_GRAPH LEARN GIT_GUARD GRAPH_CONTEXT NOTIFY; do
+for _v in AUTO_REPLAN HEADROOM AMBITIOUS WAIT DISCOVER USE_GRAPH LEARN GIT_GUARD GRAPH_CONTEXT NOTIFY RATE_CACHE; do
   case "$(printf '%s' "${!_v}" | tr '[:upper:]' '[:lower:]')" in
     1|true|yes|on)  printf -v "$_v" '%s' 1 ;;
     0|false|no|off) printf -v "$_v" '%s' 0 ;;
@@ -1546,14 +1578,23 @@ rate_gate() {
   while IFS= read -r line || [[ -n "$line" ]]; do
     printf '%s\n' "$line"
     case "$line" in *tokens*|*usage*) : ;; *) continue ;; esac
-    rec="$(printf '%s\n' "$line" | jq -Rr 'fromjson? | objects |
+    # Cached prompt tokens: opencode and claude report them APART from input
+    # (add them); codex's input_tokens already contains them (subtract when
+    # RATE_CACHE=0). Providers meter the whole prompt, cached or not, so by
+    # default they count; set RATE_CACHE=0 where cache reads are free
+    # (Anthropic's ITPM) to ignore them.
+    rec="$(printf '%s\n' "$line" | jq -Rr --argjson c "$RATE_CACHE" 'fromjson? | objects |
       if .type == "step_finish" then
         ((.part.tokens.input // 0) as $i | (.part.tokens.output // 0) as $o | (.part.tokens.total // 0) as $t |
-         if ($i + $o) == 0 then "\($t) 0 -" else "\($i) \($o) -" end)
+         ((.part.tokens.cache.read // 0) + (.part.tokens.cache.write // 0)) as $k |
+         if ($i + $o + $k) == 0 then "\($t) 0 -" else "\($i + (if $c == 1 then $k else 0 end)) \($o) -" end)
       elif .type == "turn.completed" then
-        "\(.usage.input_tokens // 0) \(.usage.output_tokens // 0) -"
+        ((.usage.input_tokens // 0) as $i | (.usage.cached_input_tokens // 0) as $k |
+         "\(if $c == 1 then $i else ([$i - $k, 0] | max) end) \(.usage.output_tokens // 0) -")
       elif .type == "assistant" and (.message.usage != null) then
-        "\(.message.usage.input_tokens // 0) \(.message.usage.output_tokens // 0) \(.message.id // "-")"
+        ((.message.usage.input_tokens // 0) as $i |
+         ((.message.usage.cache_read_input_tokens // 0) + (.message.usage.cache_creation_input_tokens // 0)) as $k |
+         "\($i + (if $c == 1 then $k else 0 end)) \(.message.usage.output_tokens // 0) \(.message.id // "-")")
       else empty end' 2>/dev/null)"
     [[ -n "$rec" ]] || continue
     read -r in out id <<< "$rec"
@@ -1873,12 +1914,23 @@ keep_branch_and_return() {
   fi
   echo
   if git switch "$BASE_BRANCH" --quiet 2>/dev/null; then
-    echo "  Back on $BASE_BRANCH${why:+ ($why)} — the work branch is kept for inspection:"
+    KEPT_BRANCH="$br"
+    echo "  Back on $BASE_BRANCH${why:+ ($why)} — the work branch is kept:"
     echo "    branch:    $br${pr:+   (PR #$pr)}"
+    if [[ "$MODE" == plan ]]; then
+      echo "    CONTINUE it (the usual choice):"
+      echo "      ./run.sh --resume $br"
+      echo "        switches to the branch${stashed:+, re-applies the stashed leftovers,} and tells the"
+      echo "        session to pick the item up where it stopped. Run it from $BASE_BRANCH with a"
+      echo "        clean tree (git status); flags such as --engine / --model still apply."
+      echo "      ./run.sh --resume $br all     afterwards keep going through the whole plan"
+      echo "      ./run.sh --resume $br 5       or: the resumed item plus up to 4 more"
+      echo "      (the branch name can be left out: it picks the newest agent/ branch)"
+    fi
     echo "    look at it:    git switch $br"
     echo "    throw it away: git branch -D $br${pr:+  &&  gh pr close $pr --delete-branch}"
     echo "    or just start again from $BASE_BRANCH:  ./run.sh   (add --task \"...\" for a one-off)"
-    [[ -n "$stashed" ]] && echo "    uncommitted leftovers were stashed:  git stash list   (restore on that branch: git stash pop)"
+    [[ -n "$stashed" ]] && echo "    uncommitted leftovers were stashed:  git stash list   (--resume applies them; by hand: git stash pop)"
   else
     echo "  Could not switch back to $BASE_BRANCH${why:+ ($why)}; still on $br."
     echo "  Check:  git status"
@@ -1926,6 +1978,10 @@ cleanup_exit() {
     if (( rc == 130 )); then echo "interrupted during $TASK_POS"; else echo "✖ stopped during $TASK_POS"; fi
     echo "  item:   $TASK_ITEM"
     if (( rc != 130 )) && [[ -n "$STOP_REASON" ]]; then echo "  reason: $STOP_REASON"; fi
+    if [[ -n "$KEPT_BRANCH" && "$MODE" == plan ]]; then
+      echo "  resume: ./run.sh --resume $KEPT_BRANCH        (this item, picking up where it stopped)"
+      echo "          ./run.sh --resume $KEPT_BRANCH all    (and then the rest of the plan; or a number)"
+    fi
     rule
   fi
   [[ -n "$SNAP" ]] && rm -f "$SNAP"
@@ -2798,7 +2854,10 @@ case "$MODE" in
     rule; echo "MODE: github-setup — configuring the repo from inside the container"; rule
     [[ -f "$REPO_DIR/setup-github.sh" ]] || die "setup-github.sh not found in $REPO_DIR"
     # CHECK empty = setup-github.sh auto-detects from the checks on main
-    in_container env AGENTLOOP_YES=1 CHECK="${CHECK:-}" bash ./setup-github.sh
+    if [[ "$GH_ACTION" == setup ]]; then
+      info "(change the required checks later with --list-checks / --add-check / --remove-check)"
+    fi
+    in_container env AGENTLOOP_YES=1 CHECK="${CHECK:-}" ACTION="$GH_ACTION" CHECK_ARG="$GH_CHECKS" bash ./setup-github.sh
     exit $? ;;
   init)
     [[ -n "$ARG_TEXT" ]] || die "--init needs a description (text or -f file)"
