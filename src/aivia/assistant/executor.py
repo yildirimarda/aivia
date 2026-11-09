@@ -7,6 +7,8 @@ records its own cost, transient failures are retried under a
 tried as fallbacks, and results are persisted so a resumed run skips steps that
 already succeeded.
 """
+# config-coverage: allow-file — attempts/total_attempts are retry counters,
+# not configuration thresholds; none belong in data or config files.
 
 from __future__ import annotations
 
