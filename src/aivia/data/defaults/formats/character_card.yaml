@@ -1,0 +1,8 @@
+description: Still image card built around a consistent character.
+stages:
+  - stage: input_topic
+  - stage: write
+  - stage: render
+capabilities: [llm, image_gen]
+output_type: image
+handler: save

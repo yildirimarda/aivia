@@ -192,6 +192,15 @@ formats:
     capabilities: [llm, tts, video_gen]
     output_type: video
     handler: publish
+  character_card:
+    description: Still image card built around a consistent character.
+    stages:
+      - stage: input_topic
+      - stage: write
+      - stage: render
+    capabilities: [llm, image_gen]
+    output_type: image
+    handler: save
   personalized_song_card:
     description: Personalized song card delivered to an order recipient.
     stages:
