@@ -9,6 +9,7 @@ estimates, execution and safety limits.
 """
 
 from aivia.assistant.assembly import Assembly
+from aivia.assistant.clarify import Clarification, Clarifier
 from aivia.assistant.composition_tools import (
     ALL_COMPOSITION_TOOLS,
     AnimationTool,
@@ -73,6 +74,8 @@ __all__ = [
     "AssetRegistry",
     "AudioMixTool",
     "BackgroundRemovalTool",
+    "Clarification",
+    "Clarifier",
     "CompositionTool",
     "DeliverTool",
     "DuplicateLabelError",
