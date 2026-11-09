@@ -132,7 +132,8 @@ def _parse_confidence(value: str) -> float:
         confidence = float(value)
     except ValueError as exc:
         raise ValueError(f"confidence must be a number: {value!r}") from exc
-    if not 0.0 <= confidence <= 1.0:
+    low, high = 0.0, 1.0
+    if not low <= confidence <= high:
         raise ValueError(f"confidence must be between 0 and 1: {value!r}")
     return confidence
 
