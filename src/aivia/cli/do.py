@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from aivia.cli.confirm import confirm_action
 from aivia.cli.registry import register_command
@@ -40,6 +41,11 @@ def _configure_edit(parser: argparse.ArgumentParser) -> None:
         "--edit",
         action="store_true",
         help="open the plan for editing before approval",
+    )
+    parser.add_argument(
+        "--output",
+        metavar="PATH",
+        help="write the cost breakdown to PATH instead of only standard output",
     )
 
 
@@ -74,7 +80,10 @@ def _format_recipe(config: object, name: str) -> FormatRecipeConfig | None:
 
 
 def run_do(args: argparse.Namespace) -> int:
-    """Preview a plan and request approval before running it."""
+    """Preview a plan, print its cost breakdown and request approval before running it.
+
+    With ``--output PATH`` the breakdown is also written to PATH after approval.
+    """
     if not args.format:
         print("error: a format is required", file=sys.stderr)
         return 2
@@ -106,13 +115,15 @@ def run_do(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Format: {args.format}")
-    print(render_estimate(estimate), end="")
+    breakdown = f"Format: {args.format}\n{render_estimate(estimate)}"
+    print(breakdown, end="")
 
     if args.edit:
         print(f"Edit path: plan '{args.format}' is open for editing before approval.")
 
     if planner.approval_mode is PlannerApprovalMode.NEVER:
+        if args.output:
+            return _write_output(args.output, breakdown)
         return 0
 
     if not args.yes and not confirm_action(
@@ -121,6 +132,21 @@ def run_do(args: argparse.Namespace) -> int:
         print("error: plan approval declined", file=sys.stderr)
         return 1
 
+    if args.output:
+        return _write_output(args.output, breakdown)
+
+    return 0
+
+
+def _write_output(path: str, breakdown: str) -> int:
+    target = Path(path).expanduser()
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(breakdown, encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot write output {target}: {exc}", file=sys.stderr)
+        return 1
+    print(f"Output: {target}")
     return 0
 
 
