@@ -110,11 +110,16 @@ def test_render_tool_output_selection(tmp_path: Path) -> None:
     assert result.output["path"] == str(output)
 
 
-def test_render_tool_default_output_path(tmp_path: Path) -> None:
+def test_render_tool_default_output_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
     result = _framework(render_tool_registry()).execute(
         "render.render", {"composition": _composition()}
     )
 
+    output = tmp_path / "render.png"
+    assert output.is_file()
     assert Path(result.output["output"]).is_file()
     assert result.output["path"] == "render.png"
 
