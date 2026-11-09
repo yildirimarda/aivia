@@ -691,9 +691,52 @@ def _facts_context(facts: Any) -> list[dict[str, Any]]:
     ]
 
 
+def _series_facts_context(series: Any) -> list[dict[str, Any]]:
+    """Return series continuity facts as plain mappings for the writer data.
+
+    *series* may be a :class:`~aivia.characters.series.Series`, a sequence of
+    fact objects exposing ``category``, ``key`` and ``value``, or a sequence of
+    mappings carrying those keys. Anything else yields an empty list.
+    """
+    if series is None:
+        return []
+    if hasattr(series, "facts"):
+        items = list(series.facts)
+    elif isinstance(series, Mapping):
+        items = list(series.get("facts") or ())
+    elif isinstance(series, (list, tuple)):
+        items = list(series)
+    else:
+        return []
+    facts: list[dict[str, Any]] = []
+    for item in items:
+        if isinstance(item, Mapping):
+            facts.append(dict(item))
+        else:
+            category = getattr(item, "category", None)
+            key = getattr(item, "key", None)
+            value = getattr(item, "value", None)
+            source = getattr(item, "source", "")
+            confidence = getattr(item, "confidence", 1.0)
+            fact: dict[str, Any] = {}
+            if category is not None:
+                fact["category"] = category
+            if key is not None:
+                fact["key"] = key
+            if value is not None:
+                fact["value"] = value
+            if source:
+                fact["source"] = source
+            if confidence is not None:
+                fact["confidence"] = confidence
+            facts.append(fact)
+    return facts
+
+
 def _writer_data(
     facts_context: Sequence[Mapping[str, Any]],
     context: Mapping[str, Any],
+    series_facts: Sequence[Mapping[str, Any]] | None = None,
 ) -> str:
     """Return the facts and labels of a writing prompt as untrusted data."""
     sources: list[DataBlock] = []
@@ -703,7 +746,7 @@ def _writer_data(
         if isinstance(text, str) and text.strip():
             sources.append(
                 DataBlock(
-                    content=text,
+                    content=text.strip(),
                     kind="fact",
                     source=urls[0] if urls else None,
                 )
@@ -711,6 +754,23 @@ def _writer_data(
         for url in urls:
             if isinstance(url, str) and url.strip():
                 sources.append(DataBlock(content=url, kind="source"))
+    for fact in series_facts or ():
+        category = fact.get("category")
+        key = fact.get("key")
+        value = fact.get("value")
+        if isinstance(value, str) and value.strip():
+            label = (
+                f"{category}.{key}"
+                if isinstance(category, str) and isinstance(key, str)
+                else "series_fact"
+            )
+            sources.append(
+                DataBlock(
+                    content=value.strip(),
+                    kind="series_fact",
+                    source=label,
+                )
+            )
     labels: list[tuple[str, Any]] = []
     language = context.get("target_language")
     if isinstance(language, Mapping):
@@ -754,6 +814,7 @@ def build_multilingual_prompt(
     source_language: str = "",
     prompt: str = DEFAULT_MULTILINGUAL_PROMPT,
     instructions: str = "",
+    series: Any = None,
 ) -> str:
     """Return the user message asking for one native script in *language*."""
     text = prompt.strip() if isinstance(prompt, str) else ""
@@ -766,6 +827,7 @@ def build_multilingual_prompt(
         source = config
     code = normalize_language_code(language)
     facts_context = _facts_context(facts)
+    series_context = _series_facts_context(series)
     if not facts_context:
         raise ConfigError(
             "multilingual writing needs at least one fact",
@@ -796,9 +858,11 @@ def build_multilingual_prompt(
             "another language."
         ),
     }
+    if series_context:
+        context["series_facts"] = series_context
     if extra:
         context["instructions"] = extra
-    data = _writer_data(facts_context, context)
+    data = _writer_data(facts_context, context, series_facts=series_context)
     return (
         f"{text}\n\n"
         f"{data}\n\n"
@@ -828,6 +892,7 @@ def build_multilingual_request(
     source_language: str = "",
     prompt: str = DEFAULT_MULTILINGUAL_PROMPT,
     instructions: str = "",
+    series: Any = None,
     model: str | None = None,
     role: str = "writing",
     metadata: Mapping[str, Any] | None = None,
@@ -849,6 +914,7 @@ def build_multilingual_request(
         source_language=source_language,
         prompt=prompt,
         instructions=instructions,
+        series=series,
     )
     return LLMRequest(
         messages=[ChatMessage(role=MessageRole.USER, content=message)],
@@ -1120,6 +1186,7 @@ async def generate_multilingual_scripts(
     source_language: str = "",
     prompt: str = DEFAULT_MULTILINGUAL_PROMPT,
     instructions: str = "",
+    series: Any = None,
     model: str | None = None,
     role: str = "writing",
     run_id: str = "",
@@ -1134,7 +1201,9 @@ async def generate_multilingual_scripts(
     up per language from *languages_config*, *language_config*, *config* or
     *languages*, and may be overridden with an explicit list or a mapping keyed
     by language. A result containing a forbidden phrase is refused unless
-    *raise_on_violation* is false.
+    *raise_on_violation* is false. When *series* is supplied, its continuity
+    facts are injected into the writing prompt as untrusted data so the writer
+    stays consistent with established canon.
     """
     source = languages_config
     if source is None:
@@ -1189,6 +1258,7 @@ async def generate_multilingual_scripts(
             source_language=source_language,
             prompt=prompt,
             instructions=instructions,
+            series=series,
             model=model,
             role=role,
             metadata=metadata,
@@ -1271,6 +1341,7 @@ class MultilingualWriter:
         role: str = "writing",
         model: str | None = None,
         raise_on_violation: bool = True,
+        series: Any = None,
     ) -> None:
         self.provider = provider
         self.helper = helper
@@ -1284,6 +1355,7 @@ class MultilingualWriter:
         self.role = role
         self.model = model
         self.raise_on_violation = raise_on_violation
+        self.series = series
 
     def _source(self) -> Any:
         if self.config is not None:
@@ -1311,6 +1383,7 @@ class MultilingualWriter:
             "language_config": self.language_config,
             "mode": self.mode,
             "prompt": self.prompt,
+            "series": self.series,
         }
         options.update(kwargs)
         return build_multilingual_prompt(facts, language, **options)
@@ -1333,6 +1406,7 @@ class MultilingualWriter:
             "role": self.role,
             "model": self.model,
             "raise_on_violation": self.raise_on_violation,
+            "series": self.series,
         }
         options.update(kwargs)
         return await generate_multilingual_scripts(
