@@ -296,7 +296,7 @@ class MusicGenerationTool(GenerationTool):
         return toolkit.music(prompt=prompt, **_present(arguments))
 
 
-ALL_GENERATION_TOOLS: tuple[type[Tool], ...] = (
+ALL_GENERATION_TOOLS: tuple[type[GenerationTool], ...] = (
     ImageGenerationTool,
     ImageEditTool,
     BackgroundRemovalTool,
