@@ -13,6 +13,9 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass
+from typing import Any
+
+import yaml
 
 from aivia.cli.registry import register_command
 from aivia.compose import Canvas, Composition
@@ -22,10 +25,27 @@ from aivia.compose.patch import (
     apply_patch_reversible,
 )
 from aivia.compose.schema import TextLayer
+from aivia.core import paths
 
 __all__ = ["configure", "run_repl", "run_session"]
 
 _PROMPT = "session> "
+
+_SESSION_DEFAULTS_FILENAME = "session.yaml"
+
+
+def _load_session_defaults() -> tuple[float, int]:
+    """Return the default session duration and frame rate from packaged data."""
+    path = paths.package_defaults_dir() / _SESSION_DEFAULTS_FILENAME
+    payload: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    duration = payload.get("default_duration_seconds")
+    fps = payload.get("default_fps")
+    if duration is None or fps is None:
+        raise ValueError(f"missing session defaults in {path}")
+    return float(duration), int(fps)
+
+
+_DEFAULT_DURATION_SECONDS, DEFAULT_FPS = _load_session_defaults()
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,8 +62,8 @@ def _initial_composition() -> Composition:
     return Composition(
         id="session",
         canvas=Canvas(width=1280, height=720, background="#000000"),
-        duration_seconds=10.0,
-        fps=30,
+        duration_seconds=_DEFAULT_DURATION_SECONDS,
+        fps=DEFAULT_FPS,
         layers=[
             TextLayer(id="title", text="Hello"),
         ],

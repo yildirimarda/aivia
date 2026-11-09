@@ -55,6 +55,7 @@ def test_the_package_ships_exactly_one_default_config() -> None:
             PLATFORMS_FILENAME,
             HOOK_FORMULAS_FILENAME,
             LENGTH_PRESETS_FILENAME,
+            "session.yaml",
         }
     )
 

@@ -1,0 +1,6 @@
+# Default timing for a freshly started session REPL composition. This file is
+# data: update it instead of releasing new code when the default changes.
+
+schema_version: 1
+default_duration_seconds: 10.0
+default_fps: 30
