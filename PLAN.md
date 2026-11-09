@@ -744,7 +744,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Stop test_render_tool_default_output_path in tests/assistant/test_render_tools.py from writing render.png into the working directory by running it with monkeypatch.chdir into tmp_path, and add /render.png to .gitignore as a safety net (tests/assistant/test_render_tools.py)
 - [x] Re execute only the steps affected by a change using dependency invalidation (tests/assistant/test_incremental.py)
 - [x] Expose session HTTP routes for create, message, preview and history with session scoped asset access (tests/api/test_session_api.py)
-- [ ] Extract a reusable template from a session with suggested variables, and support template run plus CSV batch with per row cost and isolated bad rows (tests/cli/test_template.py)
+- [x] Extract a reusable template from a session with suggested variables, and support template run plus CSV batch with per row cost and isolated bad rows (tests/cli/test_template.py)
 - [ ] Sandbox the assistant: session scoped file access, data only user text, enforced limits and every tool call logged, verified with hostile strings (tests/assistant/test_safety.py)
 - [ ] Add twenty planner evaluation fixtures with expected tool sets, runnable offline and cost capped when live (tests/assistant/test_eval.py)
 
