@@ -4,9 +4,9 @@ rejection, and run locking.
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Generator
 from zoneinfo import ZoneInfo
 
 import pytest
