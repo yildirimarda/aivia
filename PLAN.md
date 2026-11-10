@@ -763,7 +763,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Pass phonetic hints to speech and music and verify the name with transcription, regenerating up to the retry limit (tests/orders/test_pronunciation.py)
 - [x] Implement personalization levels that change which steps run and what they cost (tests/orders/test_levels.py)
 - [x] Maintain a tagged background library with static, animated and AI loop modes and verified loop seamlessness (tests/orders/test_backgrounds.py)
-- [ ] Accept provided background, loop, audio and logo assets with format and resolution validation and fitting that preserves originals (tests/orders/test_provided_assets.py)
+- [x] Accept provided background, loop, audio and logo assets with format and resolution validation and fitting that preserves originals (tests/orders/test_provided_assets.py)
 - [ ] Select stages from the requested outputs so a png runs only the name overlay at zero API cost (tests/orders/test_stage_selection.py)
 - [ ] Place the name on provided images avoiding faces and low contrast regions, with golden tests including special characters (tests/orders/test_name_overlay.py)
 - [ ] Support manual placement overrides and a per image layout file that takes precedence over automatic placement (tests/orders/test_placement_manual.py)
