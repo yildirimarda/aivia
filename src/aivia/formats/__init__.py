@@ -160,6 +160,19 @@ from aivia.formats.registry import (
     stage_contract_registry,
     stage_registry,
 )
+from aivia.formats.song_card import (
+    DEFAULT_SONG_CARD_COMPOSITION_FILENAME,
+    DEFAULT_SONG_CARD_FILENAME,
+    SONG_CARD_STAGE_NAME,
+    SongCard,
+    SongCardFormat,
+    SongCardRenderer,
+    SongCardStage,
+    build_song_card_stage,
+    song_card,
+    song_card_composition,
+    song_card_stage,
+)
 from aivia.formats.song_video import *  # noqa: F403
 from aivia.formats.song_video import __all__ as _song_video_all
 
@@ -167,6 +180,8 @@ __all__ = [
     "DEFAULT_FACT_LIST_FILENAME",
     "DEFAULT_INPUT_FILENAMES",
     "DEFAULT_QUOTE_CARD_TEMPLATE",
+    "DEFAULT_SONG_CARD_COMPOSITION_FILENAME",
+    "DEFAULT_SONG_CARD_FILENAME",
     "DEFAULT_TOPIC_FILENAME",
     "FORMATS_DIR",
     "FORMAT_FILE_SUFFIXES",
@@ -224,6 +239,10 @@ __all__ = [
     "StageRegistration",
     "StageRegistry",
     "StageSpec",
+    "SongCard",
+    "SongCardFormat",
+    "SongCardRenderer",
+    "SongCardStage",
     "TopicInput",
     "TopicInputStage",
     "TopicResult",
@@ -240,6 +259,7 @@ __all__ = [
     "build_quote_card",
     "build_quote_card_composition",
     "build_quote_card_stage",
+    "build_song_card_stage",
     "character_card",
     "character_card_stage",
     "character_short",
@@ -295,6 +315,10 @@ __all__ = [
     "save_quote_card",
     "script_pattern",
     "seed_provided_inputs",
+    "SONG_CARD_STAGE_NAME",
+    "song_card",
+    "song_card_composition",
+    "song_card_stage",
     "stage_contract_registry",
     "stage_registry",
     "typography_templates",
