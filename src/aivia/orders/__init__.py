@@ -26,6 +26,11 @@ from aivia.orders.provided_assets import (
     ProvidedAssets,
     accept_provided_assets,
 )
+from aivia.orders.song_mode import (
+    NamedSong,
+    SongMode,
+    generate_batch_songs,
+)
 
 __all__ = [
     "DEFAULT_FONT_FAMILY",
@@ -34,10 +39,13 @@ __all__ = [
     "AssetKind",
     "NamePronunciationError",
     "NamePronunciationResult",
+    "NamedSong",
     "ProvidedAsset",
     "ProvidedAssets",
+    "SongMode",
     "accept_provided_assets",
     "animate_still",
+    "generate_batch_songs",
     "overlay_name",
     "verify_name_pronunciation",
 ]
