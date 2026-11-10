@@ -746,7 +746,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Expose session HTTP routes for create, message, preview and history with session scoped asset access (tests/api/test_session_api.py)
 - [x] Extract a reusable template from a session with suggested variables, and support template run plus CSV batch with per row cost and isolated bad rows (tests/cli/test_template.py)
 - [x] Sandbox the assistant: session scoped file access, data only user text, enforced limits and every tool call logged, verified with hostile strings (tests/assistant/test_safety.py)
-- [ ] Add twenty planner evaluation fixtures with expected tool sets, runnable offline and cost capped when live (tests/assistant/test_eval.py)
+- [x] Add twenty planner evaluation fixtures with expected tool sets, runnable offline and cost capped when live (tests/assistant/test_eval.py)
 
 ## Milestone 18: Orders, receipts and delivery
 
