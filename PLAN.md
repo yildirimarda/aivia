@@ -770,7 +770,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Animate stills with slow zoom, overlays and a name entrance without any AI call (slow, tests/orders/test_animate.py)
 - [x] Support batch naming with per name or shared songs and assert the difference (tests/orders/test_song_mode.py)
 - [x] Implement the personalized song card format with optional character support (slow, tests/orders/test_song_card.py)
-- [ ] Package outputs as mp4, gif, animated webp, mp3, poster and web card with size presets and mark finals as pinned (tests/orders/test_packaging.py)
+- [x] Package outputs as mp4, gif, animated webp, mp3, poster and web card with size presets and mark finals as pinned (tests/orders/test_packaging.py)
 - [ ] Add delivery providers for local folder, expiring storage link, email and signed webhook with an allowlist and chain fallback (tests/orders/test_delivery.py)
 - [ ] Deliver at the requested time in the order timezone with retries and a confirmation record (tests/orders/test_scheduled_delivery.py)
 - [ ] Support order review and revision where feedback re runs only the affected stages (tests/orders/test_review.py)
