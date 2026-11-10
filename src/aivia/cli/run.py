@@ -62,6 +62,7 @@ from aivia.formats.catalog import load_formats
 from aivia.formats.image_post import CarouselStage, ImagePostStage
 from aivia.formats.input_topic import INPUT_TOPIC_STAGE_NAME, InputTopicStage
 from aivia.formats.quote_card import QuoteCardRenderStage
+from aivia.formats.song_card import SongCardStage
 from aivia.formats.song_video import SONG_VIDEO_STAGE_NAME, SongVideoStage
 from aivia.providers import docs as provider_docs
 from aivia.providers.provider_factory import build_providers
@@ -458,7 +459,7 @@ _RENDER_STAGES: dict[str, type[Stage]] = {
     "quote_card": QuoteCardRenderStage,
     "song_video": SongVideoStage,
     "audio_only": AudioOnlyStage,
-    "personalized_song_card": AudioOnlyStage,
+    "personalized_song_card": SongCardStage,
 }
 
 
