@@ -9,7 +9,8 @@ involved, so the same inputs always produce the same pixels.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
 from typing import Any, cast, overload
@@ -25,7 +26,7 @@ from aivia.compose.contrast import (
     parse_color,
 )
 from aivia.compose.errors import RenderError
-from aivia.compose.placement import find_text_placement
+from aivia.compose.placement import LayerPlacement, find_text_placement
 
 __all__ = [
     "DEFAULT_FONT_FAMILY",
@@ -186,6 +187,100 @@ def _apply_treatment(
     return text_image, 0, 0
 
 
+def _layout_file_candidates(source: Path) -> list[Path]:
+    """Return the sibling layout files for an image source, most specific first."""
+    stem = source.stem
+    suffix = source.suffix
+    return [
+        source.with_name(stem + ".layout.json"),
+        source.with_suffix(suffix + ".layout.json"),
+    ]
+
+
+def _load_layout_placement(source: str | Path) -> tuple[int, int, int, int] | None:
+    """Read a manual placement rectangle from a sibling layout file.
+
+    The layout file lives beside the image, for example ``background.layout.json``
+    or ``background.png.layout.json``. It may hold a top level ``x``/``y`` (and
+    optional ``width``/``height``) or nest them under ``placement``. Returns
+    ``None`` when no usable layout file exists.
+    """
+    path = Path(source)
+    if not path.is_file():
+        return None
+    for candidate in _layout_file_candidates(path):
+        if not candidate.is_file():
+            continue
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, Mapping):
+            continue
+        block = (
+            data.get("placement", data)
+            if isinstance(data.get("placement"), Mapping)
+            else data
+        )
+        x = block.get("x")
+        y = block.get("y")
+        if x is None or y is None:
+            continue
+        try:
+            x_int = int(x)
+            y_int = int(y)
+        except (TypeError, ValueError):
+            continue
+        width = block.get("width")
+        height = block.get("height")
+        try:
+            width_int = int(width) if width is not None else 0
+            height_int = int(height) if height is not None else 0
+        except (TypeError, ValueError):
+            width_int = height_int = 0
+        return x_int, y_int, max(1, width_int), max(1, height_int)
+    return None
+
+
+def _placement_region(
+    background: str | Path | bytes | Image.Image,
+    canvas: Image.Image,
+    box_width: int,
+    box_height: int,
+    *,
+    manual_x: int | None,
+    manual_y: int | None,
+    faces: Sequence[Any] | None,
+    avoid_faces: bool,
+    face_padding: float,
+    margin: float | tuple[float, float],
+) -> LayerPlacement:
+    """Resolve where to draw the text.
+
+    Precedence: explicit manual ``x``/``y`` coordinates, then a per image layout
+    file sitting beside the background, then automatic placement over the calmest
+    low detail region.
+    """
+    if manual_x is not None and manual_y is not None:
+        return LayerPlacement(int(manual_x), int(manual_y), box_width, box_height)
+    if isinstance(background, (str, Path)):
+        layout = _load_layout_placement(background)
+        if layout is not None:
+            lx, ly, lwidth, lheight = layout
+            return LayerPlacement(
+                lx, ly, max(lwidth, box_width), max(lheight, box_height)
+            )
+    region = find_text_placement(
+        canvas,
+        (box_width, box_height),
+        faces=faces,
+        avoid_faces=avoid_faces,
+        face_padding=face_padding,
+        margin=margin,
+    )
+    return LayerPlacement(region.x, region.y, region.width, region.height)
+
+
 @overload
 def overlay_name(
     background: str | Path | bytes | Image.Image,
@@ -196,6 +291,8 @@ def overlay_name(
     font_family: str = "",
     font_size: float = DEFAULT_FONT_SIZE,
     color: str | None = None,
+    x: int | None = None,
+    y: int | None = None,
     avoid_faces: bool = True,
     faces: Sequence[Any] | None = None,
     face_padding: float = 0.0,
@@ -224,6 +321,8 @@ def overlay_name(
     font_family: str = "",
     font_size: float = DEFAULT_FONT_SIZE,
     color: str | None = None,
+    x: int | None = None,
+    y: int | None = None,
     avoid_faces: bool = True,
     faces: Sequence[Any] | None = None,
     face_padding: float = 0.0,
@@ -251,6 +350,8 @@ def overlay_name(
     font_family: str = "",
     font_size: float = DEFAULT_FONT_SIZE,
     color: str | None = None,
+    x: int | None = None,
+    y: int | None = None,
     avoid_faces: bool = True,
     faces: Sequence[Any] | None = None,
     face_padding: float = 0.0,
@@ -274,6 +375,11 @@ def overlay_name(
     sampled and the text colour is chosen to contrast with it; when the ratio
     falls below *min_contrast*, an outline, shadow or backing box is added.
 
+    Manual placement overrides automatic placement when both *x* and *y* are
+    given. A per image layout file beside the background (for example
+    ``background.layout.json``) also overrides automatic placement and takes
+    precedence over it. Explicit coordinates win over the layout file.
+
     When *destination* is given the result is written there and the path is
     returned; otherwise the composited :class:`PIL.Image.Image` is returned.
     """
@@ -287,9 +393,13 @@ def overlay_name(
     font = _load_font(font_family, font_size)
     text_width, text_height = _measure_text(name, font)
 
-    region = find_text_placement(
+    region = _placement_region(
+        background,
         canvas,
-        (text_width, text_height),
+        text_width,
+        text_height,
+        manual_x=x,
+        manual_y=y,
         faces=faces,
         avoid_faces=avoid_faces,
         face_padding=face_padding,
