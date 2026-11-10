@@ -1385,11 +1385,11 @@
           "type": "string"
         },
         "languages": {
-          "items": {
-            "type": "string"
+          "additionalProperties": {
+            "$ref": "#/$defs/OccasionLanguageConfig"
           },
           "title": "Languages",
-          "type": "array"
+          "type": "object"
         },
         "name": {
           "default": "",
@@ -1422,6 +1422,39 @@
         }
       },
       "title": "OccasionConfig",
+      "type": "object"
+    },
+    "OccasionLanguageConfig": {
+      "additionalProperties": false,
+      "description": "Per-language content for an occasion.\n\nHolds the lyrics, spoken phrasing, on screen text and age and date\nphrasing a localized order renders in one language. Every field defaults\nto empty so an occasion can list a language without supplying every string.",
+      "properties": {
+        "age_phrasing": {
+          "default": "",
+          "title": "Age Phrasing",
+          "type": "string"
+        },
+        "date_phrasing": {
+          "default": "",
+          "title": "Date Phrasing",
+          "type": "string"
+        },
+        "lyrics": {
+          "default": "",
+          "title": "Lyrics",
+          "type": "string"
+        },
+        "on_screen_text": {
+          "default": "",
+          "title": "On Screen Text",
+          "type": "string"
+        },
+        "speech": {
+          "default": "",
+          "title": "Speech",
+          "type": "string"
+        }
+      },
+      "title": "OccasionLanguageConfig",
       "type": "object"
     },
     "OccasionVariableConfig": {
