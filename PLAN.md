@@ -754,7 +754,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 - [x] Define the order schema and lifecycle with state transitions and an audit log of every change (tests/orders/test_lifecycle.py)
 - [x] Add occasion config with five built in occasions and support for adding one with files only (tests/orders/test_occasions.py)
-- [ ] Add order create, show and delete with idempotency keys returning the existing order for a repeated key (tests/cli/test_order_cli.py)
+- [x] Add order create, show and delete with idempotency keys returning the existing order for a repeated key (tests/cli/test_order_cli.py)
 - [ ] Add batch order import from CSV or JSON with a per row validation report and isolated bad rows (tests/cli/test_order_import.py)
 - [ ] Expose order HTTP routes with auth, limits and upload sanitization (tests/api/test_orders_api.py)
 - [ ] Validate and sanitize order input for length, Unicode, normalization and profanity, treating every field as data and rejecting injection attempts (tests/orders/test_validate.py)
