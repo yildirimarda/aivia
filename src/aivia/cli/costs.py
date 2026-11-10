@@ -11,6 +11,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,9 +22,14 @@ from aivia.core.config.budget import BudgetConfig
 from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.resolve import resolve_app_config
 from aivia.core.cost import CostAggregator, CostTracker
-from aivia.core.cost_agg import CostAggregate, CostGroup
+from aivia.core.cost_agg import CostAggregate, CostGroup, _as_datetime, _upper_bound
 from aivia.core.dashboard import build_dashboard, render_dashboard
-from aivia.core.db import AssetRepository, RunRepository, create_database_engine
+from aivia.core.db import (
+    AssetRepository,
+    OrderRepository,
+    RunRepository,
+    create_database_engine,
+)
 from aivia.core.errors import ConfigError
 from aivia.core.models.asset import Asset
 from aivia.core.models.cost import CostEvent
@@ -33,6 +39,7 @@ __all__ = [
     "run_costs",
     "run_costs_dashboard",
     "run_costs_export",
+    "run_costs_order",
     "run_costs_run",
     "run_costs_summary",
 ]
@@ -88,6 +95,50 @@ def _configure_run(parser: argparse.ArgumentParser) -> None:
     )
     _configure_resolution(parser)
     parser.set_defaults(_costs_handler=run_costs_run)
+
+
+def _configure_order(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "order_id",
+        nargs="?",
+        metavar="ORDER_ID",
+        help="order whose spend to report",
+    )
+    parser.add_argument(
+        "--start",
+        "--since",
+        "--from",
+        dest="start",
+        metavar="DATE",
+        help="only count spend on or after this ISO date or datetime",
+    )
+    parser.add_argument(
+        "--end",
+        "--until",
+        "--to",
+        dest="end",
+        metavar="DATE",
+        help="only count spend on or before this ISO date or datetime",
+    )
+    parser.add_argument(
+        "--provider",
+        metavar="NAME",
+        help="only count the spend of one provider",
+    )
+    parser.add_argument(
+        "--model",
+        metavar="NAME",
+        help="only count the spend of one model",
+    )
+    parser.add_argument(
+        "--database",
+        "--db",
+        dest="database",
+        metavar="PATH",
+        help="database file to read instead of the one in the user data directory",
+    )
+    _configure_resolution(parser)
+    parser.set_defaults(_costs_handler=run_costs_order)
 
 
 def _configure_report(parser: argparse.ArgumentParser) -> None:
@@ -228,6 +279,14 @@ def configure(parser: argparse.ArgumentParser) -> None:
         ),
     )
     _configure_run(run_parser)
+    order_parser = subparsers.add_parser(
+        "order",
+        help="Report spend per order, per output type and averaged per occasion",
+        description=(
+            "Report spend per order, per output type and averaged per occasion"
+        ),
+    )
+    _configure_order(order_parser)
     summary_parser = subparsers.add_parser(
         "summary",
         help="Summarize spend by a dimension with optional date filters",
@@ -254,7 +313,7 @@ def run_costs(args: argparse.Namespace) -> int:
     if handler is None:
         print("error: missing costs command", file=sys.stderr)
         print(
-            "usage: aivia costs {run,summary,export,dashboard}",
+            "usage: aivia costs {run,summary,export,dashboard,order}",
             file=sys.stderr,
         )
         return 2
@@ -508,6 +567,261 @@ def run_costs_run(args: argparse.Namespace) -> int:
         )
         lines.append("")
         lines.extend(_render_assets(_asset_buckets(assets, events)))
+        print("\n".join(lines))
+    except SQLAlchemyError as exc:
+        print(f"error: cannot read the cost ledger: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        engine.dispose()
+    return 0
+
+
+@dataclass(slots=True)
+class _OrderSpend:
+    """The spend linked to one order, grouped by occasion."""
+
+    order_id: str
+    occasion: str
+    total_usd: float = 0.0
+    estimated_usd: float = 0.0
+    actual_usd: float = 0.0
+    units: float = 0.0
+    count: int = 0
+
+    def add(self, event: CostEvent) -> None:
+        self.total_usd += event.amount_usd
+        if event.estimated:
+            self.estimated_usd += event.amount_usd
+        else:
+            self.actual_usd += event.amount_usd
+        self.units += event.units
+        self.count += 1
+
+
+@dataclass(slots=True)
+class _OutputTypeSpend:
+    """The spend linked to one output type (asset kind)."""
+
+    output_type: str
+    total_usd: float = 0.0
+    estimated_usd: float = 0.0
+    actual_usd: float = 0.0
+    units: float = 0.0
+    count: int = 0
+
+    def add(self, event: CostEvent) -> None:
+        self.total_usd += event.amount_usd
+        if event.estimated:
+            self.estimated_usd += event.amount_usd
+        else:
+            self.actual_usd += event.amount_usd
+        self.units += event.units
+        self.count += 1
+
+
+def _effective_events(events: list[CostEvent]) -> list[CostEvent]:
+    """Drop estimates that a later actual event has replaced."""
+    replaced = {
+        event.replaces for event in events if not event.estimated and event.replaces
+    }
+    if not replaced:
+        return events
+    return [event for event in events if not (event.estimated and event.id in replaced)]
+
+
+def _order_scope(
+    engine: Engine,
+    orders: list[dict[str, Any]],
+    start: date | datetime | None,
+    end: date | datetime | None,
+    provider: str | None,
+    model: str | None,
+) -> tuple[dict[str, list[CostEvent]], dict[str, str]]:
+    """Return the effective events per order and an event id to output type map."""
+    tracker = CostTracker(engine)
+    run_repo = RunRepository(engine)
+    asset_repo = AssetRepository(engine)
+
+    order_events: dict[str, list[CostEvent]] = {order["id"]: [] for order in orders}
+    run_ids: list[str] = []
+    for order in orders:
+        for run in run_repo.list(order_id=order["id"]):
+            run_ids.append(run.id)
+            order_events[order["id"]].extend(tracker.events(run_id=run.id))
+
+    start_dt = _as_datetime(start) if start is not None else None
+    end_dt = _upper_bound(end) if end is not None else None
+    effective: dict[str, list[CostEvent]] = {}
+    for order_id, events in order_events.items():
+        kept: list[CostEvent] = []
+        for event in events:
+            if start_dt is not None and event.created_at < start_dt:
+                continue
+            if end_dt is not None and event.created_at > end_dt:
+                continue
+            if provider is not None and event.provider != provider:
+                continue
+            if model is not None and event.model != model:
+                continue
+            kept.append(event)
+        effective[order_id] = _effective_events(kept)
+
+    event_kind: dict[str, str] = {}
+    for run_id in run_ids:
+        for asset in asset_repo.list(run_id=run_id):
+            kind = str(asset.kind)
+            for link in asset.cost_links:
+                event_id = link.cost_event_id
+                if event_id and event_id not in event_kind:
+                    event_kind[event_id] = kind
+
+    return effective, event_kind
+
+
+def _render_order_buckets(buckets: list[_OrderSpend]) -> list[str]:
+    lines = [
+        "BY ORDER",
+        "ORDER\tOCCASION\tTOTAL\tESTIMATED\tACTUAL\tUNITS\tCOUNT",
+    ]
+    for bucket in buckets:
+        lines.append(
+            "\t".join(
+                (
+                    bucket.order_id,
+                    bucket.occasion or "(none)",
+                    _money(bucket.total_usd),
+                    _money(bucket.estimated_usd),
+                    _money(bucket.actual_usd),
+                    _units(bucket.units),
+                    str(bucket.count),
+                )
+            )
+        )
+    return lines
+
+
+def _render_output_type_buckets(buckets: list[_OutputTypeSpend]) -> list[str]:
+    lines = [
+        "BY OUTPUT TYPE",
+        "OUTPUT TYPE\tTOTAL\tESTIMATED\tACTUAL\tUNITS\tCOUNT",
+    ]
+    for bucket in buckets:
+        lines.append(
+            "\t".join(
+                (
+                    bucket.output_type or "(none)",
+                    _money(bucket.total_usd),
+                    _money(bucket.estimated_usd),
+                    _money(bucket.actual_usd),
+                    _units(bucket.units),
+                    str(bucket.count),
+                )
+            )
+        )
+    return lines
+
+
+def _render_occasion_buckets(
+    occasion_buckets: list[tuple[str, list[_OrderSpend]]],
+) -> list[str]:
+    lines = [
+        "BY OCCASION",
+        "OCCASION\tORDERS\tTOTAL\tAVERAGE",
+    ]
+    for occasion, order_buckets in occasion_buckets:
+        total = math.fsum(bucket.total_usd for bucket in order_buckets)
+        average = total / len(order_buckets) if order_buckets else 0.0
+        lines.append(
+            "\t".join(
+                (
+                    occasion or "(none)",
+                    str(len(order_buckets)),
+                    _money(total),
+                    _money(average),
+                )
+            )
+        )
+    return lines
+
+
+def run_costs_order(args: argparse.Namespace) -> int:
+    """Print spend per order, per output type and averaged per occasion."""
+    order_id = (getattr(args, "order_id", None) or "").strip()
+    try:
+        start = _parse_moment(args.start) if args.start else None
+        end = _parse_moment(args.end) if args.end else None
+    except ValueError as exc:
+        print(f"error: invalid date: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        database_path, database_config = _resolve_database(args)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if not database_path.exists():
+        print(f"error: database not found: {database_path}", file=sys.stderr)
+        return 1
+
+    provider = getattr(args, "provider", None) or None
+    model = getattr(args, "model", None) or None
+
+    engine = create_database_engine(path=database_path, config=database_config)
+    try:
+        order_repo = OrderRepository(engine)
+        if order_id:
+            order = order_repo.get(order_id)
+            if order is None:
+                print(f"error: order not found: {order_id}", file=sys.stderr)
+                return 1
+            orders = [order]
+        else:
+            orders = order_repo.list()
+
+        effective, event_kind = _order_scope(
+            engine, orders, start, end, provider, model
+        )
+
+        order_buckets: dict[str, _OrderSpend] = {}
+        for order in orders:
+            order_buckets[order["id"]] = _OrderSpend(
+                order_id=order["id"], occasion=str(order.get("occasion") or "")
+            )
+        for order_id, events in effective.items():
+            bucket = order_buckets[order_id]
+            for event in events:
+                bucket.add(event)
+
+        output_type_buckets: dict[str, _OutputTypeSpend] = {}
+        for events in effective.values():
+            for event in events:
+                kind = event_kind.get(event.id, "")
+                out_bucket = output_type_buckets.setdefault(
+                    kind, _OutputTypeSpend(kind)
+                )
+                out_bucket.add(event)
+
+        occasion_buckets: dict[str, list[_OrderSpend]] = {}
+        for order in orders:
+            occasion_buckets.setdefault(str(order.get("occasion") or ""), []).append(
+                order_buckets[order["id"]]
+            )
+
+        total = math.fsum(bucket.total_usd for bucket in order_buckets.values())
+
+        ordered_orders = sorted(order_buckets.values(), key=lambda b: b.order_id)
+        ordered_output_types = sorted(
+            output_type_buckets.values(), key=lambda b: b.output_type
+        )
+        ordered_occasions = sorted(occasion_buckets.items())
+
+        lines = [f"Total: {_money(total)}", ""]
+        lines.extend(_render_order_buckets(ordered_orders))
+        lines.append("")
+        lines.extend(_render_output_type_buckets(ordered_output_types))
+        lines.append("")
+        lines.extend(_render_occasion_buckets(ordered_occasions))
         print("\n".join(lines))
     except SQLAlchemyError as exc:
         print(f"error: cannot read the cost ledger: {exc}", file=sys.stderr)
