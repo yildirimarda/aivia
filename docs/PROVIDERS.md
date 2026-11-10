@@ -119,6 +119,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `stable_audio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `stableaudio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `tavily` | `search` | 60/min | - | - | unknown |
+| `telegram` | `notify` | 60/min | - | - | unknown |
+| `telegram_notifier` | `notify` | 60/min | - | - | unknown |
 | `trends` | `source` | 60/min | - | - | unknown |
 | `veo` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `veo-video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
@@ -264,6 +266,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `stable_audio` | - | - |
 | `stableaudio` | - | - |
 | `tavily` | - | - |
+| `telegram` | `notify` | $0 per call |
+| `telegram_notifier` | `notify` | $0 per call |
 | `trends` | - | - |
 | `veo` | - | - |
 | `veo-video` | - | - |
@@ -391,6 +395,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `stable_audio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
 | `stableaudio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
 | `tavily` | - | - |
+| `telegram` | - | - |
+| `telegram_notifier` | - | - |
 | `trends` | - | - |
 | `veo` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
 | `veo-video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
@@ -518,6 +524,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `stable_audio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
 | `stableaudio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
 | `tavily` | - | unknown | no | - |
+| `telegram` | - | unknown | no | - |
+| `telegram_notifier` | - | unknown | no | - |
 | `trends` | - | unknown | no | - |
 | `veo` | - | unknown | no | - |
 | `veo-video` | - | unknown | no | - |
