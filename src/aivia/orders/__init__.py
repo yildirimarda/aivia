@@ -10,6 +10,10 @@ WebP, MP3, poster and web card at the configured size presets.
 from __future__ import annotations
 
 from aivia.orders.animate import animate_still
+from aivia.orders.license import (
+    order_music_licenses,
+    store_order_music_licenses,
+)
 from aivia.orders.name_overlay import (
     DEFAULT_FONT_FAMILY,
     DEFAULT_FONT_SIZE,
@@ -84,11 +88,13 @@ __all__ = [
     "feedback_for_order",
     "generate_batch_songs",
     "minimize_order",
+    "order_music_licenses",
     "overlay_name",
     "package_outputs",
     "placeholder_for",
     "record_feedback",
     "redact_order",
     "revision_stages",
+    "store_order_music_licenses",
     "verify_name_pronunciation",
 ]
