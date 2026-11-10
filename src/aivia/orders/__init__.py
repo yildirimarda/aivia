@@ -1,9 +1,10 @@
-"""Personalized orders: lifecycle, validation, delivery and pronunciation.
+"""Personalized orders: lifecycle, validation, delivery and packaging.
 
 The orders module turns an occasion, a recipient name and optional variables
 into generated media. Name pronunciation is verified by transcription and the
-spoken name is regenerated with phonetic hints up to the configured retry
-limit.
+spoken name is regenerated with phonetic hints up to the configured retry limit.
+Packaging turns rendered masters into pinned finals: MP4, animated GIF, animated
+WebP, MP3, poster and web card at the configured size presets.
 """
 
 from __future__ import annotations
@@ -13,6 +14,14 @@ from aivia.orders.name_overlay import (
     DEFAULT_FONT_FAMILY,
     DEFAULT_FONT_SIZE,
     overlay_name,
+)
+from aivia.orders.packaging import (
+    DEFAULT_SIZE_PRESETS,
+    PackagedOutput,
+    Packager,
+    PackagingError,
+    SizePreset,
+    package_outputs,
 )
 from aivia.orders.pronunciation import (
     NamePronunciationError,
@@ -35,17 +44,23 @@ from aivia.orders.song_mode import (
 __all__ = [
     "DEFAULT_FONT_FAMILY",
     "DEFAULT_FONT_SIZE",
+    "DEFAULT_SIZE_PRESETS",
     "AcceptProvidedAssetsError",
     "AssetKind",
     "NamePronunciationError",
     "NamePronunciationResult",
     "NamedSong",
+    "PackagedOutput",
+    "Packager",
+    "PackagingError",
     "ProvidedAsset",
     "ProvidedAssets",
+    "SizePreset",
     "SongMode",
     "accept_provided_assets",
     "animate_still",
     "generate_batch_songs",
     "overlay_name",
+    "package_outputs",
     "verify_name_pronunciation",
 ]
