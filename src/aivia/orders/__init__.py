@@ -35,6 +35,14 @@ from aivia.orders.provided_assets import (
     ProvidedAssets,
     accept_provided_assets,
 )
+from aivia.orders.review import (
+    OrderFeedback,
+    OrderReview,
+    affected_stages,
+    feedback_for_order,
+    record_feedback,
+    revision_stages,
+)
 from aivia.orders.song_mode import (
     NamedSong,
     SongMode,
@@ -50,6 +58,8 @@ __all__ = [
     "NamePronunciationError",
     "NamePronunciationResult",
     "NamedSong",
+    "OrderFeedback",
+    "OrderReview",
     "PackagedOutput",
     "Packager",
     "PackagingError",
@@ -58,9 +68,13 @@ __all__ = [
     "SizePreset",
     "SongMode",
     "accept_provided_assets",
+    "affected_stages",
     "animate_still",
+    "feedback_for_order",
     "generate_batch_songs",
     "overlay_name",
     "package_outputs",
+    "record_feedback",
+    "revision_stages",
     "verify_name_pronunciation",
 ]
