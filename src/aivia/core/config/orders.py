@@ -801,6 +801,28 @@ class OrdersConfig(ConfigModel):
         """Alias for :attr:`pricing`."""
         return self.pricing
 
+    def level(self, name: str | None = None) -> PersonalizationLevelConfig:
+        """Return the personalization level *name*, or the default level.
+
+        Raises :class:`ValueError` when no level is configured or *name* is not
+        a configured level.
+        """
+        resolved = name or self.default_level or ""
+        if not resolved:
+            raise ValueError("no personalization level is configured")
+        if resolved not in self.personalization_levels:
+            raise ValueError(f"unknown personalization level: {resolved}")
+        return self.personalization_levels[resolved]
+
+    def steps_for(self, name: str | None = None) -> list[str]:
+        """The pipeline stages (steps) the named level runs."""
+        return list(self.level(name).stages)
+
+    def cost_for(self, name: str | None = None) -> float:
+        """The cost of the named level: its price times its cost multiplier."""
+        level = self.level(name)
+        return level.price * level.cost_multiplier
+
 
 OrderConfig = OrdersConfig
 
