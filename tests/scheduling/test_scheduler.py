@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Generator
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -38,7 +39,7 @@ class Clock:
 
 
 @pytest.fixture
-def engine(tmp_path: Path):
+def engine(tmp_path: Path) -> Generator[Engine, None, None]:
     database = tmp_path / "aivia.db"
     created = create_database_engine(database)
     upgrade_database(engine=created)
@@ -82,7 +83,9 @@ def schedule() -> ScheduleConfig:
 
 
 @pytest.fixture
-def sched(schedule: ScheduleConfig, queue: JobQueue, locks: RunLockManager):
+def sched(
+    schedule: ScheduleConfig, queue: JobQueue, locks: RunLockManager
+) -> tuple[CronScheduler, Clock]:
     clock = Clock(datetime(2026, 1, 15, 10, 0, tzinfo=UTC))
     return CronScheduler(schedule, queue, locks, clock=clock), clock
 
