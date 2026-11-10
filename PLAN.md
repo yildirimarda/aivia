@@ -777,7 +777,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Report cost per order, per output type and averaged per occasion (tests/cli/test_costs_order.py)
 - [x] Minimize and redact personal data, support placeholder mode and keep a data processing record of providers and fields (tests/orders/test_privacy.py)
 - [x] Delete inputs, intermediates, outputs and deliveries on order delete while retention honours pinned finals and the audit entry keeps no personal data (tests/orders/test_deletion.py)
-- [ ] Block delivery when music is not cleared for commercial use and store license metadata per order (tests/orders/test_license.py)
+- [x] Block delivery when music is not cleared for commercial use and store license metadata per order (tests/orders/test_license.py)
 - [ ] Support multiple languages per occasion for lyrics, speech, on screen text and age and date phrasing (tests/orders/test_i18n.py)
 - [ ] Allow an optional character on orders, asserting both paths run (tests/orders/test_character_order.py)
 - [ ] Run an order end to end matrix covering png, mp3, mp4, gif and web card plus a scheduled delivery (tests/e2e/test_orders.py)
