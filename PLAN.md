@@ -758,7 +758,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add batch order import from CSV or JSON with a per row validation report and isolated bad rows (tests/cli/test_order_import.py)
 - [x] Expose order HTTP routes with auth, limits and upload sanitization (tests/api/test_orders_api.py)
 - [x] Validate and sanitize order input for length, Unicode, normalization and profanity, treating every field as data and rejecting injection attempts (tests/orders/test_validate.py)
-- [ ] Link orders to their runs so order cost equals the sum of its runs (tests/orders/test_mapping.py)
+- [x] Link orders to their runs so order cost equals the sum of its runs (tests/orders/test_mapping.py)
 - [ ] Generate personalized lyrics with the name in chorus and hook, optional age and interests, fitting language, tone and duration (tests/orders/test_lyrics.py)
 - [ ] Pass phonetic hints to speech and music and verify the name with transcription, regenerating up to the retry limit (tests/orders/test_pronunciation.py)
 - [ ] Implement personalization levels that change which steps run and what they cost (tests/orders/test_levels.py)
