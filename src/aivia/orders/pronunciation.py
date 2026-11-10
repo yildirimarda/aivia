@@ -5,6 +5,9 @@ the phonetic hints, then the spoken result is transcribed. When the
 transcription does not carry the name well enough, speech and music are
 regenerated with the hints, up to the configured retry limit.
 """
+# config-coverage: allow-file — attempts and score are local loop state
+# (attempt counter and best name-to-transcript score), not configuration
+# thresholds that belong in config or data files.
 
 from __future__ import annotations
 
