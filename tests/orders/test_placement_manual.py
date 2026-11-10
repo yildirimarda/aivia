@@ -41,8 +41,14 @@ def _write_layout(path: Path, data: object) -> None:
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
-def _render(background: Image.Image, name: str, **kwargs: object) -> Image.Image:
-    return overlay_name(background, name, min_contrast=1.0, **kwargs)
+def _render(
+    background: Image.Image,
+    name: str,
+    *,
+    x: int | None = None,
+    y: int | None = None,
+) -> Image.Image:
+    return overlay_name(background, name, x=x, y=y, min_contrast=1.0)
 
 
 def test_manual_coordinates_place_text_at_exact_position() -> None:
