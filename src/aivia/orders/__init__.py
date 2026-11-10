@@ -8,6 +8,11 @@ limit.
 
 from __future__ import annotations
 
+from aivia.orders.name_overlay import (
+    DEFAULT_FONT_FAMILY,
+    DEFAULT_FONT_SIZE,
+    overlay_name,
+)
 from aivia.orders.pronunciation import (
     NamePronunciationError,
     NamePronunciationResult,
@@ -22,6 +27,8 @@ from aivia.orders.provided_assets import (
 )
 
 __all__ = [
+    "DEFAULT_FONT_FAMILY",
+    "DEFAULT_FONT_SIZE",
     "AcceptProvidedAssetsError",
     "AssetKind",
     "NamePronunciationError",
@@ -29,5 +36,6 @@ __all__ = [
     "ProvidedAsset",
     "ProvidedAssets",
     "accept_provided_assets",
+    "overlay_name",
     "verify_name_pronunciation",
 ]
