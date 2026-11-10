@@ -768,7 +768,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Place the name on provided images avoiding faces and low contrast regions, with golden tests including special characters (tests/orders/test_name_overlay.py)
 - [x] Support manual placement overrides and a per image layout file that takes precedence over automatic placement (tests/orders/test_placement_manual.py)
 - [x] Animate stills with slow zoom, overlays and a name entrance without any AI call (slow, tests/orders/test_animate.py)
-- [ ] Support batch naming with per name or shared songs and assert the difference (tests/orders/test_song_mode.py)
+- [x] Support batch naming with per name or shared songs and assert the difference (tests/orders/test_song_mode.py)
 - [ ] Implement the personalized song card format with optional character support (slow, tests/orders/test_song_card.py)
 - [ ] Package outputs as mp4, gif, animated webp, mp3, poster and web card with size presets and mark finals as pinned (tests/orders/test_packaging.py)
 - [ ] Add delivery providers for local folder, expiring storage link, email and signed webhook with an allowlist and chain fallback (tests/orders/test_delivery.py)
