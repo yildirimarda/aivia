@@ -36,6 +36,7 @@ __all__ = ["animate_still"]
 
 DEFAULT_CANVAS: tuple[int, int] = (1080, 1920)
 DEFAULT_DURATION_SECONDS: float = 5.0
+_MIN_DURATION_SECONDS: float = 0.0
 DEFAULT_ZOOM: tuple[float, float] = (1.0, 1.15)
 DEFAULT_NAME_FONT_SIZE: float = 64.0
 
@@ -180,7 +181,7 @@ def animate_still(
     """
     canvas_width, canvas_height = _canvas_size(canvas)
     duration = float(duration_seconds)
-    if duration <= 0.0:
+    if duration <= _MIN_DURATION_SECONDS:
         raise RenderError("duration_seconds must be positive")
     time_value = float(time_seconds)
     if time_value < 0.0 or time_value > duration:
