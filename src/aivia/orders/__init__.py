@@ -9,6 +9,9 @@ WebP, MP3, poster and web card at the configured size presets.
 
 from __future__ import annotations
 
+from typing import Any
+
+from aivia.core.db.repos import OrderRepository
 from aivia.orders.animate import animate_still
 from aivia.orders.license import (
     order_music_licenses,
@@ -61,6 +64,26 @@ from aivia.orders.song_mode import (
     generate_batch_songs,
 )
 
+
+def order(
+    repository: OrderRepository,
+    *,
+    character: str | None = None,
+    **values: Any,
+) -> dict[str, Any]:
+    """Create one durable order, optionally bound to a character.
+
+    *character* is optional. When it is a non-blank string it is stored on the
+    order; when it is absent or blank the order is created with no character.
+    Both paths run: an order without a character proceeds normally and an
+    order with a selected character records that choice on the stored record.
+    """
+    text = character.strip() if isinstance(character, str) else ""
+    values = dict(values)
+    values.setdefault("character", text)
+    return repository.create(**values)
+
+
 __all__ = [
     "DEFAULT_FONT_FAMILY",
     "DEFAULT_FONT_SIZE",
@@ -88,6 +111,7 @@ __all__ = [
     "feedback_for_order",
     "generate_batch_songs",
     "minimize_order",
+    "order",
     "order_music_licenses",
     "overlay_name",
     "package_outputs",

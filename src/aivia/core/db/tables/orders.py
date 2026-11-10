@@ -149,6 +149,12 @@ orders = Table(
         nullable=False,
         server_default=text("''"),
     ),
+    Column(
+        "character",
+        String(128),
+        nullable=False,
+        server_default=text("''"),
+    ),
     Column("scheduled_for", DateTime(timezone=True), nullable=True),
     Column("delivered_at", DateTime(timezone=True), nullable=True),
     Column("expires_at", DateTime(timezone=True), nullable=True),
