@@ -546,6 +546,81 @@ occasions:
       formats: [personalized_song_card]
       files: []
 
+    anniversary:
+      label: Anniversary
+      description: A song card marking a shared anniversary.
+      variables:
+        name:
+          type: text
+          required: true
+          max_length: 60
+        partner:
+          type: text
+          required: true
+          max_length: 60
+        years:
+          type: integer
+          required: false
+        message:
+          type: text
+          required: false
+          max_length: 500
+      personalization_levels: [basic, standard, premium]
+      formats: [personalized_song_card]
+      files: []
+
+    wedding:
+      label: Wedding
+      description: A song card for a wedding couple.
+      variables:
+        name_one:
+          type: text
+          required: true
+          max_length: 60
+        name_two:
+          type: text
+          required: true
+          max_length: 60
+        date:
+          type: date
+          required: false
+        message:
+          type: text
+          required: false
+          max_length: 500
+      personalization_levels: [basic, standard, premium]
+      formats: [personalized_song_card]
+      files: []
+
+    graduation:
+      label: Graduation
+      description: A song card celebrating a graduation.
+      variables:
+        name:
+          type: text
+          required: true
+          max_length: 60
+        degree:
+          type: text
+          required: false
+          max_length: 120
+        school:
+          type: text
+          required: false
+          max_length: 120
+        message:
+          type: text
+          required: false
+          max_length: 500
+      personalization_levels: [basic, standard, premium]
+      formats: [personalized_song_card]
+      files: []
+
+    photo_collage:
+      label: Photo Collage
+      description: A collage built entirely from provided files.
+      files: [collage_template.txt]
+
 orders:
   default_level: standard
   personalization_levels:
