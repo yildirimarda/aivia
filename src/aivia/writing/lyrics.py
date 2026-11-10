@@ -48,6 +48,7 @@ __all__ = [
     "count_syllables_in_line",
     "derive_section_counts",
     "extract_lyrics",
+    "generate_personalized_lyrics",
     "inject_keywords",
     "insert_keywords",
     "lyrics_script",
@@ -1026,6 +1027,93 @@ def build_lyrics_script(
 
 
 lyrics_script = build_lyrics_script
+
+
+_TONE_OPENINGS: dict[str, str] = {
+    "cheerful": "It's a bright day, {name}, and the light is on",
+    "calm": "It's a quiet day, {name}, and the light is soft",
+    "energetic": "It's a big day, {name}, and the beat is on",
+    "warm": "It's a lovely day, {name}, and the light is warm",
+    "playful": "It's a fun day, {name}, and the music plays",
+}
+_DEFAULT_OPENING = "It's your day, {name}"
+_SYLLABLES_PER_WORD = 1.4
+_DEFAULT_WORDS_PER_SECOND = 3.0
+
+
+def _opening_for_tone(tone: str, name: str) -> str:
+    template = _TONE_OPENINGS.get(tone.strip().casefold(), _DEFAULT_OPENING)
+    return template.format(name=name)
+
+
+def _syllable_budget_for_duration(
+    duration_seconds: float | None, lines: int
+) -> int | None:
+    if duration_seconds is None:
+        return None
+    span = float(duration_seconds)
+    if span <= 0:
+        return None
+    total = span * _DEFAULT_WORDS_PER_SECOND * _SYLLABLES_PER_WORD
+    return max(1, int(total / max(1, lines)))
+
+
+def generate_personalized_lyrics(
+    name: str,
+    *,
+    age: int | None = None,
+    interests: Sequence[str] = (),
+    language: str = "en",
+    tone: str = "",
+    duration_seconds: float | None = None,
+) -> Script:
+    """Build a personalized lyrics script for *name*.
+
+    The name appears in the chorus and in the hook. Optional *age* and
+    *interests* are woven into the verse. *Language* is recorded on the script,
+    *tone* shapes the opening line and *duration_seconds* sets a per-line
+    syllable budget so the lyrics fit the requested length.
+    """
+    clean_name = _text(name).strip()
+    if not clean_name:
+        raise ConfigError(
+            "name must be non-empty",
+            details={"name": repr(name)},
+        )
+
+    resolved_interests = [
+        str(interest).strip() for interest in interests if str(interest).strip()
+    ]
+
+    verse_lines = [_opening_for_tone(tone, clean_name)]
+    if age is not None:
+        verse_lines.append(f"{clean_name}, you are {int(age)} years young today")
+    if resolved_interests:
+        joined = ", ".join(resolved_interests)
+        verse_lines.append(f"{clean_name} loves {joined} with all their heart")
+    verse_lines.append(f"Sing it loud for {clean_name}")
+
+    chorus_lines = [
+        f"Happy day to {clean_name}, sing it out",
+        f"{clean_name}, this moment is yours",
+    ]
+    hook_line = f"{clean_name}, {clean_name}, hear the cheer"
+
+    syllable_budget = _syllable_budget_for_duration(
+        duration_seconds, len(verse_lines) + len(chorus_lines)
+    )
+
+    return LyricsMode().build_script(
+        title=clean_name,
+        language=language,
+        sections=[
+            {"name": "verse", "lines": verse_lines, "rhyme_scheme": "aabb"},
+            {"name": "chorus", "lines": chorus_lines},
+        ],
+        section_counts={"verse": 1, "chorus": 1},
+        hook=hook_line,
+        syllable_budget=syllable_budget,
+    )
 
 
 register_builtin_writing_mode(WritingMode.LYRICS, LyricsMode)
