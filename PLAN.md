@@ -765,7 +765,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Maintain a tagged background library with static, animated and AI loop modes and verified loop seamlessness (tests/orders/test_backgrounds.py)
 - [x] Accept provided background, loop, audio and logo assets with format and resolution validation and fitting that preserves originals (tests/orders/test_provided_assets.py)
 - [x] Select stages from the requested outputs so a png runs only the name overlay at zero API cost (tests/orders/test_stage_selection.py)
-- [ ] Place the name on provided images avoiding faces and low contrast regions, with golden tests including special characters (tests/orders/test_name_overlay.py)
+- [x] Place the name on provided images avoiding faces and low contrast regions, with golden tests including special characters (tests/orders/test_name_overlay.py)
 - [ ] Support manual placement overrides and a per image layout file that takes precedence over automatic placement (tests/orders/test_placement_manual.py)
 - [ ] Animate stills with slow zoom, overlays and a name entrance without any AI call (slow, tests/orders/test_animate.py)
 - [ ] Support batch naming with per name or shared songs and assert the difference (tests/orders/test_song_mode.py)
