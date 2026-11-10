@@ -646,6 +646,27 @@ class OrderRepository(TableRepository):
             connection.execute(delete(self.table).where(self._key_condition(key)))
         return existing
 
+    def cost_for_order(self, order_id: str) -> float:
+        """Return the order's cost as the sum of its runs' costs.
+
+        Runs are linked to an order through ``runs.order_id``. An order with no
+        linked runs costs nothing.
+        """
+        with self.engine.connect() as connection:
+            total = connection.execute(
+                select(
+                    func.coalesce(func.sum(runs.c.cost_usd), 0.0),
+                ).where(runs.c.order_id == order_id)
+            ).scalar_one()
+        return float(total)
+
+    def recompute_order_cost(self, order_id: str) -> dict[str, Any] | None:
+        """Store the order's cost as the sum of its runs and return the order.
+
+        Returns ``None`` when the order does not exist.
+        """
+        return self.update(order_id, cost_usd=self.cost_for_order(order_id))
+
 
 class PostMetricRepository(TableRepository):
     """Persist periodic snapshots of a published post's metrics."""

@@ -35,6 +35,7 @@ __all__ = [
     "CLAIM_INDEX_NAME",
     "IDEMPOTENCY_INDEX_NAME",
     "JOB_IDEMPOTENCY_INDEX_NAME",
+    "RUN_ORDER_INDEX_NAME",
     "jobs",
     "runs",
     "stage_runs",
@@ -48,6 +49,9 @@ IDEMPOTENCY_INDEX_NAME = "uq_runs_idempotency_key"
 
 JOB_IDEMPOTENCY_INDEX_NAME = "uq_jobs_kind_idempotency_key"
 """The unique index that rejects a repeated non-empty job idempotency key."""
+
+RUN_ORDER_INDEX_NAME = "ix_runs_order_id"
+"""List the runs belonging to one order."""
 
 _IDEMPOTENCY_PREDICATE = text("idempotency_key IS NOT NULL AND idempotency_key != ''")
 _JOB_IDEMPOTENCY_PREDICATE = text("idempotency_key != ''")
@@ -64,6 +68,12 @@ runs = Table(
         String(64),
         nullable=False,
         server_default=text("''"),
+    ),
+    Column(
+        "order_id",
+        String(64),
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        nullable=True,
     ),
     Column("toolchain_fingerprint", JSON, nullable=False, server_default=text("'{}'")),
     Column("profile", Text, nullable=False, server_default=text("''")),
@@ -107,6 +117,7 @@ Index(
     sqlite_where=_IDEMPOTENCY_PREDICATE,
     postgresql_where=_IDEMPOTENCY_PREDICATE,
 )
+Index(RUN_ORDER_INDEX_NAME, runs.c.order_id)
 
 stage_runs = Table(
     "stage_runs",

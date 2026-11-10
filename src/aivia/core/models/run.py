@@ -421,6 +421,10 @@ class Run(ModelBase):
         default=None,
         validation_alias=AliasChoices("resumed_at", "resume_at"),
     )
+    order_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("order_id", "order"),
+    )
 
     @field_validator("kind", mode="before")
     @classmethod
@@ -445,6 +449,7 @@ class Run(ModelBase):
     @field_validator(
         "idempotency_key",
         "idempotency_payload_hash",
+        "order_id",
         "profile",
         "environment",
         "format",
