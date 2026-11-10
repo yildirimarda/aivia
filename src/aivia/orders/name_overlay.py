@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, overload
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -184,6 +184,62 @@ def _apply_treatment(
         padding = round(result.box_padding)
         return treated, -padding, -padding
     return text_image, 0, 0
+
+
+@overload
+def overlay_name(
+    background: str | Path | bytes | Image.Image,
+    name: str,
+    *,
+    destination: None = None,
+    size: tuple[int, int] | None = None,
+    font_family: str = "",
+    font_size: float = DEFAULT_FONT_SIZE,
+    color: str | None = None,
+    avoid_faces: bool = True,
+    faces: Sequence[Any] | None = None,
+    face_padding: float = 0.0,
+    margin: float | tuple[float, float] = 0.0,
+    min_contrast: float | None = None,
+    contrast_strategy: ContrastStrategy | str | None = None,
+    outline_color: str | None = None,
+    outline_width: float = 2.0,
+    shadow_color: str | None = None,
+    shadow_offset: tuple[float, float] | float = (2.0, 2.0),
+    shadow_blur: float = 2.0,
+    box_color: str | None = None,
+    box_padding: float = 8.0,
+    image_format: str | None = None,
+    quality: int = 90,
+) -> Image.Image: ...
+
+
+@overload
+def overlay_name(
+    background: str | Path | bytes | Image.Image,
+    name: str,
+    *,
+    destination: str | Path,
+    size: tuple[int, int] | None = None,
+    font_family: str = "",
+    font_size: float = DEFAULT_FONT_SIZE,
+    color: str | None = None,
+    avoid_faces: bool = True,
+    faces: Sequence[Any] | None = None,
+    face_padding: float = 0.0,
+    margin: float | tuple[float, float] = 0.0,
+    min_contrast: float | None = None,
+    contrast_strategy: ContrastStrategy | str | None = None,
+    outline_color: str | None = None,
+    outline_width: float = 2.0,
+    shadow_color: str | None = None,
+    shadow_offset: tuple[float, float] | float = (2.0, 2.0),
+    shadow_blur: float = 2.0,
+    box_color: str | None = None,
+    box_padding: float = 8.0,
+    image_format: str | None = None,
+    quality: int = 90,
+) -> Path: ...
 
 
 def overlay_name(
