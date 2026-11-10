@@ -35,6 +35,7 @@ __all__ = [
     "NameVerificationConfig",
     "NameVerifyConfig",
     "OccasionConfig",
+    "OccasionLanguageConfig",
     "OccasionVariableConfig",
     "OccasionsConfig",
     "OrderPricingConfig",
@@ -157,6 +158,21 @@ def _normalise_variables(value: Any) -> Any:
     raise ValueError("variables must be a mapping or a list")
 
 
+def _normalise_occasion_languages(value: Any) -> Any:
+    """Accept a list of language codes or a mapping of code to content.
+
+    A list such as ``["en", "de"]`` becomes ``{"en": {}, "de": {}}`` so an
+    occasion can declare a language without supplying every localized string.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return {code: {} for code in _normalise_names(value, "language")}
+    raise ValueError("languages must be a list of language codes or a mapping")
+
+
 class OccasionVariableConfig(ConfigModel):
     """One variable a personalized occasion asks the customer to provide.
 
@@ -251,6 +267,37 @@ class OccasionVariableConfig(ConfigModel):
         return self.options
 
 
+class OccasionLanguageConfig(ConfigModel):
+    """Per-language content for an occasion.
+
+    Holds the lyrics, spoken phrasing, on screen text and age and date
+    phrasing a localized order renders in one language. Every field defaults
+    to empty so an occasion can list a language without supplying every string.
+    """
+
+    lyrics: str = ""
+    speech: str = ""
+    on_screen_text: str = ""
+    age_phrasing: str = ""
+    date_phrasing: str = ""
+
+    @field_validator(
+        "lyrics",
+        "speech",
+        "on_screen_text",
+        "age_phrasing",
+        "date_phrasing",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_text(cls, value: Any) -> str:
+        if value is None:
+            return ""
+        if not isinstance(value, str):
+            raise ValueError("occasion language content must be a string")
+        return value.strip()
+
+
 VariableConfig = OccasionVariableConfig
 OrderVariableConfig = OccasionVariableConfig
 
@@ -274,7 +321,7 @@ class OccasionConfig(ConfigModel):
     template: str = ""
     prompt: str = ""
     files: list[str] = Field(default_factory=list)
-    languages: list[str] = Field(default_factory=list)
+    languages: dict[str, OccasionLanguageConfig] = Field(default_factory=dict)
     default_level: str = ""
     enabled: bool = True
 
@@ -304,6 +351,8 @@ class OccasionConfig(ConfigModel):
                 values.setdefault("files", values.pop(alias))
         if "variables" in values:
             values["variables"] = _normalise_variables(values["variables"])
+        if "languages" in values:
+            values["languages"] = _normalise_occasion_languages(values["languages"])
         levels = values.get("personalization_levels")
         if isinstance(levels, Mapping):
             values["personalization_levels"] = list(levels)
@@ -314,7 +363,7 @@ class OccasionConfig(ConfigModel):
     def _validate_levels(cls, value: list[str]) -> list[str]:
         return _normalise_names(value, "personalization level")
 
-    @field_validator("formats", "files", "languages")
+    @field_validator("formats", "files")
     @classmethod
     def _validate_names(cls, value: list[str]) -> list[str]:
         return _normalise_names(value, "name")
@@ -345,6 +394,18 @@ class OccasionConfig(ConfigModel):
     def variable_names(self) -> list[str]:
         """The names of every variable in declaration order."""
         return list(self.variables)
+
+    def language_codes(self) -> list[str]:
+        """The languages this occasion declares content for, in declaration order."""
+        return list(self.languages)
+
+    def language_for(self, code: str) -> OccasionLanguageConfig:
+        """Return the per-language content for *code*.
+
+        Falls back to an empty :class:`OccasionLanguageConfig` when the code is
+        not declared, so callers can always read a field without checking first.
+        """
+        return self.languages.get(code, OccasionLanguageConfig())
 
 
 Occasion = OccasionConfig
