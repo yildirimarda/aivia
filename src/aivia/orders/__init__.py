@@ -8,6 +8,7 @@ limit.
 
 from __future__ import annotations
 
+from aivia.orders.animate import animate_still
 from aivia.orders.name_overlay import (
     DEFAULT_FONT_FAMILY,
     DEFAULT_FONT_SIZE,
@@ -36,6 +37,7 @@ __all__ = [
     "ProvidedAsset",
     "ProvidedAssets",
     "accept_provided_assets",
+    "animate_still",
     "overlay_name",
     "verify_name_pronunciation",
 ]
