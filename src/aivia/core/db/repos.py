@@ -611,6 +611,41 @@ class OrderRepository(TableRepository):
     table = orders
     id_factory = new_order_id
 
+    def find_by_idempotency_key(self, key: str) -> dict[str, Any] | None:
+        """Return the order stored for *key*, or ``None`` when it is unused."""
+        with self.engine.connect() as connection:
+            return self.find_by_idempotency_key_in(connection, key)
+
+    def find_by_idempotency_key_in(
+        self,
+        connection: Connection,
+        key: str,
+    ) -> dict[str, Any] | None:
+        """Return the order stored for *key* inside an existing transaction."""
+        text = key.strip()
+        if not text:
+            return None
+        row = (
+            connection.execute(
+                select(self.table)
+                .where(self.table.c.idempotency_key == text)
+                .order_by(*(self.table.c[column] for column in self.key_columns))
+                .limit(1)
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else dict(row)
+
+    def delete(self, *key: Any) -> dict[str, Any] | None:
+        """Delete the record with *key* and return it, or ``None`` when absent."""
+        existing = self.get(*key)
+        if existing is None:
+            return None
+        with self.engine.begin() as connection:
+            connection.execute(delete(self.table).where(self._key_condition(key)))
+        return existing
+
 
 class PostMetricRepository(TableRepository):
     """Persist periodic snapshots of a published post's metrics."""
