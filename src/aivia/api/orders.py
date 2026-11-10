@@ -11,6 +11,7 @@ smuggle dangerous names through a multipart order.
 from __future__ import annotations
 
 import json
+import unicodedata
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Any
@@ -24,13 +25,110 @@ from aivia.core.db import (
     create_database_engine,
     upgrade_database,
 )
+from aivia.core.errors import ValidationError
+from aivia.writing.originality import find_profanity
 
-__all__ = ["register_order_routes"]
+__all__ = [
+    "register_order_routes",
+    "sanitize_order_input",
+    "validate_order_input",
+]
 
 _JSON_OBJECT_FIELDS = ("variables", "pricing", "metadata")
 _JSON_ARRAY_FIELDS = ("outputs",)
 _MAX_FILES = 8
 _MAX_FILE_BYTES = 32 * 1024 * 1024
+
+_TEXT_FIELDS = (
+    "occasion",
+    "name",
+    "message",
+    "language",
+    "profile",
+    "level",
+    "timezone",
+    "currency",
+    "idempotency_key",
+)
+
+_CONTENT_FIELDS = ("occasion", "name", "message")
+
+_LENGTH_LIMITS = {
+    "occasion": 128,
+    "name": 80,
+    "message": 1000,
+    "language": 32,
+    "profile": 64,
+    "level": 64,
+    "timezone": 64,
+    "currency": 8,
+    "idempotency_key": 255,
+}
+
+_INJECTION_TOKENS = ("\x00", "<<<", ">>>", "{{", "}}", "${", "<%", "%>")
+
+
+def _normalise_text(value: Any, field: str) -> str:
+    if not isinstance(value, str):
+        raise ValidationError(
+            f"{field} must be text",
+            details={"field": field, "received": type(value).__name__},
+        )
+    text = unicodedata.normalize("NFKC", value)
+    for token in _INJECTION_TOKENS:
+        if token in text:
+            raise ValidationError(
+                f"{field} must not contain {token!r}",
+                details={"field": field, "token": token},
+            )
+    for character in text:
+        if ord(character) < 0x20 and character not in "\t\n\r":
+            raise ValidationError(
+                f"{field} must not contain control characters",
+                details={"field": field, "character": ord(character)},
+            )
+    return text
+
+
+def sanitize_order_input(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalise and validate every order field, returning sanitized values.
+
+    Every field is treated as untrusted data: text is normalized to NFKC, null
+    bytes, control characters and prompt-injection tokens are rejected, length
+    limits are enforced and free-text fields are screened for profanity.
+    """
+    cleaned: dict[str, Any] = {}
+    for field, value in values.items():
+        if field in _TEXT_FIELDS or isinstance(value, str):
+            cleaned[field] = _normalise_text(value, field)
+        else:
+            cleaned[field] = value
+
+    for field, limit in _LENGTH_LIMITS.items():
+        text = cleaned.get(field, "")
+        if isinstance(text, str) and len(text) > limit:
+            raise ValidationError(
+                f"{field} is too long (maximum {limit} characters)",
+                details={"field": field, "max_length": limit, "length": len(text)},
+            )
+
+    blocked_terms: dict[str, tuple[str, ...]] = {}
+    for field in _CONTENT_FIELDS:
+        text = cleaned.get(field, "")
+        if isinstance(text, str) and text:
+            terms = find_profanity(text)
+            if terms:
+                blocked_terms[field] = terms
+    if blocked_terms:
+        raise ValidationError(
+            "order input contains blocked profanity",
+            details={"blocked_terms": blocked_terms},
+        )
+    return cleaned
+
+
+validate_order_input = sanitize_order_input
+"""Alias for :func:`sanitize_order_input`."""
 
 
 def _parse_json_field(value: str, field: str) -> Any:
@@ -183,6 +281,11 @@ def register_order_routes(
         if uploads:
             values["metadata"] = dict(parsed["metadata"])
             values["metadata"]["uploads"] = uploads
+
+        try:
+            values = sanitize_order_input(values)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         try:
             return repository.create(values)
