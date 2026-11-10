@@ -63,6 +63,7 @@ class MusicRequest(ProtocolModel):
     style: str | None = None
     seed: int | None = None
     count: int = Field(default=1, ge=1, le=8)
+    pronunciation: dict[str, str] = Field(default_factory=dict)
     timeout_seconds: float | None = Field(default=None, gt=0.0)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -81,6 +82,29 @@ class MusicRequest(ProtocolModel):
         if self.instrumental and self.lyrics:
             raise ValueError("an instrumental track must not carry lyrics")
         return self
+
+    @field_validator("pronunciation", mode="before")
+    @classmethod
+    def _coerce_pronunciation(cls, value: Any) -> Any:
+        if value is None:
+            return {}
+        return value
+
+    @field_validator("pronunciation")
+    @classmethod
+    def _validate_pronunciation(cls, value: dict[str, str]) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for key, raw in value.items():
+            word = key.strip()
+            if not word:
+                raise ValueError("pronunciation keys must be non-empty")
+            if not isinstance(raw, str):
+                raise ValueError("pronunciation values must be strings")
+            phonetic = raw.strip()
+            if not phonetic:
+                raise ValueError("pronunciation values must be non-empty")
+            result[word] = phonetic
+        return result
 
 
 class MusicTrack(ProtocolModel):
