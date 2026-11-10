@@ -9,6 +9,9 @@ request never creates a second order.
 from __future__ import annotations
 
 import argparse
+import csv
+import io
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -27,7 +30,76 @@ from aivia.core.db import (
 )
 from aivia.core.errors import ConfigError
 
-__all__ = ["configure", "order_create", "order_delete", "order_show"]
+__all__ = ["configure", "order_create", "order_delete", "order_import", "order_show"]
+
+KNOWN_ORDER_FIELDS = frozenset(
+    {
+        "occasion",
+        "name",
+        "message",
+        "language",
+        "profile",
+        "level",
+        "timezone",
+        "currency",
+        "amount_usd",
+        "budget_usd",
+        "idempotency_key",
+    }
+)
+"""Fields a batch row may carry; anything else is reported as a bad row."""
+
+
+def _parse_batch_file(path: Path, fmt: str | None) -> list[dict[str, Any]]:
+    """Read *path* as CSV or JSON and return one mapping per row."""
+    if fmt is None:
+        suffix = path.suffix.lower()
+        if suffix == ".json":
+            fmt = "json"
+        elif suffix == ".csv":
+            fmt = "csv"
+        else:
+            raise ValueError(f"unsupported batch file {path!r}: expected .csv or .json")
+    text = path.read_text(encoding="utf-8")
+    if fmt == "csv":
+        reader = csv.DictReader(io.StringIO(text))
+        return [
+            {key: value for key, value in row.items() if key is not None}
+            for row in reader
+        ]
+    data = json.loads(text)
+    if isinstance(data, list):
+        return [dict(row) for row in data if isinstance(row, dict)]
+    if isinstance(data, dict):
+        items = data.get("items")
+        if isinstance(items, list):
+            return [dict(row) for row in items if isinstance(row, dict)]
+        return [data]
+    raise ValueError("JSON batch must be a list of rows or an object")
+
+
+def _validate_row(
+    row: dict[str, Any], number: int
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Validate one batch row, returning its order values or an error message."""
+    values: dict[str, Any] = {}
+    problems: list[str] = []
+    for key, value in row.items():
+        if key not in KNOWN_ORDER_FIELDS:
+            problems.append(f"unknown field: {key}")
+            continue
+        values[key] = value
+    for money_field in ("amount_usd", "budget_usd"):
+        raw = values.get(money_field)
+        if raw is None or raw == "":
+            continue
+        try:
+            values[money_field] = float(raw)
+        except (TypeError, ValueError):
+            problems.append(f"bad {money_field}: {raw!r}")
+    if problems:
+        return None, "; ".join(problems)
+    return values, None
 
 
 def _configure_database(parser: argparse.ArgumentParser) -> None:
@@ -153,6 +225,12 @@ def configure(parser: argparse.ArgumentParser) -> None:
     )
     _configure_create(create)
     _configure_database(create)
+    import_ = subparsers.add_parser(
+        "import",
+        help="Import orders from a CSV or JSON batch file",
+        description="Import orders from a CSV or JSON batch file",
+    )
+    _configure_import(import_)
     show = subparsers.add_parser(
         "show",
         help="Show a personalized order",
@@ -281,6 +359,94 @@ def order_create(args: argparse.Namespace) -> int:
         return 1
     finally:
         engine.dispose()
+
+
+def _configure_import(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--file",
+        "--batch-file",
+        dest="batch_file",
+        metavar="PATH",
+        required=True,
+        help="CSV or JSON file with one order per row",
+    )
+    parser.add_argument(
+        "--format",
+        dest="format",
+        choices=("csv", "json"),
+        default=None,
+        metavar="FORMAT",
+        help=(
+            "treat the batch file as csv or json instead of detecting from "
+            "its extension"
+        ),
+    )
+    _configure_database(parser)
+    parser.set_defaults(_order_handler=order_import)
+
+
+def order_import(args: argparse.Namespace) -> int:
+    """Import orders from a CSV or JSON file, one row per order.
+
+    Valid rows are inserted into the database. Invalid rows are isolated:
+    they are reported one per row with the reason they failed and nothing is
+    stored for them. The exit code is non zero when any row fails.
+    """
+    try:
+        config = _load_config(args)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    batch_file = getattr(args, "batch_file", None)
+    if not batch_file:
+        print("error: a batch file is required", file=sys.stderr)
+        return 2
+    path = Path(batch_file).expanduser()
+    if not path.is_file():
+        print(f"error: batch file not found: {path}", file=sys.stderr)
+        return 1
+
+    try:
+        rows = _parse_batch_file(path, getattr(args, "format", None))
+    except (OSError, ValueError) as exc:
+        print(f"error: cannot read the batch file: {exc}", file=sys.stderr)
+        return 1
+
+    database_path = _database_path(args, config)
+    try:
+        engine = _open_database(database_path)
+    except (OSError, SQLAlchemyError) as exc:
+        print(f"error: cannot open the database: {exc}", file=sys.stderr)
+        return 1
+
+    succeeded = 0
+    failed = 0
+    reports: list[str] = []
+    try:
+        repository = OrderRepository(engine)
+        for number, row in enumerate(rows, start=1):
+            values, error = _validate_row(row, number)
+            if error is not None:
+                failed += 1
+                reports.append(f"Row {number}: {error}")
+                continue
+            assert values is not None
+            try:
+                repository.create(**values)
+            except (OSError, SQLAlchemyError) as exc:
+                failed += 1
+                reports.append(f"Row {number}: cannot create the order: {exc}")
+                continue
+            succeeded += 1
+    finally:
+        engine.dispose()
+
+    print(f"Succeeded: {succeeded}")
+    print(f"Failed: {failed}")
+    for report in reports:
+        print(report, file=sys.stderr)
+    return 1 if failed else 0
 
 
 def order_show(args: argparse.Namespace) -> int:
