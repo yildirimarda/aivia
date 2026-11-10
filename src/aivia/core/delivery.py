@@ -12,9 +12,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from aivia.core.errors import ProviderExhaustedError
 from aivia.core.models.asset import AssetLicense
 from aivia.core.models.base import utcnow
 from aivia.core.models.io import Delivery, DeliveryState
@@ -23,10 +25,18 @@ from aivia.media.music_service import (
     MusicLicenseError,
     MusicLicenseGate,
 )
+from aivia.providers.console import default_notifier
 from aivia.providers.delivery import DeliveryChain
 from aivia.providers.protocols.delivery import (
+    DeliveryArtifact,
     DeliveryReceipt,
     DeliveryRequest,
+)
+from aivia.providers.protocols.notify import (
+    NotificationButton,
+    NotificationLevel,
+    NotificationMessage,
+    Notifier,
 )
 
 __all__ = ["ScheduledDelivery"]
@@ -68,12 +78,14 @@ class ScheduledDelivery:
         sleep: Callable[[float], Any] = asyncio.sleep,
         poll_interval: float = 0.5,
         gate: MusicLicenseGate | None = None,
+        notifier: Notifier | None = None,
     ) -> None:
         self._chain = chain
         self._clock = clock
         self._sleep = sleep
         self._poll_interval = max(0.0, float(poll_interval))
         self._gate = gate if gate is not None else DEFAULT_LICENSE_GATE
+        self._notifier = notifier
 
     @property
     def chain(self) -> DeliveryChain:
@@ -84,6 +96,13 @@ class ScheduledDelivery:
     def gate(self) -> MusicLicenseGate:
         """The license gate consulted before delivering an order."""
         return self._gate
+
+    @property
+    def notifier(self) -> Notifier:
+        """The notifier used to report delivery failures, defaulting to the console."""
+        if self._notifier is None:
+            self._notifier = default_notifier()
+        return self._notifier
 
     def due_at(self, delivery: Delivery, *, timezone: str = "UTC") -> datetime | None:
         """The UTC instant *delivery* is due, or ``None`` when due now."""
@@ -142,11 +161,96 @@ class ScheduledDelivery:
                         blockers=decision.blockers,
                         licenses=decision.licenses,
                     )
-        receipt = await self._chain.deliver(request)
+        try:
+            receipt = await self._chain.deliver(request)
+        except ProviderExhaustedError as error:
+            self._record_failure(delivery, error)
+            await self._notify_failure(delivery, error)
+            raise
+        self._record_success(delivery, receipt)
+        return receipt
+
+    async def redo(
+        self,
+        delivery: Delivery,
+        request: DeliveryRequest,
+        *,
+        timezone: str = "UTC",
+    ) -> DeliveryReceipt:
+        """Retry a failed delivery reusing its cached artifact files.
+
+        The request's artifacts are replaced by the files already on disk
+        (``delivery.files``) so the finished output is not regenerated. A
+        delivered delivery cannot be redone and a delivery with no attempts
+        left raises :class:`ValueError`. On success the confirmation is
+        recorded; on exhaustion the failure is recorded, the console is
+        notified and :class:`ProviderExhaustedError` is raised.
+        """
+        if delivery.is_delivered:
+            raise ValueError(f"delivery {delivery.id} is already delivered")
+        if not delivery.has_attempts_left:
+            raise ValueError(f"delivery {delivery.id} has no attempts left")
+        artifacts = [
+            DeliveryArtifact(path=str(path), filename=Path(path).name)
+            for path in delivery.files
+        ]
+        retried = DeliveryRequest(
+            method=request.method,
+            target=request.target,
+            order_id=request.order_id,
+            run_id=request.run_id,
+            subject=request.subject,
+            message=request.message,
+            artifacts=artifacts,
+            expires_seconds=request.expires_seconds,
+            idempotency_key=request.idempotency_key,
+            metadata=dict(request.metadata),
+        )
+        try:
+            receipt = await self._chain.deliver(retried)
+        except ProviderExhaustedError as error:
+            self._record_failure(delivery, error)
+            await self._notify_failure(delivery, error)
+            raise
+        self._record_success(delivery, receipt)
+        return receipt
+
+    def _record_success(self, delivery: Delivery, receipt: DeliveryReceipt) -> None:
+        """Mark *delivery* as delivered using *receipt*."""
         delivery.confirmation = receipt.reference or ""
         delivery.delivered_at = receipt.delivered_at or self._clock()
         delivery.state = DeliveryState.DELIVERED
-        return receipt
+
+    def _record_failure(self, delivery: Delivery, error: BaseException) -> None:
+        """Record one failed delivery attempt on *delivery*."""
+        delivery.attempts += 1
+        delivery.state = DeliveryState.FAILED
+        delivery.error_code = getattr(error, "code", "") or ""
+        delivery.error_message = str(error)
+
+    async def _notify_failure(self, delivery: Delivery, error: BaseException) -> None:
+        """Send a console fallback notification that *delivery* failed."""
+        message = NotificationMessage(
+            title="Delivery failed",
+            text=(
+                f"Delivery {delivery.id} for order {delivery.order_id} failed "
+                f"after {delivery.attempts} attempt(s): {delivery.error_message}"
+            ),
+            level=NotificationLevel.ERROR,
+            buttons=[
+                NotificationButton(
+                    label="Redo",
+                    callback_data=f"delivery-redo:{delivery.id}",
+                )
+            ],
+            metadata={
+                "delivery_id": delivery.id,
+                "order_id": delivery.order_id,
+                "error_code": delivery.error_code,
+                "retryable": delivery.has_attempts_left,
+            },
+        )
+        await self.notifier.send(message)
 
 
 def _order_music_licenses(order: Mapping[str, Any]) -> tuple[AssetLicense, ...]:
