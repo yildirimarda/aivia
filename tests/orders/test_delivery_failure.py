@@ -36,9 +36,9 @@ from aivia.providers.protocols.delivery import (
     DeliveryRequest,
 )
 from aivia.providers.protocols.notify import (
+    CAPABILITY_NOTIFY,
     NotificationMessage,
     NotificationReceipt,
-    Notifier,
 )
 
 __all__ = ["_FakeDelivery"]
@@ -140,6 +140,23 @@ class _CapturingNotifier:
     def __init__(self) -> None:
         self.sent: list[NotificationMessage] = []
 
+    @property
+    def name(self) -> str:
+        return "console"
+
+    @property
+    def metadata(self) -> ProviderMeta:
+        return ProviderMeta(name="console", capabilities=[CAPABILITY_NOTIFY])
+
+    def supports(self, capability: str) -> bool:
+        return capability == CAPABILITY_NOTIFY
+
+    async def health(self) -> ProviderHealth:
+        return ProviderHealth(status=HealthStatus.HEALTHY, message="ok")
+
+    async def close(self) -> None:
+        return None
+
     async def send(self, message: NotificationMessage) -> NotificationReceipt:
         if not isinstance(message, NotificationMessage):
             raise TypeError("message must be a NotificationMessage")
@@ -169,9 +186,9 @@ def _service(
     providers: dict[str, _FakeDelivery],
     config_values: dict[str, Any] | None = None,
     *,
-    notifier: Notifier | None = None,
+    notifier: _CapturingNotifier | None = None,
     clock: _VirtualClock | None = None,
-) -> tuple[ScheduledDelivery, _CapturingNotifier | None, _VirtualClock]:
+) -> tuple[ScheduledDelivery, _CapturingNotifier, _VirtualClock]:
     if config_values is None:
         config_values = {
             "chain": list(providers),
