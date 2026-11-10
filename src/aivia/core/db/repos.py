@@ -277,6 +277,15 @@ class Repository[RecordT](ABC):
                 **filters,
             )
 
+    def delete(self, *key: Any) -> RecordT | None:
+        """Delete the record with *key* and return it, or ``None`` when absent."""
+        existing = self.get(*key)
+        if existing is None:
+            return None
+        with self.engine.begin() as connection:
+            connection.execute(delete(self.table).where(self._key_condition(key)))
+        return existing
+
     def _key_condition(self, key: tuple[Any, ...]) -> Any:
         if len(key) != len(self.key_columns):
             expected = ", ".join(self.key_columns)
