@@ -13,9 +13,21 @@ from aivia.orders.pronunciation import (
     NamePronunciationResult,
     verify_name_pronunciation,
 )
+from aivia.orders.provided_assets import (
+    AcceptProvidedAssetsError,
+    AssetKind,
+    ProvidedAsset,
+    ProvidedAssets,
+    accept_provided_assets,
+)
 
 __all__ = [
+    "AcceptProvidedAssetsError",
+    "AssetKind",
     "NamePronunciationError",
     "NamePronunciationResult",
+    "ProvidedAsset",
+    "ProvidedAssets",
+    "accept_provided_assets",
     "verify_name_pronunciation",
 ]
