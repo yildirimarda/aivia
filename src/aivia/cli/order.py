@@ -29,6 +29,7 @@ from aivia.core.db import (
     upgrade_database,
 )
 from aivia.core.errors import ConfigError
+from aivia.orders import minimize_order
 
 __all__ = ["configure", "order_create", "order_delete", "order_import", "order_show"]
 
@@ -351,7 +352,7 @@ def order_create(args: argparse.Namespace) -> int:
         if existing is not None:
             _print_order(existing)
             return 0
-        stored = repository.create(**values)
+        stored = repository.create(**minimize_order(values))
         _print_order(stored)
         return 0
     except (OSError, SQLAlchemyError) as exc:
