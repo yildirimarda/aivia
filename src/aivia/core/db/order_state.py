@@ -16,16 +16,24 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
 from sqlalchemy import Engine
 
-from aivia.core.db.repos import OrderRepository
+from aivia.core.db.repos import (
+    AssetRepository,
+    CompositionRepository,
+    DeliveryRepository,
+    OrderRepository,
+    RunRepository,
+)
 from aivia.core.errors import AiviaError
 from aivia.core.logging import get_logger
 from aivia.core.models import utcnow
@@ -334,6 +342,21 @@ def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _remove_path(path: str | Path | None) -> None:
+    """Remove one file or directory, ignoring missing paths and errors."""
+    text = str(path).strip() if path is not None else ""
+    if not text:
+        return
+    target = Path(text)
+    try:
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        else:
+            target.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 class OrderStateMachine:
     """Move orders through legal states, persist them and audit every change.
 
@@ -491,6 +514,83 @@ class OrderStateMachine:
     ) -> dict[str, Any]:
         """Move a paid order to ``refunded``."""
         return self.transition(order, OrderState.REFUNDED, now=now)
+
+    def delete(
+        self,
+        order_id: str,
+        *,
+        delete_final_outputs: bool = False,
+    ) -> dict[str, Any] | None:
+        """Delete an order and its files, auditing without personal data.
+
+        Delivery files are always removed. Non-pinned asset and composition
+        files are removed; pinned finals are kept unless
+        ``delete_final_outputs`` is set. Run directories (inputs and
+        intermediates) are removed. The order row is deleted from the
+        database, cascading to deliveries, posts, runs and their children.
+        Assets and compositions lack cascade on run_id, so they are removed
+        explicitly. An audit entry is recorded with no personal data.
+        """
+        try:
+            current = self._current(order_id)
+        except OrderNotFoundError:
+            return None
+        engine = self.repository.engine
+
+        run_repo = RunRepository(engine)
+        asset_repo = AssetRepository(engine)
+        composition_repo = CompositionRepository(engine)
+        delivery_repo = DeliveryRepository(engine)
+
+        runs = run_repo.list(order_id=order_id)
+        run_ids = [run.id for run in runs]
+
+        assets: list[Any] = []
+        compositions: list[Any] = []
+        for run_id in run_ids:
+            assets.extend(asset_repo.list(run_id=run_id))
+            compositions.extend(composition_repo.list(run_id=run_id))
+
+        deliveries = delivery_repo.list(order_id=order_id)
+
+        # Remove files on disk before the database rows.
+        for delivery in deliveries:
+            _remove_path(delivery.path)
+            for file_path in delivery.files:
+                _remove_path(file_path)
+
+        for asset in assets:
+            if not asset.pinned or delete_final_outputs:
+                _remove_path(asset.path)
+
+        for composition in compositions:
+            if not composition.pinned or delete_final_outputs:
+                _remove_path(composition.path)
+
+        for run in runs:
+            _remove_path(run.run_dir)
+
+        # Delete the order row; FK cascade removes deliveries, posts, runs and
+        # their children. Assets and compositions lack cascade on run_id, so
+        # remove them explicitly, but only when their file was removed.
+        self.repository.delete(order_id)
+        for asset in assets:
+            if not asset.pinned or delete_final_outputs:
+                asset_repo.delete(asset.id)
+        for composition in compositions:
+            if not composition.pinned or delete_final_outputs:
+                composition_repo.delete(composition.id)
+
+        # Record the audit entry with no personal data.
+        state = current.get("state", OrderState.DRAFT)
+        self.audit_log.record(
+            current["id"],
+            state,
+            state,
+            reason="deleted",
+            metadata={"scope": "order"},
+        )
+        return current
 
     def _current(self, order: Mapping[str, Any] | str) -> dict[str, Any]:
         order_id = order["id"] if isinstance(order, Mapping) else order

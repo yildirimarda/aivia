@@ -28,6 +28,7 @@ from aivia.core.db import (
     create_database_engine,
     upgrade_database,
 )
+from aivia.core.db.order_state import OrderStateMachine
 from aivia.core.errors import ConfigError
 from aivia.orders import minimize_order
 
@@ -503,12 +504,14 @@ def order_delete(args: argparse.Namespace) -> int:
 
     engine = create_database_engine(path=database_path)
     try:
-        repository = OrderRepository(engine)
-        order = repository.get(order_id)
+        machine = OrderStateMachine(engine)
+        order = machine.get(order_id)
         if order is None:
             print(f"error: order not found: {order_id}", file=sys.stderr)
             return 1
-        repository.delete(order_id)
+        retention = getattr(config, "retention", None)
+        delete_final_outputs = bool(retention and retention.delete_final_outputs)
+        machine.delete(order_id, delete_final_outputs=delete_final_outputs)
         print(f"Deleted: {order_id}")
         return 0
     except SQLAlchemyError as exc:
