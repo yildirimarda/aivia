@@ -362,6 +362,7 @@ Redaction and personal-data handling for logs, prompts and sidecars.
 | `redact_logs` | boolean | `true` |  |  |
 | `redact_prompts` | boolean | `false` |  |  |
 | `store_prompt_text` | boolean | `true` |  |  |
+| `visitor_salt` | string | `""` | length >= 0 |  |
 
 ## `profiles`
 

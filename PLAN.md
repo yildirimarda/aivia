@@ -783,7 +783,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Run an order end to end matrix covering png, mp3, mp4, gif and web card plus a scheduled delivery (tests/e2e/test_orders.py)
 - [x] Export a simple receipt with the line item, currency and a single flat tax estimate plus a footer stating it is not a tax invoice (tests/orders/test_receipt.py)
 - [x] Handle delivery failure by retrying, notifying with a console fallback and offering a redo that reuses cached artifacts (tests/orders/test_delivery_failure.py)
-- [ ] Count web card views anonymously with a daily salted hash and show them on order show with a retention window (tests/orders/test_web_card_hits.py)
+- [x] Count web card views anonymously with a daily salted hash and show them on order show with a retention window (tests/orders/test_web_card_hits.py)
 
 ## Milestone 19: Scheduling, notifications and review
 

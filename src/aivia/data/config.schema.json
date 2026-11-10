@@ -2154,6 +2154,12 @@
           "default": true,
           "title": "Store Prompt Text",
           "type": "boolean"
+        },
+        "visitor_salt": {
+          "default": "",
+          "minLength": 0,
+          "title": "Visitor Salt",
+          "type": "string"
         }
       },
       "title": "PrivacyConfig",
