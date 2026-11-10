@@ -774,7 +774,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add delivery providers for local folder, expiring storage link, email and signed webhook with an allowlist and chain fallback (tests/orders/test_delivery.py)
 - [x] Deliver at the requested time in the order timezone with retries and a confirmation record (tests/orders/test_scheduled_delivery.py)
 - [x] Support order review and revision where feedback re runs only the affected stages (tests/orders/test_review.py)
-- [ ] Report cost per order, per output type and averaged per occasion (tests/cli/test_costs_order.py)
+- [x] Report cost per order, per output type and averaged per occasion (tests/cli/test_costs_order.py)
 - [ ] Minimize and redact personal data, support placeholder mode and keep a data processing record of providers and fields (tests/orders/test_privacy.py)
 - [ ] Delete inputs, intermediates, outputs and deliveries on order delete while retention honours pinned finals and the audit entry keeps no personal data (tests/orders/test_deletion.py)
 - [ ] Block delivery when music is not cleared for commercial use and store license metadata per order (tests/orders/test_license.py)
