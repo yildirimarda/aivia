@@ -787,12 +787,24 @@ One config-defined personalization type, such as a birthday. ``variables`` are t
 | `format` | string | `""` |  |  |
 | `formats` | array of string |  |  |  |
 | `label` | string | `""` |  |  |
-| `languages` | array of string |  |  |  |
+| `languages` | map of [OccasionLanguageConfig](#occasionlanguageconfig) |  |  |  |
 | `name` | string | `""` |  |  |
 | `personalization_levels` | array of string |  |  |  |
 | `prompt` | string | `""` |  |  |
 | `template` | string | `""` |  |  |
 | `variables` | map of [OccasionVariableConfig](#occasionvariableconfig) |  |  |  |
+
+### OccasionLanguageConfig
+
+Per-language content for an occasion. Holds the lyrics, spoken phrasing, on screen text and age and date phrasing a localized order renders in one language. Every field defaults to empty so an occasion can list a language without supplying every string.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `age_phrasing` | string | `""` |  |  |
+| `date_phrasing` | string | `""` |  |  |
+| `lyrics` | string | `""` |  |  |
+| `on_screen_text` | string | `""` |  |  |
+| `speech` | string | `""` |  |  |
 
 ### OccasionVariableConfig
 
