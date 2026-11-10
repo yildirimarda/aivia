@@ -823,6 +823,31 @@ class OrdersConfig(ConfigModel):
         level = self.level(name)
         return level.price * level.cost_multiplier
 
+    def stages_for(self, outputs: Sequence[str]) -> list[str]:
+        """Return the stages required to produce the requested outputs.
+
+        Selects the cheapest configured personalization level whose declared
+        outputs cover every requested output and returns that level's stages.
+        A still PNG only needs the free ``name_overlay`` stage, so requesting
+        ``["png"]`` runs nothing that calls a paid provider. Raises
+        :class:`ValueError` when no configured level produces every requested
+        output.
+        """
+        requested = [output.strip() for output in outputs]
+        if not requested:
+            return []
+        ordered_levels = sorted(
+            self.personalization_levels.values(),
+            key=lambda level: (level.price * level.cost_multiplier, level.name),
+        )
+        for level in ordered_levels:
+            level_outputs = set(level.outputs)
+            if all(output in level_outputs for output in requested):
+                return list(level.stages)
+        raise ValueError(
+            f"no personalization level produces the requested outputs: {requested}"
+        )
+
 
 OrderConfig = OrdersConfig
 
