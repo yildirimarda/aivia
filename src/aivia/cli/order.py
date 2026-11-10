@@ -25,6 +25,7 @@ from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.resolve import resolve_config
 from aivia.core.db import (
     OrderRepository,
+    WebCardHitRepository,
     create_database_engine,
     upgrade_database,
 )
@@ -293,7 +294,7 @@ def _money(value: object) -> str:
     return f"${float(value):.6f}"
 
 
-def _print_order(order: dict[str, Any]) -> None:
+def _print_order(order: dict[str, Any], web_card_hits: int = 0) -> None:
     lines = [
         f"Order: {order['id']}",
         f"State: {order['state']}",
@@ -311,6 +312,7 @@ def _print_order(order: dict[str, Any]) -> None:
         f"Budget: {_money(order['budget_usd'])}",
         f"Run: {order['run_id'] or '-'}",
         f"Idempotency key: {order['idempotency_key'] or '-'}",
+        f"Web card hits: {web_card_hits}",
     ]
     print("\n".join(lines))
 
@@ -351,10 +353,10 @@ def order_create(args: argparse.Namespace) -> int:
         if idempotency_key:
             existing = repository.find_by_idempotency_key(idempotency_key)
         if existing is not None:
-            _print_order(existing)
+            _print_order(existing, web_card_hits=0)
             return 0
         stored = repository.create(**minimize_order(values))
-        _print_order(stored)
+        _print_order(stored, web_card_hits=0)
         return 0
     except (OSError, SQLAlchemyError) as exc:
         print(f"error: cannot create the order: {exc}", file=sys.stderr)
@@ -475,7 +477,12 @@ def order_show(args: argparse.Namespace) -> int:
         if order is None:
             print(f"error: order not found: {order_id}", file=sys.stderr)
             return 1
-        _print_order(order)
+        retention = getattr(config, "retention", None)
+        hit_days = int(retention.web_card_hits_days) if retention is not None else 0
+        hits = WebCardHitRepository(engine).count_hits_for_order(
+            order_id, days=hit_days if hit_days > 0 else None
+        )
+        _print_order(order, web_card_hits=hits)
         return 0
     except SQLAlchemyError as exc:
         print(f"error: cannot read the order: {exc}", file=sys.stderr)

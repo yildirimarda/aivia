@@ -9,6 +9,8 @@ WebP, MP3, poster and web card at the configured size presets.
 
 from __future__ import annotations
 
+import hashlib
+from datetime import UTC, datetime
 from typing import Any
 
 from aivia.core.db.repos import OrderRepository
@@ -64,6 +66,21 @@ from aivia.orders.song_mode import (
     SongMode,
     generate_batch_songs,
 )
+
+
+def visitor_hash(salt: str, day: str, visitor_id: str) -> str:
+    """Compute a daily salted hash of a visitor identifier.
+
+    The same *visitor_id* on the same *day* produces the same hash, but a
+    different *day* (or a different *salt*) produces a different hash, so
+    visitors cannot be linked across days.
+    """
+    return hashlib.sha256(f"{salt}:{day}:{visitor_id}".encode()).hexdigest()
+
+
+def today() -> str:
+    """Return today's date in ISO format (YYYY-MM-DD) for hit bucketing."""
+    return datetime.now(UTC).date().isoformat()
 
 
 def order(
@@ -123,5 +140,7 @@ __all__ = [
     "redact_order",
     "revision_stages",
     "store_order_music_licenses",
+    "today",
     "verify_name_pronunciation",
+    "visitor_hash",
 ]

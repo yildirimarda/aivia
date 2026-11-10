@@ -591,6 +591,10 @@ class PrivacyConfig(ConfigModel):
     allow_personal_data: bool = False
     placeholder_mode: bool = False
     data_processing_record: bool = True
+    visitor_salt: str = Field(default="", min_length=0)
+    """Secret salt used to compute daily salted visitor hashes for anonymous
+    web card hit counting. When unset, hits are still recorded but the hash is
+    unsalted."""
 
 
 class TracingConfig(ConfigModel):

@@ -403,6 +403,7 @@ privacy:
   allow_personal_data: false
   placeholder_mode: false
   data_processing_record: true
+  visitor_salt: ""
 
 tracing:
   enabled: false

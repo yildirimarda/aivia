@@ -18,7 +18,7 @@ from __future__ import annotations
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 
 from sqlalchemy import (
@@ -706,6 +706,58 @@ class WebCardHitRepository(TableRepository):
 
     table = web_card_hits
     id_factory = _prefixed("hit")
+
+    def record_hit(
+        self,
+        *,
+        order_id: str | None,
+        card_id: str,
+        visitor_hash: str,
+        day: str,
+        hit_at: datetime,
+        user_agent: str = "",
+        referrer: str = "",
+        metadata: Mapping[str, Any] | None = None,
+    ) -> Record:
+        """Record an anonymous web card hit and return the stored row."""
+        data: Record = {
+            "order_id": order_id or "",
+            "card_id": card_id,
+            "day": day,
+            "visitor_hash": visitor_hash,
+            "hit_at": hit_at,
+            "user_agent": user_agent,
+            "referrer": referrer,
+            "metadata": dict(metadata or {}),
+        }
+        with self.engine.begin() as connection:
+            return self.create_in(connection, **data)
+
+    def count_hits_for_order(
+        self,
+        order_id: str,
+        *,
+        days: int | None = None,
+        since: datetime | None = None,
+    ) -> int:
+        """Count web card hits for *order_id* within an optional retention window.
+
+        When *days* is given, only hits whose ``hit_at`` is within the last
+        *days* days are counted. When *since* is given instead, only hits at or
+        after *since* are counted. When neither is given, all hits are counted.
+        """
+        with self.engine.connect() as connection:
+            statement = (
+                select(func.count())
+                .select_from(self.table)
+                .where(self.table.c.order_id == order_id)
+            )
+            if days is not None and days > 0:
+                cutoff = datetime.now(UTC) - timedelta(days=days)
+                statement = statement.where(self.table.c.hit_at >= cutoff)
+            elif since is not None:
+                statement = statement.where(self.table.c.hit_at >= since)
+            return int(connection.execute(statement).scalar_one())
 
 
 REPOSITORIES: Mapping[str, type[Repository[Any]]] = {
