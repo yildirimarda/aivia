@@ -24,6 +24,7 @@ from aivia.api.limits import (
     RequestRateLimiter,
 )
 from aivia.api.media import register_media_routes
+from aivia.api.orders import register_order_routes
 from aivia.api.security import validate_bind_host
 from aivia.api.session import register_session_routes
 from aivia.api.uploads import sanitize_filename
@@ -161,6 +162,14 @@ def create_app(
         jobs=jobs_config,
         environment=config_environment,
         profile=config_profile,
+    )
+
+    register_order_routes(
+        app,
+        engine=engine,
+        environ=environ,
+        database_path=database_path,
+        data_dir=data_dir,
     )
 
     register_session_routes(app)

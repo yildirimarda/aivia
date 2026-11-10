@@ -2,6 +2,7 @@
 
 from aivia.api.app import create_app, serve
 from aivia.api.media import MediaJobRunner, MediaJobSubmission, register_media_routes
+from aivia.api.orders import register_order_routes
 from aivia.api.security import (
     is_loopback_host,
     validate_bind_host,
@@ -15,6 +16,7 @@ __all__ = [
     "create_app",
     "is_loopback_host",
     "register_media_routes",
+    "register_order_routes",
     "register_session_routes",
     "sanitize_filename",
     "serve",
