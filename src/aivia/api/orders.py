@@ -26,6 +26,7 @@ from aivia.core.db import (
     upgrade_database,
 )
 from aivia.core.errors import ValidationError
+from aivia.orders import minimize_order
 from aivia.writing.originality import find_profanity
 
 __all__ = [
@@ -286,6 +287,8 @@ def register_order_routes(
             values = sanitize_order_input(values)
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        values = minimize_order(values)
 
         try:
             return repository.create(values)

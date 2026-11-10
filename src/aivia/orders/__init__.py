@@ -23,6 +23,14 @@ from aivia.orders.packaging import (
     SizePreset,
     package_outputs,
 )
+from aivia.orders.privacy import (
+    DataProcessingEntry,
+    DataProcessingRecord,
+    apply_placeholders,
+    minimize_order,
+    placeholder_for,
+    redact_order,
+)
 from aivia.orders.pronunciation import (
     NamePronunciationError,
     NamePronunciationResult,
@@ -55,6 +63,8 @@ __all__ = [
     "DEFAULT_SIZE_PRESETS",
     "AcceptProvidedAssetsError",
     "AssetKind",
+    "DataProcessingEntry",
+    "DataProcessingRecord",
     "NamePronunciationError",
     "NamePronunciationResult",
     "NamedSong",
@@ -70,11 +80,15 @@ __all__ = [
     "accept_provided_assets",
     "affected_stages",
     "animate_still",
+    "apply_placeholders",
     "feedback_for_order",
     "generate_batch_songs",
+    "minimize_order",
     "overlay_name",
     "package_outputs",
+    "placeholder_for",
     "record_feedback",
+    "redact_order",
     "revision_stages",
     "verify_name_pronunciation",
 ]
