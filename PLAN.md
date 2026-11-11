@@ -803,7 +803,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: idempotent, attested publishing to the configured accounts, deliberately last -->
 
-- [ ] Normalize post requests and results with a per platform error taxonomy and store tokens encrypted with the key from the secrets loader, refreshing automatically and never logging them (tests/publish/test_tokens.py)
+- [x] Normalize post requests and results with a per platform error taxonomy and store tokens encrypted with the key from the secrets loader, refreshing automatically and never logging them (tests/publish/test_tokens.py)
 - [ ] Add the Telegram channel publisher as the first live capable target (tests/publish/test_telegram.py)
 - [ ] Add the YouTube publisher with resumable upload, retries, quota hints, metadata limits, disclosure fields and a clear message when an unaudited project forces private uploads (tests/publish/test_youtube.py)
 - [ ] Add the Instagram publisher with the container flow, a business account check, carousels and aspect validation (tests/publish/test_instagram.py)
