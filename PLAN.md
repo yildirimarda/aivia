@@ -794,7 +794,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add Slack and email notifiers using the same message model with chain fallback (tests/providers/notify/test_slack_email.py)
 - [x] Add the review flow sending preview, title, sources, cost, warnings and approve, reject and regenerate buttons (tests/review/test_flow.py)
 - [x] Implement the review state machine with per profile approval settings and timeout behaviour tested with a fake clock (tests/review/test_state.py)
-- [ ] Re run only the affected stages when a reviewer regenerates a script, visuals, voice or song (tests/review/test_regenerate.py)
+- [x] Re run only the affected stages when a reviewer regenerates a script, visuals, voice or song (tests/review/test_regenerate.py)
 - [ ] Add a CLI review fallback with list, approve and reject without any notifier (tests/cli/test_review.py)
 - [ ] Send budget and failure alerts plus a daily summary built from stored data (tests/review/test_alerts.py)
 - [ ] Run a scheduled end to end test covering review approval, rejection and a budget pause (tests/e2e/test_schedule_review.py)
