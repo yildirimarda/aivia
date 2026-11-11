@@ -79,6 +79,7 @@ def static_metadata(provider: type[Provider]) -> ProviderMeta | None:
 
 def _load_builtin_adapters() -> None:
     """Import built-in adapters the top-level package does not load itself."""
+    from aivia.providers import instagram_publish as _instagram_publish  # noqa: F401
     from aivia.providers import pagefetch as _pagefetch  # noqa: F401
     from aivia.providers import telegram as _telegram  # noqa: F401
     from aivia.providers import telegram_publish as _telegram_publish  # noqa: F401
