@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import asyncio
 import io
-from collections.abc import Mapping
-from typing import Any, Callable, cast
+from collections.abc import Callable, Mapping
+from typing import Any, cast
 
 import httpx
 from PIL import Image, UnidentifiedImageError
