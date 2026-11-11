@@ -19,6 +19,7 @@ import yaml
 
 from aivia.core import paths
 from aivia.core.errors import ConfigError
+from aivia.core.models.asset import Asset
 
 __all__ = [
     "DEFAULT_PLATFORMS_FILENAME",
@@ -907,6 +908,22 @@ class Platform:
         """Alias for :meth:`limit`."""
         return self.limit(media_type)
 
+    def choose_outputs(self, outputs: Sequence[Asset]) -> dict[str, Asset | None]:
+        """Choose the best run output for each media type this platform supports.
+
+        Returns a mapping of platform media type to the matching asset, or
+        ``None`` when no output fits that media type's declared limits. Outputs
+        are inspected in order and the first fit wins, so callers can rank
+        preferred outputs earlier.
+        """
+        chosen: dict[str, Asset | None] = {}
+        for media_type in self.media_types:
+            limits = self.limit(media_type)
+            chosen[media_type] = (
+                None if limits is None else _pick_output(media_type, limits, outputs)
+            )
+        return chosen
+
     def __getitem__(self, key: str) -> Any:
         aliases: dict[str, Any] = {
             "id": self.id,
@@ -939,6 +956,91 @@ class Platform:
             return aliases[key]
         except KeyError as exc:
             raise KeyError(key) from exc
+
+
+_IMAGE_KINDS = frozenset({"image", "carousel", "web_card"})
+_AUDIO_KINDS = frozenset({"audio", "music", "voice", "sfx"})
+
+
+def _broad_kind(media_type: str) -> str:
+    """Collapse platform media types and asset kinds to video/image/audio."""
+    key = _normalise_name(media_type)
+    if key == "video":
+        return "video"
+    if key in _IMAGE_KINDS:
+        return "image"
+    if key in _AUDIO_KINDS:
+        return "audio"
+    return key
+
+
+def _resolution_key(width: int | None, height: int | None) -> str | None:
+    if width is None or height is None:
+        return None
+    return f"{width}x{height}"
+
+
+def _aspect_ratio(width: int | None, height: int | None) -> float | None:
+    if not width or not height:
+        return None
+    return width / height
+
+
+def _parse_aspect_ratio(text: str) -> float | None:
+    try:
+        width_text, height_text = str(text).split(":")
+        return float(width_text) / float(height_text)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def _ratios_close(first: float, second: float | None, tolerance: float = 1e-6) -> bool:
+    return second is not None and abs(first - second) <= tolerance
+
+
+def _fits_limits(asset: Asset, limits: MediaLimits) -> bool:
+    analysis = asset.analysis
+    width = analysis.width
+    height = analysis.height
+
+    if limits.resolutions:
+        key = _resolution_key(width, height)
+        if key is None or key not in limits.resolutions:
+            return False
+    elif limits.aspect_ratios:
+        ratio = _aspect_ratio(width, height)
+        if ratio is None or not any(
+            _ratios_close(ratio, _parse_aspect_ratio(ratio_text))
+            for ratio_text in limits.aspect_ratios
+        ):
+            return False
+
+    duration = analysis.duration_seconds
+    if duration is not None:
+        if (
+            limits.duration.min_seconds is not None
+            and duration < limits.duration.min_seconds
+        ):
+            return False
+        if (
+            limits.duration.max_seconds is not None
+            and duration > limits.duration.max_seconds
+        ):
+            return False
+
+    return not (limits.audio_required and analysis.has_audio is False)
+
+
+def _pick_output(
+    media_type: str, limits: MediaLimits, outputs: Sequence[Asset]
+) -> Asset | None:
+    target = _broad_kind(media_type)
+    for asset in outputs:
+        if _broad_kind(asset.media_type.value) != target:
+            continue
+        if _fits_limits(asset, limits):
+            return asset
+    return None
 
 
 class PlatformCatalog(Mapping[str, Platform]):
