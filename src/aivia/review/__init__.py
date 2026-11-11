@@ -1,5 +1,6 @@
-"""Human review flow: send a preview for approval through a notifier."""
+"""Budget and failure alerts plus a daily summary built from stored data."""
 
+from aivia.review.alerts import AlertManager, DailySummary
 from aivia.review.flow import ReviewFlow, ReviewResult
 
-__all__ = ["ReviewFlow", "ReviewResult"]
+__all__ = ["AlertManager", "DailySummary", "ReviewFlow", "ReviewResult"]

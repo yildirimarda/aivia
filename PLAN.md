@@ -796,7 +796,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Implement the review state machine with per profile approval settings and timeout behaviour tested with a fake clock (tests/review/test_state.py)
 - [x] Re run only the affected stages when a reviewer regenerates a script, visuals, voice or song (tests/review/test_regenerate.py)
 - [x] Add a CLI review fallback with list, approve and reject without any notifier (tests/cli/test_review.py)
-- [ ] Send budget and failure alerts plus a daily summary built from stored data (tests/review/test_alerts.py)
+- [x] Send budget and failure alerts plus a daily summary built from stored data (tests/review/test_alerts.py)
 - [ ] Run a scheduled end to end test covering review approval, rejection and a budget pause (tests/e2e/test_schedule_review.py)
 
 ## Milestone 20: Publishing
