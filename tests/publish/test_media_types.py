@@ -88,8 +88,9 @@ def test_output_must_fit_the_declared_resolution() -> None:
     )
 
     assert youtube.choose_outputs([too_small]) == {"video": None}
-    assert youtube.choose_outputs([fits])["video"] is not None
-    assert youtube.choose_outputs([fits])["video"].path == "fit.mp4"
+    chosen = youtube.choose_outputs([fits])
+    assert chosen["video"] is not None
+    assert chosen["video"].path == "fit.mp4"
 
 
 def test_output_must_fit_the_declared_duration_range() -> None:
@@ -105,7 +106,9 @@ def test_output_must_fit_the_declared_duration_range() -> None:
     )
 
     assert youtube.choose_outputs([too_long]) == {"video": None}
-    assert youtube.choose_outputs([fits])["video"].path == "short.mp4"
+    chosen = youtube.choose_outputs([fits])
+    assert chosen["video"] is not None
+    assert chosen["video"].path == "short.mp4"
 
 
 def test_image_output_has_no_duration_check() -> None:
