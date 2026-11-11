@@ -49,6 +49,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `hackernews` | `source` | 60/min | - | - | unknown |
 | `hn` | `source` | 60/min | - | - | unknown |
 | `http` | `page_fetch` | 60/min | - | - | unknown |
+| `instagram` | `publish` | 60/min | - | - | unknown |
+| `instagram_publish` | `publish` | 60/min | - | - | unknown |
 | `kokoro` | `tts` | 60/min | - | - | unknown |
 | `kokoro-tts` | `tts` | 60/min | - | - | unknown |
 | `llm_native` | `search` | 60/min | - | - | unknown |
@@ -186,6 +188,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `hackernews` | - | - |
 | `hn` | - | - |
 | `http` | `page_fetch` | $0 per call |
+| `instagram` | `publish` | $0 per call |
+| `instagram_publish` | `publish` | $0 per call |
 | `kokoro` | `tts` | $0 per character |
 | `kokoro-tts` | `tts` | $0 per character |
 | `llm_native` | - | - |
@@ -341,6 +345,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `hackernews` | - | - |
 | `hn` | - | - |
 | `http` | - | - |
+| `instagram` | - | - |
+| `instagram_publish` | - | - |
 | `kokoro` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
 | `kokoro-tts` | `tts` | `text`, `model`, `format`, `sample_rate`, `speed` |
 | `llm_native` | - | - |
@@ -478,6 +484,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `hackernews` | - | unknown | no | - |
 | `hn` | - | unknown | no | - |
 | `http` | - | unknown | no | - |
+| `instagram` | - | unknown | no | - |
+| `instagram_publish` | - | unknown | no | - |
 | `kokoro` | - | unknown | no | - |
 | `kokoro-tts` | - | unknown | no | - |
 | `llm_native` | - | unknown | no | - |
