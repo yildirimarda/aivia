@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 from unittest import mock
 
 import httpx
@@ -25,6 +26,7 @@ from aivia.providers.protocols.notify import (
     NotificationMedia,
     NotificationMessage,
     NotificationReceipt,
+    Notifier,
 )
 from aivia.providers.slack import SlackNotifier
 
@@ -34,7 +36,7 @@ IMAGE_URL = "https://example.com/preview.png"
 
 def _capture(
     response: str | httpx.Response = "ok",
-) -> tuple[list[httpx.Request], str | httpx.Response]:
+) -> tuple[list[httpx.Request], Callable[[httpx.Request], httpx.Response]]:
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -268,7 +270,7 @@ def test_slack_health_check_reports_healthy_with_a_webhook_url() -> None:
 
 
 def test_email_metadata_and_registration_describe_the_provider() -> None:
-    smtp, _ = _smtp_capture()
+    _, smtp = _smtp_capture()
     provider = _email(smtp)
 
     assert provider.name == "email_notifier"
@@ -321,7 +323,7 @@ def test_email_missing_fields_are_rejected() -> None:
 
 
 def test_email_health_check_reports_healthy_when_configured() -> None:
-    smtp, _ = _smtp_capture()
+    _, smtp = _smtp_capture()
     provider = _email(smtp)
 
     health = _run(provider.health())
@@ -330,7 +332,7 @@ def test_email_health_check_reports_healthy_when_configured() -> None:
 
 
 def test_email_check_health_reports_unhealthy_when_not_configured() -> None:
-    smtp, _ = _smtp_capture()
+    _, smtp = _smtp_capture()
     provider = _email(smtp)
     provider._smtp_host = ""
 
@@ -347,7 +349,10 @@ def test_email_check_health_reports_unhealthy_when_not_configured() -> None:
 def test_chain_sends_to_the_first_provider() -> None:
     slack = _RecordingNotifier("slack")
     email = _RecordingNotifier("email")
-    chain = NotifyChain({"slack": slack, "email": email}, chain=["slack", "email"])
+    chain = NotifyChain(
+        {"slack": cast(Notifier, slack), "email": cast(Notifier, email)},
+        chain=["slack", "email"],
+    )
 
     receipt = _run(chain.notify(_message()))
 
@@ -359,7 +364,10 @@ def test_chain_sends_to_the_first_provider() -> None:
 def test_chain_falls_back_to_the_next_provider() -> None:
     slack = _RecordingNotifier("slack", exc=PermanentError("slack is down"))
     email = _RecordingNotifier("email")
-    chain = NotifyChain({"slack": slack, "email": email}, chain=["slack", "email"])
+    chain = NotifyChain(
+        {"slack": cast(Notifier, slack), "email": cast(Notifier, email)},
+        chain=["slack", "email"],
+    )
 
     receipt = _run(chain.notify(_message()))
 
@@ -372,7 +380,7 @@ def test_chain_retries_a_transient_failure_before_falling_back() -> None:
     flaky = _FlakyNotifier("slack")
     email = _RecordingNotifier("email")
     chain = NotifyChain(
-        {"slack": flaky, "email": email},
+        {"slack": cast(Notifier, flaky), "email": cast(Notifier, email)},
         chain=["slack", "email"],
         max_attempts=2,
         retry_seconds=0.0,
@@ -388,7 +396,10 @@ def test_chain_retries_a_transient_failure_before_falling_back() -> None:
 def test_chain_is_exhausted_when_every_provider_fails() -> None:
     slack = _RecordingNotifier("slack", exc=PermanentError("slack is down"))
     email = _RecordingNotifier("email", exc=PermanentError("email is down"))
-    chain = NotifyChain({"slack": slack, "email": email}, chain=["slack", "email"])
+    chain = NotifyChain(
+        {"slack": cast(Notifier, slack), "email": cast(Notifier, email)},
+        chain=["slack", "email"],
+    )
 
     with pytest.raises(
         ProviderExhaustedError, match="every notifier in the chain failed"
@@ -405,7 +416,7 @@ def test_chain_without_a_configured_provider_is_exhausted() -> None:
 
 def test_chain_uses_the_default_when_no_chain_is_given() -> None:
     slack = _RecordingNotifier("slack")
-    chain = NotifyChain({"slack": slack}, default="slack")
+    chain = NotifyChain({"slack": cast(Notifier, slack)}, default="slack")
 
     receipt = _run(chain.notify(_message()))
 
@@ -416,7 +427,10 @@ def test_chain_uses_the_default_when_no_chain_is_given() -> None:
 def test_chain_shares_the_same_message_model_as_the_notifiers() -> None:
     slack = _RecordingNotifier("slack")
     email = _RecordingNotifier("email")
-    chain = NotifyChain({"slack": slack, "email": email}, chain=["slack", "email"])
+    chain = NotifyChain(
+        {"slack": cast(Notifier, slack), "email": cast(Notifier, email)},
+        chain=["slack", "email"],
+    )
 
     media = NotificationMedia(url=IMAGE_URL, media_type="image/png", caption="preview")
     message = _message(
