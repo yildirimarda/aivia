@@ -137,6 +137,11 @@ from aivia.providers.mock import (
     mock_provider_for,
     register_mock_providers,
 )
+from aivia.providers.notify_chain import NotifyChain
+from aivia.providers.notify_email import (
+    EmailNotificationProvider,
+    EmailNotifier,
+)
 from aivia.providers.protocols import (
     CAPABILITY_EMBEDDINGS,
     CAPABILITY_IMAGE_EDIT,
@@ -264,6 +269,11 @@ from aivia.providers.registry import (
     register_provider,
     registry,
     resolve_provider,
+)
+from aivia.providers.slack import (
+    DEFAULT_SLACK_BASE_URL,
+    SlackNotificationProvider,
+    SlackNotifier,
 )
 from aivia.providers.sources import (
     ACCESS_LEVELS,
@@ -1265,6 +1275,7 @@ __all__ = [
     "DEFAULT_RESULT_FIELDS",
     "DEFAULT_RSS_FEEDS",
     "DEFAULT_SCALES",
+    "DEFAULT_SLACK_BASE_URL",
     "DEFAULT_SUBREDDIT",
     "DEFAULT_SUBREDDITS",
     "DEFAULT_TOLERANCE",
@@ -1341,6 +1352,8 @@ __all__ = [
     "ElevenLabsTTS",
     "ElevenLabsTTSProvider",
     "EmailDeliveryProvider",
+    "EmailNotificationProvider",
+    "EmailNotifier",
     "Embedding",
     "EmbeddingCache",
     "EmbeddingCacheEntry",
@@ -1510,6 +1523,7 @@ __all__ = [
     "MusicTrack",
     "NativeSearch",
     "NativeSearchProvider",
+    "NotifyChain",
     "OnThisDay",
     "OpenAI",
     "OpenAICompat",
@@ -1615,6 +1629,8 @@ __all__ = [
     "SerpAPIProvider",
     "SerpAPISearchProvider",
     "SignedWebhookDeliveryProvider",
+    "SlackNotificationProvider",
+    "SlackNotifier",
     "Source",
     "SourceCandidate",
     "SourceProvider",
