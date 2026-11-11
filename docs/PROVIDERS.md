@@ -23,6 +23,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `elevenlabs-tts` | `tts` | 60/min | - | - | unknown |
 | `elevenlabs_music` | `music_gen` | 60/min | - | ElevenLabs Music Terms ([terms](https://elevenlabs.io/terms-of-use)) | yes |
 | `elevenlabs_tts` | `tts` | 60/min | - | - | unknown |
+| `email_notifier` | `notify` | 60/min | - | - | unknown |
+| `email_notify` | `notify` | 60/min | - | - | unknown |
 | `exa` | `search` | 60/min | - | - | unknown |
 | `fal` | `image_gen` | 60/min | - | - | unknown |
 | `fal-video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
@@ -115,6 +117,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `rss-source` | `source` | 60/min | - | - | unknown |
 | `s3` | `storage` | 60/min | - | - | unknown |
 | `serpapi` | `search` | 60/min | - | - | unknown |
+| `slack` | `notify` | 60/min | - | - | unknown |
+| `slack_notifier` | `notify` | 60/min | - | - | unknown |
 | `stable-audio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `stable_audio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
 | `stableaudio` | `music_gen` | 60/min | - | Stability AI Community License ([terms](https://stability.ai/license)) | yes |
@@ -152,6 +156,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `elevenlabs-tts` | `tts` | $0.00015 per character |
 | `elevenlabs_music` | - | - |
 | `elevenlabs_tts` | `tts` | $0.00015 per character |
+| `email_notifier` | `notify` | $0 per call |
+| `email_notify` | `notify` | $0 per call |
 | `exa` | - | - |
 | `fal` | - | - |
 | `fal-video` | - | - |
@@ -262,6 +268,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `rss-source` | - | - |
 | `s3` | `storage` | $0 per call |
 | `serpapi` | - | - |
+| `slack` | `notify` | $0 per call |
+| `slack_notifier` | `notify` | $0 per call |
 | `stable-audio` | - | - |
 | `stable_audio` | - | - |
 | `stableaudio` | - | - |
@@ -299,6 +307,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `elevenlabs-tts` | `tts` | `text`, `model`, `language`, `format`, `sample_rate`, `speed`, `word_timestamps` |
 | `elevenlabs_music` | `music_gen` | `vocals`, `instrumental`, `mp3`, `ogg`, `opus`, `pcm`, `prompt`, `lyrics`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
 | `elevenlabs_tts` | `tts` | `text`, `model`, `language`, `format`, `sample_rate`, `speed`, `word_timestamps` |
+| `email_notifier` | - | - |
+| `email_notify` | - | - |
 | `exa` | - | - |
 | `fal` | `image_gen` | `prompt`, `negative_prompt`, `size`, `aspect_ratio`, `format`, `quality`, `style`, `seed`, `count`, `model` |
 | `fal-video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `fps`, `seed`, `duration`, `count`, `model`, `generate_audio`, `audio_prompt` |
@@ -391,6 +401,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `rss-source` | - | - |
 | `s3` | - | - |
 | `serpapi` | - | - |
+| `slack` | - | - |
+| `slack_notifier` | - | - |
 | `stable-audio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
 | `stable_audio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
 | `stableaudio` | `music_gen` | `instrumental`, `mp3`, `wav`, `prompt`, `duration`, `model`, `sample_rate`, `seed`, `count`, `format` |
@@ -428,6 +440,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `elevenlabs-tts` | - | unknown | no | - |
 | `elevenlabs_music` | ElevenLabs Music Terms ([terms](https://elevenlabs.io/terms-of-use)) | yes | no | Commercial use follows the ElevenLabs plan and terms; free plans may require attribution. Review the current terms before publishing. |
 | `elevenlabs_tts` | - | unknown | no | - |
+| `email_notifier` | - | unknown | no | - |
+| `email_notify` | - | unknown | no | - |
 | `exa` | - | unknown | no | - |
 | `fal` | - | unknown | no | - |
 | `fal-video` | - | unknown | no | - |
@@ -520,6 +534,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `rss-source` | - | unknown | no | - |
 | `s3` | - | unknown | no | - |
 | `serpapi` | - | unknown | no | - |
+| `slack` | - | unknown | no | - |
+| `slack_notifier` | - | unknown | no | - |
 | `stable-audio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
 | `stable_audio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
 | `stableaudio` | Stability AI Community License ([terms](https://stability.ai/license)) | yes | no | Commercial use is allowed below the revenue threshold in the Stability AI Community License; review the current license before publishing. |
