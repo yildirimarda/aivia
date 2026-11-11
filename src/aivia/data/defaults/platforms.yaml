@@ -10,6 +10,12 @@ defaults:
     text: "This content was generated with AI."
     on_screen_label: "AI-generated"
     metadata: true
+  chapter_rules:
+    enabled: true
+    max_chapters: 25
+    min_chapter_duration_seconds: 30.0
+    max_chapter_title_length: 100
+    separator: "\n"
 
 platforms:
   youtube:
