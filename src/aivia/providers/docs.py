@@ -84,6 +84,7 @@ def _load_builtin_adapters() -> None:
     from aivia.providers import telegram as _telegram  # noqa: F401
     from aivia.providers import telegram_publish as _telegram_publish  # noqa: F401
     from aivia.providers import tiktok_publish as _tiktok_publish  # noqa: F401
+    from aivia.providers import x_publish as _x_publish  # noqa: F401
     from aivia.providers import youtube_publish as _youtube_publish  # noqa: F401
     from aivia.providers.embeddings import local as _local_embeddings  # noqa: F401
     from aivia.providers.embeddings import openai as _openai_embeddings  # noqa: F401

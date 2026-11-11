@@ -808,7 +808,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the YouTube publisher with resumable upload, retries, quota hints, metadata limits, disclosure fields and a clear message when an unaudited project forces private uploads (tests/publish/test_youtube.py)
 - [x] Add the Instagram publisher with the container flow, a business account check, carousels and aspect validation (tests/publish/test_instagram.py)
 - [x] Add the TikTok publisher with init, upload and status, restricting unaudited clients to private posts with a clear message (tests/publish/test_tiktok.py)
-- [ ] Add the X publisher with chunked upload and post creation plus a tier limit hint (tests/publish/test_x.py)
+- [x] Add the X publisher with chunked upload and post creation plus a tier limit hint (tests/publish/test_x.py)
 - [ ] Add an aggregator publisher covering several platforms and reporting capability gaps per account (tests/publish/test_aggregator.py)
 - [ ] Choose the matching run output per platform media type from the platform data file (tests/publish/test_media_types.py)
 - [ ] Format captions, hashtags, titles and disclosure text from platform data with no literals in code (tests/publish/test_formatting.py)

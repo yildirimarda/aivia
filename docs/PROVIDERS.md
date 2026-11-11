@@ -143,6 +143,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `wikipedia-pageviews` | `source` | 60/min | - | - | unknown |
 | `wikipedia_otd` | `source` | 60/min | - | - | unknown |
 | `wikipedia_pageviews` | `source` | 60/min | - | - | unknown |
+| `x` | `publish` | 60/min | - | - | unknown |
+| `x_publish` | `publish` | 60/min | - | - | unknown |
 | `youtube` | `publish` | 60/min | - | - | unknown |
 | `youtube_publish` | `publish` | 60/min | - | - | unknown |
 
@@ -302,6 +304,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `wikipedia-pageviews` | - | - |
 | `wikipedia_otd` | - | - |
 | `wikipedia_pageviews` | - | - |
+| `x` | `publish` | $0 per call |
+| `x_publish` | `publish` | $0 per call |
 | `youtube` | `publish` | $0 per call |
 | `youtube_publish` | `publish` | $0 per call |
 
@@ -443,6 +447,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `wikipedia-pageviews` | - | - |
 | `wikipedia_otd` | - | - |
 | `wikipedia_pageviews` | - | - |
+| `x` | - | - |
+| `x_publish` | - | - |
 | `youtube` | - | - |
 | `youtube_publish` | - | - |
 
@@ -584,5 +590,7 @@ This matrix is generated from the metadata every registered provider declares. C
 | `wikipedia-pageviews` | - | unknown | no | - |
 | `wikipedia_otd` | - | unknown | no | - |
 | `wikipedia_pageviews` | - | unknown | no | - |
+| `x` | - | unknown | no | - |
+| `x_publish` | - | unknown | no | - |
 | `youtube` | - | unknown | no | - |
 | `youtube_publish` | - | unknown | no | - |
