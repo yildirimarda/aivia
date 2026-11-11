@@ -29,6 +29,7 @@ __all__ = [
     "PLATFORM_DATA_FILENAME",
     "PLATFORM_SCHEMA_VERSION",
     "CaptionLimits",
+    "ChapterRules",
     "DisclosureRules",
     "DurationCollection",
     "DurationLimits",
@@ -148,6 +149,21 @@ _DISCLOSURE_KEYS = frozenset(
         "url",
     }
 )
+_CHAPTER_RULES_KEYS = frozenset(
+    {
+        "enabled",
+        "max_chapters",
+        "max_chapter_count",
+        "min_chapter_duration_seconds",
+        "min_chapter_duration",
+        "min_duration_seconds",
+        "max_chapter_title_length",
+        "max_title_length",
+        "chapter_title_length",
+        "separator",
+        "chapter_separator",
+    }
+)
 _MEDIA_LIMIT_KEYS = frozenset(
     {
         "media_type",
@@ -228,6 +244,7 @@ _PLATFORM_KEYS = frozenset(
         "disclosure_rules",
         "audio_required",
         "requires_audio",
+        "chapter_rules",
         "loudness_lufs",
         "loudness",
         "loudness_tolerance_lufs",
@@ -517,6 +534,24 @@ class DisclosureRules:
 
 
 @dataclass(frozen=True, slots=True)
+class ChapterRules:
+    """Rules for splitting a transcript into description chapters.
+
+    ``enabled`` turns chapter generation on or off for the platform.
+    ``max_chapters`` caps the number of chapters. ``min_chapter_duration_seconds``
+    keeps chapters from being too short to be useful. ``max_chapter_title_length``
+    bounds each chapter title and ``separator`` joins chapter lines in a
+    description.
+    """
+
+    enabled: bool = True
+    max_chapters: int | None = 25
+    min_chapter_duration_seconds: float | None = 30.0
+    max_chapter_title_length: int | None = 100
+    separator: str = "\n"
+
+
+@dataclass(frozen=True, slots=True)
 class MediaLimits:
     """The limits that apply to one media type on one platform."""
 
@@ -713,6 +748,7 @@ class Platform:
     caption_limits: CaptionLimits = field(default_factory=CaptionLimits)
     safe_area: SafeArea = field(default_factory=SafeArea)
     disclosure: DisclosureRules = field(default_factory=DisclosureRules)
+    chapter_rules: ChapterRules = field(default_factory=ChapterRules)
     aliases: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -948,6 +984,7 @@ class Platform:
             "safe_areas": self.safe_area,
             "disclosure": self.disclosure,
             "disclosure_rules": self.disclosure,
+            "chapter_rules": self.chapter_rules,
             "loudness_lufs": self.loudness_lufs,
             "loudness_tolerance_lufs": self.loudness_tolerance_lufs,
             "aliases": self.aliases,
@@ -1464,6 +1501,11 @@ def _parse_platform(
         field=f"platform {key!r} disclosure",
         source=source,
     )
+    chapter_rules = _parse_chapter_rules(
+        _first(data, "chapter_rules", "chapters"),
+        field=f"platform {key!r} chapter_rules",
+        source=source,
+    )
 
     return Platform(
         id=key,
@@ -1473,6 +1515,7 @@ def _parse_platform(
         caption_limits=caption_limits,
         safe_area=safe_area,
         disclosure=disclosure,
+        chapter_rules=chapter_rules,
         aliases=aliases,
     )
 
@@ -1844,6 +1887,72 @@ def _parse_disclosure(
         )
         or "",
     )
+
+
+def _parse_chapter_rules(
+    value: Any,
+    *,
+    field: str,
+    source: Path | None,
+) -> ChapterRules:
+    if value is None:
+        return ChapterRules()
+    if isinstance(value, bool):
+        return ChapterRules(enabled=value)
+    if not isinstance(value, Mapping):
+        raise ConfigError(_error(f"{field} must be a mapping or boolean", source))
+    unknown = sorted(str(key) for key in value if key not in _CHAPTER_RULES_KEYS)
+    if unknown:
+        raise ConfigError(
+            _error(f"{field} has unknown key: {', '.join(unknown)}", source)
+        )
+    enabled_raw = _first(value, "enabled")
+    enabled = (
+        _parse_bool(enabled_raw, field=f"{field} enabled", source=source)
+        if enabled_raw is not None
+        else True
+    )
+    return ChapterRules(
+        enabled=enabled,
+        max_chapters=_parse_int(
+            _first(value, "max_chapters", "max_chapter_count"),
+            field=f"{field} max_chapters",
+            source=source,
+        ),
+        min_chapter_duration_seconds=_parse_number(
+            _first(
+                value,
+                "min_chapter_duration_seconds",
+                "min_chapter_duration",
+                "min_duration_seconds",
+            ),
+            field=f"{field} min_chapter_duration_seconds",
+            source=source,
+        ),
+        max_chapter_title_length=_parse_int(
+            _first(
+                value,
+                "max_chapter_title_length",
+                "max_title_length",
+                "chapter_title_length",
+            ),
+            field=f"{field} max_chapter_title_length",
+            source=source,
+        ),
+        separator=_parse_chapter_separator(
+            _first(value, "separator", "chapter_separator"),
+            field=f"{field} separator",
+            source=source,
+        ),
+    )
+
+
+def _parse_chapter_separator(value: Any, *, field: str, source: Path | None) -> str:
+    if value is None:
+        return "\n"
+    if not isinstance(value, str):
+        raise ConfigError(_error(f"{field} must be a string", source))
+    return value or "\n"
 
 
 def _parse_resolutions(
