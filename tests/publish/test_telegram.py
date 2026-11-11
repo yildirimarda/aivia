@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -31,7 +32,7 @@ OK_RESPONSE = {"ok": True, "result": {"message_id": 42, "date": 1700000000}}
 
 def _capture(
     response: httpx.Response | dict[str, Any] = OK_RESPONSE,
-) -> tuple[list[httpx.Request], int, Any]:
+) -> tuple[list[httpx.Request], list[int], Callable[[httpx.Request], httpx.Response]]:
     requests: list[httpx.Request] = []
     calls = [0]
 
@@ -51,7 +52,7 @@ def _provider(
     chat_id: str = PUBLIC_CHAT_ID,
     bot_token: str | None = BOT_TOKEN,
     bot_token_ref: str | None = None,
-    secrets=None,
+    secrets: SecretsLoader | None = None,
     **kwargs: Any,
 ) -> TelegramChannelPublisher:
     options: dict[str, Any] = {
@@ -193,7 +194,7 @@ def test_publish_requires_a_publish_request() -> None:
     provider = _provider(lambda request: httpx.Response(200, json=OK_RESPONSE))
 
     with pytest.raises(TypeError, match="PublishRequest"):
-        _run(provider.publish("not a request"))
+        _run(provider.publish(cast(PublishRequest, "not a request")))
 
 
 def test_bot_token_resolved_from_reference() -> None:
