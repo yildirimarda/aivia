@@ -792,7 +792,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add the scheduler enqueueing jobs from cron entries with timezone and DST correctness, rejecting invalid cron and locking overlapping runs (tests/scheduling/test_scheduler.py)
 - [x] Add the Telegram notifier with media, inline buttons and callback handling using a credential reference (tests/providers/notify/test_telegram.py)
 - [x] Add Slack and email notifiers using the same message model with chain fallback (tests/providers/notify/test_slack_email.py)
-- [ ] Add the review flow sending preview, title, sources, cost, warnings and approve, reject and regenerate buttons (tests/review/test_flow.py)
+- [x] Add the review flow sending preview, title, sources, cost, warnings and approve, reject and regenerate buttons (tests/review/test_flow.py)
 - [ ] Implement the review state machine with per profile approval settings and timeout behaviour tested with a fake clock (tests/review/test_state.py)
 - [ ] Re run only the affected stages when a reviewer regenerates a script, visuals, voice or song (tests/review/test_regenerate.py)
 - [ ] Add a CLI review fallback with list, approve and reject without any notifier (tests/cli/test_review.py)
