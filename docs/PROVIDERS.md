@@ -129,6 +129,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `telegram_channel` | `publish` | 60/min | - | - | unknown |
 | `telegram_notifier` | `notify` | 60/min | - | - | unknown |
 | `telegram_publish` | `publish` | 60/min | - | - | unknown |
+| `tiktok` | `publish` | 60/min | - | - | unknown |
+| `tiktok_publish` | `publish` | 60/min | - | - | unknown |
 | `trends` | `source` | 60/min | - | - | unknown |
 | `veo` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
 | `veo-video` | `video_gen`, `video_first_frame`, `video_native_audio` | 60/min | - | - | unknown |
@@ -286,6 +288,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `telegram_channel` | `publish` | $0 per call |
 | `telegram_notifier` | `notify` | $0 per call |
 | `telegram_publish` | `publish` | $0 per call |
+| `tiktok` | `publish` | $0 per call |
+| `tiktok_publish` | `publish` | $0 per call |
 | `trends` | - | - |
 | `veo` | - | - |
 | `veo-video` | - | - |
@@ -425,6 +429,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `telegram_channel` | - | - |
 | `telegram_notifier` | - | - |
 | `telegram_publish` | - | - |
+| `tiktok` | - | - |
+| `tiktok_publish` | - | - |
 | `trends` | - | - |
 | `veo` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
 | `veo-video` | `video_gen` | `prompt`, `negative_prompt`, `first_frame`, `size`, `aspect_ratio`, `format`, `seed`, `duration`, `count`, `model`, `generate_audio` |
@@ -564,6 +570,8 @@ This matrix is generated from the metadata every registered provider declares. C
 | `telegram_channel` | - | unknown | no | - |
 | `telegram_notifier` | - | unknown | no | - |
 | `telegram_publish` | - | unknown | no | - |
+| `tiktok` | - | unknown | no | - |
+| `tiktok_publish` | - | unknown | no | - |
 | `trends` | - | unknown | no | - |
 | `veo` | - | unknown | no | - |
 | `veo-video` | - | unknown | no | - |
