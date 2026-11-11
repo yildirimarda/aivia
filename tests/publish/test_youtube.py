@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import tempfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -103,7 +104,7 @@ def _capture(
     fail_uploads: int = 0,
     quota_on_initiate: bool = False,
     status_on_initiate: int | None = None,
-) -> tuple[list[httpx.Request], list[int]]:
+) -> tuple[list[httpx.Request], list[int], Callable[[httpx.Request], httpx.Response]]:
     requests: list[httpx.Request] = []
     calls = [0]
     initiations = [0]
