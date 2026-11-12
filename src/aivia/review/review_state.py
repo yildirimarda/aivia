@@ -105,7 +105,9 @@ class ReviewState(StrEnum):
     """The lifecycle state of a review.
 
     ``pending`` is the initial state. ``approved``, ``rejected`` and
-    ``timed_out`` are terminal. ``regenerated`` may be re-submitted as
+    ``timed_out`` are terminal. ``refused`` is a distinct terminal refusal
+    state, separate from a human ``rejected`` review, reached when a safety
+    gate refuses content outright. ``regenerated`` may be re-submitted as
     ``pending`` up to the profile's regeneration limit.
     """
 
@@ -114,6 +116,7 @@ class ReviewState(StrEnum):
     REJECTED = "rejected"
     REGENERATED = "regenerated"
     TIMED_OUT = "timed_out"
+    REFUSED = "refused"
 
 
 REVIEW_STATE_ALIASES = {
@@ -128,6 +131,8 @@ REVIEW_STATE_ALIASES = {
     "timed_out": ReviewState.TIMED_OUT,
     "timeout": ReviewState.TIMED_OUT,
     "expired": ReviewState.TIMED_OUT,
+    "refused": ReviewState.REFUSED,
+    "refuse": ReviewState.REFUSED,
 }
 
 
@@ -150,12 +155,14 @@ LEGAL_REVIEW_TRANSITIONS = MappingProxyType(
                 ReviewState.REJECTED,
                 ReviewState.REGENERATED,
                 ReviewState.TIMED_OUT,
+                ReviewState.REFUSED,
             }
         ),
         ReviewState.REGENERATED: frozenset({ReviewState.PENDING}),
         ReviewState.APPROVED: frozenset(),
         ReviewState.REJECTED: frozenset(),
         ReviewState.TIMED_OUT: frozenset(),
+        ReviewState.REFUSED: frozenset(),
     }
 )
 """Every review state mapped to the states it may move to."""
@@ -222,7 +229,12 @@ _PERSISTED_FIELDS = (
 )
 
 _TERMINAL_STATES = frozenset(
-    {ReviewState.APPROVED, ReviewState.REJECTED, ReviewState.TIMED_OUT}
+    {
+        ReviewState.APPROVED,
+        ReviewState.REJECTED,
+        ReviewState.TIMED_OUT,
+        ReviewState.REFUSED,
+    }
 )
 
 
@@ -268,7 +280,7 @@ def transition_review(
     moment = _moment(now)
     changes: dict[str, Any] = {"state": destination, "updated_at": moment}
 
-    if destination in {ReviewState.APPROVED, ReviewState.REJECTED}:
+    if destination in {ReviewState.APPROVED, ReviewState.REJECTED, ReviewState.REFUSED}:
         changes["answered_at"] = moment
         changes["answered_by"] = actor.strip()
         changes["answer_reason"] = reason.strip()
@@ -460,6 +472,27 @@ class ReviewStateMachine:
         return self.transition(
             review,
             ReviewState.REJECTED,
+            now=now,
+            actor=actor,
+            reason=reason,
+        )
+
+    def refuse(
+        self,
+        review: Review | str,
+        *,
+        now: datetime | None = None,
+        actor: str = "",
+        reason: str = "",
+    ) -> Review:
+        """Move a pending review to the distinct ``refused`` terminal state.
+
+        Refusal is separate from a human ``rejected`` review: it records that a
+        safety gate refused the content outright. A refused review is terminal.
+        """
+        return self.transition(
+            review,
+            ReviewState.REFUSED,
             now=now,
             actor=actor,
             reason=reason,

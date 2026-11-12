@@ -2,5 +2,13 @@
 
 from aivia.review.alerts import AlertManager, DailySummary
 from aivia.review.flow import ReviewFlow, ReviewResult
+from aivia.review.safety_gate import SafetyGate, SafetyGateResult
 
-__all__ = ["AlertManager", "DailySummary", "ReviewFlow", "ReviewResult"]
+__all__ = [
+    "AlertManager",
+    "DailySummary",
+    "ReviewFlow",
+    "ReviewResult",
+    "SafetyGate",
+    "SafetyGateResult",
+]
