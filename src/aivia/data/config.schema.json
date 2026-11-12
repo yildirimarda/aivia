@@ -1051,6 +1051,34 @@
       "title": "HttpClientConfig",
       "type": "object"
     },
+    "IdeaHarvestConfig": {
+      "additionalProperties": false,
+      "description": "Configuration for idea harvesting: opt in and its limits.",
+      "properties": {
+        "cluster_threshold": {
+          "default": 0.5,
+          "title": "Cluster Threshold",
+          "type": "number"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "limit_per_account": {
+          "default": 10,
+          "title": "Limit Per Account",
+          "type": "integer"
+        },
+        "max_suggestions": {
+          "default": 10,
+          "title": "Max Suggestions",
+          "type": "integer"
+        }
+      },
+      "title": "IdeaHarvestConfig",
+      "type": "object"
+    },
     "JobsConfig": {
       "additionalProperties": false,
       "description": "Worker concurrency, retry, heartbeat and run-lock settings.\n\n``concurrency`` is the number of workers. ``max_parallel_runs`` is the\nglobal limit on runs holding a lock at once across every profile and\nprocess, so scheduled runs cannot overlap unsafely. ``retry_delay_seconds``\nis the wait after the first failed attempt, multiplied by\n``backoff_multiplier`` on each later attempt and capped by\n``max_retry_delay_seconds``.",
@@ -3708,6 +3736,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/AccessibilityConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "analytics": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IdeaHarvestConfig"
         },
         {
           "type": "null"
