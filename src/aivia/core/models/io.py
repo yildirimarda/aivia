@@ -508,6 +508,10 @@ class Post(ModelBase):
         default="",
         validation_alias=AliasChoices("run_id", "run"),
     )
+    owner: str = Field(
+        default="",
+        validation_alias=AliasChoices("owner", "user", "user_id", "account_id"),
+    )
     composition_id: str = Field(
         default="",
         validation_alias=AliasChoices(
@@ -616,6 +620,7 @@ class Post(ModelBase):
         "disclosure_text",
         "error_code",
         "error_message",
+        "owner",
         mode="before",
     )
     @classmethod
