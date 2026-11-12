@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 from aivia.core.config.http import HttpClientConfig
@@ -20,13 +21,31 @@ from aivia.providers.protocols.delivery import (
     DeliveryRequest,
 )
 
-__all__ = ["SignedWebhookDeliveryProvider", "WebhookDeliveryProvider"]
+__all__ = [
+    "DEFAULT_REPLAY_WINDOW_SECONDS",
+    "SIGNATURE_HEADER",
+    "TIMESTAMP_HEADER",
+    "SignedWebhookDeliveryProvider",
+    "WebhookDeliveryProvider",
+    "verify",
+]
 
 _DEFAULT_METADATA = ProviderMeta(
     name="webhook",
     capabilities=[CAPABILITY_DELIVERY],
     pricing={CAPABILITY_DELIVERY: ProviderPrice(amount_usd=0.0)},
 )
+
+# Default replay window: a webhook payload is only accepted if its timestamp is
+# within five minutes of the current time, bounding the window in which a
+# captured, correctly signed request can be replayed.
+DEFAULT_REPLAY_WINDOW_SECONDS = 300
+
+SIGNATURE_HEADER = "X-Aivia-Signature"
+"""HTTP header carrying the HMAC-SHA256 signature."""
+
+TIMESTAMP_HEADER = "X-Aivia-Timestamp"
+"""HTTP header carrying the UTC timestamp the signature covers."""
 
 
 def _host(url: str) -> str:
@@ -43,9 +62,62 @@ def _is_allowlisted(url: str, allowlist: list[str]) -> bool:
     return _host(url) in set(allowlist)
 
 
-def _sign(secret: str, body: bytes) -> str:
-    digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+def _timestamp() -> int:
+    """Return the current time as Unix seconds (UTC)."""
+    return int(datetime.now(UTC).timestamp())
+
+
+def _sign(secret: str, timestamp: int, body: bytes) -> str:
+    """HMAC-SHA256 over *timestamp* plus the request body.
+
+    The timestamp is bound into the signed message so a receiver can trust it
+    and enforce a replay window without a separate integrity check.
+    """
+    message = f"{timestamp}.".encode() + body
+    digest = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
     return f"sha256={digest}"
+
+
+def verify(
+    secret: str,
+    signature: str,
+    timestamp: int,
+    body: bytes,
+    *,
+    tolerance_seconds: int = DEFAULT_REPLAY_WINDOW_SECONDS,
+) -> int:
+    """Verify *signature* over *timestamp* + *body* and enforce the replay window.
+
+    Returns the timestamp on success. Raises :class:`InvalidRequestError` when
+    the signature does not match or the timestamp is outside the replay window
+    (too old to trust, or too far in the future).
+    """
+    expected = _sign(secret, timestamp, body)
+    if not hmac.compare_digest(signature or "", expected):
+        raise InvalidRequestError(
+            "invalid webhook signature",
+            details={"signature_header": SIGNATURE_HEADER},
+        )
+    now = _timestamp()
+    if timestamp < now - tolerance_seconds:
+        raise InvalidRequestError(
+            "webhook timestamp is outside the replay window (too old)",
+            details={
+                "timestamp": timestamp,
+                "now": now,
+                "tolerance_seconds": tolerance_seconds,
+            },
+        )
+    if timestamp > now + tolerance_seconds:
+        raise InvalidRequestError(
+            "webhook timestamp is outside the replay window (in the future)",
+            details={
+                "timestamp": timestamp,
+                "now": now,
+                "tolerance_seconds": tolerance_seconds,
+            },
+        )
+    return timestamp
 
 
 class SignedWebhookDeliveryProvider(Provider):
@@ -138,9 +210,11 @@ class SignedWebhookDeliveryProvider(Provider):
                 details={"host": _host(self._url), "allowlist": self._allowlist},
             )
         body = self._payload(request)
+        timestamp = _timestamp()
         headers = {
             "Content-Type": "application/json",
-            self._signature_header: _sign(self._secret, body),
+            self._signature_header: _sign(self._secret, timestamp, body),
+            TIMESTAMP_HEADER: str(timestamp),
         }
         response = await self._http_client.post(
             self._url, content=body, headers=headers, raise_for_status=True

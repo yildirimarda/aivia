@@ -386,8 +386,9 @@ def _captured_requests() -> tuple[list[httpx.Request], httpx.MockTransport]:
     return captured, httpx.MockTransport(handler)
 
 
-def _signature(secret: str, body: bytes) -> str:
-    digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+def _signature(secret: str, timestamp: int, body: bytes) -> str:
+    message = f"{timestamp}.".encode() + body
+    digest = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
     return f"sha256={digest}"
 
 
@@ -416,7 +417,10 @@ def test_webhook_posts_a_signed_payload_to_an_allowlisted_host() -> None:
     assert call.method == "POST"
     assert call.url == httpx.URL("https://hooks.example.test/deliver")
     assert call.headers["Content-Type"] == "application/json"
-    assert call.headers["X-Aivia-Signature"] == _signature("s3cr3t", call.content)
+    timestamp = int(call.headers["X-Aivia-Timestamp"])
+    assert call.headers["X-Aivia-Signature"] == _signature(
+        "s3cr3t", timestamp, call.content
+    )
     payload = json.loads(call.content)
     assert payload["order_id"] == "order-1"
     assert payload["subject"] == "Your card"
