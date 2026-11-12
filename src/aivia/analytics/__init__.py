@@ -31,6 +31,7 @@ from aivia.analytics.outlier import (
     outlier_scores,
     rank_outliers,
 )
+from aivia.analytics.ratings import all_ratings, capture_rating, rating_for
 from aivia.analytics.reports import (
     PerformanceBucket,
     PerformanceReport,
@@ -70,9 +71,11 @@ __all__ = [
     "RetentionPoint",
     "SteepestDrop",
     "VideoEntry",
+    "all_ratings",
     "apply_performance_to_category_weights",
     "apply_performance_to_report",
     "build_performance_report",
+    "capture_rating",
     "category_weights_path",
     "channel_baselines",
     "channel_medians",
@@ -85,6 +88,7 @@ __all__ = [
     "outlier_scores",
     "performance_by",
     "rank_outliers",
+    "rating_for",
     "save_category_weights",
     "steepest_drops",
 ]

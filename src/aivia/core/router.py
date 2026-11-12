@@ -15,14 +15,15 @@ honour the same ``pricing_overrides`` and unit conversions. A price configured
 in ``pricing_overrides`` wins over the provider's own metadata, and a provider
 without any price sorts after every priced candidate so missing data never
 looks free. ``best_quality`` picks the highest static ``quality_rank`` until
-human ratings exist, warning about any candidate whose rank is missing and
-sorting those candidates after every ranked one. ``round_robin`` rotates
-through the available providers per capability and is inherently
-deterministic. ``weighted_ab`` draws from the configured per-provider weights;
-a seed makes the draw reproducible, and the selected weight is recorded on the
-selection. Every strategy can be budget aware: when a remaining budget is
-given, a provider whose estimated price for the requested units exceeds it is
-skipped as ``budget_exceeded`` before the strategy picks a candidate.
+human ratings exist, at which point a captured rating wins over the static rank
+and warns about any candidate that has neither. ``round_robin`` rotates through
+the available providers per capability and is inherently deterministic.
+``weighted_ab`` draws from the configured per-provider weights, adjusted by any
+captured human rating; a seed makes the draw reproducible, and the selected
+weight is recorded on the selection. Every strategy can be budget aware: when a
+remaining budget is given, a provider whose estimated price for the requested
+units exceeds it is skipped as ``budget_exceeded`` before the strategy picks a
+candidate.
 
 :meth:`Router.execute` runs an operation against the selected provider and
 falls back to the next candidate when the provider reports a retryable,
@@ -344,6 +345,24 @@ def _quality_rank_for(name: str, provider: Provider) -> int | None:
     return rank
 
 
+def _effective_quality_rank(
+    ratings: Callable[[str], float | None] | None,
+    name: str,
+    provider: Provider,
+) -> float | None:
+    """Return the rating-driven quality rank for *provider*.
+
+    A captured human rating wins over the static ``quality_rank``. A provider
+    with neither is unranked and sorts below every ranked candidate.
+    """
+    if ratings is not None:
+        rating = ratings(name)
+        if rating is not None:
+            return float(rating)
+    rank = provider.metadata.quality_rank
+    return float(rank) if rank is not None else None
+
+
 def _rejection(
     name: str,
     provider: Provider,
@@ -429,6 +448,26 @@ def _weighted_choice(
     return name, provider, weight
 
 
+def _effective_weights(
+    ratings: Callable[[str], float | None] | None,
+    weights: Mapping[str, float],
+) -> dict[str, float]:
+    """Return configured weights adjusted by captured human ratings.
+
+    A rated provider's weight is multiplied by ``1 + rating`` so human
+    judgement steers the weighted draw; unrated providers keep their configured
+    weight. A configured weight of zero stays zero, so an explicitly excluded
+    provider cannot be resurrected by a rating.
+    """
+    if ratings is None:
+        return dict(weights)
+    effective: dict[str, float] = {}
+    for name, base in weights.items():
+        rating = ratings(name)
+        effective[name] = base * (1.0 + rating) if rating is not None else base
+    return effective
+
+
 def _coerce_strategy(value: CapabilityStrategy | str | None) -> CapabilityStrategy:
     if value is None:
         return CapabilityStrategy.FIRST_AVAILABLE
@@ -482,6 +521,7 @@ class Router:
         chain: Iterable[str] | None = None,
         weights: Mapping[str, float] | None = None,
         seed: int | None = None,
+        ratings: Mapping[str, float] | Callable[[str], float | None] | None = None,
         circuit_breaker_factory: Callable[[str], CircuitBreaker] | None = None,
         circuit_breakers: Mapping[str, CircuitBreaker] | None = None,
         circuit_config: CircuitBreakerConfig | None = None,
@@ -542,6 +582,13 @@ class Router:
         self._seed = seed
         self._rng = random.Random(seed)
         self._round_robin: dict[str, int] = {}
+        if ratings is None:
+            self._ratings: Callable[[str], float | None] | None = None
+        elif isinstance(ratings, Mapping):
+            rating_map = {str(name): float(value) for name, value in ratings.items()}
+            self._ratings = rating_map.get
+        else:
+            self._ratings = ratings
 
     def _build_circuits(
         self,
@@ -720,6 +767,11 @@ class Router:
     def seed(self) -> int | None:
         """The seed used for weighted selection, if one was configured."""
         return self._seed
+
+    @property
+    def ratings(self) -> Callable[[str], float | None] | None:
+        """The human-rating lookup driving quality and weighted selection."""
+        return self._ratings
 
     def config_for(self, capability: str) -> CapabilityChainConfig:
         """Return the chain configuration for *capability*."""
@@ -1005,10 +1057,17 @@ class Router:
             _, chosen = min(available, key=price_key)
         elif chosen_strategy is CapabilityStrategy.BEST_QUALITY:
 
-            def rank_key(entry: tuple[str, Provider]) -> tuple[bool, int]:
+            def rank_key(entry: tuple[str, Provider]) -> tuple[bool, float]:
                 name, provider = entry
-                rank = _quality_rank_for(name, provider)
-                return (rank is not None, rank if rank is not None else 0)
+                rank = _effective_quality_rank(self._ratings, name, provider)
+                if rank is None:
+                    warnings.warn(
+                        f"provider {name!r} has no human rating and is missing a "
+                        "quality rank; best_quality treats it as unranked",
+                        MissingQualityRankWarning,
+                        stacklevel=3,
+                    )
+                return (rank is not None, rank if rank is not None else 0.0)
 
             _, chosen = max(available, key=rank_key)
             quality_rank = chosen.metadata.quality_rank
@@ -1028,7 +1087,9 @@ class Router:
                     },
                 )
             rng = random.Random(seed) if seed is not None else self._rng
-            _, chosen, weight = _weighted_choice(available, configured.weights, rng)
+            _, chosen, weight = _weighted_choice(
+                available, _effective_weights(self._ratings, configured.weights), rng
+            )
 
         selection = RouteSelection(
             provider=chosen,
