@@ -5,8 +5,12 @@ UTC week (Monday to Sunday) and summarizes how much was spent, what was
 produced, which posts performed best and how providers compare on spend and
 call volume. The result can be rendered as a
 :class:`~aivia.providers.protocols.notify.NotificationMessage` and delivered
-through any :class:`~aivia.providers.protocols.notify.Notifier`.
+    through any :class:`~aivia.providers.protocols.notify.Notifier`.
 """
+
+# config-coverage: allow-file — TOP_PERFORMER_LIMIT is an internal default
+# tuning constant for the weekly report, not user-facing vendor, model or
+# price configuration.
 
 from __future__ import annotations
 
