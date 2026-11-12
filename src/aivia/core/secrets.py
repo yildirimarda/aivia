@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -28,6 +29,8 @@ DEFAULT_SECRETS_FILENAME = "secrets.env"
 TOKEN_STORE_KEY = "TOKEN_STORE_KEY"
 TOKEN_STORE_KEY_REFERENCE = TOKEN_STORE_KEY
 TOKEN_STORE_KEY_ENV = f"{ENV_PREFIX}{TOKEN_STORE_KEY}"
+
+logger = logging.getLogger(__name__)
 
 
 class MissingSecretError(ConfigError):
@@ -87,6 +90,7 @@ class SecretsLoader:
         self._keyring = keyring
         self._keyring_checked = keyring is not None
         self._keyring_service = keyring_service
+        self._cache: dict[str, str | None] = {}
 
     def get(self, reference: str) -> str:
         """Return the value for *reference* or raise :class:`MissingSecretError`."""
@@ -96,20 +100,43 @@ class SecretsLoader:
         return value
 
     def get_optional(self, reference: str) -> str | None:
-        """Return the value for *reference*, or ``None`` when it is missing."""
+        """Return the value for *reference*, or ``None`` when it is missing.
+
+        Resolved values are cached so a call that captured a secret keeps using
+        it even after :meth:`reload`.  Call :meth:`reload` to clear the cache
+        and pick up rotated values without restarting.
+        """
         normalised = _normalise_reference(reference)
         if not normalised:
             raise ConfigError("secret reference must not be empty")
 
+        if normalised in self._cache:
+            return self._cache[normalised]
+
         value = self._from_environment(reference)
         if value:
+            self._cache[normalised] = value
             return value
 
         value = self._from_file(normalised)
         if value:
+            self._cache[normalised] = value
             return value
 
-        return self._from_keyring(normalised)
+        value = self._from_keyring(normalised)
+        self._cache[normalised] = value
+        return value
+
+    def reload(self) -> None:
+        """Re-read all secret sources so rotated values are picked up.
+
+        Clears the resolution cache so the next :meth:`get` re-reads the
+        environment, secrets file and keyring.  Calls that already captured a
+        value keep using it, so in-flight calls finish with the old value.  The
+        reload is logged without any secret values.
+        """
+        self._cache.clear()
+        logger.info("credentials reloaded")
 
     def get_token_store_key(self) -> str:
         """Return the key used to encrypt stored publish tokens."""
