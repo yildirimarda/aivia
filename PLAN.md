@@ -837,7 +837,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Report performance by profile, mode, category, language, platform, format, hook style and visual strategy plus cost per thousand views in the static dashboard (tests/analytics/test_reports.py)
 - [x] Feed performance back into category weights with a bounded learning rate, a manual override and a change log (tests/analytics/test_learning.py)
 - [x] Compare alternative hooks in comparable slots and record the winner with a significance note (tests/analytics/test_ab.py)
-- [ ] Build a benchmark harness running the same prompt set across providers of one capability with cost, latency, failures and artifacts side by side (tests/benchmark/test_harness.py)
+- [x] Build a benchmark harness running the same prompt set across providers of one capability with cost, latency, failures and artifacts side by side (tests/benchmark/test_harness.py)
 - [ ] Capture human ratings and let them drive the best quality and weighted strategies, asserting order changes (tests/analytics/test_ratings_router.py)
 - [ ] Add a pricing drift job that warns and prints suggested overrides without writing them (tests/analytics/test_pricing_drift.py)
 - [ ] Build a weekly report of spend, outputs, top performers and provider comparison delivered through notifiers (tests/analytics/test_weekly_report.py)
