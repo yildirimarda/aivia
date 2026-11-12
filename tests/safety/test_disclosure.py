@@ -10,6 +10,7 @@ applied disclosure text is mirrored onto the post's attestation.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from aivia.core.models import Attestation, Post
 from aivia.core.platforms import DisclosureRules, Platform
@@ -18,7 +19,7 @@ _NOW = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
 
 
 def _platform(**overrides: object) -> Platform:
-    values: dict[str, object] = {
+    values: dict[str, Any] = {
         "id": "youtube",
         "disclosure": DisclosureRules(
             required=True,
@@ -33,7 +34,7 @@ def _platform(**overrides: object) -> Platform:
 
 
 def _post(**overrides: object) -> Post:
-    values: dict[str, object] = {
+    values: dict[str, Any] = {
         "platform": "youtube",
         "caption": "A bridge at dusk",
         "attestation": Attestation(
