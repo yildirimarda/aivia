@@ -20,15 +20,30 @@ def upgrade() -> None:
     """Add an optional owner to runs, orders and posts."""
     op.add_column(
         "runs",
-        sa.Column("owner", sa.String(length=255), nullable=False, server_default=sa.text("''")),
+        sa.Column(
+            "owner",
+            sa.String(length=255),
+            nullable=False,
+            server_default=sa.text("''"),
+        ),
     )
     op.add_column(
         "orders",
-        sa.Column("owner", sa.String(length=255), nullable=False, server_default=sa.text("''")),
+        sa.Column(
+            "owner",
+            sa.String(length=255),
+            nullable=False,
+            server_default=sa.text("''"),
+        ),
     )
     op.add_column(
         "posts",
-        sa.Column("owner", sa.String(length=255), nullable=False, server_default=sa.text("''")),
+        sa.Column(
+            "owner",
+            sa.String(length=255),
+            nullable=False,
+            server_default=sa.text("''"),
+        ),
     )
 
 
