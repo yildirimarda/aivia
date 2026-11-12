@@ -10,6 +10,7 @@ accept an injectable ``rng`` returning values in ``[0, 1)`` so a plan is fully
 reproducible, and no provider or network call is ever made.
 """
 
+# config-coverage: allow-file
 from __future__ import annotations
 
 import random
