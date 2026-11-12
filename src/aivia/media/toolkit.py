@@ -52,6 +52,12 @@ from aivia.providers.protocols.image_edit import (
 )
 from aivia.providers.protocols.media import MediaInput
 from aivia.providers.protocols.music import MusicRequest
+from aivia.providers.protocols.publish import (
+    CAPABILITY_PUBLISH,
+    Publisher,
+    PublishRequest,
+    PublishResult,
+)
 from aivia.providers.protocols.sfx import SFXRequest
 from aivia.providers.protocols.stt import STTRequest
 from aivia.providers.protocols.tts import TTSRequest
@@ -1060,6 +1066,53 @@ class MediaToolkit:
     ) -> MediaResult:
         """Blocking alias for :meth:`sfx`."""
         return asyncio.run(self.sfx(request, **options))
+
+    async def publish(
+        self,
+        request: PublishRequest | Mapping[str, Any] | None = None,
+        **options: Any,
+    ) -> PublishResult:
+        """Publish *request* to its platform and return the platform identifiers.
+
+        The call is routed through the router to a provider that declares the
+        ``publish`` capability. When the request carries ``dry_run`` the provider
+        must not spend money or open an outbound connection; the returned result
+        is marked ``dry_run`` instead.
+        """
+        request_values, _call_values = _split_options(options)
+        if isinstance(request, Mapping):
+            values = dict(request)
+            values.update(request_values)
+        elif request is None:
+            values = dict(request_values)
+        elif isinstance(request, PublishRequest):
+            values = request.model_dump(mode="python")
+            values.update(request_values)
+        else:
+            raise TypeError("request must be a PublishRequest or mapping")
+        publish_request = PublishRequest(**values)
+        provider = cast(Publisher, self._router.select(CAPABILITY_PUBLISH))
+        result = await provider.publish(publish_request)
+        if self._tracker is not None and not result.dry_run:
+            self._tracker.record(
+                {
+                    "provider": result.provider,
+                    "model": result.provider,
+                    "operation": CAPABILITY_PUBLISH,
+                    "units": 1.0,
+                    "amount_usd": 0.0,
+                    "estimated": False,
+                }
+            )
+        return result
+
+    def publish_sync(
+        self,
+        request: PublishRequest | Mapping[str, Any] | None = None,
+        **options: Any,
+    ) -> PublishResult:
+        """Blocking alias for :meth:`publish`."""
+        return asyncio.run(self.publish(request, **options))
 
     generate_image = image
     generate_video = video
