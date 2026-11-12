@@ -67,6 +67,7 @@ from aivia.core.errors import (
 )
 from aivia.core.pricing import MissingPriceWarning, PricingResolver, ResolvedPrice
 from aivia.core.ratelimit import TokenBucket
+from aivia.core.tracing import SpanKind, Tracer
 from aivia.providers.base import Provider
 
 __all__ = [
@@ -528,6 +529,7 @@ class Router:
         rate_limiter_factory: Callable[..., TokenBucket] | None = None,
         rate_limiters: Mapping[str, TokenBucket] | None = None,
         rate_limit_config: RateLimiterConfig | None = None,
+        tracer: Tracer | None = None,
     ) -> None:
         if circuit_config is not None and not isinstance(
             circuit_config, CircuitBreakerConfig
@@ -589,6 +591,7 @@ class Router:
             self._ratings = rating_map.get
         else:
             self._ratings = ratings
+        self.tracer = tracer
 
     def _build_circuits(
         self,
@@ -1200,7 +1203,16 @@ class Router:
                 continue
 
             try:
-                result = await operation(selection.provider)
+                if self.tracer is not None:
+                    with self.tracer.span(
+                        kind=SpanKind.PROVIDER_CALL,
+                        name=selection.name,
+                        capability=selection.capability,
+                        provider=selection.name,
+                    ):
+                        result = await operation(selection.provider)
+                else:
+                    result = await operation(selection.provider)
             except AiviaError as exc:
                 limiter.release()
                 if not exc.retryable:
