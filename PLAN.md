@@ -830,7 +830,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: close the loop with measured data -->
 
-- [ ] Collect platform metrics such as views, watch time, likes, shares, comments and followers, mapping unknown metrics to null (tests/analytics/test_collect.py)
+- [x] Collect platform metrics such as views, watch time, likes, shares, comments and followers, mapping unknown metrics to null (tests/analytics/test_collect.py)
 - [ ] Snapshot metrics at twenty four hours and seven days idempotently per post and mark, retrying partial failures (tests/analytics/test_metrics_job.py)
 - [ ] Rank niche and competitor videos by views relative to their own channel median instead of absolute views (tests/analytics/test_outlier_score.py)
 - [ ] Import a retention export and report the hook leak, the steepest drops and the closing slide with timestamps (tests/analytics/test_retention_import.py)
