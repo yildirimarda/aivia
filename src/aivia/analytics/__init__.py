@@ -49,6 +49,15 @@ from aivia.analytics.retention import (
     import_retention_export,
     steepest_drops,
 )
+from aivia.analytics.weekly import (
+    TOP_PERFORMER_LIMIT,
+    WeeklyProviderComparison,
+    WeeklyReport,
+    WeeklyTopPerformer,
+    build_weekly_report,
+    deliver_weekly_report,
+    weekly_report_message,
+)
 
 __all__ = [
     "CANONICAL_METRICS",
@@ -56,6 +65,7 @@ __all__ = [
     "DEFAULT_WEIGHT",
     "MAX_WEIGHT",
     "MIN_WEIGHT",
+    "TOP_PERFORMER_LIMIT",
     "ABResult",
     "Alternative",
     "CategoryWeight",
@@ -71,10 +81,14 @@ __all__ = [
     "RetentionPoint",
     "SteepestDrop",
     "VideoEntry",
+    "WeeklyProviderComparison",
+    "WeeklyReport",
+    "WeeklyTopPerformer",
     "all_ratings",
     "apply_performance_to_category_weights",
     "apply_performance_to_report",
     "build_performance_report",
+    "build_weekly_report",
     "capture_rating",
     "category_weights_path",
     "channel_baselines",
@@ -82,6 +96,7 @@ __all__ = [
     "closing_slide",
     "collect",
     "compare_alternatives",
+    "deliver_weekly_report",
     "hook_leak",
     "import_retention_export",
     "load_category_weights",
@@ -91,4 +106,5 @@ __all__ = [
     "rating_for",
     "save_category_weights",
     "steepest_drops",
+    "weekly_report_message",
 ]
