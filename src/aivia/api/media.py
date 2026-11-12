@@ -55,6 +55,7 @@ from aivia.media.toolkit import MediaResult, MediaToolkit
 from aivia.providers.protocols.image import ImageRequest
 from aivia.providers.protocols.image_edit import ImageEditRequest
 from aivia.providers.protocols.music import MusicRequest
+from aivia.providers.protocols.publish import PublishRequest, PublishResult
 from aivia.providers.protocols.stt import STTRequest
 from aivia.providers.protocols.tts import TTSRequest
 from aivia.providers.protocols.video import VideoRequest
@@ -183,6 +184,32 @@ def _prepare_request(kind: str, values: Mapping[str, Any]) -> dict[str, Any]:
     return request
 
 
+def _prepare_publish_request(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy *values* and decode base64 media data a JSON request may carry."""
+    request = dict(values)
+    media = request.get("media")
+    if isinstance(media, list):
+        decoded: list[Any] = []
+        for item in media:
+            if not isinstance(item, Mapping):
+                decoded.append(item)
+                continue
+            entry = dict(item)
+            data = entry.get("data")
+            if isinstance(data, str):
+                text = data.strip()
+                if text.startswith("data:"):
+                    bytes_data, media_type = _decode_data_url(text)
+                    entry["data"] = bytes_data
+                    if media_type:
+                        entry.setdefault("media_type", media_type)
+                else:
+                    entry["data"] = _decode_base64(text)
+            decoded.append(entry)
+        request["media"] = decoded
+    return request
+
+
 def _request_model(kind: str, values: Mapping[str, Any]) -> BaseModel:
     prepared = _prepare_request(kind, values)
     if kind == "image":
@@ -270,6 +297,11 @@ def _media_state(job: Job) -> Mapping[str, Any]:
     return media if isinstance(media, Mapping) else {}
 
 
+def _publish_state(job: Job) -> Mapping[str, Any]:
+    publish = job.metadata.get("publish")
+    return publish if isinstance(publish, Mapping) else {}
+
+
 def _job_kind(job: Job) -> str:
     payload = job.payload if isinstance(job.payload, Mapping) else {}
     value = payload.get("kind")
@@ -318,7 +350,12 @@ def _find_idempotent(
 
 def _job_payload(job: Job) -> dict[str, Any]:
     media = _media_state(job)
-    result = media.get("result") if isinstance(media, Mapping) else None
+    publish = _publish_state(job)
+    result: Mapping[str, Any] | None = None
+    if isinstance(media, Mapping) and isinstance(media.get("result"), Mapping):
+        result = media["result"]
+    elif isinstance(publish, Mapping) and isinstance(publish.get("result"), Mapping):
+        result = publish["result"]
     if not isinstance(result, Mapping):
         result = None
     payload: dict[str, Any] = {
@@ -343,6 +380,11 @@ def _job_payload(job: Job) -> dict[str, Any]:
         payload["model"] = result.get("model", "")
         payload["cost_usd"] = result.get("cost_usd", 0.0)
         payload["cached"] = bool(result.get("cached", False))
+        payload["dry_run"] = bool(result.get("dry_run", False))
+        payload["remote_id"] = result.get("remote_id", "")
+        payload["url"] = result.get("url")
+        payload["platform"] = result.get("platform", "")
+        payload["account"] = result.get("account", "")
         payload["paths"] = list(result.get("paths") or [])
         payload["urls"] = list(result.get("urls") or [])
         if result.get("text") is not None:
@@ -499,7 +541,7 @@ class MediaJobRunner:
         heartbeat = asyncio.create_task(
             self._heartbeat_loop(queue, claimed.id, lost_claim, handler=call)
         )
-        result: MediaResult | None = None
+        result: MediaResult | PublishResult | None = None
         error: Exception | None = None
         try:
             result = await call
@@ -534,13 +576,18 @@ class MediaJobRunner:
                 return
             self._record_result(engine, claimed, result)
 
-    async def _call_toolkit(self, claimed: Job) -> MediaResult:
+    async def _call_toolkit(self, claimed: Job) -> MediaResult | PublishResult:
         kind = _job_kind(claimed)
         payload = claimed.payload if isinstance(claimed.payload, Mapping) else {}
         request = payload.get("request")
         values = request if isinstance(request, Mapping) else {}
         options = payload.get("options")
         call_options = options if isinstance(options, Mapping) else {}
+        if kind == "publish":
+            prepared = _prepare_publish_request(values)
+            return await self._toolkit().publish(
+                PublishRequest(**prepared), **call_options
+            )
         prepared = _prepare_request(kind, values)
         return await self._toolkit().generate(kind, prepared, **call_options)
 
@@ -550,7 +597,7 @@ class MediaJobRunner:
         job_id: str,
         lost_claim: asyncio.Event,
         *,
-        handler: asyncio.Task[MediaResult] | None = None,
+        handler: asyncio.Task[MediaResult | PublishResult] | None = None,
     ) -> None:
         while True:
             await self._sleep(self._heartbeat_seconds)
@@ -579,12 +626,20 @@ class MediaJobRunner:
         with suppress(asyncio.CancelledError, Exception):
             await task
 
-    def _record_result(self, engine: Engine, job: Job, result: MediaResult) -> None:
+    def _record_result(
+        self, engine: Engine, job: Job, result: MediaResult | PublishResult
+    ) -> None:
         metadata = dict(job.metadata)
-        metadata["media"] = {
-            "kind": _job_kind(job),
-            "result": result.to_dict(),
-        }
+        if isinstance(result, PublishResult):
+            metadata["publish"] = {
+                "kind": "publish",
+                "result": result.model_dump(mode="python"),
+            }
+        else:
+            metadata["media"] = {
+                "kind": _job_kind(job),
+                "result": result.to_dict(),
+            }
         JobRepository(engine).update(job.id, metadata=metadata)
 
     def _record_failure(self, engine: Engine, job: Job, exc: BaseException) -> None:
@@ -676,10 +731,17 @@ def register_media_routes(
     def submit(
         submission: MediaJobSubmission, kind_override: str | None = None
     ) -> dict[str, Any]:
+        raw_kind = kind_override or submission.kind
         try:
-            kind = _canonical_kind(kind_override or submission.kind)
-            values = submission.request_values(kind)
-            _request_model(kind, values)
+            if raw_kind == "publish":
+                kind = "publish"
+                values = submission.request_values(kind)
+                prepared = _prepare_publish_request(values)
+                PublishRequest(**prepared)
+            else:
+                kind = _canonical_kind(raw_kind)
+                values = submission.request_values(kind)
+                _request_model(kind, values)
         except ValidationError as exc:
             raise HTTPException(
                 status_code=422,
@@ -699,7 +761,7 @@ def register_media_routes(
         if idempotency_key:
             metadata["idempotency_key"] = idempotency_key
         job_values: dict[str, Any] = {
-            "kind": f"media.{kind}",
+            "kind": "publish" if kind == "publish" else f"media.{kind}",
             "payload": values_for_job,
             "metadata": metadata,
             "max_attempts": submission.max_attempts,
@@ -748,6 +810,36 @@ def register_media_routes(
         background: BackgroundTasks,
     ) -> dict[str, Any]:
         """Queue one toolkit call and run it after the response is sent."""
+        payload = submit(submission)
+        background.add_task(runner.run, payload["job_id"])
+        return payload
+
+    @app.post(
+        "/api/v1/publish/jobs",
+        status_code=202,
+        tags=["publish"],
+        summary="Submit a publish job",
+    )
+    def submit_publish_job(
+        submission: MediaJobSubmission,
+        background: BackgroundTasks,
+    ) -> dict[str, Any]:
+        """Queue one publish call and run it after the response is sent."""
+        payload = submit(submission)
+        background.add_task(runner.run, payload["job_id"])
+        return payload
+
+    @app.post(
+        "/api/v1/publish",
+        status_code=202,
+        tags=["publish"],
+        summary="Submit a publish job",
+        include_in_schema=False,
+    )
+    def submit_publish_alias(
+        submission: MediaJobSubmission,
+        background: BackgroundTasks,
+    ) -> dict[str, Any]:
         payload = submit(submission)
         background.add_task(runner.run, payload["job_id"])
         return payload
@@ -860,6 +952,53 @@ def register_media_routes(
                 detail=f"media job {job_id!r} not found",
             )
         return _result_payload(job)
+
+    def publish_status(job_id: str) -> dict[str, Any]:
+        target = database()
+        job = JobQueue(target).get(job_id)
+        if job is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"publish job {job_id!r} not found",
+            )
+        return _job_payload(job)
+
+    def publish_result(job_id: str) -> dict[str, Any]:
+        target = database()
+        job = JobQueue(target).get(job_id)
+        if job is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"publish job {job_id!r} not found",
+            )
+        return _result_payload(job)
+
+    @app.get(
+        "/api/v1/publish/jobs/{job_id}",
+        tags=["publish"],
+        summary="Get publish job status",
+    )
+    def publish_job_status(job_id: str) -> dict[str, Any]:
+        """Return the publish job's state, result summary and post identifiers."""
+        return publish_status(job_id)
+
+    @app.get(
+        "/api/v1/publish/jobs/{job_id}/status",
+        tags=["publish"],
+        summary="Get publish job status",
+        include_in_schema=False,
+    )
+    def publish_job_status_alias(job_id: str) -> dict[str, Any]:
+        return publish_status(job_id)
+
+    @app.get(
+        "/api/v1/publish/jobs/{job_id}/result",
+        tags=["publish"],
+        summary="Get publish job result",
+    )
+    def publish_job_result(job_id: str) -> dict[str, Any]:
+        """Return the finished publish result and its post identifiers."""
+        return publish_result(job_id)
 
     @app.get(
         "/api/v1/media/jobs/{job_id}/result",
