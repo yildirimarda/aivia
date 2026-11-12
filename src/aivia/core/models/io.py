@@ -17,7 +17,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
+
+if TYPE_CHECKING:
+    from aivia.core.platforms import Platform
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
@@ -535,6 +538,13 @@ class Post(ModelBase):
             "has_disclosure",
         ),
     )
+    on_screen_label: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "on_screen_label",
+            "ai_disclosure_label",
+        ),
+    )
     attestation: Attestation = Field(
         default_factory=Attestation,
         validation_alias=AliasChoices("attestation", "publish_attestation"),
@@ -646,6 +656,27 @@ class Post(ModelBase):
     def _sync_disclosure(self) -> Self:
         if not self.disclosure_text and self.attestation.disclosure_text:
             self.disclosure_text = self.attestation.disclosure_text
+        if not self.attestation.disclosure_text and self.disclosure_text:
+            self.attestation.disclosure_text = self.disclosure_text
+        return self
+
+    def apply_disclosure(self, platform: Platform) -> Self:
+        """Apply *platform*'s AI disclosure rules to this post.
+
+        Stores the disclosure text on the post and mirrors it onto the
+        attestation, records the disclosure metadata under
+        ``platform.disclosure.metadata_field`` in ``metadata`` when the platform
+        supports it, keeps the optional on-screen label on the post, and sets
+        ``disclosure_required`` / ``disclosure_applied``.
+        """
+        rules = platform.disclosure
+        self.disclosure_required = rules.required
+        if rules.required:
+            self.disclosure_text = rules.text or self.disclosure_text
+            self.on_screen_label = rules.on_screen_label or self.on_screen_label
+            self.disclosure_applied = True
+            if rules.metadata and rules.metadata_field and self.disclosure_text:
+                self.metadata[rules.metadata_field] = True
         if not self.attestation.disclosure_text and self.disclosure_text:
             self.attestation.disclosure_text = self.disclosure_text
         return self
