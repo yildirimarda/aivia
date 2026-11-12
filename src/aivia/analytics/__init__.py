@@ -16,15 +16,35 @@ from aivia.analytics.outlier import (
     outlier_scores,
     rank_outliers,
 )
+from aivia.analytics.retention import (
+    ClosingSlide,
+    HookLeak,
+    RetentionExport,
+    RetentionPoint,
+    SteepestDrop,
+    closing_slide,
+    hook_leak,
+    import_retention_export,
+    steepest_drops,
+)
 
 __all__ = [
     "CANONICAL_METRICS",
     "ChannelBaseline",
+    "ClosingSlide",
+    "HookLeak",
     "OutlierScore",
+    "RetentionExport",
+    "RetentionPoint",
+    "SteepestDrop",
     "VideoEntry",
     "channel_baselines",
     "channel_medians",
+    "closing_slide",
     "collect",
+    "hook_leak",
+    "import_retention_export",
     "outlier_scores",
     "rank_outliers",
+    "steepest_drops",
 ]
