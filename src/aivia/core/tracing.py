@@ -22,7 +22,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from time import perf_counter
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -91,15 +91,14 @@ class Span:
         self.error = error
 
 
-class Exporter:
+class Exporter(Protocol):
     """Send a finished span to a telemetry backend.
 
     Implementations may raise; the :class:`Tracer` never propagates exporter
     failures into a run.
     """
 
-    def export(self, span: Span) -> None:
-        raise NotImplementedError
+    def export(self, span: Span) -> None: ...
 
 
 class OTLPExporter(Exporter):

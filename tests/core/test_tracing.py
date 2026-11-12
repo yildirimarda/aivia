@@ -380,8 +380,10 @@ def test_router_emits_provider_call_spans() -> None:
     result = asyncio.run(router.execute("image_gen", operation))
 
     assert result == "fal:ok"
-    assert len(router.tracer.spans) == 1
-    span = router.tracer.spans[0]
+    tracer = router.tracer
+    assert tracer is not None
+    assert len(tracer.spans) == 1
+    span = tracer.spans[0]
     assert span.kind == SpanKind.PROVIDER_CALL
     assert span.name == "fal"
     assert span.capability == "image_gen"
