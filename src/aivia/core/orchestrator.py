@@ -21,6 +21,7 @@ import logging
 import re
 import tempfile
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -55,6 +56,7 @@ from aivia.core.stage_retry import (
     execute_stage_with_retry,
 )
 from aivia.core.stages import Stage, StageContext
+from aivia.core.tracing import SpanKind, Tracer
 from aivia.formats.catalog import FormatCatalog, load_formats
 from aivia.formats.recipe import validate_recipe
 from aivia.formats.registry import ContractType, StageRegistry
@@ -432,6 +434,7 @@ class Orchestrator:
         router: Router | None = None,
         storage: StorageProvider | None = None,
         logger: logging.Logger | None = None,
+        tracer: Tracer | None = None,
         clock: Callable[[], datetime] = utcnow,
         sleep: Callable[[float], Awaitable[None]] | None = None,
         raise_on_failure: bool = True,
@@ -475,6 +478,17 @@ class Orchestrator:
         self.router = router
         self.storage = storage
         self.logger = logger or logging.getLogger("aivia.orchestrator")
+        if tracer is not None:
+            self.tracer = tracer
+        else:
+            tracing_cfg = None
+            if self.config is not None:
+                tracing_cfg = (
+                    self.config.get("tracing")
+                    if isinstance(self.config, Mapping)
+                    else getattr(self.config, "tracing", None)
+                )
+            self.tracer = Tracer.from_config(tracing_cfg)
         self.clock = clock
         self.sleep = sleep
         self.raise_on_failure = raise_on_failure
@@ -631,16 +645,29 @@ class Orchestrator:
             )
 
             try:
-                executed = await execute_stage_with_retry(
-                    stage,
-                    context,
-                    policy=stage.retry_policy,
-                    sleep=self.sleep,
-                    clock=self.clock,
+                cm = (
+                    self.tracer.span(
+                        kind=SpanKind.STAGE,
+                        name=stage.name,
+                        capability=stage.name,
+                        run_id=run_record.id,
+                    )
+                    if self.tracer is not None
+                    else nullcontext()
                 )
-                final = self._completed_result(
-                    stage, executed.outcome, run_record, index, started
-                )
+                with cm as stage_span:
+                    executed = await execute_stage_with_retry(
+                        stage,
+                        context,
+                        policy=stage.retry_policy,
+                        sleep=self.sleep,
+                        clock=self.clock,
+                    )
+                    final = self._completed_result(
+                        stage, executed.outcome, run_record, index, started
+                    )
+                    if stage_span is not None:
+                        stage_span.cost_usd = executed.prior_cost_usd + final.cost_usd
                 final = self._with_attempts(
                     final,
                     executed.attempts,
