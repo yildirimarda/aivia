@@ -323,7 +323,7 @@ def test_analytics_opt_in_config_parses() -> None:
 
     parsed = sections.parse({"analytics": {"enabled": True}})
 
-    analytics = parsed.analytics
+    analytics = parsed.analytics  # type: ignore[attr-defined]
     assert isinstance(analytics, IdeaHarvestConfig)
     assert analytics.enabled is True
     assert analytics.max_suggestions == 10
