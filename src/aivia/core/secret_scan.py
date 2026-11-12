@@ -18,6 +18,8 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from aivia.core.redact import registered_secrets
+
 __all__ = [
     "ALLOW_FILE_MARKER",
     "DEFAULT_SKIP_DIRS",
@@ -25,6 +27,7 @@ __all__ = [
     "format_findings",
     "main",
     "scan_file",
+    "scan_for_secrets",
     "scan_repository",
     "scan_text",
 ]
@@ -211,6 +214,32 @@ def scan_repository(root: Path | str = Path(".")) -> list[Finding]:
 def format_findings(findings: Iterable[Finding]) -> str:
     """Render findings as one line per hit without any matched value."""
     return "\n".join(f"{item.path}:{item.line}: {item.kind}" for item in findings)
+
+
+def scan_for_secrets(
+    texts: Iterable[tuple[str, str]],
+    *,
+    secrets: Iterable[str] | None = None,
+) -> list[Finding]:
+    """Scan each ``(source, text)`` pair for configured secret values.
+
+    *texts* pairs a label naming the run output (a log, an artifact, an error
+    or a sidecar) with its text. Returns one finding per matching line, never
+    copying the secret value itself so a failing audit cannot leak it.
+    """
+    if secrets is None:
+        secrets = registered_secrets()
+    needles = tuple(secret for secret in secrets if secret)
+    findings: list[Finding] = []
+    for source, text in texts:
+        for line_number, line in enumerate(text.splitlines(), 1):
+            for secret in needles:
+                if secret in line:
+                    findings.append(
+                        Finding(path=source, line=line_number, kind="configured secret")
+                    )
+                    break
+    return _dedupe(findings)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
