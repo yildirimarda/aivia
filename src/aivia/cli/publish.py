@@ -157,7 +157,7 @@ def _configure_publish(parser: argparse.ArgumentParser) -> None:
 
 
 def configure(parser: argparse.ArgumentParser) -> None:
-    """Add the ``publish`` group with ``dry-run`` and ``check`` commands."""
+    """Add the ``publish`` group with ``dry-run``, ``check`` and ``docs`` commands."""
     subparsers = parser.add_subparsers(dest="publish_command", metavar="COMMAND")
     for name in ("dry-run", "check"):
         command = subparsers.add_parser(
@@ -168,6 +168,24 @@ def configure(parser: argparse.ArgumentParser) -> None:
         )
         _configure_publish(command)
         command.set_defaults(_publish_command=name)
+    docs = subparsers.add_parser(
+        "docs",
+        help="Generate the platform onboarding document",
+        description="Generate the platform onboarding document covering apps, "
+        "scopes, account types, audits, quota requests and environment "
+        "variables.",
+    )
+    docs.add_argument(
+        "--output",
+        metavar="PATH",
+        help="write the document to PATH instead of standard output",
+    )
+    docs.add_argument(
+        "--check",
+        action="store_true",
+        help="fail when the document at PATH (or docs/PLATFORMS.md) is stale",
+    )
+    docs.set_defaults(_publish_command="docs")
     parser.set_defaults(_publish_handler=run_publish)
 
 
@@ -649,9 +667,47 @@ def _print_report(results: list[CheckResult], command: str) -> None:
     print("\n".join(lines))
 
 
+def run_publish_docs(args: argparse.Namespace) -> int:
+    """Print, write or check the generated platform onboarding document."""
+    from aivia.publish import docs as platform_docs
+
+    text = platform_docs.dump_platform_docs()
+    target = Path(args.output) if args.output is not None else platform_docs.docs_path()
+    if args.check:
+        try:
+            existing = target.read_text(encoding="utf-8")
+        except OSError:
+            existing = None
+        if existing != text:
+            print(
+                f"error: platform onboarding document is stale: {target}",
+                file=sys.stderr,
+            )
+            print(
+                f"regenerate it with: aivia publish docs --output {target}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"platform onboarding document is up to date: {target}")
+        return 0
+    if args.output is None:
+        print(text, end="")
+        return 0
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot write {target}: {exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {target}")
+    return 0
+
+
 def run_publish(args: argparse.Namespace) -> int:
     """Run the publish pre-flight validation and return an exit code."""
     command = getattr(args, "_publish_command", "check")
+    if command == "docs":
+        return run_publish_docs(args)
     try:
         runtime = _build_runtime(args)
     except (AiviaError, ConfigError, OSError) as exc:
