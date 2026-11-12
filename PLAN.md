@@ -860,7 +860,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a retention job removing intermediates, cache, expired orders, deliveries, logs and hits while never deleting pinned final outputs unless explicitly enabled, with a dry run listing deletions (tests/cli/test_retention.py)
 - [x] Add a scripted backup and restore drill verifying runs, orders and costs survive (tests/test_restore.py)
 - [x] Inject provider outages, malformed responses, partial downloads, expired tokens and a full queue and assert defined behaviour with no double charge (tests/resilience/test_failures.py)
-- [ ] Run concurrency and performance tests for parallel renders, queue load, large inputs and memory ceilings without deadlocks (slow, tests/resilience/test_perf.py)
+- [x] Run concurrency and performance tests for parallel renders, queue load, large inputs and memory ceilings without deadlocks (slow, tests/resilience/test_perf.py)
 - [ ] Emit spans for stages and provider calls with run id, capability, latency and cost, never breaking a run when the exporter fails (tests/core/test_tracing.py)
 - [ ] Support credential rotation by reloading secrets without restart, letting in flight calls finish with the old value and logging rotation without values (tests/cli/test_credentials_reload.py)
 - [ ] Scope runs, orders and posts to an owner with optional per owner budgets and rate limits, leaving single user config unchanged (tests/core/test_owner_scope.py)
