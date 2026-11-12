@@ -818,6 +818,21 @@ class Asset(ModelBase):
         return self.license.name
 
     @property
+    def attribution(self) -> str:
+        """The required attribution credit line, or an empty string."""
+        return self.license.attribution
+
+    @property
+    def credit(self) -> str:
+        """Alias for :attr:`attribution`."""
+        return self.attribution
+
+    @property
+    def requires_attribution(self) -> bool:
+        """Whether the asset's license requires a credit line."""
+        return self.license.requires_attribution
+
+    @property
     def is_pinned(self) -> bool:
         """Alias for :attr:`pinned`."""
         return self.pinned
@@ -864,8 +879,14 @@ class Asset(ModelBase):
 
     @property
     def description(self) -> str:
-        """Alias for :attr:`AssetAnalysis.description`."""
-        return self.analysis.description
+        """The analysis description with required attribution appended."""
+        base = self.analysis.description
+        credit = self.license.attribution
+        if not self.license.requires_attribution or not credit:
+            return base
+        if credit in base:
+            return base
+        return f"{base}\n{credit}" if base else credit
 
     @property
     def detected_text(self) -> str:
