@@ -15,7 +15,7 @@ and is omitted instead of rendered as an empty bar.
 from __future__ import annotations
 
 import html
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
@@ -23,6 +23,7 @@ from sqlalchemy import Engine
 
 from aivia.core.config.budget import BudgetConfig
 from aivia.core.cost_agg import CostAggregate, CostAggregator
+from aivia.core.performance import PerformanceBucket, build_performance_report
 
 __all__ = [
     "BudgetBar",
@@ -78,6 +79,8 @@ class DashboardData:
     runs: tuple[CostAggregate, ...]
     providers: tuple[CostAggregate, ...]
     budgets: tuple[BudgetBar, ...]
+    performance: dict[str, tuple[PerformanceBucket, ...]] = field(default_factory=dict)
+    overall_cpm_usd: float = 0.0
 
     @property
     def total_usd(self) -> float:
@@ -229,6 +232,7 @@ def build_dashboard(
     providers = tuple(aggregator.by_provider(**filters))
     all_runs = tuple(aggregator.by_run())
     budgets = _budget_bars(aggregator, budget, now=moment, runs=all_runs)
+    performance = build_performance_report(engine)
 
     return DashboardData(
         generated_at=moment,
@@ -236,6 +240,17 @@ def build_dashboard(
         runs=runs,
         providers=providers,
         budgets=budgets,
+        performance={
+            "profile": performance.by_profile,
+            "mode": performance.by_mode,
+            "category": performance.by_category,
+            "language": performance.by_language,
+            "platform": performance.by_platform,
+            "format": performance.by_format,
+            "hook_style": performance.by_hook_style,
+            "visual_strategy": performance.by_visual_strategy,
+        },
+        overall_cpm_usd=performance.overall_cpm_usd,
     )
 
 
@@ -271,6 +286,41 @@ def _table(title: str, key_header: str, buckets: tuple[CostAggregate, ...]) -> s
         '<th class="num">Actual</th>'
         '<th class="num">Units</th>'
         '<th class="num">Count</th>'
+        "</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        "</table>"
+        "</section>"
+    )
+
+
+def _performance_table(
+    title: str,
+    key_header: str,
+    buckets: tuple[PerformanceBucket, ...],
+) -> str:
+    rows = [
+        (
+            "<tr>"
+            f"<td>{html.escape(bucket.key)}</td>"
+            f'<td class="num">{_money(bucket.cost_usd)}</td>'
+            f'<td class="num">{bucket.views:g}</td>'
+            f'<td class="num">{_money(bucket.cpm_usd)}</td>'
+            "</tr>"
+        )
+        for bucket in buckets
+    ]
+    body = "".join(rows) or (
+        '<tr><td colspan="4" class="empty">No spend recorded.</td></tr>'
+    )
+    return (
+        "<section>"
+        f"<h2>{html.escape(title)}</h2>"
+        "<table>"
+        "<thead><tr>"
+        f"<th>{html.escape(key_header)}</th>"
+        '<th class="num">Cost</th>'
+        '<th class="num">Views</th>'
+        '<th class="num">CPM per 1k views</th>'
         "</tr></thead>"
         f"<tbody>{body}</tbody>"
         "</table>"
@@ -339,6 +389,39 @@ def render_dashboard(
     budgets = "".join(_budget_bar(bar) for bar in data.budgets) or (
         '<p class="empty">No budget caps configured.</p>'
     )
+    performance_sections = "\n".join(
+        _performance_table(title, key_header, buckets)
+        for title, key_header, buckets in (
+            ("Performance by profile", "Profile", data.performance.get("profile", ())),
+            ("Performance by mode", "Mode", data.performance.get("mode", ())),
+            (
+                "Performance by category",
+                "Category",
+                data.performance.get("category", ()),
+            ),
+            (
+                "Performance by language",
+                "Language",
+                data.performance.get("language", ()),
+            ),
+            (
+                "Performance by platform",
+                "Platform",
+                data.performance.get("platform", ()),
+            ),
+            ("Performance by format", "Format", data.performance.get("format", ())),
+            (
+                "Performance by hook style",
+                "Hook style",
+                data.performance.get("hook_style", ()),
+            ),
+            (
+                "Performance by visual strategy",
+                "Visual strategy",
+                data.performance.get("visual_strategy", ()),
+            ),
+        )
+    )
     return (
         "<!doctype html>\n"
         '<html lang="en">\n'
@@ -352,12 +435,14 @@ def render_dashboard(
         "<header>\n"
         f"<h1>{html.escape(title)}</h1>\n"
         f'<p class="generated">Generated {html.escape(generated)} · '
-        f"total {_money(data.total_usd)}</p>\n"
+        f"total {_money(data.total_usd)}"
+        f" · overall CPM {_money(data.overall_cpm_usd)}</p>\n"
         "</header>\n"
         "<main>\n"
         f"{_table('Spend per day', 'Day', data.days)}\n"
         f"{_table('Spend per run', 'Run', data.runs)}\n"
         f"{_table('Spend per provider', 'Provider', data.providers)}\n"
+        f"{performance_sections}\n"
         "<section>\n"
         "<h2>Budgets</h2>\n"
         f"{budgets}\n"
