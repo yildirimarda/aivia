@@ -34,6 +34,8 @@ from aivia.providers.protocols.publish import (
 
 __all__ = ["IdempotentPublisher"]
 
+_FLOOR = 1
+
 
 def _media_location(media: PublishMedia) -> str:
     """Return the storable location of one piece of publish media."""
@@ -71,7 +73,7 @@ class IdempotentPublisher:
         *,
         max_attempts: int = 3,
     ) -> None:
-        if max_attempts < 1:
+        if max_attempts < _FLOOR:
             raise ValueError(f"max_attempts must be at least 1: {max_attempts}")
         self._publisher = publisher
         self._repository = repository
