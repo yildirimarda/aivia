@@ -822,7 +822,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Notify once per day when a token is about to expire, with a re authentication hint (tests/publish/test_token_alerts.py)
 - [x] Write the platform onboarding document covering apps, scopes, account types, audits, quota requests and environment variables (tests/test_platform_docs.py)
 - [x] Run a publishing end to end test against local mock servers exercising idempotency and backoff (tests/e2e/test_publish.py)
-- [ ] Add an opt in live publish smoke test to a private test account behind a flag and an account allowlist (live, tests/live/test_publish_live.py)
+- [x] Add an opt in live publish smoke test to a private test account behind a flag and an account allowlist (live, tests/live/test_publish_live.py)
 - [ ] Record a publish attestation with who confirmed rights and disclosure, when, the applied disclosure text and the license summary, blocking under strict mode when anything is missing (tests/publish/test_attestation.py)
 - [ ] Support a reference account as a style source by fetching top posts through a read capable API into a merged style spec with cached responses and a clear error when the scope is missing (tests/publish/test_account_reference.py)
 
