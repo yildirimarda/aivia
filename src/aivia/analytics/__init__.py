@@ -7,6 +7,20 @@ their views compare to their own channel's median.
 """
 
 from aivia.analytics.collect import CANONICAL_METRICS, collect
+from aivia.analytics.learning import (
+    DEFAULT_LEARNING_RATE,
+    DEFAULT_WEIGHT,
+    MAX_WEIGHT,
+    MIN_WEIGHT,
+    CategoryWeight,
+    CategoryWeightChange,
+    CategoryWeights,
+    apply_performance_to_category_weights,
+    apply_performance_to_report,
+    category_weights_path,
+    load_category_weights,
+    save_category_weights,
+)
 from aivia.analytics.outlier import (
     ChannelBaseline,
     OutlierScore,
@@ -36,6 +50,13 @@ from aivia.analytics.retention import (
 
 __all__ = [
     "CANONICAL_METRICS",
+    "DEFAULT_LEARNING_RATE",
+    "DEFAULT_WEIGHT",
+    "MAX_WEIGHT",
+    "MIN_WEIGHT",
+    "CategoryWeight",
+    "CategoryWeightChange",
+    "CategoryWeights",
     "ChannelBaseline",
     "ClosingSlide",
     "HookLeak",
@@ -46,15 +67,20 @@ __all__ = [
     "RetentionPoint",
     "SteepestDrop",
     "VideoEntry",
+    "apply_performance_to_category_weights",
+    "apply_performance_to_report",
     "build_performance_report",
+    "category_weights_path",
     "channel_baselines",
     "channel_medians",
     "closing_slide",
     "collect",
     "hook_leak",
     "import_retention_export",
+    "load_category_weights",
     "outlier_scores",
     "performance_by",
     "rank_outliers",
+    "save_category_weights",
     "steepest_drops",
 ]
