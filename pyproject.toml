@@ -36,6 +36,7 @@ dev = [
     "build>=1.2",
     "hatchling>=1.27",
     "mypy>=2.4.0",
+    "pip-audit>=2.10",
     "pytest>=8.3",
     "ruff>=0.9",
     "types-pyyaml>=6.0.12.20260906",
