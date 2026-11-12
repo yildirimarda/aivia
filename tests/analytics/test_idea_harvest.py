@@ -20,8 +20,8 @@ from aivia.analytics.harvest import (
     register_analytics_section,
 )
 from aivia.core.config.registry import SectionRegistry
-from aivia.core.config.sections import register_core_sections
 from aivia.core.config.schedule import PublishConfig
+from aivia.core.config.sections import register_core_sections
 from aivia.core.errors import ConfigError
 from aivia.publish.account_reference import (
     CAPABILITY_READ,
@@ -323,7 +323,7 @@ def test_analytics_opt_in_config_parses() -> None:
 
     parsed = sections.parse({"analytics": {"enabled": True}})
 
-    analytics = getattr(parsed, "analytics")
+    analytics = parsed.analytics
     assert isinstance(analytics, IdeaHarvestConfig)
     assert analytics.enabled is True
     assert analytics.max_suggestions == 10
