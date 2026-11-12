@@ -36,6 +36,7 @@ from aivia.core.db import (
 from aivia.core.dry_run import apply_dry_run
 from aivia.core.errors import ConfigError, QuotaError, ValidationError
 from aivia.core.estimate import Estimator, RecipeEstimate, render_estimate
+from aivia.core.health import DEFAULT_MIN_FREE_BYTES, DiskFullError, guard_disk_space
 from aivia.core.idempotency import IdempotencyConflict, IdempotentRun, create_run_once
 from aivia.core.jobs import JobQueue
 from aivia.core.models import Job, Run, RunKind, RunState, StageResult
@@ -673,6 +674,12 @@ def run_run(args: argparse.Namespace) -> int:
     if estimate.missing_stages:
         print(render_estimate(estimate), end="")
         _print_missing(estimate)
+        return 1
+
+    try:
+        guard_disk_space(_data_dir(args), DEFAULT_MIN_FREE_BYTES)
+    except DiskFullError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 1
 
     threshold = _confirmation_threshold(config)
