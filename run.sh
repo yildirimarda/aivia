@@ -1882,6 +1882,42 @@ tick_item_on_branch() {
   BRANCH_BASE="$(git rev-parse HEAD 2>/dev/null || true)"
 }
 
+# A session that did the work but stopped before the commit/push/PR step —
+# typically a small model ending with "let me know if you'd like me to commit"
+# — leaves a dirty tree and no PR. Nobody answers in a non-interactive run, so
+# ask the same engine ONCE to finish before the leftovers get parked. Only when
+# no PR exists: with a PR, a dirty tree is deliberate (an artifact left out).
+prompt_nudge() {
+cat <<EOF
+Your previous session in this checkout ended before it finished. The working
+tree has uncommitted changes and no pull request exists yet${1:+ for this item:
+
+    $1
+}
+
+This run is non-interactive: nobody can answer questions, so asking for
+confirmation just ends the run and loses the work. Finish it now:
+
+1. git status — review the changes. If a lint or test check still fails, fix
+   it first. Never commit caches, reports or generated artifacts: add them to
+   .gitignore instead.
+2. Commit with a Conventional Commit message.
+3. git push -u origin HEAD
+4. gh pr create --fill --label automated
+5. Stop. Do not start another item.
+
+PLAN.md's tick was already committed by the loop — it is not a reason to skip
+your commit.
+EOF
+}
+nudge_uncommitted() {   # $1 = item text (optional)
+  [[ -n "$(git status --porcelain 2>/dev/null)" ]] || return 1
+  [[ -z "$(current_pr || true)" ]] || return 1
+  echo
+  info "the session ended with uncommitted changes and no PR — asking it once to finish"
+  run_agent "$(prompt_nudge "${1:-}")" || true
+}
+
 # After a failed/empty session, try to leave the repo back on a clean main.
 # Only safe when the tree is clean; otherwise print exact cleanup commands —
 # never destroy uncommitted work automatically.
@@ -2533,13 +2569,17 @@ Do this:
    unrelated code.
 2. Write or extend tests that prove it works.
 3. Run the project's lint and test commands. Fix failures until green.
-4. PLAN.md on this branch already shows the item as "- [x]" — the loop
-   ticked it when it created the branch. Leave it. Only if you finish this
-   session WITHOUT completing the item, revert it to "- [ ]".
+4. PLAN.md on this branch already shows the item as "- [x]" and the loop has
+   already committed that tick. Do not edit that line — but it is NOT a
+   reason to skip anything below: your own work is still committed, pushed
+   and opened as a pull request. Only if you finish this session WITHOUT
+   completing the item, revert it to "- [ ]".
 5. $(discovery_clause)
 6. $(learn_clause)
 7. Follow the workflow in AGENTS.md: branch, commit, push, and open a pull
-   request with the "automated" label.
+   request with the "automated" label. This run is non-interactive: nobody
+   can answer, so never end by asking whether you should commit, push or
+   open the PR — doing it is part of the task.
 8. Stop. Do not wait for CI, do not merge, do not start the next item.
 EOF
   local skills
@@ -2739,6 +2779,7 @@ $(graph_section "$graphctx")"
     (( on_main )) && new_work_branch "$kind" "$short"
     BRANCH_BASE="$(git rev-parse HEAD 2>/dev/null || true)"
     run_agent "$prompt"; rc=$?
+    nudge_uncommitted "$short" || true
     pr="$(current_pr || true)"
     if [[ -n "$pr" ]] || made_commits; then break; fi
     # Fallback models only on a branch the loop created — never abandon a
@@ -3102,6 +3143,7 @@ for (( i = 1; i <= COUNT; i++ )); do
       tick_item_on_branch "$item"
     fi
     run_agent "$(prompt_item "$item" "$details" "$graphctx")"
+    nudge_uncommitted "$item" || true
     # Verify against GitHub first: a PR for this branch = work definitely
     # happened, whatever the local ref view claims.
     pr="$(current_pr || true)"

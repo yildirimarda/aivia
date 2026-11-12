@@ -8,6 +8,12 @@ metadata:
 
 # Opening the pull request
 
+The loop runs you non-interactively: nobody answers questions. Never finish
+with "let me know if you'd like me to commit / push / open a PR" — that ends
+the run with your work uncommitted. Committing, pushing and opening the PR is
+part of the item. (The loop's own `PLAN.md` tick is already committed; it is
+never a reason to hold back your commit.)
+
 ## Self-review first (two minutes, saves a CI round)
 
 - `git diff origin/main --stat`: only files the item needs. Revert drive-by
