@@ -7,13 +7,15 @@ publisher never has to remember to add it by hand.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from aivia.core.models import Asset, AssetAnalysis, AssetLicense
 
 
 def _license(**overrides: object) -> AssetLicense:
-    data: dict[str, object] = {
+    data: dict[str, Any] = {
         "name": "CC BY 4.0",
         "url": "https://creativecommons.org/licenses/by/4.0/",
         "attribution": "Photo by Ada",
@@ -25,7 +27,7 @@ def _license(**overrides: object) -> AssetLicense:
 
 
 def _asset(**overrides: object) -> Asset:
-    values: dict[str, object] = {
+    values: dict[str, Any] = {
         "label": "hero",
         "license": _license(),
         "analysis": AssetAnalysis(description="A bridge at dusk"),
