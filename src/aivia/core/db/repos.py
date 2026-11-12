@@ -709,6 +709,37 @@ class PostMetricRepository(TableRepository):
     table = post_metrics
     id_factory = _prefixed("metric")
 
+    def find_by_post_and_mark(
+        self,
+        post_id: str,
+        mark: str,
+    ) -> Record | None:
+        """Return the snapshot for *post_id* at *mark*, or ``None`` when absent."""
+        with self.engine.connect() as connection:
+            return self.find_by_post_and_mark_in(connection, post_id, mark)
+
+    def find_by_post_and_mark_in(
+        self,
+        connection: Connection,
+        post_id: str,
+        mark: str,
+    ) -> Record | None:
+        """Return the snapshot for *post_id* at *mark* in a transaction."""
+        row = (
+            (
+                connection.execute(
+                    select(self.table)
+                    .where(self.table.c.post_id == post_id)
+                    .where(func.json_extract(self.table.c.metadata, "$.mark") == mark)
+                    .order_by(self.table.c.created_at.desc())
+                    .limit(1)
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else self._to_record(row)
+
 
 class VoiceCloneRepository(ModelRepository[VoiceClone]):
     """Persist the provider voice ids registered for an owner."""
