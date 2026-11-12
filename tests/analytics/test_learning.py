@@ -9,11 +9,12 @@ log.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import Engine
-from tests.analytics.test_reports import seed_performance
 
 from aivia.analytics.learning import (
     DEFAULT_WEIGHT,
@@ -31,10 +32,11 @@ from aivia.analytics.learning import (
 from aivia.core.db import create_database_engine, upgrade_database
 from aivia.core.errors import ConfigError
 from aivia.core.performance import PerformanceBucket, performance_by
+from tests.analytics.test_reports import seed_performance
 
 
 @pytest.fixture
-def engine() -> Engine:
+def engine() -> Iterator[Engine]:
     created = create_database_engine(url="sqlite+pysqlite:///:memory:")
     upgrade_database(engine=created)
     try:
@@ -214,7 +216,7 @@ def test_change_log_entry_is_immutable() -> None:
     )
     # Frozen models reject reassignment.
     with pytest.raises((ValueError, TypeError)):
-        changes[0].new_weight = 999.0  # type: ignore[misc]
+        changes[0].new_weight = 999.0
 
 
 def test_manual_override_pins_weight_against_performance() -> None:
@@ -257,7 +259,7 @@ def test_unknown_dimension_is_rejected(engine: Engine) -> None:
         performance_by(engine, "occasion")
 
 
-def test_save_and_load_round_trip(tmp_path) -> None:
+def test_save_and_load_round_trip(tmp_path: Path) -> None:
     path = tmp_path / "analytics" / "category_weights.json"
     recorded_at = datetime(2026, 2, 3, 10, 0, tzinfo=UTC)
     weights = CategoryWeights.model_validate(
@@ -290,7 +292,7 @@ def test_save_and_load_round_trip(tmp_path) -> None:
     assert loaded.changes[0].recorded_at == recorded_at
 
 
-def test_load_returns_none_when_absent(tmp_path) -> None:
+def test_load_returns_none_when_absent(tmp_path: Path) -> None:
     assert load_category_weights(path=tmp_path / "missing.json") is None
 
 
@@ -316,7 +318,9 @@ def test_override_blocks_learning() -> None:
     assert all(change.category != "news" for change in changes)
 
 
-def test_store_set_override_blocks_learning_and_persists(tmp_path, engine) -> None:
+def test_store_set_override_blocks_learning_and_persists(
+    tmp_path: Path, engine: Engine
+) -> None:
     seed_performance(engine)
     path = tmp_path / "analytics" / "category_weights.json"
     store = CategoryWeightStore(path=path)
@@ -340,16 +344,22 @@ def test_store_set_override_blocks_learning_and_persists(tmp_path, engine) -> No
     )
 
 
-def test_store_remove_override(tmp_path, engine) -> None:
+def test_store_remove_override(tmp_path: Path, engine: Engine) -> None:
     path = tmp_path / "analytics" / "category_weights.json"
     store = CategoryWeightStore(path=path)
     store.set_override("news", 9.0)
-    assert store.load().overrides == {"news": 9.0}
+    loaded = store.load()
+    assert loaded is not None
+    assert loaded.overrides == {"news": 9.0}
     store.remove_override("news")
-    assert store.load().overrides == {}
+    loaded = store.load()
+    assert loaded is not None
+    assert loaded.overrides == {}
 
 
-def test_store_apply_performance_persists_change_log(tmp_path, engine) -> None:
+def test_store_apply_performance_persists_change_log(
+    tmp_path: Path, engine: Engine
+) -> None:
     seed_performance(engine)
     path = tmp_path / "analytics" / "category_weights.json"
     store = CategoryWeightStore(path=path)

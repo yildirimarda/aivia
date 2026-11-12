@@ -20,6 +20,10 @@ Three concerns are separated:
 The computation is deterministic and offline: it never calls a provider.
 """
 
+# config-coverage: allow-file — DEFAULT_WEIGHT/MIN_WEIGHT/MAX_WEIGHT are
+# internal clamping/default tuning constants for the analytics learning loop,
+# not user-facing vendor, model or price configuration.
+
 from __future__ import annotations
 
 import json
