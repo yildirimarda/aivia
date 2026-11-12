@@ -75,6 +75,7 @@ runs = Table(
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=True,
     ),
+    Column("owner", String(255), nullable=False, server_default=text("''")),
     Column("toolchain_fingerprint", JSON, nullable=False, server_default=text("'{}'")),
     Column("profile", Text, nullable=False, server_default=text("''")),
     Column("environment", Text, nullable=False, server_default=text("''")),

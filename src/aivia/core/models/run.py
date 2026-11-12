@@ -425,6 +425,10 @@ class Run(ModelBase):
         default="",
         validation_alias=AliasChoices("order_id", "order"),
     )
+    owner: str = Field(
+        default="",
+        validation_alias=AliasChoices("owner", "user", "user_id", "account_id"),
+    )
 
     @field_validator("kind", mode="before")
     @classmethod
@@ -450,6 +454,7 @@ class Run(ModelBase):
         "idempotency_key",
         "idempotency_payload_hash",
         "order_id",
+        "owner",
         "profile",
         "environment",
         "format",
