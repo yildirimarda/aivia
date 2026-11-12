@@ -820,7 +820,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add a media publish command that publishes a standalone generated file and records a publish cost event (tests/cli/test_media_publish.py)
 - [x] Expose publish through the API as an asynchronous job with status and a dry run flag (tests/api/test_publish_api.py)
 - [x] Notify once per day when a token is about to expire, with a re authentication hint (tests/publish/test_token_alerts.py)
-- [ ] Write the platform onboarding document covering apps, scopes, account types, audits, quota requests and environment variables (tests/test_platform_docs.py)
+- [x] Write the platform onboarding document covering apps, scopes, account types, audits, quota requests and environment variables (tests/test_platform_docs.py)
 - [ ] Run a publishing end to end test against local mock servers exercising idempotency and backoff (tests/e2e/test_publish.py)
 - [ ] Add an opt in live publish smoke test to a private test account behind a flag and an account allowlist (live, tests/live/test_publish_live.py)
 - [ ] Record a publish attestation with who confirmed rights and disclosure, when, the applied disclosure text and the license summary, blocking under strict mode when anything is missing (tests/publish/test_attestation.py)
