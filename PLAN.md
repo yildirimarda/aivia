@@ -841,7 +841,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Capture human ratings and let them drive the best quality and weighted strategies, asserting order changes (tests/analytics/test_ratings_router.py)
 - [x] Add a pricing drift job that warns and prints suggested overrides without writing them (tests/analytics/test_pricing_drift.py)
 - [x] Build a weekly report of spend, outputs, top performers and provider comparison delivered through notifiers (tests/analytics/test_weekly_report.py)
-- [ ] Harvest comments through read APIs into deduped clustered topic suggestions appended to the manual queue, opt in and clearly failing without the read scope (tests/analytics/test_idea_harvest.py)
+- [x] Harvest comments through read APIs into deduped clustered topic suggestions appended to the manual queue, opt in and clearly failing without the read scope (tests/analytics/test_idea_harvest.py)
 
 ## Milestone 22: Hardening and documentation
 

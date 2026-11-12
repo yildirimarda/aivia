@@ -11,6 +11,7 @@ This reference is generated from the registered configuration models, their JSON
 | --- | --- | --- |
 | `schema_version` | integer | Configuration schema version. |
 | `accessibility` | [AccessibilityConfig](#accessibility) or null | Alt text, subtitles and contrast settings for accessible outputs. |
+| `analytics` | [IdeaHarvestConfig](#analytics) or null | Configuration for idea harvesting: opt in and its limits. |
 | `api` | [ApiConfig](#api) or null | The local HTTP API bind address, authentication and request limits. |
 | `audio_qa` | [AudioQAConfig](#audio_qa) or null | Thresholds, accepted pronunciations and failure policy for audio QA. |
 | `brand` | [BrandKitConfig](#brand) or null | Colours, fonts, logo, watermark, intro/outro and caption style. |
@@ -69,6 +70,17 @@ Alt text, subtitles and contrast settings for accessible outputs.
 | `subtitle_font_size` | integer | `32` | > 0 |  |
 | `subtitle_outline` | boolean | `true` |  |  |
 | `subtitles` | boolean | `true` |  |  |
+
+## `analytics`
+
+Configuration for idea harvesting: opt in and its limits.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `cluster_threshold` | number | `0.5` |  |  |
+| `enabled` | boolean | `false` |  |  |
+| `limit_per_account` | integer | `10` |  |  |
+| `max_suggestions` | integer | `10` |  |  |
 
 ## `api`
 

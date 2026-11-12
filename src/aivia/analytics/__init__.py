@@ -8,6 +8,12 @@ their views compare to their own channel's median.
 
 from aivia.analytics.ab import ABResult, Alternative, compare_alternatives
 from aivia.analytics.collect import CANONICAL_METRICS, collect
+from aivia.analytics.harvest import (
+    ANALYTICS_SECTION_KEY,
+    IdeaHarvest,
+    IdeaHarvestConfig,
+    register_analytics_section,
+)
 from aivia.analytics.learning import (
     DEFAULT_LEARNING_RATE,
     DEFAULT_WEIGHT,
@@ -60,6 +66,7 @@ from aivia.analytics.weekly import (
 )
 
 __all__ = [
+    "ANALYTICS_SECTION_KEY",
     "CANONICAL_METRICS",
     "DEFAULT_LEARNING_RATE",
     "DEFAULT_WEIGHT",
@@ -74,6 +81,8 @@ __all__ = [
     "ChannelBaseline",
     "ClosingSlide",
     "HookLeak",
+    "IdeaHarvest",
+    "IdeaHarvestConfig",
     "OutlierScore",
     "PerformanceBucket",
     "PerformanceReport",
@@ -104,6 +113,7 @@ __all__ = [
     "performance_by",
     "rank_outliers",
     "rating_for",
+    "register_analytics_section",
     "save_category_weights",
     "steepest_drops",
     "weekly_report_message",

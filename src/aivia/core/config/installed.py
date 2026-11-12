@@ -21,7 +21,24 @@ __all__ = [
     "register_installed_sections",
 ]
 
+
+def _register_analytics_section(
+    sections: SectionRegistry,
+) -> SectionRegistry:
+    """Register the ``analytics`` section, importing the module lazily.
+
+    The analytics module is imported inside this callable (not at module
+    import time) so that importing :mod:`aivia.analytics.harvest` before
+    :mod:`aivia.core.config` is initialized cannot cycle back through this
+    registry.
+    """
+    from aivia.analytics.harvest import register_analytics_section
+
+    return register_analytics_section(sections)
+
+
 INSTALLED_MODULE_REGISTRARS: dict[str, Callable[[SectionRegistry], SectionRegistry]] = {
+    "analytics": _register_analytics_section,
     "research": register_research_section,
 }
 
