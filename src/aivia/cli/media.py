@@ -37,12 +37,14 @@ from aivia.core.config.database import DatabaseConfig
 from aivia.core.config.formats import FormatRecipeConfig, StageConfig
 from aivia.core.config.providers import ProvidersConfig
 from aivia.core.config.resolve import resolve_config
+from aivia.core.config.schedule import PublishAccountConfig, PublishConfig
 from aivia.core.cost import CostTracker
 from aivia.core.db import create_database_engine, upgrade_database
 from aivia.core.dry_run import apply_dry_run
 from aivia.core.errors import AiviaError, ConfigError
 from aivia.core.estimate import Estimator, render_estimate
 from aivia.core.models.base import canonical_json
+from aivia.core.platforms import Platform, PlatformCatalog, load_platforms
 from aivia.core.resume import stable_value
 from aivia.core.router import Router
 from aivia.media.batch_runner import BatchResult, BatchRunner
@@ -53,6 +55,11 @@ from aivia.providers.protocols.image import ImageRequest
 from aivia.providers.protocols.image_edit import ImageEditOperation, ImageEditRequest
 from aivia.providers.protocols.media import ImageFormat, MediaInput, VideoFormat
 from aivia.providers.protocols.music import MusicRequest
+from aivia.providers.protocols.publish import (
+    CAPABILITY_PUBLISH,
+    PublishMedia,
+    PublishRequest,
+)
 from aivia.providers.protocols.sfx import SFXRequest
 from aivia.providers.protocols.stt import STTRequest
 from aivia.providers.protocols.tts import TTSRequest
@@ -544,8 +551,52 @@ def _configure_batch(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(_media_handler=_run_batch, _media_kind="batch")
 
 
+def _configure_publish(parser: argparse.ArgumentParser) -> None:
+    _configure_resolution(parser)
+    parser.add_argument(
+        "file",
+        metavar="FILE",
+        help="media file to publish (an image, video or audio file)",
+    )
+    parser.add_argument(
+        "--platform",
+        metavar="NAME",
+        help="platform to publish to (x, youtube, instagram, tiktok, telegram)",
+    )
+    parser.add_argument(
+        "--account",
+        metavar="KEY",
+        help=(
+            "publish account key (platform/language); defaults to the first "
+            "account for the platform"
+        ),
+    )
+    parser.add_argument(
+        "--language",
+        metavar="CODE",
+        help="language used with --platform to resolve the publish account",
+    )
+    parser.add_argument(
+        "--caption",
+        metavar="TEXT",
+        help="caption text for the post",
+    )
+    parser.add_argument(
+        "--title",
+        metavar="TEXT",
+        help="title text for the post",
+    )
+    parser.add_argument(
+        "--database",
+        "--db",
+        dest="database",
+        metavar="PATH",
+        help="database file to use instead of the one in the user data directory",
+    )
+
+
 def configure(parser: argparse.ArgumentParser) -> None:
-    """Add the media group with its ``generate``, ``edit`` and ``batch`` commands."""
+    """Add the media group with generate, edit, batch and publish commands."""
     subparsers = parser.add_subparsers(dest="media_command", metavar="COMMAND")
     generate = subparsers.add_parser(
         "generate",
@@ -581,6 +632,13 @@ def configure(parser: argparse.ArgumentParser) -> None:
         description="Run one generation per row or list entry through the batch runner",
     )
     _configure_batch(batch)
+    publish = subparsers.add_parser(
+        "publish",
+        help="Publish a standalone media file to a platform account",
+        description="Publish a media file and record its cost event.",
+    )
+    _configure_publish(publish)
+    publish.set_defaults(_media_handler=_run_publish)
     parser.set_defaults(_media_handler=run_media)
 
 
@@ -1672,6 +1730,273 @@ def _run_generate(args: argparse.Namespace, kind: str) -> int:
             runtime.engine.dispose()
         return _print_outcome(outcome, args, kind)
     except (AiviaError, ConfigError, OSError, SQLAlchemyError, ValidationError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
+@dataclass(slots=True)
+class _PublishRuntime:
+    config: Any
+    providers: dict[str, Any]
+    platforms: PlatformCatalog
+    engine: Engine
+    tracker: CostTracker
+    storage: Any
+    budget: BudgetGuard | None
+
+
+def _publish_runtime(args: argparse.Namespace) -> _PublishRuntime:
+    config = _load_config(args)
+    platforms = load_platforms()
+    section = _providers_config(config)
+    providers = build_providers(section)
+    if not providers:
+        raise ConfigError(
+            "no providers are configured; add a providers section or use --dry-run"
+        )
+    engine = _open_database(_database_path(args, config))
+    tracker = CostTracker(engine)
+    storage_config = getattr(config, "storage", None)
+    storage = build_storage_provider(
+        storage_config,
+        data_dir=paths.resolve_paths(args.config).data_dir,
+    )
+    budget_config = getattr(config, "budget", None)
+    budget = (
+        BudgetGuard(budget_config, tracker)
+        if isinstance(budget_config, BudgetConfig)
+        else None
+    )
+    return _PublishRuntime(
+        config=config,
+        providers=providers,
+        platforms=platforms,
+        engine=engine,
+        tracker=tracker,
+        storage=storage,
+        budget=budget,
+    )
+
+
+def _resolve_publish_target(
+    runtime: _PublishRuntime,
+    platform_name: str | None,
+    account_key: str | None,
+    language: str | None,
+) -> tuple[str, PublishAccountConfig, Platform]:
+    """Return (account_key, account, platform) for the publish target."""
+    publish = getattr(runtime.config, "publish", None)
+    if not isinstance(publish, PublishConfig):
+        publish = PublishConfig()
+    if not publish.accounts:
+        raise ConfigError(
+            "no publish accounts are configured; add a publish section",
+            details={"section": "publish"},
+        )
+    if account_key:
+        if account_key not in publish.names:
+            raise ConfigError(
+                f"unknown publish account: {account_key!r}",
+                details={"account": account_key, "available": sorted(publish.names)},
+            )
+        account = publish.accounts[account_key]
+        platform_name = account.platform or platform_name
+    elif platform_name:
+        matches = [
+            key
+            for key in publish.names
+            if key.partition("/")[0] == platform_name.strip()
+        ]
+        if not matches:
+            raise ConfigError(
+                f"no publish account configured for platform {platform_name!r}",
+                details={
+                    "platform": platform_name,
+                    "available": sorted(publish.names),
+                },
+            )
+        if language:
+            matches = [
+                key for key in matches if key.partition("/")[2] == language.strip()
+            ]
+            if not matches:
+                raise ConfigError(
+                    f"no publish account for {platform_name!r}/{language!r}",
+                    details={
+                        "platform": platform_name,
+                        "language": language,
+                        "available": sorted(publish.names),
+                    },
+                )
+        account_key = matches[0]
+        account = publish.accounts[account_key]
+    else:
+        account_key = next(iter(publish.names))
+        account = publish.accounts[account_key]
+        platform_name = account.platform
+
+    if not platform_name:
+        raise ConfigError(
+            "publish account has no platform",
+            details={"account": account_key},
+        )
+    try:
+        platform = runtime.platforms.require(platform_name)
+    except KeyError as exc:
+        raise ConfigError(
+            f"unknown platform: {platform_name!r}",
+            details={
+                "platform": platform_name,
+                "available": sorted(runtime.platforms.ids()),
+            },
+        ) from exc
+    return account_key, account, platform
+
+
+def _publish_media(path: Path) -> PublishMedia:
+    media_type = (
+        "video" if path.suffix.lower() in {".mp4", ".mov", ".mkv", ".webm"} else "image"
+    )
+    subtype = path.suffix.lstrip(".") or "octet-stream"
+    return PublishMedia(
+        path=str(path),
+        media_type=f"{media_type}/{subtype}",
+        filename=path.name,
+    )
+
+
+def _publish_provider(runtime: _PublishRuntime, platform: Platform) -> Any:
+    provider = runtime.providers.get(platform.id)
+    if provider is None or not provider.metadata.supports(CAPABILITY_PUBLISH):
+        provider = next(
+            (
+                candidate
+                for candidate in runtime.providers.values()
+                if candidate.metadata.supports(CAPABILITY_PUBLISH)
+            ),
+            None,
+        )
+    if provider is None:
+        raise ConfigError(
+            f"no configured provider serves the publish capability for {platform.id!r}"
+        )
+    return provider
+
+
+async def _publish(
+    runtime: _PublishRuntime,
+    args: argparse.Namespace,
+    file_path: str,
+) -> Any:
+    platform_name = getattr(args, "platform", None)
+    account_key = getattr(args, "account", None)
+    language = getattr(args, "language", None)
+    caption = getattr(args, "caption", None) or ""
+    title = getattr(args, "title", None) or ""
+    _account_key, account, platform = _resolve_publish_target(
+        runtime, platform_name, account_key, language
+    )
+
+    path = Path(file_path).expanduser()
+    if not path.is_file():
+        raise ConfigError(f"media file not found: {path}")
+    media = [_publish_media(path)]
+
+    provider = _publish_provider(runtime, platform)
+    request = PublishRequest(
+        platform=platform.id,
+        account=getattr(account, "key", account.platform or ""),
+        caption=caption,
+        title=title,
+        media=media,
+        dry_run=bool(getattr(args, "dry_run", False)),
+    )
+    result = await provider.publish(request)
+
+    cost = 0.0
+    if result.metadata:
+        try:
+            cost = float(result.metadata.get("cost_usd", 0.0))
+        except (TypeError, ValueError):
+            cost = 0.0
+    runtime.tracker.record_actual(
+        provider=result.provider or provider.name,
+        model="",
+        operation="publish",
+        units=1.0,
+        unit_kind="call",
+        amount_usd=cost,
+        estimated=False,
+        run_id="",
+        pricing_version="",
+        metadata={
+            "platform": platform.id,
+            "account": getattr(account, "key", ""),
+            "file": str(path),
+            "remote_id": result.remote_id or "",
+        },
+    )
+    return result
+
+
+def _print_publish_result(result: Any, args: argparse.Namespace) -> int:
+    print(f"Platform: {result.platform}")
+    print(f"Account: {result.account}")
+    print(f"Provider: {result.provider or '-'}")
+    print(f"Remote id: {result.remote_id or '-'}")
+    cost = 0.0
+    if result.metadata:
+        try:
+            cost = float(result.metadata.get("cost_usd", 0.0))
+        except (TypeError, ValueError):
+            cost = 0.0
+    print(f"Cost: ${cost:.6f}")
+    if result.url:
+        print(f"Url: {result.url}")
+    if result.dry_run:
+        print("Dry run: yes")
+    return 0
+
+
+def _print_publish_estimate(args: argparse.Namespace) -> int:
+    config = _load_config(args)
+    metadata = _provider_metadata(config)
+    chain = _chain(args, "publish", metadata)
+    if not chain:
+        print("error: no provider serves publish", file=sys.stderr)
+        return 1
+    stage = StageConfig(stage="publish", options={"units": 1.0, "unit": "call"})
+    recipe = FormatRecipeConfig(stages=[stage], capabilities=["publish"])
+    estimate = Estimator(
+        metadata,
+        chain=chain,
+        strategy=_strategy(args),
+    ).estimate("publish", recipe)
+    print(render_estimate(estimate), end="")
+    return 0 if estimate.complete else 1
+
+
+def _run_publish(args: argparse.Namespace) -> int:
+    try:
+        if getattr(args, "estimate", False):
+            return _print_publish_estimate(args)
+        file_path = getattr(args, "file", None)
+        if not file_path:
+            raise ConfigError("a media file is required")
+        runtime = _publish_runtime(args)
+        try:
+            result = asyncio.run(_publish(runtime, args, file_path))
+        finally:
+            runtime.engine.dispose()
+        return _print_publish_result(result, args)
+    except (
+        AiviaError,
+        ConfigError,
+        OSError,
+        SQLAlchemyError,
+        ValidationError,
+        ValueError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
