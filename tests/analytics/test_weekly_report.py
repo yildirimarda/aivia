@@ -23,7 +23,13 @@ from aivia.analytics.weekly import (
 )
 from aivia.core.db import create_database_engine, upgrade_database
 from aivia.core.db.tables import cost_events, post_metrics, posts, runs
-from aivia.providers.protocols.notify import NotificationReceipt
+from aivia.core.models.provider import ProviderMeta
+from aivia.providers.base import Provider
+from aivia.providers.protocols.notify import (
+    CAPABILITY_NOTIFY,
+    NotificationMessage,
+    NotificationReceipt,
+)
 
 WEEK_START = date(2026, 1, 5)
 IN_WEEK = datetime(2026, 1, 6, 10, 0, tzinfo=UTC)
@@ -34,13 +40,19 @@ AFTER_WEEK = datetime(2026, 1, 12, 10, 0, tzinfo=UTC)
 GENERATED_AT = datetime(2026, 1, 13, 9, 0, tzinfo=UTC)
 
 
-class FixedNotifier:
+class FixedNotifier(Provider):
     """A notifier that records every message it is asked to send."""
 
-    def __init__(self) -> None:
-        self.sent: list[object] = []
+    default_metadata = ProviderMeta(
+        name="fixed-notifier",
+        capabilities=[CAPABILITY_NOTIFY],
+    )
 
-    async def send(self, message: object) -> NotificationReceipt:
+    def __init__(self) -> None:
+        super().__init__()
+        self.sent: list[NotificationMessage] = []
+
+    async def send(self, message: NotificationMessage) -> NotificationReceipt:
         self.sent.append(message)
         return NotificationReceipt(
             message_id="fake-1",
