@@ -855,7 +855,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Harden SSRF protection against numeric IP encodings, IPv6 mapped addresses, DNS rebinding and redirects by validating resolved addresses per hop (tests/safety/test_ssrf.py)
 - [x] Sign and verify webhooks with a timestamp and replay window tested in both directions (tests/safety/test_webhook.py)
 - [x] Add API security regression tests enumerating routes to assert auth, body limits and rate limits (tests/api/test_security.py)
-- [ ] Add dependency vulnerability scanning that fails on high severity with a documented allowlist (CI)
+- [x] Add dependency vulnerability scanning that fails on high severity with a documented allowlist (CI)
 - [ ] Add health reporting for queue depth, worker liveness, disk space and provider status plus a disk guard refusing new runs (tests/cli/test_health.py)
 - [ ] Add a retention job removing intermediates, cache, expired orders, deliveries, logs and hits while never deleting pinned final outputs unless explicitly enabled, with a dry run listing deletions (tests/cli/test_retention.py)
 - [ ] Add a scripted backup and restore drill verifying runs, orders and costs survive (tests/test_restore.py)

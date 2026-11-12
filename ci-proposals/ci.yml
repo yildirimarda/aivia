@@ -1,0 +1,112 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # IMPORTANT: the job is named "ci" — setup-github.sh registers this exact
+  # name as the required status check. If you rename it, re-run the setup
+  # script with CHECK=<new-name> ./setup-github.sh, otherwise branch
+  # protection waits on a check that never reports and nothing ever merges.
+  ci:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # Green from day one: before pyproject.toml exists there is nothing to
+      # build, and the required "ci" check must still pass. Delete this guard
+      # once milestone 1 is merged.
+      - name: Detect python project
+        id: py
+        run: |
+          if [ -f pyproject.toml ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "no pyproject.toml yet — python steps skipped"
+          fi
+
+      # ffmpeg/ffprobe: static build, cached. No apt — mirrors made this take minutes.
+      - name: Cache ffmpeg
+        id: ff
+        if: steps.py.outputs.found == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/ffmpeg
+          key: ffmpeg-static-linux64-v1      # bump to pick up a new build
+
+      - name: Install ffmpeg
+        if: steps.py.outputs.found == 'true' && steps.ff.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/.local/ffmpeg"
+          curl -fsSL --retry 3 -o /tmp/ff.tar.xz \
+            https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+          tar -xJf /tmp/ff.tar.xz -C "$HOME/.local/ffmpeg" --strip-components=1
+          "$HOME/.local/ffmpeg/bin/ffmpeg" -version | head -1
+          "$HOME/.local/ffmpeg/bin/ffprobe" -version | head -1
+
+      - name: Put ffmpeg on PATH
+        if: steps.py.outputs.found == 'true'
+        run: |
+          echo "$HOME/.local/ffmpeg/bin" >> "$GITHUB_PATH"
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      - uses: astral-sh/setup-uv@v5
+        if: steps.py.outputs.found == 'true'
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.py.outputs.found == 'true'
+        # --frozen: use exactly the locked versions. Without it CI may resolve a
+        # different ruff than local runs, and format rules change between ruff
+        # versions — "clean locally, red in CI".
+        run: uv sync --frozen --all-extras --dev
+
+      # Dependency vulnerability scanning: fails CI on any confirmed
+      # vulnerability, which includes every high and critical severity issue.
+      # Exceptions are recorded in the documented allowlist at
+      # docs/dependency-allowlist.md and applied with --ignore-vuln.
+      - name: Dependency vulnerability scan
+        if: steps.py.outputs.found == 'true'
+        run: |
+          uv run --no-sync pip-audit --desc on --aliases on
+
+      - name: Lint
+        if: steps.py.outputs.found == 'true'
+        run: |
+          uv run --no-sync ruff --version
+          uv run --no-sync ruff check .
+
+      - name: Format check
+        if: steps.py.outputs.found == 'true'
+        run: uv run --no-sync ruff format --check .
+
+      - name: Type check
+        if: steps.py.outputs.found == 'true'
+        run: uv run --no-sync mypy
+
+      # The default suite is offline and must never touch the network or spend
+      # money. Live tests are opt-in only and are excluded here.
+      - name: Offline tests
+        if: steps.py.outputs.found == 'true'
+        run: uv run --no-sync pytest -q -m "not live"
+
+      # Packaging regressions (missing package data, broken entry points) only
+      # surface in an installed wheel. Build it, install it as an isolated uv
+      # tool, and run config show from outside the repository.
+      - name: Installed tool smoke
+        if: steps.py.outputs.found == 'true' && hashFiles('scripts/install_smoke.sh') != ''
+        run: bash scripts/install_smoke.sh
