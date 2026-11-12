@@ -117,6 +117,7 @@ def test_pending_offers_approve_reject_regenerate_and_timeout() -> None:
         ReviewState.REJECTED,
         ReviewState.REGENERATED,
         ReviewState.TIMED_OUT,
+        ReviewState.REFUSED,
     }
 
 

@@ -847,7 +847,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 
 <!-- goal: safe, observable, recoverable, documented -->
 
-- [ ] Add content safety gates with block lists, escalation to mandatory review and a distinct refusal state (tests/safety/test_gates.py)
+- [x] Add content safety gates with block lists, escalation to mandatory review and a distinct refusal state (tests/safety/test_gates.py)
 - [ ] Track license and attribution per asset and add required attributions to descriptions automatically (tests/safety/test_licenses.py)
 - [ ] Apply AI disclosure metadata and an optional on screen label per platform, stored with the post and its attestation (tests/safety/test_disclosure.py)
 - [ ] Scan logs, artifacts, errors and sidecars of a mock run for configured secrets and fail when one appears (tests/safety/test_secret_audit.py)
