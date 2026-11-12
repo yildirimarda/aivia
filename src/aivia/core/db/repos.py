@@ -578,6 +578,32 @@ class PostRepository(ModelRepository[Post]):
     model = Post
     id_factory = new_post_id
 
+    def find_by_idempotency_key(self, key: str) -> Post | None:
+        """Return the post stored for *key*, or ``None`` when it is unused."""
+        with self.engine.connect() as connection:
+            return self.find_by_idempotency_key_in(connection, key)
+
+    def find_by_idempotency_key_in(
+        self,
+        connection: Connection,
+        key: str,
+    ) -> Post | None:
+        """Return the post stored for *key* inside an existing transaction."""
+        text = key.strip()
+        if not text:
+            return None
+        row = (
+            connection.execute(
+                select(self.table)
+                .where(self.table.c.idempotency_key == text)
+                .order_by(*(self.table.c[column] for column in self.key_columns))
+                .limit(1)
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else self._to_record(row)
+
 
 class TemplateRepository(TableRepository):
     """Persist reusable plan and composition templates."""
