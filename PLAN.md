@@ -857,7 +857,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Add API security regression tests enumerating routes to assert auth, body limits and rate limits (tests/api/test_security.py)
 - [x] Add dependency vulnerability scanning that fails on high severity with a documented allowlist (CI)
 - [x] Add health reporting for queue depth, worker liveness, disk space and provider status plus a disk guard refusing new runs (tests/cli/test_health.py)
-- [ ] Add a retention job removing intermediates, cache, expired orders, deliveries, logs and hits while never deleting pinned final outputs unless explicitly enabled, with a dry run listing deletions (tests/cli/test_retention.py)
+- [x] Add a retention job removing intermediates, cache, expired orders, deliveries, logs and hits while never deleting pinned final outputs unless explicitly enabled, with a dry run listing deletions (tests/cli/test_retention.py)
 - [ ] Add a scripted backup and restore drill verifying runs, orders and costs survive (tests/test_restore.py)
 - [ ] Inject provider outages, malformed responses, partial downloads, expired tokens and a full queue and assert defined behaviour with no double charge (tests/resilience/test_failures.py)
 - [ ] Run concurrency and performance tests for parallel renders, queue load, large inputs and memory ceilings without deadlocks (slow, tests/resilience/test_perf.py)
