@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 from aivia.cli import main
 from aivia.core.cost import CostTracker
@@ -355,3 +356,99 @@ def test_dashboard_reports_a_missing_database(
     assert code == 1
     assert captured.out == ""
     assert f"database not found: {missing}" in captured.err
+
+
+def test_dashboard_reports_performance_by_dimension_and_cpm(
+    database: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    engine = create_database_engine(database)
+    try:
+        run = RunRepository(engine).create(
+            Run(id="run_alpha", profile="daily", format="short")
+        )
+        tracker = CostTracker(engine)
+        tracker.record(
+            provider="acme",
+            model="gen-1",
+            operation="image",
+            units=1.0,
+            unit_kind="image",
+            amount_usd=0.10,
+            run_id=run.id,
+            estimated=False,
+            created_at=datetime(2026, 1, 15, 9, 0, tzinfo=UTC),
+            metadata={
+                "mode": "script",
+                "category": "news",
+                "hook_style": "question",
+                "visual_strategy": "hybrid",
+            },
+        )
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO posts (id, run_id, platform, language) "
+                    "VALUES (:id, :run_id, :platform, :language)"
+                ),
+                {
+                    "id": "post_alpha",
+                    "run_id": run.id,
+                    "platform": "tiktok",
+                    "language": "en",
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO post_metrics (id, post_id, views) "
+                    "VALUES (:id, :post_id, :views)"
+                ),
+                {"id": "metric_alpha", "post_id": "post_alpha", "views": 1000},
+            )
+    finally:
+        engine.dispose()
+
+    output = tmp_path / "dashboard.html"
+    code, _, err = run_dashboard(
+        capsys,
+        database,
+        "--output",
+        str(output),
+        "--now",
+        "2026-01-15T12:00:00Z",
+    )
+
+    assert code == 0
+    assert err == ""
+    text_output = output.read_text(encoding="utf-8")
+    assert "overall CPM $0.100000" in text_output
+    sections = tables(text_output)
+    assert sections["Performance by platform"] == [
+        ["Platform", "Cost", "Views", "CPM per 1k views"],
+        ["tiktok", "$0.100000", "1000", "$0.100000"],
+    ]
+    assert sections["Performance by profile"] == [
+        ["Profile", "Cost", "Views", "CPM per 1k views"],
+        ["daily", "$0.100000", "1000", "$0.100000"],
+    ]
+    assert sections["Performance by format"] == [
+        ["Format", "Cost", "Views", "CPM per 1k views"],
+        ["short", "$0.100000", "1000", "$0.100000"],
+    ]
+    assert sections["Performance by mode"] == [
+        ["Mode", "Cost", "Views", "CPM per 1k views"],
+        ["script", "$0.100000", "1000", "$0.100000"],
+    ]
+    assert sections["Performance by category"] == [
+        ["Category", "Cost", "Views", "CPM per 1k views"],
+        ["news", "$0.100000", "1000", "$0.100000"],
+    ]
+    assert sections["Performance by hook style"] == [
+        ["Hook style", "Cost", "Views", "CPM per 1k views"],
+        ["question", "$0.100000", "1000", "$0.100000"],
+    ]
+    assert sections["Performance by visual strategy"] == [
+        ["Visual strategy", "Cost", "Views", "CPM per 1k views"],
+        ["hybrid", "$0.100000", "1000", "$0.100000"],
+    ]

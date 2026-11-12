@@ -16,6 +16,12 @@ from aivia.analytics.outlier import (
     outlier_scores,
     rank_outliers,
 )
+from aivia.analytics.reports import (
+    PerformanceBucket,
+    PerformanceReport,
+    build_performance_report,
+    performance_by,
+)
 from aivia.analytics.retention import (
     ClosingSlide,
     HookLeak,
@@ -34,10 +40,13 @@ __all__ = [
     "ClosingSlide",
     "HookLeak",
     "OutlierScore",
+    "PerformanceBucket",
+    "PerformanceReport",
     "RetentionExport",
     "RetentionPoint",
     "SteepestDrop",
     "VideoEntry",
+    "build_performance_report",
     "channel_baselines",
     "channel_medians",
     "closing_slide",
@@ -45,6 +54,7 @@ __all__ = [
     "hook_leak",
     "import_retention_export",
     "outlier_scores",
+    "performance_by",
     "rank_outliers",
     "steepest_drops",
 ]
