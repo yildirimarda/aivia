@@ -816,7 +816,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Map profile, platform and language to credentials and apply daily posting slots with jitter and deferral notices (tests/publish/test_accounts.py)
 - [x] Make publishing idempotent so a retry after a timeout never double posts, retrying only retryable errors and persisting post ids and urls (tests/publish/test_idempotency.py)
 - [x] Validate format to account compatibility with a matrix test over every format and configured account (tests/publish/test_compat.py)
-- [ ] Add publish dry run and publish check commands validating tokens, media, formatting, compatibility, scopes and remaining quota (tests/cli/test_publish_cli.py)
+- [x] Add publish dry run and publish check commands validating tokens, media, formatting, compatibility, scopes and remaining quota (tests/cli/test_publish_cli.py)
 - [ ] Add a media publish command that publishes a standalone generated file and records a publish cost event (tests/cli/test_media_publish.py)
 - [ ] Expose publish through the API as an asynchronous job with status and a dry run flag (tests/api/test_publish_api.py)
 - [ ] Notify once per day when a token is about to expire, with a re authentication hint (tests/publish/test_token_alerts.py)
