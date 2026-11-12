@@ -1913,19 +1913,19 @@ async def _publish(
     )
     result = await provider.publish(request)
 
-    cost = 0.0
+    amount_usd = 0.0
     if result.metadata:
         try:
-            cost = float(result.metadata.get("cost_usd", 0.0))
+            amount_usd = float(result.metadata.get("cost_usd", 0.0))
         except (TypeError, ValueError):
-            cost = 0.0
+            amount_usd = 0.0
     runtime.tracker.record_actual(
         provider=result.provider or provider.name,
         model="",
         operation="publish",
         units=1.0,
         unit_kind="call",
-        amount_usd=cost,
+        amount_usd=amount_usd,
         estimated=False,
         run_id="",
         pricing_version="",
@@ -1944,13 +1944,13 @@ def _print_publish_result(result: Any, args: argparse.Namespace) -> int:
     print(f"Account: {result.account}")
     print(f"Provider: {result.provider or '-'}")
     print(f"Remote id: {result.remote_id or '-'}")
-    cost = 0.0
+    amount_usd = 0.0
     if result.metadata:
         try:
-            cost = float(result.metadata.get("cost_usd", 0.0))
+            amount_usd = float(result.metadata.get("cost_usd", 0.0))
         except (TypeError, ValueError):
-            cost = 0.0
-    print(f"Cost: ${cost:.6f}")
+            amount_usd = 0.0
+    print(f"Cost: ${amount_usd:.6f}")
     if result.url:
         print(f"Url: {result.url}")
     if result.dry_run:
