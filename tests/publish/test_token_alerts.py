@@ -272,7 +272,7 @@ def test_notifier_accepts_a_shared_tracker_and_rejects_conflicts() -> None:
 
 def test_message_for_rejects_non_alert() -> None:
     with pytest.raises(ConfigError):
-        TokenAlertNotifier.message_for(cast(TokenAlert, "alert"))  # type: ignore[arg-type]
+        TokenAlertNotifier.message_for(cast(TokenAlert, "alert"))
 
 
 # ------------------------------------------------------------------ state
