@@ -813,7 +813,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Choose the matching run output per platform media type from the platform data file (tests/publish/test_media_types.py)
 - [x] Format captions, hashtags, titles and disclosure text from platform data with no literals in code (tests/publish/test_formatting.py)
 - [x] Generate description chapters from the transcript, validated against the platform chapter rules before publishing (tests/publish/test_chapters.py)
-- [ ] Map profile, platform and language to credentials and apply daily posting slots with jitter and deferral notices (tests/publish/test_accounts.py)
+- [x] Map profile, platform and language to credentials and apply daily posting slots with jitter and deferral notices (tests/publish/test_accounts.py)
 - [ ] Make publishing idempotent so a retry after a timeout never double posts, retrying only retryable errors and persisting post ids and urls (tests/publish/test_idempotency.py)
 - [ ] Validate format to account compatibility with a matrix test over every format and configured account (tests/publish/test_compat.py)
 - [ ] Add publish dry run and publish check commands validating tokens, media, formatting, compatibility, scopes and remaining quota (tests/cli/test_publish_cli.py)
