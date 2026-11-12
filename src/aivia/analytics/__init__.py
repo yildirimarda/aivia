@@ -6,6 +6,7 @@ reporting can treat every platform the same way, and scores videos by how
 their views compare to their own channel's median.
 """
 
+from aivia.analytics.ab import ABResult, Alternative, compare_alternatives
 from aivia.analytics.collect import CANONICAL_METRICS, collect
 from aivia.analytics.learning import (
     DEFAULT_LEARNING_RATE,
@@ -54,6 +55,8 @@ __all__ = [
     "DEFAULT_WEIGHT",
     "MAX_WEIGHT",
     "MIN_WEIGHT",
+    "ABResult",
+    "Alternative",
     "CategoryWeight",
     "CategoryWeightChange",
     "CategoryWeights",
@@ -75,6 +78,7 @@ __all__ = [
     "channel_medians",
     "closing_slide",
     "collect",
+    "compare_alternatives",
     "hook_leak",
     "import_retention_export",
     "load_category_weights",
