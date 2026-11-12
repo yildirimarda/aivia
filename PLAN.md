@@ -852,7 +852,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Apply AI disclosure metadata and an optional on screen label per platform, stored with the post and its attestation (tests/safety/test_disclosure.py)
 - [x] Scan logs, artifacts, errors and sidecars of a mock run for configured secrets and fail when one appears (tests/safety/test_secret_audit.py)
 - [x] Protect every file input and output against path traversal with a fuzz test (tests/safety/test_paths.py)
-- [ ] Harden SSRF protection against numeric IP encodings, IPv6 mapped addresses, DNS rebinding and redirects by validating resolved addresses per hop (tests/safety/test_ssrf.py)
+- [x] Harden SSRF protection against numeric IP encodings, IPv6 mapped addresses, DNS rebinding and redirects by validating resolved addresses per hop (tests/safety/test_ssrf.py)
 - [ ] Sign and verify webhooks with a timestamp and replay window tested in both directions (tests/safety/test_webhook.py)
 - [ ] Add API security regression tests enumerating routes to assert auth, body limits and rate limits (tests/api/test_security.py)
 - [ ] Add dependency vulnerability scanning that fails on high severity with a documented allowlist (CI)
