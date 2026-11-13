@@ -279,12 +279,16 @@ def test_module_level_load_register_and_build(spec_dir: Path) -> None:
 
 def test_build_providers_from_specs_uses_the_shared_registry_by_default(
     spec_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_spec(spec_dir, "alpha.yaml", _spec("alpha"))
 
+    fake = ProviderRegistry()
+    monkeypatch.setattr("aivia.providers.specs.provider_registry", fake)
     providers = build_providers_from_specs(directory=spec_dir)
     assert set(providers) == {"alpha"}
     assert providers["alpha"].name == "alpha"
+    assert fake.resolve("alpha") is not None
 
 
 def test_registered_provider_can_be_selected_by_a_router(
