@@ -869,7 +869,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Generate the CLI reference from the command registry, compare it with the design document and fail when stale (tests/test_cli_docs.py)
 - [x] Write guides for adding a provider, language, format, platform, occasion and character, each covered by a test (tests/test_docs.py)
 - [x] Write the troubleshooting guide covering common failures, cost reports, resuming, credential rotation and config locations, with every listed message existing in code (tests/test_troubleshooting.py)
-- [ ] Run a final live end to end test producing one image, video, voice and song per language under a strict budget cap, asserting pinning and running disclosure checks only when the publishing module is installed (live, tests/live/test_final_e2e.py)
+- [x] Run a final live end to end test producing one image, video, voice and song per language under a strict budget cap, asserting pinning and running disclosure checks only when the publishing module is installed (live, tests/live/test_final_e2e.py)
 
 ## Discovered
 
