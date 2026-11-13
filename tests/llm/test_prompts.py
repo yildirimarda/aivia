@@ -66,8 +66,10 @@ def test_a_packaged_default_is_used_when_the_user_has_no_copy(
     )
 
 
-def test_the_shipped_image_prompt_loads_and_renders_without_variables() -> None:
-    template = load_prompt("image")
+def test_the_shipped_image_prompt_loads_and_renders_without_variables(
+    tmp_path: Path,
+) -> None:
+    template = load_prompt("image", config_dir=tmp_path / "config")
 
     assert template.is_default is True
     assert template.path == paths.package_defaults_dir() / "prompts" / "image.md"
