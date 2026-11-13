@@ -880,7 +880,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Register capability chain sections for media capabilities so estimates and runs share configured chains (tests/core/config/test_capability.py)
 - [x] Make asset cache hit counting atomic so concurrent lookups do not lose increments (tests/core/test_asset_cache.py)
 - [x] Build run and estimate routers through the provider factory so configured options and secrets apply (tests/core/test_provider_wiring.py)
-- [ ] Isolate prompt loading tests from the real user config directory so local prompts cannot change default assertions (tests/llm/test_prompts.py)
+- [x] Isolate prompt loading tests from the real user config directory so local prompts cannot change default assertions (tests/llm/test_prompts.py)
 - [ ] Isolate provider docs CLI tests from the real user config directory so they never bootstrap the host home (tests/test_provider_docs.py)
 - [ ] Load declarative provider specs from providers.d and register them for configured chains (tests/core/test_provider_specs.py)
 - [ ] Validate every file under examples against its schema so examples cannot drift (tests/test_examples.py)
