@@ -198,7 +198,7 @@ def compute_input_hash(
         "stage": stage.name,
         "version": _stage_implementation_version(stage),
         "implementation": _stage_code_fingerprint(stage),
-        "options": stable_value(stage.options),
+        "options": stable_value(stage.hashable_options()),
         "config": stable_value(config),
         "declared_artifacts": sorted(stage.artifacts),
         "declared_inputs": _external_inputs(stage, root, config),
