@@ -17,6 +17,7 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 from aivia.core.config.audio_qa import AudioQAConfig
 from aivia.core.config.base import ConfigModel
 from aivia.core.config.budget import BudgetConfig, OnExceed
+from aivia.core.config.capability import CapabilityChainConfig
 from aivia.core.config.character import BrandKitConfig, CharacterConfig
 from aivia.core.config.circuit import CircuitBreakerConfig
 from aivia.core.config.database import DatabaseConfig
@@ -81,6 +82,7 @@ __all__ = [
     "AudioQAConfig",
     "BrandKitConfig",
     "BudgetConfig",
+    "CapabilityChainConfig",
     "CharacterConfig",
     "CircuitBreakerConfig",
     "DatabaseConfig",
@@ -626,6 +628,10 @@ CORE_SECTIONS: tuple[tuple[str, type[ConfigModel]], ...] = (
     ("formats", FormatsConfig),
     ("profiles", ProfilesConfig),
     ("video", VideoConfig),
+    ("image_gen", CapabilityChainConfig),
+    ("music_gen", CapabilityChainConfig),
+    ("tts", CapabilityChainConfig),
+    ("video_gen", CapabilityChainConfig),
     ("render", RenderConfig),
     ("budget", BudgetConfig),
     ("llm", LLMConfig),
