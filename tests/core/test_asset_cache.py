@@ -233,6 +233,53 @@ def test_concurrent_identical_stores_create_one_entry(tmp_path: Path) -> None:
         engine.dispose()
 
 
+def test_concurrent_hits_do_not_lose_increments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = create_database_engine(tmp_path / "aivia.db")
+    upgrade_database(engine=engine)
+    try:
+        cache = AssetCache(engine)
+        key = cache.key("acme", "image-1", "A bridge at dusk")
+        stored = cache.store(_asset(), key=key)
+
+        workers = 8
+        barrier = threading.Barrier(workers)
+        original_get = cache.repository.get
+
+        def synchronized_get(*args: Any, **kwargs: Any) -> Any:
+            entry = original_get(*args, **kwargs)
+            barrier.wait(timeout=5)
+            return entry
+
+        monkeypatch.setattr(cache.repository, "get", synchronized_get)
+        errors: list[BaseException] = []
+        lock = threading.Lock()
+
+        def hit() -> None:
+            try:
+                cache.record_hit(key, stored)
+            except BaseException as exc:
+                with lock:
+                    errors.append(exc)
+
+        threads = [threading.Thread(target=hit) for _ in range(workers)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+
+        assert not any(thread.is_alive() for thread in threads)
+        assert errors == []
+        entry = AssetCacheRepository(engine).get(key.digest)
+        assert entry is not None
+        assert entry.hit_count == workers
+        assert cache.cost.count() == workers
+    finally:
+        engine.dispose()
+
+
 def test_a_different_reference_hash_is_a_different_cache_entry(
     cache: AssetCache,
 ) -> None:
