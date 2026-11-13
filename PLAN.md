@@ -888,6 +888,6 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Include local background removal and remote ops adapters in provider docs and regenerate the matrix (tests/test_provider_docs.py)
 - [x] Break the media probe import cycle so its test module collects without importing providers first (tests/core/test_media_probe.py)
 - [x] Fix the placement test helper typing so mypy passes on the compose suite (tests/compose/test_placement.py)
-- [ ] Exclude injected writer and provider objects from the stage input hash so resume is stable across processes (tests/writing/test_write_stage.py)
+- [x] Exclude injected writer and provider objects from the stage input hash so resume is stable across processes (tests/writing/test_write_stage.py)
 - [ ] Estimate hybrid visuals by pricing capped AI video beats separately from image beats (tests/cli/test_estimate.py)
 - [ ] Resolve local file URLs when opening cover art and watermark images so stored branding assets open (tests/compose/test_cover_branding.py)
