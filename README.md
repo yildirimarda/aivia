@@ -63,6 +63,34 @@ This writes `$XDG_CONFIG_HOME/aivia/config.yaml` (plus `prompts/`,
 writing with `--dry-run`. Use `--config PATH` to create the skeleton at an
 explicit path instead of the default location.
 
+## Usage
+
+Generate media:
+
+    aivia media --help
+
+Run a format recipe (preview cost first):
+
+    aivia run --estimate
+    aivia run -y
+
+Inspect configuration:
+
+    aivia config
+
+List providers and check their health:
+
+    aivia providers --health
+
+Create and manage orders:
+
+    aivia order create --occasion birthday --name "Sam"
+    aivia order show
+
+See all commands:
+
+    aivia --help
+
 ## CI verified walkthrough
 
 The default test suite is fully offline and never touches the network or spends
