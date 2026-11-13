@@ -865,7 +865,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Support credential rotation by reloading secrets without restart, letting in flight calls finish with the old value and logging rotation without values (tests/cli/test_credentials_reload.py)
 - [x] Scope runs, orders and posts to an owner with optional per owner budgets and rate limits, leaving single user config unchanged (tests/core/test_owner_scope.py)
 - [x] Prove schedules and deliveries crossing spring forward and fall back fire exactly once at the intended local time (tests/scheduling/test_dst.py)
-- [ ] Write the README with prerequisites, uv tool install and editable install paths, first run init and a CI verified walkthrough, with no publishing path (tests/test_readme.py)
+- [x] Write the README with prerequisites, uv tool install and editable install paths, first run init and a CI verified walkthrough, with no publishing path (tests/test_readme.py)
 - [ ] Generate the CLI reference from the command registry, compare it with the design document and fail when stale (tests/test_cli_docs.py)
 - [ ] Write guides for adding a provider, language, format, platform, occasion and character, each covered by a test (tests/test_docs.py)
 - [ ] Write the troubleshooting guide covering common failures, cost reports, resuming, credential rotation and config locations, with every listed message existing in code (tests/test_troubleshooting.py)
