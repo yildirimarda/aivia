@@ -139,6 +139,27 @@ def test_the_committed_reference_is_current() -> None:
     )
 
 
+def test_local_background_removal_and_remote_ops_adapters_are_in_the_matrix() -> None:
+    text = dump_provider_docs()
+
+    for name in ("local-background-removal", "local-rembg"):
+        assert f"| `{name}` | `image_edit` | 60/min | - | - | unknown |" in text
+        assert f"| `{name}` | `image_edit` | $0 per image |" in text
+        assert f"| `{name}` | - | - |" in text
+
+    for name in (
+        "remote-ops",
+        "remote_ops",
+        "remote-image-ops",
+        "remote_image_ops",
+        "remote-image-edit",
+        "remote-background-removal",
+        "remote-upscale",
+    ):
+        assert f"| `{name}` | `image_edit` | 60/min | - | - | unknown |" in text
+        assert f"| `{name}` | - | - |" in text
+
+
 def test_docs_print_the_generated_reference(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
