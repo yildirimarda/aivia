@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = ROOT / "Makefile"
 MAKE = shutil.which("make")
 
-REQUIRED_TARGETS = {"lint", "type", "test", "check", "docs", "install-smoke"}
+REQUIRED_TARGETS = {"lint", "type", "test", "fast", "check", "docs", "install-smoke"}
 
 
 def _prerequisites(text: str) -> dict[str, list[str]]:
@@ -91,6 +92,7 @@ def test_targets_use_the_project_tools() -> None:
     assert "uv run ruff check ." in text
     assert "uv run mypy" in text
     assert "uv run pytest -q" in text
+    assert 'uv run pytest -q -m "not slow"' in text
     assert "scripts/install_smoke.sh" in text
 
 
@@ -170,3 +172,42 @@ def test_make_install_smoke_falls_back_to_the_packaging_test(tmp_path: Path) -> 
         "-k installed_console_script or module_entry_point"
     )
     assert log.read_text(encoding="utf-8").splitlines() == [expected]
+
+
+@pytest.mark.skipif(MAKE is None, reason="make is not installed")
+def test_make_fast_runs_pytest_excluding_slow(tmp_path: Path) -> None:
+    env, log = _make_env(tmp_path)
+
+    result = _run_make(tmp_path, ["fast"], env)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert log.read_text(encoding="utf-8").splitlines() == ["run pytest -q -m not slow"]
+
+
+def test_fast_marker_filters_out_slow_tests(tmp_path: Path) -> None:
+    sample = tmp_path / "test_marks.py"
+    sample.write_text(
+        "\n".join(
+            [
+                "import pytest",
+                "",
+                "def test_fast_one():",
+                "    pass",
+                "",
+                "@pytest.mark.slow",
+                "def test_slow_one():",
+                "    pass",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-m", "not slow", str(sample)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 passed, 1 deselected" in result.stdout
