@@ -38,6 +38,7 @@ from typing import Any
 from aivia.core.config.capability import CapabilityChainConfig, CapabilityStrategy
 from aivia.core.config.embeddings import EmbeddingsConfig
 from aivia.core.config.formats import FormatRecipeConfig, StageConfig
+from aivia.core.config.writing import DEFAULT_MAX_AI_VIDEO_BEATS
 from aivia.core.errors import ConfigError, ProviderExhaustedError
 from aivia.core.models.provider import ProviderMeta
 from aivia.core.pricing import PriceSource, PricingResolver
@@ -169,6 +170,17 @@ _SONG_DURATION_KEYS = (
     "target_duration_seconds",
     "target_seconds",
 )
+
+_VISUAL_LIMIT_KEYS = (
+    "max_ai_video_beats",
+    "max_video_beats",
+    "max_beats",
+    "ai_video_beats",
+    "max_ai_videos",
+)
+
+# Strategies that cap AI video beats and price the remaining beats as images.
+_SPLIT_STRATEGIES = frozenset({"hybrid", "video"})
 
 
 def _number_option(
@@ -606,56 +618,24 @@ class Estimator:
             else _known_song_duration(recipe)
         )
         stages = tuple(
-            self._estimate_stage(stage, recipe, song_duration=song_duration)
+            part
             for stage in recipe.stages
+            for part in self._estimate_stage(stage, recipe, song_duration=song_duration)
         )
         return RecipeEstimate(format=name, stages=stages)
 
-    def _estimate_stage(
+    def _price_one(
         self,
+        capability: str,
+        units: float,
+        unit_kind: str,
         stage: StageConfig,
-        recipe: FormatRecipeConfig,
-        *,
-        song_duration: float | None = None,
     ) -> StageEstimate:
-        capability = stage_capability(stage, recipe)
-        units, unit_kind = stage_units(stage)
-        if (
-            song_duration is not None
-            and capability == "stt"
-            and not _explicit_units(stage)
-        ):
-            units, unit_kind = song_duration, "seconds"
-        explicit = _number_option(
-            stage.options,
-            _ESTIMATE_KEYS,
-            stage=stage.stage,
-        )
-        if explicit is not None:
-            return StageEstimate(
-                stage=stage.stage,
-                capability=capability,
-                provider="override",
-                units=units,
-                unit_kind=unit_kind or "call",
-                amount_usd=explicit,
-                source=EstimateSource.OVERRIDE,
-                note="explicit estimate",
-            )
+        """Price one capability/quantity pair for *stage*.
 
-        if not capability:
-            return StageEstimate(
-                stage=stage.stage,
-                capability="",
-                provider="",
-                units=0.0,
-                unit_kind="",
-                amount_usd=0.0,
-                source=EstimateSource.FREE,
-                note="no paid call",
-                free=True,
-            )
-
+        Returns a single :class:`StageEstimate`, flagged missing when no
+        provider serves or prices the capability.
+        """
         try:
             selection = self._router.select_with_record(
                 capability,
@@ -733,6 +713,101 @@ class Estimator:
                 else EstimateSource.METADATA
             ),
         )
+
+    def _visual_parts(
+        self,
+        stage: StageConfig,
+        capability: str,
+        units: float,
+        unit_kind: str,
+    ) -> tuple[tuple[str, float], ...] | None:
+        """Split a hybrid or video visuals stage into priced beat parts.
+
+        A ``hybrid`` or ``video`` strategy caps AI video beats at
+        ``max_ai_video_beats`` and prices the rest as images. Returns one
+        ``(capability, units)`` pair per part, or ``None`` when the stage is
+        priced as a single capability.
+        """
+        name = "_".join(stage.stage.strip().lower().replace("-", " ").split())
+        if name not in {"visual", "visuals"}:
+            return None
+        options = stage.options
+        strategy = ""
+        for key in ("strategy", "source", "mode", "visual_strategy"):
+            value = options.get(key)
+            if isinstance(value, str) and value.strip():
+                strategy = "_".join(value.strip().lower().replace("-", " ").split())
+                break
+        if strategy not in _SPLIT_STRATEGIES:
+            return None
+        count = int(units)
+        limit = _number_option(options, _VISUAL_LIMIT_KEYS, stage=stage.stage)
+        if limit is None:
+            limit = DEFAULT_MAX_AI_VIDEO_BEATS
+        limit = max(0, min(int(limit), count))
+        parts: list[tuple[str, float]] = []
+        if limit > 0:
+            parts.append(("video_gen", float(limit)))
+        if count - limit > 0:
+            parts.append(("image_gen", float(count - limit)))
+        return tuple(parts) if parts else None
+
+    def _estimate_stage(
+        self,
+        stage: StageConfig,
+        recipe: FormatRecipeConfig,
+        *,
+        song_duration: float | None = None,
+    ) -> tuple[StageEstimate, ...]:
+        capability = stage_capability(stage, recipe)
+        units, unit_kind = stage_units(stage)
+        if (
+            song_duration is not None
+            and capability == "stt"
+            and not _explicit_units(stage)
+        ):
+            units, unit_kind = song_duration, "seconds"
+        explicit = _number_option(
+            stage.options,
+            _ESTIMATE_KEYS,
+            stage=stage.stage,
+        )
+        if explicit is not None:
+            return (
+                StageEstimate(
+                    stage=stage.stage,
+                    capability=capability,
+                    provider="override",
+                    units=units,
+                    unit_kind=unit_kind or "call",
+                    amount_usd=explicit,
+                    source=EstimateSource.OVERRIDE,
+                    note="explicit estimate",
+                ),
+            )
+
+        if not capability:
+            return (
+                StageEstimate(
+                    stage=stage.stage,
+                    capability="",
+                    provider="",
+                    units=0.0,
+                    unit_kind="",
+                    amount_usd=0.0,
+                    source=EstimateSource.FREE,
+                    note="no paid call",
+                    free=True,
+                ),
+            )
+
+        parts = self._visual_parts(stage, capability, units, unit_kind)
+        if parts is not None:
+            return tuple(
+                self._price_one(part_capability, part_units, unit_kind, stage)
+                for part_capability, part_units in parts
+            )
+        return (self._price_one(capability, units, unit_kind, stage),)
 
 
 def estimate_recipe(
