@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from aivia.cli import main
+from aivia.core import paths
 from aivia.core.models import AssetLicense, ProviderMeta, ProviderPrice, RateLimit
 from aivia.providers import Provider, ProviderRegistry
 from aivia.providers.docs import (
@@ -196,3 +197,18 @@ def test_docs_output_writes_the_generated_reference(
     assert err == ""
     assert str(target) in output
     assert target.read_text(encoding="utf-8") == dump_provider_docs()
+
+
+def test_cli_docs_bootstraps_into_the_isolated_config_not_the_host_home(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``providers docs`` bootstraps into the isolated config dir, never home."""
+    config_dir = paths.config_dir()
+    assert config_dir == tmp_path / "config" / "aivia"
+
+    code, output, err = run_docs(capsys)
+
+    assert code == 0
+    assert err == ""
+    assert output == dump_provider_docs()
+    assert (config_dir / "config.yaml").is_file()
