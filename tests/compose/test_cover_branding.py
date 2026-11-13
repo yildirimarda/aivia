@@ -237,6 +237,96 @@ def test_watermark_image_accepts_paths_and_rejects_missing_files(
         watermark_image(base, tmp_path / "missing.png")
 
 
+def test_watermark_image_opens_a_file_url_watermark(tmp_path: Path) -> None:
+    base = _image(tmp_path, "base.png", (20, 20), (255, 255, 255, 255))
+    mark = _image(tmp_path, "mark.png", (4, 4), (0, 0, 0, 255))
+
+    result = watermark_image(base, mark.as_uri(), margin=0, opacity=1.0)
+
+    assert result.size == (20, 20)
+    assert result.getpixel((19, 19)) == (0, 0, 0, 255)
+
+
+def test_apply_watermark_opens_a_file_url_target(tmp_path: Path) -> None:
+    target = _image(tmp_path, "target.png", (20, 20), (255, 0, 0, 255))
+    mark = _image(tmp_path, "mark.png", (4, 4), (0, 0, 255, 255))
+
+    result = apply_watermark(
+        target.as_uri(),
+        mark,
+        anchor=Anchor.BOTTOM_RIGHT,
+        margin=0,
+        opacity=1.0,
+    )
+
+    assert result.getpixel((19, 19)) == (0, 0, 255, 255)
+
+
+def test_watermark_image_rejects_a_missing_file_url(tmp_path: Path) -> None:
+    base = _image(tmp_path, "base.png", (20, 20), (255, 255, 255, 255))
+    missing = (tmp_path / "missing.png").as_uri()
+    with pytest.raises(CoverBrandingError, match="could not be read"):
+        watermark_image(base, missing, margin=0, opacity=1.0)
+
+
+def test_generate_cover_frames_opens_a_file_url_cover_art_source(
+    tmp_path: Path,
+) -> None:
+    cover_art = _image(tmp_path, "cover.png", (64, 64), (255, 0, 0, 255))
+    frames = generate_cover_frames(
+        cover_art.as_uri(),
+        tmp_path / "covers",
+        times=[0.0],
+        size=(32, 32),
+    )
+
+    assert len(frames) == 1
+    assert frames[0].size == (32, 32)
+    with Image.open(frames[0].output) as image:
+        assert image.getpixel((0, 0)) == (255, 0, 0, 255)
+
+
+def test_generate_cover_frames_branding_watermark_as_file_url(
+    tmp_path: Path,
+) -> None:
+    composition = _composition(tmp_path, detail_start=0.0)
+    mark = _image(tmp_path, "mark.png", (16, 16), (0, 0, 255, 255))
+    branding = BrandKitConfig.from_mapping(
+        {"name": "studio", "watermark": mark.as_uri()}
+    )
+
+    frames = generate_cover_frames(
+        composition,
+        tmp_path / "covers",
+        times=[0.5],
+        branding=branding,
+        margin=0,
+    )
+
+    assert frames[0].watermarked is True
+    with Image.open(frames[0].output) as image:
+        pixel = image.convert("RGBA").getpixel((127, 127))
+    assert isinstance(pixel, tuple)
+    assert pixel[2] > 200
+    assert pixel[0] < 80
+
+
+def test_watermark_composition_resolves_a_file_url_layer_source(
+    tmp_path: Path,
+) -> None:
+    composition = _composition(tmp_path, detail_start=0.0)
+    mark = _image(tmp_path, "mark.png", (16, 16), (0, 0, 255, 255))
+    branding = BrandKitConfig.from_mapping(
+        {"name": "studio", "watermark": mark.as_uri()}
+    )
+
+    branded = watermark_composition(composition, branding=branding)
+
+    layers = [layer for layer in branded.layers if layer.type.value == "logo"]
+    assert len(layers) == 1
+    assert layers[0].model_extra["source"] == str(mark)
+
+
 def test_watermark_composition_adds_a_logo_layer_once(tmp_path: Path) -> None:
     composition = _composition(tmp_path, detail_start=0.0)
     branding = _branding(tmp_path)
