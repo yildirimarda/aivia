@@ -347,3 +347,170 @@ def test_estimator_rejects_an_invalid_stage_quantity() -> None:
 
     with pytest.raises(ConfigError, match="finite, non-negative"):
         Estimator({}).estimate("sample", recipe)
+
+
+def test_estimate_splits_hybrid_visuals_into_capped_video_and_image_beats(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = write_config(
+        tmp_path,
+        """
+providers:
+  pictures:
+    type: mock-image
+  motion:
+    type: mock-video
+formats:
+  estimate_sample:
+    description: Hybrid visuals priced per beat type.
+    stages:
+      - stage: visuals
+        options:
+          strategy: hybrid
+          count: 4
+          max_ai_video_beats: 2
+    capabilities: [image_gen, video_gen]
+    output_type: video
+    handler: save
+""",
+    )
+
+    code, rows, err = estimate(config, capsys)
+
+    assert code == 0
+    assert err == ""
+    assert rows[0] == ["Format: estimate_sample"]
+    assert rows[1] == [
+        "STAGE",
+        "CAPABILITY",
+        "PROVIDER",
+        "UNITS",
+        "UNIT",
+        "ESTIMATE",
+        "NOTE",
+    ]
+    visuals = [row for row in rows[2:-1] if row[0] == "visuals"]
+    assert len(visuals) == 2
+    by_capability = {row[1]: row for row in visuals}
+    assert by_capability["video_gen"][2] == "motion"
+    assert by_capability["video_gen"][3] == "2"
+    assert by_capability["video_gen"][5] == "$0.100000"
+    assert by_capability["image_gen"][2] == "pictures"
+    assert by_capability["image_gen"][3] == "2"
+    assert by_capability["image_gen"][5] == "$0.040000"
+
+    total = rows[-1]
+    assert total[0] == "TOTAL"
+    assert total[5] == "$0.140000"
+
+
+def test_estimator_splits_hybrid_visuals_into_capped_video_and_image_beats() -> None:
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [
+                {
+                    "stage": "visuals",
+                    "options": {
+                        "strategy": "hybrid",
+                        "count": 5,
+                        "max_ai_video_beats": 2,
+                    },
+                }
+            ],
+            "capabilities": ["image_gen", "video_gen"],
+        }
+    )
+    providers = {
+        "images": ProviderMeta(
+            name="images",
+            capabilities=["image_gen"],
+            pricing={"image_gen": ProviderPrice(amount_usd=0.02)},
+        ),
+        "clips": ProviderMeta(
+            name="clips",
+            capabilities=["video_gen"],
+            pricing={"video_gen": ProviderPrice(amount_usd=0.05)},
+        ),
+    }
+
+    result = Estimator(providers).estimate("sample", recipe)
+
+    assert [stage.stage for stage in result.stages] == ["visuals", "visuals"]
+    by_capability = {stage.capability: stage for stage in result.stages}
+    assert by_capability["video_gen"].provider == "clips"
+    assert by_capability["video_gen"].units == 2.0
+    assert by_capability["video_gen"].amount_usd == pytest.approx(0.10)
+    assert by_capability["image_gen"].provider == "images"
+    assert by_capability["image_gen"].units == 3.0
+    assert by_capability["image_gen"].amount_usd == pytest.approx(0.06)
+    assert result.total_usd == pytest.approx(0.16)
+    assert result.complete is True
+
+
+def test_estimate_uses_image_gen_when_video_cap_is_zero() -> None:
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [
+                {
+                    "stage": "visuals",
+                    "options": {
+                        "strategy": "hybrid",
+                        "count": 3,
+                        "max_ai_video_beats": 0,
+                    },
+                }
+            ],
+            "capabilities": ["image_gen", "video_gen"],
+        }
+    )
+    providers = {
+        "images": ProviderMeta(
+            name="images",
+            capabilities=["image_gen"],
+            pricing={"image_gen": ProviderPrice(amount_usd=0.02)},
+        ),
+    }
+
+    result = Estimator(providers).estimate("sample", recipe)
+
+    assert [stage.stage for stage in result.stages] == ["visuals"]
+    stage = result.stages[0]
+    assert stage.capability == "image_gen"
+    assert stage.units == 3.0
+    assert stage.amount_usd == pytest.approx(0.06)
+    assert result.total_usd == pytest.approx(0.06)
+
+
+def test_estimate_prices_all_beats_as_video_when_cap_exceeds_count() -> None:
+    recipe = FormatRecipeConfig.model_validate(
+        {
+            "stages": [
+                {
+                    "stage": "visuals",
+                    "options": {
+                        "strategy": "hybrid",
+                        "count": 2,
+                        "max_ai_video_beats": 5,
+                    },
+                }
+            ],
+            "capabilities": ["image_gen", "video_gen"],
+        }
+    )
+    providers = {
+        "clips": ProviderMeta(
+            name="clips",
+            capabilities=["video_gen"],
+            pricing={"video_gen": ProviderPrice(amount_usd=0.05)},
+        ),
+    }
+
+    result = Estimator(providers).estimate("sample", recipe)
+
+    assert [stage.stage for stage in result.stages] == ["visuals"]
+    stage = result.stages[0]
+    assert stage.capability == "video_gen"
+    assert stage.units == 2.0
+    assert stage.amount_usd == pytest.approx(0.10)
+    assert result.total_usd == pytest.approx(0.10)
