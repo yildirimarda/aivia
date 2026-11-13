@@ -883,7 +883,7 @@ Short version of the design: AGENTS.md · full design: docs/DESIGN.md · decisio
 - [x] Isolate prompt loading tests from the real user config directory so local prompts cannot change default assertions (tests/llm/test_prompts.py)
 - [x] Isolate provider docs CLI tests from the real user config directory so they never bootstrap the host home (tests/test_provider_docs.py)
 - [x] Load declarative provider specs from providers.d and register them for configured chains (tests/core/test_provider_specs.py)
-- [ ] Validate every file under examples against its schema so examples cannot drift (tests/test_examples.py)
+- [x] Validate every file under examples against its schema so examples cannot drift (tests/test_examples.py)
 - [ ] Load every built-in adapter before provider lookup so real config types resolve outside docs (tests/cli/test_media_generate.py)
 - [ ] Include local background removal and remote ops adapters in provider docs and regenerate the matrix (tests/test_provider_docs.py)
 - [ ] Break the media probe import cycle so its test module collects without importing providers first (tests/core/test_media_probe.py)
