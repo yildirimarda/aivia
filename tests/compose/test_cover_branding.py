@@ -259,6 +259,7 @@ def test_apply_watermark_opens_a_file_url_target(tmp_path: Path) -> None:
         opacity=1.0,
     )
 
+    assert isinstance(result, Image.Image)
     assert result.getpixel((19, 19)) == (0, 0, 255, 255)
 
 
@@ -324,7 +325,8 @@ def test_watermark_composition_resolves_a_file_url_layer_source(
 
     layers = [layer for layer in branded.layers if layer.type.value == "logo"]
     assert len(layers) == 1
-    assert layers[0].model_extra["source"] == str(mark)
+    extras = layers[0].model_extra or {}
+    assert extras["source"] == str(mark)
 
 
 def test_watermark_composition_adds_a_logo_layer_once(tmp_path: Path) -> None:
