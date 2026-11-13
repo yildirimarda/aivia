@@ -1,5 +1,5 @@
 # Developer entry points. `make check` is the aggregate gate.
-.PHONY: lint type test check docs install-smoke
+.PHONY: lint type test fast check docs install-smoke
 
 lint:
 	uv run ruff check .
@@ -9,6 +9,10 @@ type:
 
 test:
 	uv run pytest -q
+
+# Exclude slow tests, e.g. video renders and live provider suites.
+fast:
+	uv run pytest -q -m "not slow"
 
 # Keep the gate deterministic even when make is invoked with -j.
 check: lint type test
