@@ -333,6 +333,62 @@
       "title": "BudgetConfig",
       "type": "object"
     },
+    "CapabilityChainConfig": {
+      "additionalProperties": false,
+      "description": "Ordered providers, selection strategy and limits for one capability.\n\n``max_clip_seconds`` is a cap of ``0`` when it is not configured; a positive\nvalue is the longest clip a single provider call may produce. When\n``split_long_requests`` is enabled, a longer request may be divided into\nmultiple clips instead of being clamped.",
+      "properties": {
+        "chain": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Chain",
+          "type": "array"
+        },
+        "max_clip_seconds": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Max Clip Seconds",
+          "type": "number"
+        },
+        "pricing_overrides": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Pricing Overrides",
+          "type": "object"
+        },
+        "split_long_requests": {
+          "default": false,
+          "title": "Split Long Requests",
+          "type": "boolean"
+        },
+        "strategy": {
+          "$ref": "#/$defs/CapabilityStrategy",
+          "default": "first_available"
+        },
+        "weights": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Weights",
+          "type": "object"
+        }
+      },
+      "title": "CapabilityChainConfig",
+      "type": "object"
+    },
+    "CapabilityStrategy": {
+      "description": "How the router picks a provider from a capability chain.",
+      "enum": [
+        "first_available",
+        "cheapest",
+        "best_quality",
+        "round_robin",
+        "weighted_ab"
+      ],
+      "title": "CapabilityStrategy",
+      "type": "string"
+    },
     "CharacterConfig": {
       "additionalProperties": false,
       "description": "Consistency chain, QA thresholds, consent flags and reference limit.",
@@ -3875,6 +3931,17 @@
       ],
       "default": null
     },
+    "image_gen": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CapabilityChainConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "jobs": {
       "anyOf": [
         {
@@ -3923,6 +3990,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/MusicConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "music_gen": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CapabilityChainConfig"
         },
         {
           "type": "null"
@@ -4211,10 +4289,32 @@
       ],
       "default": null
     },
+    "tts": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CapabilityChainConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "video": {
       "anyOf": [
         {
           "$ref": "#/$defs/VideoConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "video_gen": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CapabilityChainConfig"
         },
         {
           "type": "null"

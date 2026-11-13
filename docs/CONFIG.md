@@ -23,11 +23,13 @@ This reference is generated from the registered configuration models, their JSON
 | `embeddings` | [EmbeddingsConfig](#embeddings) or null | Provider chain, vector dimensions, batching, cache size and model prices. ``chain`` is ordered from most to least preferred and rejects duplicates so a typo never silently changes routing. ``pricing`` values are USD per million input tokens; a model without an entry falls back to the provider metadata and the router's pricing overrides. |
 | `formats` | [FormatsConfig](#formats) or null | Named format recipes. Recipes may be written directly under the section (``formats: {narrated_still: {...}}``) or nested under ``formats`` (or ``recipes``); every form validates to the same mapping. |
 | `http` | [HttpClientConfig](#http) or null | Retry, backoff and timeout policy for :class:`~aivia.core.http.HttpClient`. |
+| `image_gen` | [CapabilityChainConfig](#image_gen) or null | Ordered providers, selection strategy and limits for one capability. ``max_clip_seconds`` is a cap of ``0`` when it is not configured; a positive value is the longest clip a single provider call may produce. When ``split_long_requests`` is enabled, a longer request may be divided into multiple clips instead of being clamped. |
 | `jobs` | [JobsConfig](#jobs) or null | Worker concurrency, retry, heartbeat and run-lock settings. ``concurrency`` is the number of workers. ``max_parallel_runs`` is the global limit on runs holding a lock at once across every profile and process, so scheduled runs cannot overlap unsafely. ``retry_delay_seconds`` is the wait after the first failed attempt, multiplied by ``backoff_multiplier`` on each later attempt and capped by ``max_retry_delay_seconds``. |
 | `languages` | [LanguagesConfig](#languages) or null | The available languages plus the one used when none is requested. A config file may write the language entries directly under the section (``languages: {en: {...}, de: {...}}``) or nest them under ``languages``; both forms validate to the same model. |
 | `llm` | [LLMConfig](#llm) or null | Provider chain, per-role models, token prices and the repair limit. |
 | `models_file` | [ModelsFileConfig](#models_file) or null | The model catalog path, with a documented default of ``models.yaml``. A bare string is accepted as shorthand for ``{path: <string>}`` so the canonical ``models_file: models.yaml`` form in the design stays valid. |
 | `music` | [MusicConfig](#music) or null | Default music source, local library, mood, gain and ducking settings. |
+| `music_gen` | [CapabilityChainConfig](#image_gen) or null | Ordered providers, selection strategy and limits for one capability. ``max_clip_seconds`` is a cap of ``0`` when it is not configured; a positive value is the longest clip a single provider call may produce. When ``split_long_requests`` is enabled, a longer request may be divided into multiple clips instead of being clamped. |
 | `occasions` | [OccasionsConfig](#occasions) or null | The configured occasions and the one selected by default. Occasions may be written directly under the section (``occasions: {birthday: {...}}``) or nested under ``occasions``. |
 | `orders` | [OrdersConfig](#orders) or null | Personalized order defaults: levels, name verification and pricing. |
 | `pipeline` | [PipelineConfig](#pipeline) or null | The ordered stages a pipeline runs and the timezone used for schedules. |
@@ -53,7 +55,9 @@ This reference is generated from the registered configuration models, their JSON
 | `sfx` | [SfxConfig](#sfx) or null | Default rule files, gain and placement for sound effects. |
 | `storage` | [StorageConfig](#storage) or null | Where generated media and intermediates are stored. Credentials are referenced by name and resolved through the secrets loader, never written into the configuration file. |
 | `tracing` | [TracingConfig](#tracing) or null | Optional tracing export; disabled by default and vendor neutral. |
+| `tts` | [CapabilityChainConfig](#image_gen) or null | Ordered providers, selection strategy and limits for one capability. ``max_clip_seconds`` is a cap of ``0`` when it is not configured; a positive value is the longest clip a single provider call may produce. When ``split_long_requests`` is enabled, a longer request may be divided into multiple clips instead of being clamped. |
 | `video` | [VideoConfig](#video) or null | Video defaults shared by formats, profiles and platform overrides. |
+| `video_gen` | [CapabilityChainConfig](#image_gen) or null | Ordered providers, selection strategy and limits for one capability. ``max_clip_seconds`` is a cap of ``0`` when it is not configured; a positive value is the longest clip a single provider call may produce. When ``split_long_requests`` is enabled, a longer request may be divided into multiple clips instead of being clamped. |
 | `visuals` | [VisualsConfig](#visuals) or null | Default visual strategy and the maximum number of AI video beats. |
 
 ## `accessibility`
@@ -231,6 +235,19 @@ Retry, backoff and timeout policy for :class:`~aivia.core.http.HttpClient`.
 | `timeout_seconds` | number | `30.0` | > 0 |  |
 | `write_timeout_seconds` | number or null | `null` | > 0 |  |
 
+## `image_gen`
+
+Ordered providers, selection strategy and limits for one capability. ``max_clip_seconds`` is a cap of ``0`` when it is not configured; a positive value is the longest clip a single provider call may produce. When ``split_long_requests`` is enabled, a longer request may be divided into multiple clips instead of being clamped.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chain` | array of string |  |  |  |
+| `max_clip_seconds` | number | `0.0` | >= 0 |  |
+| `pricing_overrides` | map of number |  |  |  |
+| `split_long_requests` | boolean | `false` |  |  |
+| `strategy` | [CapabilityStrategy](#capabilitystrategy) | `"first_available"` | one of: `first_available`, `cheapest`, `best_quality`, `round_robin`, `weighted_ab` | How the router picks a provider from a capability chain. |
+| `weights` | map of number |  |  |  |
+
 ## `jobs`
 
 Worker concurrency, retry, heartbeat and run-lock settings. ``concurrency`` is the number of workers. ``max_parallel_runs`` is the global limit on runs holding a lock at once across every profile and process, so scheduled runs cannot overlap unsafely. ``retry_delay_seconds`` is the wait after the first failed attempt, multiplied by ``backoff_multiplier`` on each later attempt and capped by ``max_retry_delay_seconds``.
@@ -287,6 +304,19 @@ Default music source, local library, mood, gain and ducking settings.
 | `mood` | string | `""` |  |  |
 | `source` | [MusicSource](#musicsource) | `"auto"` | one of: `auto`, `library`, `provider` | Where a background music bed may come from. |
 | `volume_db` | number | `-6.0` |  |  |
+
+## `music_gen`
+
+Ordered providers, selection strategy and limits for one capability. ``max_clip_seconds`` is a cap of ``0`` when it is not configured; a positive value is the longest clip a single provider call may produce. When ``split_long_requests`` is enabled, a longer request may be divided into multiple clips instead of being clamped.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chain` | array of string |  |  |  |
+| `max_clip_seconds` | number | `0.0` | >= 0 |  |
+| `pricing_overrides` | map of number |  |  |  |
+| `split_long_requests` | boolean | `false` |  |  |
+| `strategy` | [CapabilityStrategy](#capabilitystrategy) | `"first_available"` | one of: `first_available`, `cheapest`, `best_quality`, `round_robin`, `weighted_ab` | How the router picks a provider from a capability chain. |
+| `weights` | map of number |  |  |  |
 
 ## `occasions`
 
@@ -594,6 +624,19 @@ Optional tracing export; disabled by default and vendor neutral.
 | `sample_ratio` | number | `1.0` |  |  |
 | `service_name` | string | `"aivia"` |  |  |
 
+## `tts`
+
+Ordered providers, selection strategy and limits for one capability. ``max_clip_seconds`` is a cap of ``0`` when it is not configured; a positive value is the longest clip a single provider call may produce. When ``split_long_requests`` is enabled, a longer request may be divided into multiple clips instead of being clamped.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chain` | array of string |  |  |  |
+| `max_clip_seconds` | number | `0.0` | >= 0 |  |
+| `pricing_overrides` | map of number |  |  |  |
+| `split_long_requests` | boolean | `false` |  |  |
+| `strategy` | [CapabilityStrategy](#capabilitystrategy) | `"first_available"` | one of: `first_available`, `cheapest`, `best_quality`, `round_robin`, `weighted_ab` | How the router picks a provider from a capability chain. |
+| `weights` | map of number |  |  |  |
+
 ## `video`
 
 Video defaults shared by formats, profiles and platform overrides.
@@ -611,6 +654,19 @@ Video defaults shared by formats, profiles and platform overrides.
 | `profiles` | map of [VideoOverridesConfig](#videooverridesconfig) |  |  |  |
 | `resolution` | string | `"1080x1920"` |  |  |
 
+## `video_gen`
+
+Ordered providers, selection strategy and limits for one capability. ``max_clip_seconds`` is a cap of ``0`` when it is not configured; a positive value is the longest clip a single provider call may produce. When ``split_long_requests`` is enabled, a longer request may be divided into multiple clips instead of being clamped.
+
+| Key | Type | Default | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chain` | array of string |  |  |  |
+| `max_clip_seconds` | number | `0.0` | >= 0 |  |
+| `pricing_overrides` | map of number |  |  |  |
+| `split_long_requests` | boolean | `false` |  |  |
+| `strategy` | [CapabilityStrategy](#capabilitystrategy) | `"first_available"` | one of: `first_available`, `cheapest`, `best_quality`, `round_robin`, `weighted_ab` | How the router picks a provider from a capability chain. |
+| `weights` | map of number |  |  |  |
+
 ## `visuals`
 
 Default visual strategy and the maximum number of AI video beats.
@@ -621,6 +677,12 @@ Default visual strategy and the maximum number of AI video beats.
 | `strategy` | [VisualStrategy](#visualstrategy) | `"hybrid"` | one of: `hybrid`, `image`, `video`, `stock`, `still`, `text`, `none`, `existing` | The ways a script's beats can be assigned a visual source. |
 
 ## Type definitions
+
+### CapabilityStrategy
+
+How the router picks a provider from a capability chain.
+
+Allowed values: `first_available`, `cheapest`, `best_quality`, `round_robin`, `weighted_ab`.
 
 ### CharacterConsentConfig
 

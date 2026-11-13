@@ -224,6 +224,24 @@ video:
     max: 45
   loudness_lufs: -14
 
+image_gen:
+  chain: []
+  strategy: first_available
+
+video_gen:
+  chain: []
+  strategy: first_available
+  max_clip_seconds: 0
+  split_long_requests: false
+
+tts:
+  chain: []
+  strategy: first_available
+
+music_gen:
+  chain: []
+  strategy: first_available
+
 visuals:
   strategy: hybrid
   max_ai_video_beats: 2

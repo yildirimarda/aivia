@@ -6,11 +6,14 @@ import pytest
 from pydantic import Field
 
 from aivia.core.config import (
+    CORE_SECTION_KEYS,
     CapabilityChainConfig,
     CapabilityConfig,
     CapabilityStrategy,
     ChainStrategy,
     ConfigModel,
+    parse_app_config,
+    registry,
 )
 from aivia.core.errors import ConfigError
 
@@ -335,3 +338,50 @@ def test_the_same_capability_model_is_reusable_under_several_sections() -> None:
     assert media.image_gen.max_clip_seconds == 0.0
     assert media.video_gen.chain == ["replicate"]
     assert media.video_gen.split_long_requests is True
+
+
+def test_media_capability_sections_are_registered() -> None:
+    for key in ("image_gen", "video_gen", "tts", "music_gen"):
+        assert key in CORE_SECTION_KEYS
+        assert key in registry
+        assert registry.get(key).model is CapabilityChainConfig
+
+
+def test_parsed_config_exposes_media_capability_chains() -> None:
+    config = parse_app_config(
+        {
+            "image_gen": {"chain": ["fal"], "strategy": "cheapest"},
+            "video_gen": {
+                "chain": ["replicate"],
+                "max_clip_seconds": 5,
+                "split_long_requests": True,
+            },
+            "tts": {"strategy": "best_quality", "weights": {"local": 1.0}},
+            "music_gen": {"chain": ["local"], "split": True},
+        }
+    )
+
+    image_gen = config.image_gen  # type: ignore[attr-defined]
+    video_gen = config.video_gen  # type: ignore[attr-defined]
+    tts = config.tts  # type: ignore[attr-defined]
+    music_gen = config.music_gen  # type: ignore[attr-defined]
+
+    assert image_gen.chain == ["fal"]
+    assert image_gen.strategy == CapabilityStrategy.CHEAPEST
+    assert image_gen.max_clip_seconds == 0.0
+    assert video_gen.chain == ["replicate"]
+    assert video_gen.max_clip_seconds == 5.0
+    assert video_gen.split_long_requests is True
+    assert tts.strategy == CapabilityStrategy.BEST_QUALITY
+    assert tts.weights == {"local": 1.0}
+    assert music_gen.chain == ["local"]
+    assert music_gen.split is True
+
+
+def test_media_capability_sections_share_defaults_between_estimates_and_runs() -> None:
+    first = parse_app_config({"image_gen": {"chain": ["fal"]}})
+    second = parse_app_config({"image_gen": {}})
+
+    assert first.image_gen.chain == ["fal"]  # type: ignore[attr-defined]
+    assert second.image_gen.chain == []  # type: ignore[attr-defined]
+    assert first.image_gen is not second.image_gen  # type: ignore[attr-defined]
