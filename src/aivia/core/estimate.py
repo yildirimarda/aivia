@@ -746,10 +746,11 @@ class Estimator:
             limit = DEFAULT_MAX_AI_VIDEO_BEATS
         limit = max(0, min(int(limit), count))
         parts: list[tuple[str, float]] = []
-        if limit > 0:
+        if limit:
             parts.append(("video_gen", float(limit)))
-        if count - limit > 0:
-            parts.append(("image_gen", float(count - limit)))
+        remaining = count - limit
+        if remaining:
+            parts.append(("image_gen", float(remaining)))
         return tuple(parts) if parts else None
 
     def _estimate_stage(
