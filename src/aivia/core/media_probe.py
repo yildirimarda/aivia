@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -72,6 +73,23 @@ __all__ = [
 
 FFprobeRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 """A callable that runs an ffprobe argv and returns the completed process."""
+
+
+def _validate_http_url(value: str, *, field: str = "url") -> str:
+    """Validate and return an absolute, credential-free http(s) URL."""
+    text = value.strip()
+    if not text:
+        raise ValueError(f"{field} must be non-empty")
+    parsed = urlsplit(text)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        raise ValueError(f"{field} must be an absolute http(s) URL: {text!r}")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(f"{field} must not contain credentials")
+    try:
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError(f"{field} has an invalid port: {text!r}") from exc
+    return text
 
 
 class MediaCategory(StrEnum):
@@ -1201,9 +1219,7 @@ class MediaDownloader:
         The destination is only created after every check passes, so a rejected
         download never leaves a partially trusted file behind.
         """
-        from aivia.providers.protocols.base import validate_http_url
-
-        target = validate_http_url(url, field="download url")
+        target = _validate_http_url(url, field="download url")
         active = limits or self.limits
         response = await self.http.get(
             target,

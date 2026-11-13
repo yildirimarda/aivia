@@ -634,3 +634,21 @@ def test_download_runs_ffprobe_for_video(tmp_path: Path) -> None:
     assert probe.duration_seconds == 5.25
     assert destination.read_bytes() == payload
     assert calls and calls[0][-1].endswith(".mp4")
+
+
+def test_media_probe_collects_without_importing_providers() -> None:
+    import subprocess
+    import sys
+
+    code = (
+        "import aivia.core.media_probe, sys"
+        "; p = [m for m in sys.modules if m.startswith('aivia.providers')]"
+        "; print(','.join(sorted(p)))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""
