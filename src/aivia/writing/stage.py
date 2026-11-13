@@ -651,6 +651,19 @@ class WriteStage(Stage):
         self.scripts: dict[str, Script] = {}
         self.source_facts: list[Any] = []
 
+    def hashable_options(self) -> Mapping[str, Any]:
+        """Options that contribute to the write stage input hash.
+
+        Injected collaborators (writer, provider, helper) are excluded: they
+        have no stable representation across processes, so including them
+        would make a resumed run's hash differ from the original and defeat
+        resume skipping.
+        """
+        options = dict(self.options)
+        for key in ("writer", "provider", "helper"):
+            options.pop(key, None)
+        return options
+
     def _load_facts(self, context: StageContext) -> tuple[list[Any], Any]:
         for value in (
             self.fact_list,

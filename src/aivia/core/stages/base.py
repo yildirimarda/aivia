@@ -429,6 +429,17 @@ class Stage:
     def source_files(self, value: Iterable[str | Path] | str | Path) -> None:
         self.inputs = _normalise_inputs(value)
 
+    def hashable_options(self) -> Mapping[str, Any]:
+        """Return the stage options that contribute to the input hash.
+
+        The default returns :attr:`options` unchanged. Stages that inject
+        collaborators such as a writer or provider should override this to
+        drop them: those objects have no stable representation across
+        processes, so including them would make a resumed run's hash differ
+        from the original.
+        """
+        return self.options
+
     def resolve_inputs(
         self,
         *,

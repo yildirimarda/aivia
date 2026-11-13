@@ -332,6 +332,29 @@ def test_editing_the_run_fact_list_changes_the_stage_input_hash(
     assert compute_input_hash(stage, base_dir=tmp_path) == original
 
 
+def test_injected_writer_and_provider_do_not_change_the_stage_input_hash(
+    tmp_path: Path,
+) -> None:
+    _write_facts(tmp_path)
+    writer_a = object()
+    provider_a = object()
+    writer_b = object()
+    provider_b = object()
+    stage_a = WriteStage(
+        options={"languages": ["en"]},
+        writer=writer_a,
+        provider=provider_a,
+    )
+    stage_b = WriteStage(
+        options={"languages": ["en"]},
+        writer=writer_b,
+        provider=provider_b,
+    )
+    assert compute_input_hash(stage_a, base_dir=tmp_path) == compute_input_hash(
+        stage_b, base_dir=tmp_path
+    )
+
+
 def test_editing_an_explicit_fact_list_changes_the_stage_input_hash(
     tmp_path: Path,
 ) -> None:
