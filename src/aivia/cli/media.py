@@ -50,6 +50,7 @@ from aivia.core.router import Router
 from aivia.media.batch_runner import BatchResult, BatchRunner
 from aivia.media.facade import MEDIA_METRICS_FILENAME, MediaServiceFacade
 from aivia.providers import image_edit as _image_edit  # noqa: F401
+from aivia.providers.docs import _load_builtin_adapters
 from aivia.providers.protocols.audio import AudioFormat
 from aivia.providers.protocols.image import ImageRequest
 from aivia.providers.protocols.image_edit import ImageEditOperation, ImageEditRequest
@@ -897,6 +898,9 @@ def _run_edit(args: argparse.Namespace) -> int:
 
 
 def _load_config(args: argparse.Namespace) -> Any:
+    # Load every built-in adapter before any provider lookup so real config
+    # types resolve outside the `providers docs` command.
+    _load_builtin_adapters()
     resolved = resolve_config(
         config_file=args.config,
         environment=args.environment,
