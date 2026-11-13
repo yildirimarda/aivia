@@ -43,6 +43,7 @@ from .errors import RenderError
 from .ffmpeg_cmd import FFmpegCommand, FFmpegInput
 from .render import PillowStillRenderer
 from .schema import Anchor, Composition
+from .urls import local_source_path
 
 __all__ = [
     "COVER_BRANDING_VERSION",
@@ -336,9 +337,11 @@ def _watermark_source(
     if watermark is not None:
         if not isinstance(watermark, (str, Path, Image.Image)):
             raise CoverBrandingError("watermark must be a path or a PIL image")
-        return watermark
+        if isinstance(watermark, Image.Image):
+            return watermark
+        return local_source_path(watermark)
     if branding is not None and branding.watermark:
-        return branding.watermark
+        return local_source_path(branding.watermark)
     return None
 
 
@@ -353,7 +356,7 @@ def _clip(value: str | Path | None, configured: str) -> Path | None:
 def _open_image(source: str | Path | Image.Image, name: str) -> Image.Image:
     if isinstance(source, Image.Image):
         return source.copy().convert("RGBA")
-    path = Path(source)
+    path = local_source_path(source)
     try:
         with Image.open(path) as opened:
             opened.load()
