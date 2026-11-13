@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import pytest
@@ -35,7 +36,7 @@ def _registry() -> CommandRegistry:
 def _command_with_argument() -> CommandRegistry:
     registry = CommandRegistry()
 
-    def configure(parser) -> None:
+    def configure(parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--count", type=int, default=3, help="How many times.")
 
     registry.register(
