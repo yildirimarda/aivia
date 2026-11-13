@@ -463,6 +463,26 @@ class AssetCacheRepository(ModelRepository[AssetCacheEntry]):
     model = AssetCacheEntry
     key_columns = ("cache_key",)
 
+    def increment_hit_count(self, cache_key: str) -> AssetCacheEntry | None:
+        """Increment one entry's hit counter in a single atomic statement.
+
+        The addition happens in the database rather than in Python, so
+        concurrent hits cannot overwrite each other's increment. An unknown
+        key is left untouched and ``None`` is returned.
+        """
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                self.table.update()
+                .where(self.table.c.cache_key == cache_key)
+                .values(
+                    hit_count=self.table.c.hit_count + 1,
+                    updated_at=utcnow(),
+                )
+            )
+        if result.rowcount == 0:
+            return None
+        return self.get(cache_key)
+
 
 class LLMCacheRepository(ModelRepository[LLMCacheEntry]):
     """Persist request digests that point at cached LLM responses."""
