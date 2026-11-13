@@ -61,13 +61,13 @@ def build_provider(
     entry = _provider_config(config)
     source = _registry(registry)
     loader = _secrets_loader(secrets)
+    provider_type = source.resolve(entry.type)
     values = _provider_options(entry, options, overrides, loader)
     if name is not None:
         values["name"] = _name(name)
     elif "name" not in values and isinstance(config, str):
         values["name"] = _name(config)
 
-    provider_type = source.resolve(entry.type)
     return provider_type(**values)
 
 
@@ -91,9 +91,9 @@ def build_providers(
     common = _mapping(options, "options")
     providers: dict[str, Provider] = {}
     for name, entry in section.enabled_providers().items():
+        provider_type = source.resolve(entry.type)
         values = _provider_options(entry, common, overrides, loader)
         values["name"] = _name(name)
-        provider_type = source.resolve(entry.type)
         providers[name] = provider_type(**values)
     return providers
 

@@ -400,10 +400,15 @@ class RecipeEstimate:
 class Estimator:
     """Turn a format recipe into stage estimates using static provider prices.
 
-    ``providers`` maps the configured provider name to its metadata. The name
-    is used in the report and for pricing overrides; the metadata supplies the
-    capabilities and prices. ``overrides`` maps a provider name to a fixed
-    price per unit and wins over metadata, matching the pricing resolver.
+    ``providers`` maps the configured provider name to either static metadata
+    (:class:`ProviderMeta`) or a live provider instance built through the
+    provider factory. Live instances are preferred: they are the same objects
+    the run router uses, so configured ``options`` and resolved ``secret_refs``
+    apply to both estimation and execution. Static metadata is wrapped in a
+    provider for backward compatibility. The name is used in the report and for
+    pricing overrides; the metadata supplies the capabilities and prices.
+    ``overrides`` maps a provider name to a fixed price per unit and wins over
+    metadata, matching the pricing resolver.
 
     ``config`` or ``configs`` supply :class:`CapabilityChainConfig` entries per
     capability, exactly as the router consumes them, so the estimate walks the
@@ -415,7 +420,7 @@ class Estimator:
 
     def __init__(
         self,
-        providers: Mapping[str, ProviderMeta] | None = None,
+        providers: Mapping[str, ProviderMeta | Provider] | None = None,
         *,
         overrides: Mapping[str, float] | None = None,
         pricing_version: str = "",
@@ -444,16 +449,18 @@ class Estimator:
             merged = dict(configs or {})
             merged.setdefault("embeddings", section.to_capability_config())
             configs = merged
-        entries: dict[str, ProviderMeta] = {}
-        for name, metadata in (providers or {}).items():
+        entries: dict[str, Provider] = {}
+        for name, provider in (providers or {}).items():
             if not isinstance(name, str) or not name.strip():
                 raise ConfigError("provider names must be non-empty strings")
-            if not isinstance(metadata, ProviderMeta):
+            if isinstance(provider, ProviderMeta):
+                provider = Provider(provider, name=name)
+            elif not isinstance(provider, Provider):
                 raise TypeError(
-                    "provider metadata must be a ProviderMeta, "
-                    f"not {type(metadata).__name__}"
+                    "provider must be a ProviderMeta or a Provider instance, "
+                    f"not {type(provider).__name__}"
                 )
-            entries[name.strip()] = metadata
+            entries[name.strip()] = provider
         self._providers = dict(entries)
         self._resolver = PricingResolver(
             overrides,
@@ -467,10 +474,7 @@ class Estimator:
             weights=weights,
         )
         self._router = Router(
-            providers={
-                name: Provider(metadata, name=name)
-                for name, metadata in self._providers.items()
-            },
+            providers=self._providers,
             config=self._default_config,
             configs=self._configs,
             seed=seed,
@@ -576,7 +580,7 @@ class Estimator:
     @property
     def providers(self) -> dict[str, ProviderMeta]:
         """A copy of the provider metadata keyed by configured name."""
-        return dict(self._providers)
+        return {name: provider.metadata for name, provider in self._providers.items()}
 
     @property
     def resolver(self) -> PricingResolver:
@@ -672,7 +676,8 @@ class Estimator:
             )
 
         provider_name = selection.name
-        metadata = self._providers[provider_name]
+        provider = self._providers[provider_name]
+        metadata = provider.metadata
         resolver = self._resolver_for(capability)
         if (
             metadata.pricing_for(capability) is None
@@ -733,7 +738,7 @@ class Estimator:
 def estimate_recipe(
     name: str,
     recipe: FormatRecipeConfig,
-    providers: Mapping[str, ProviderMeta] | None = None,
+    providers: Mapping[str, ProviderMeta | Provider] | None = None,
     *,
     overrides: Mapping[str, float] | None = None,
     pricing_version: str = "",
