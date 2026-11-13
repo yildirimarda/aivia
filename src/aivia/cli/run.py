@@ -360,8 +360,9 @@ def _resolve_plan(
     )
     references = load_reference_inputs(getattr(args, "references", None))
     recipe = apply_provided_inputs(recipe, provided)
+    configured = build_providers(_providers_config(config))
     estimate = Estimator(
-        provider_metadata(config),
+        configured or provider_metadata(config),
         configs=capability_configs(config) or None,
     ).estimate(name, recipe)
     return (
