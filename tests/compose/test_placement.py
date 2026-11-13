@@ -65,7 +65,7 @@ def _text_bbox(
     layers: list[dict[str, Any]],
     *,
     assets: dict[str, Image.Image] | None = None,
-    faces: Any = None,
+    faces: dict[str, list[FaceBox]] | None = None,
 ) -> tuple[int, int, int, int] | None:
     renderer = PillowStillRenderer(assets, faces=faces)
     with_text = renderer.render_still(_composition(layers))
