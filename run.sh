@@ -48,6 +48,8 @@ WATCH_MIN=0              # with an empty plan: poll the default branch every N m
 RPM=0 RPD=0 TPM=0 TPD=0 ITPM=0 OTPM=0   # provider rate limits to stay under (0 = unlimited)
 RATE_CACHE=1                             # count cached prompt tokens (read + write) as input toward TPM/TPD/ITPM
 RATE_LEDGER="logs/.rate-usage"           # one line per model request: epoch input output
+RETRY_ERR=3             # per TASK: retries after a transient provider error (429, 5xx, timeout); 0 = off
+RETRY_WAIT=60           # seconds before the first retry; doubles each time (a retry-after header wins), capped at 15 min
 NOTIFY=0                # notify (macOS banner / webhook) when a long run ends
 HISTORY="logs/history.tsv"
 ISSUE_NUM=""            # --issue N
@@ -74,7 +76,7 @@ SKILLS_MOUNT="" GUARD_MOUNT=""
 # Precedence: CLI > .agentloop.local > committed defaults (opencode.json).
 SETTING_KEYS=" ENGINE MODEL SMALL_MODEL FALLBACK_MODELS CI_RETRIES TIMEOUT_MIN STALL_MIN MAX_GROWTH IMAGE
   AUTO_REPLAN HEADROOM AMBITIOUS WAIT DISCOVER LEARN USE_GRAPH GRAPH_CONTEXT GRAPH_BUDGET GIT_GUARD BASE_BRANCH
-  MAX_COST VERIFY_CMD REVIEW_MODEL WATCH_MIN NOTIFY RPM RPD TPM TPD ITPM OTPM RATE_CACHE "
+  MAX_COST VERIFY_CMD REVIEW_MODEL WATCH_MIN NOTIFY RPM RPD TPM TPD ITPM OTPM RATE_CACHE RETRY_ERR RETRY_WAIT "
 SETTING_KEYS="${SETTING_KEYS//$'\n'/ }"
 apply_setting() {   # KEY VALUE [origin] — assign a validated key
   local k="$1" v="$2" origin="${3:-}"
@@ -224,6 +226,16 @@ Rate limits — stay under a free endpoint's quotas (default 0 = unlimited)
                             hours (Ctrl+C ends it). Usage is kept in
                             logs/.rate-usage, so limits hold across runs.
 
+Provider errors — a 429 / 5xx / timeout that ends a session is not the end
+      --retry-errors N      retries per TASK after a transient provider error
+                            (default 3, 0 = off). The counter restarts for every
+                            task, so a long run can survive many hiccups. The
+                            session is resumed on the same branch — work already
+                            done is kept — after a wait.
+      --retry-wait SECS     first wait (default 60); doubles per retry, a
+                            retry-after header wins, never more than 15 minutes
+                            Auth, billing and bad-request errors are NOT retried.
+
 Switches (each has an on and an off form, so a CLI flag can undo
 .agentloop.local in either direction)
       --learn / --no-learn            --discover / --no-discover
@@ -334,6 +346,8 @@ while (( $# )); do
     --tpd)          TPD="${2:?--tpd needs a number}"; shift 2 ;;
     --itpm)         ITPM="${2:?--itpm needs a number}"; shift 2 ;;
     --otpm)         OTPM="${2:?--otpm needs a number}"; shift 2 ;;
+    --retry-errors) RETRY_ERR="${2:?--retry-errors needs a number}"; shift 2 ;;
+    --retry-wait)   RETRY_WAIT="${2:?--retry-wait needs seconds}"; shift 2 ;;
     --rate-cache)   RATE_CACHE=1; shift ;;
     --no-rate-cache) RATE_CACHE=0; shift ;;
     --fallback-models) FALLBACK_MODELS="${2:?--fallback-models needs a comma-separated list}"; shift 2 ;;
@@ -474,12 +488,15 @@ ITEM_OPEN=0 ITEM_MODE="" ITEM_TEXT="" ITEM_PR="" ITEM_OUTCOME=""
 ITEM_SESSIONS=0 ITEM_TOKENS=0 ITEM_COST=0 ITEM_GRAPH=0 ITEM_START=0
 RUN_COST=0 STOP_REASON="" DONE_NOTE="" SESSIONS_RUN=0
 KEPT_BRANCH=""   # work branch a failed run left behind (see keep_branch_and_return)
+ERR_TRIES=0      # transient-provider-error retries spent on the CURRENT task (item_begin resets it)
+LAST_LOG=""      # transcript of the most recent engine session
 add_cost() { awk -v a="${1:-0}" -v b="${2:-0}" 'BEGIN { printf "%.4f", a + b }'; }
 
 item_begin() {   # $1 = mode (item|task|init|replan|issue|review), $2 = text
   ITEM_OPEN=1; ITEM_MODE="$1"; ITEM_TEXT="$2"; ITEM_PR=""; ITEM_OUTCOME="interrupted"
   ITEM_SESSIONS=0; ITEM_TOKENS=0; ITEM_COST=0; ITEM_GRAPH=0; ITEM_START="$(date +%s)"
   AWAIT_FIXES=0   # the "fixes" column must not inherit the previous item's count
+  ERR_TRIES=0     # provider-error retries are budgeted per task, not per run
   STOP_REASON=""  # nor a later stop the reason of an earlier, survived one
 }
 
@@ -589,7 +606,7 @@ esac
 # Settings come from flags and from .agentloop.local; validate them up front,
 # or a typo surfaces as an arithmetic error in the middle of a run — after a
 # PR is already open. Booleans also accept true/false, yes/no, on/off.
-for _v in COUNT CI_RETRIES TIMEOUT_MIN STALL_MIN MAX_GROWTH GRAPH_BUDGET WATCH_MIN RPM RPD TPM TPD ITPM OTPM; do
+for _v in COUNT CI_RETRIES TIMEOUT_MIN STALL_MIN MAX_GROWTH GRAPH_BUDGET WATCH_MIN RPM RPD TPM TPD ITPM OTPM RETRY_ERR RETRY_WAIT; do
   # no leading zeros: bash arithmetic reads 08 as a (broken) octal number
   [[ "${!_v}" =~ ^(0|[1-9][0-9]*)$ ]] || die "$_v must be a whole number (got '${!_v}')"
 done
@@ -1197,6 +1214,15 @@ ORCHECK
   else
     d_info "rate limits: none (free endpoint quotas? --rpm / --rpd / --tpm / --tpd / --itpm / --otpm)"
   fi
+  if (( RETRY_ERR > 0 )); then
+    if command -v jq >/dev/null 2>&1; then
+      d_ok "provider errors (429/5xx/timeout): up to $RETRY_ERR retries per task, first wait ${RETRY_WAIT}s (doubling)"
+    else
+      d_warn "provider-error retries need jq to read the session log — install jq (retries are skipped without it)"
+    fi
+  else
+    d_info "provider-error retries: off (RETRY_ERR=0)"
+  fi
   if [[ -n "$SMALL_MODEL" ]]; then
     if [[ "$ENGINE" == codex ]]; then d_warn "SMALL_MODEL is ignored by the codex engine"
     else d_ok "small model: $SMALL_MODEL"; fi
@@ -1606,9 +1632,12 @@ rate_gate() {
 }
 maybe_gate() { if rate_enabled; then rate_gate; else cat; fi; }
 
-run_agent() {
+# One engine session. Callers use run_agent (below), which adds the
+# transient-provider-error retries around it.
+run_agent_once() {
   local prompt="$1" log wdflag metrics="" s_tokens=0 s_cost=0 s_graph=0
   log="logs/$(date +%Y%m%d-%H%M%S)-$ENGINE.jsonl"
+  LAST_LOG="$log"
   if rate_enabled; then rate_prune; rate_hold 0 0; fi   # not even start a session into a full window
   RATE_LOG="$log"
   info "engine: $ENGINE"
@@ -1732,6 +1761,92 @@ run_agent() {
   ITEM_COST="$(add_cost "$ITEM_COST" "$s_cost")"
   RUN_COST="$(add_cost "$RUN_COST" "$s_cost")"
   return "$rc"
+}
+
+# ── Transient provider errors: wait, then continue where the session stopped ──
+# A 429 / 5xx / timeout that outlasts the engine's own retries ends the session
+# on an error event. That is the endpoint's hiccup, not the model's failure, so
+# the work is not abandoned: wait (doubling, retry-after wins) and run the same
+# prompt again on the same branch, prefixed with "you were cut off — look at
+# what exists". RETRY_ERR is a budget PER TASK (item_begin resets ERR_TRIES),
+# so a 20-task run survives a hiccup in every one of them.
+#
+# Prints "code<TAB>message<TAB>retry-after-seconds" and succeeds only when the
+# session's LAST event is a transient error (nothing ran after it). Auth,
+# billing, context-length and other 4xx errors are not transient.
+session_transient_error() {   # $1 = session transcript
+  command -v jq >/dev/null 2>&1 && [[ -s "${1:-}" ]] || return 1
+  local out
+  out="$(jq -Rnr '
+    [inputs | fromjson? | objects] as $ev
+    | [ range(0; $ev | length)
+        | select($ev[.] | .type == "error" or .type == "turn.failed"
+                          or (.type == "result" and .is_error == true)) ] as $idx
+    | if ($idx | length) == 0 then empty else
+        $idx[-1] as $i
+        | if ($ev[($i + 1):] | map(.type)
+              | any(. == "step_finish" or . == "tool_use" or . == "assistant"
+                    or . == "turn.completed" or . == "item.completed")) then empty
+          else
+            $ev[$i] as $x
+            | ($x.error.data? // $x.error? // $x) as $d
+            | ($d | if type == "object" then . else {} end) as $d
+            | ($d.statusCode // $d.status // $x.api_error_status // null) as $code
+            | (($d.message // $x.result // $x.message // ($x.error | tostring? ) // "") | tostring
+               | gsub("[\\n\\r\\t]+"; " ")) as $msg
+            | (($d.responseHeaders["retry-after"]? // "") | tostring | tonumber? // 0) as $ra
+            | (if $code != null then
+                 ($code | IN(408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 529))
+               elif ($msg | test("invalid api key|unauthori[sz]ed|insufficient|credit|quota exceeded|context length|payment|forbidden|content policy"; "i")) then false
+               else ($d.isRetryable == true)
+                    or ($msg | test("rate.?limit|too many requests|overloaded|timed? ?out|temporar|unavailable|cannot connect|unable to connect|connection (reset|refused|closed|error)|econnreset|socket hang|try again|server error|bad gateway|gateway time|\\b(429|500|502|503|504|529)\\b"; "i"))
+               end) as $transient
+            | select($transient)
+            | "\($code // "error")\t\($msg[0:140])\t\($ra)"
+          end
+      end' "$1" 2>/dev/null)" || return 1
+  [[ -n "$out" ]] || return 1
+  printf '%s\n' "$out"
+}
+
+prompt_error_retry() {   # $1 = code, $2 = message
+cat <<EOF
+NOTE: your previous session was cut off by a temporary provider error
+(${1:-error}: ${2:-no message}) — nothing you did. The work so far is on
+this branch, uncommitted changes included. Before anything else look at what
+exists:  git status ; git log --oneline origin/$BASE_BRANCH..HEAD ; git diff .
+Continue from there and do not redo finished work. If nothing was done yet,
+start the task from the beginning. Stay on this branch and finish the whole
+task below, including the commit, the push and the pull request.
+
+The task (unchanged):
+
+EOF
+}
+
+run_agent() {
+  local original="$1" prompt="$1" rc info code msg ra secs left step
+  while :; do
+    run_agent_once "$prompt"; rc=$?
+    (( RETRY_ERR > 0 )) || return "$rc"
+    info="$(session_transient_error "$LAST_LOG")" || return "$rc"
+    IFS=$'\t' read -r code msg ra <<< "$info"
+    if (( ERR_TRIES >= RETRY_ERR )); then
+      echo "  ✖ provider error again (${code}: ${msg:0:100}) — the $RETRY_ERR retries for this task are used up"
+      return "$rc"
+    fi
+    ERR_TRIES=$(( ERR_TRIES + 1 ))
+    secs=$(( RETRY_WAIT * (1 << (ERR_TRIES - 1)) ))
+    if [[ "$ra" =~ ^[0-9]+$ ]] && (( ra > secs )); then secs=$ra; fi
+    (( secs > 900 )) && secs=900
+    echo "  ⏸ provider error (${code}: ${msg:0:100}) — retry $ERR_TRIES/$RETRY_ERR for this task in ${secs}s (until $(clock_in "$secs"))"
+    left=$secs
+    while (( left > 0 )); do
+      step=$(( left > 20 ? 20 : left )); sleep "$step"; left=$(( left - step ))
+    done
+    prompt="$(prompt_error_retry "$code" "$msg")
+$original"
+  done
 }
 
 # Local evidence only — the agent commits inside the container, and the
