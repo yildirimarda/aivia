@@ -1772,14 +1772,20 @@ run_agent_once() {
 # so a 20-task run survives a hiccup in every one of them.
 #
 # Prints "code<TAB>message<TAB>retry-after-seconds" and succeeds only when the
-# session's LAST event is a transient error (nothing ran after it). Auth,
+# session's LAST event is a transient error (nothing ran after it) — or an
+# opencode step that ended with reason "length": the model spent its whole
+# output limit (typically on reasoning) and the session silently ended. Auth,
 # billing, context-length and other 4xx errors are not transient.
 session_transient_error() {   # $1 = session transcript
   command -v jq >/dev/null 2>&1 && [[ -s "${1:-}" ]] || return 1
   local out
   out="$(jq -Rnr '
     [inputs | fromjson? | objects] as $ev
-    | [ range(0; $ev | length)
+    | ($ev | last) as $lastev
+    | if ($lastev.type? == "step_finish" and $lastev.part.reason? == "length") then
+        "length\tthe model ran out of output tokens (mostly reasoning) before finishing a step\t0"
+      else
+      [ range(0; $ev | length)
         | select($ev[.] | .type == "error" or .type == "turn.failed"
                           or (.type == "result" and .is_error == true)) ] as $idx
     | if ($idx | length) == 0 then empty else
@@ -1804,12 +1810,18 @@ session_transient_error() {   # $1 = session transcript
             | select($transient)
             | "\($code // "error")\t\($msg[0:140])\t\($ra)"
           end
+      end
       end' "$1" 2>/dev/null)" || return 1
   [[ -n "$out" ]] || return 1
   printf '%s\n' "$out"
 }
 
 prompt_error_retry() {   # $1 = code, $2 = message
+  local extra=""
+  [[ "${1:-}" == length ]] && extra="
+Your last step ran out of output tokens, almost all of it spent thinking. Keep
+your reasoning short this time and ACT: make the next tool call instead of
+deliberating at length."
 cat <<EOF
 NOTE: your previous session was cut off by a temporary provider error
 (${1:-error}: ${2:-no message}) — nothing you did. The work so far is on
@@ -1817,7 +1829,7 @@ this branch, uncommitted changes included. Before anything else look at what
 exists:  git status ; git log --oneline origin/$BASE_BRANCH..HEAD ; git diff .
 Continue from there and do not redo finished work. If nothing was done yet,
 start the task from the beginning. Stay on this branch and finish the whole
-task below, including the commit, the push and the pull request.
+task below, including the commit, the push and the pull request.${extra}
 
 The task (unchanged):
 
@@ -1838,8 +1850,9 @@ run_agent() {
     ERR_TRIES=$(( ERR_TRIES + 1 ))
     secs=$(( RETRY_WAIT * (1 << (ERR_TRIES - 1)) ))
     if [[ "$ra" =~ ^[0-9]+$ ]] && (( ra > secs )); then secs=$ra; fi
+    [[ "$code" == length ]] && secs=5   # not a provider limit: nothing to wait out
     (( secs > 900 )) && secs=900
-    echo "  ⏸ provider error (${code}: ${msg:0:100}) — retry $ERR_TRIES/$RETRY_ERR for this task in ${secs}s (until $(clock_in "$secs"))"
+    echo "  ⏸ session cut off (${code}: ${msg:0:100}) — retry $ERR_TRIES/$RETRY_ERR for this task in ${secs}s (until $(clock_in "$secs"))"
     left=$secs
     while (( left > 0 )); do
       step=$(( left > 20 ? 20 : left )); sleep "$step"; left=$(( left - step ))
@@ -2514,14 +2527,24 @@ EOF
 discovery_clause() {
   (( DISCOVER )) || { echo "Do not add, remove or reword any item in PLAN.md. You may only tick your own item."; return; }
 cat <<'EOF'
-While doing this, you may discover work that the project genuinely needs and
-PLAN.md does not cover — a missing edge case, a required migration, a piece of
-error handling, a refactor a later item will depend on. Record it:
+Before you finish, run this checklist (a minute of work; it is how the plan
+stays honest — sessions that skip it leave real follow-ups unrecorded):
+
+  a. Did you leave a TODO/FIXME, a stubbed branch or a deliberately skipped
+     case in the code you touched?
+  b. Did you notice a bug, a flaky or failing test, or odd behaviour OUTSIDE
+     your item that you did not fix?
+  c. Is there an edge case, error path or platform your tests do not cover?
+  d. Does a doc, config or example now need updating, or does a later item
+     depend on a refactor you saw is needed?
+
+For every YES, record one new plan item. If all four answers are NO, add
+nothing and write "Plan additions: none" in the PR description.
 
   - Append new "- [ ]" items to the END of the milestone they belong to, or
     under "## Discovered" if you are not sure where they fit.
-  - At most 3 new items. If you found nothing, add nothing — do not pad the
-    plan to look productive.
+  - At most 3 new items. Never pad the plan to look productive, and leave out
+    what is merely nice to have.
   - Write them in the same style as existing items: concrete, independently
     testable, one pull request each.
   - APPEND ONLY. Never delete, reorder, reword or uncheck an existing item,
