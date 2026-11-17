@@ -30,7 +30,7 @@ never a reason to hold back your commit.)
 
 | Label | When |
 |---|---|
-| `automated` | You implemented the item. It auto-merges when CI is green. |
+| *(none)* | **The normal case.** Open the PR with no label; the loop adds `automated` after your session ends, which is what lets it auto-merge when CI is green. Do not add `automated` yourself: the label starts the merge the moment CI passes, and anything you change after opening the PR would be left behind. Open the PR as the last thing you do. |
 | `blocked` | You could not finish: 3 failed attempts, a missing prerequisite, or the item is wrong. Revert your item's tick to `- [ ]` first. A human takes over. |
 | `plan` | Only in `--init` / `--replan` sessions. Never on an item PR. |
 
@@ -39,7 +39,7 @@ never a reason to hold back your commit.)
 Write the body to a file — no quoting trouble — then:
 
 ```bash
-gh pr create --fill --label automated --body-file /tmp/pr.md
+gh pr create --fill --body-file /tmp/pr.md
 ```
 
 Sections:

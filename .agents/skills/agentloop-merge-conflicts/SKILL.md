@@ -20,6 +20,18 @@ git merge origin/main      # not rebase: no force-push needed afterwards
 git push
 ```
 
+## The loop started the merge for you
+
+When the prompt says a merge of `origin/main` is **IN PROGRESS**, the loop
+already ran `git merge origin/main` on the PR's branch and it stopped on
+conflicts. Do not start another merge and do not abort it: resolve the files
+listed, `git add` them, `git commit --no-edit`, run lint + tests, `git push`.
+The open PR updates itself — never open a second one.
+
+Where both sides **added** lines at the same place (new tests at the end of a
+test file, entries in a list, new `PLAN.md` items), the right resolution is
+almost always to **keep both** blocks, one after the other.
+
 ## Resolving by file type
 
 - **PLAN.md** — take MAIN's version of every line, except your own item,
