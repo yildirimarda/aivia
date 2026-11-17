@@ -47,7 +47,7 @@ The default test run must never touch the network or spend money.
    coverage or reports — add them to `.gitignore` in the same commit.
 7. `git push -u origin HEAD`. If rejected because `main` moved, merge `origin/main`. On a `PLAN.md` conflict,
    take main's version of every line except your own item's tick; never untick another item.
-8. `gh pr create --fill --label automated`
+8. `gh pr create --fill`
 9. STOP. Do not wait for CI, do not merge, do not release, do not poll, do not start the next item.
 
 ## Skills
