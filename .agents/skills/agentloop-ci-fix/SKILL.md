@@ -23,6 +23,24 @@ fix, and never touch `main`.
 - Log missing or truncated? Don't dig through git history or PR metadata —
   go straight to step 2.
 
+## Name the cause before you edit anything
+
+Write down, in one sentence, the exact first error line from the log (copy it
+word for word) and why it causes the failure. If you cannot explain it, you do
+not have a diagnosis yet — read the log again instead of editing.
+
+- An error that names a program, flag, command, file or encoding ("unknown
+  program", "not a char boundary", "command not found", "invalid arguments")
+  is taken at its word. Never dismiss a log line as noise, interleaved output
+  or "probably flaky".
+- **Passes here, fails in CI is not "flaky".** This container is not the
+  runner: the OS, the shell, the coreutils (some runners ship uutils instead of
+  GNU), tool and compiler versions, locale, CPU count and installed packages all
+  differ. Compare them (`uname -a`, the versions printed at the top of the CI
+  log, `command -v` / `--version` of the failing tool) before suspecting a race.
+- Only call a failure a race when the same test fails and passes on the same
+  runner, and say how you know.
+
 ## 2. Reproduce with the workflow's own commands
 
 Open EVERY file in `.github/workflows/` (not only `ci.yml`) and run the check
@@ -57,6 +75,21 @@ fix". Fix it from the log. Typical causes:
 
 - Fix the CODE. Never delete, skip, `xfail` or weaken a test to get green. If a
   test is genuinely wrong, fix it and explain why in a PR comment.
+- Never make a check pass by weakening it. These are not fixes: turning an
+  error into a warning or an empty result, catching and swallowing a failure
+  ("tolerate" it), loosening a validator, assertion or exit-code check,
+  `|| true`, `continue-on-error`, skipping a step or a job. A check that was
+  right to fail must keep failing until the code is right. If the only way to
+  green is weakening a check, stop and hand over (see below).
+- If your fix leaves the SAME error in the log, your diagnosis was wrong. Do
+  not stack more changes on it: revert the attempts that did not change the
+  failure, re-read the log from the first error and compare the environment.
+  Every commit must follow from a line of the log; unrelated "while I was
+  here" changes make the next failure harder to read.
+- Stuck? Say so instead of guessing: leave a PR comment with the exact error,
+  what you tried, what you think is wrong and what you could not check, and
+  add the label `blocked` (skill `agentloop-pull-request`). A clear hand-over
+  is a good result; a green CI built on a weakened check is not.
 - Never edit `.github/workflows/`. If the workflow itself is broken, write the
   fix under `ci-proposals/` (skill `agentloop-ci-proposals`) and say so in a
   PR comment.

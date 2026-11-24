@@ -2450,7 +2450,13 @@ by taking MAIN's version of every line except this PR's own item, which
 keeps its [x]. Never let a conflict resolution untick someone else's item.
 Do this:
 
-1. Diagnose the failure from the log below; it lists every failed job. If the
+1. Diagnose the failure from the log below; it lists every failed job. Before
+   editing anything, quote the FIRST error line word for word and say in one
+   sentence why it fails. Take an error at its word ("unknown program",
+   "command not found", "invalid arguments" mean exactly that); never write
+   it off as noise or flakiness. A test that passes in this container but
+   fails in CI is NOT flaky: the runner differs (OS, shell, coreutils, tool
+   and compiler versions, locale), so compare the environments first. If the
    log is missing or unclear, do NOT dig through git history or PR metadata —
    open EVERY workflow in .github/workflows/ (not only ci.yml) and run the
    check commands they define (lint, format check, type check, tests), in
@@ -2462,9 +2468,16 @@ Do this:
    or imports (and their tests) missing a platform guard such as
    #[cfg(unix)] / sys.platform checks, path-separator or line-ending
    assumptions, or APIs newer than the minimum supported version.
-2. Fix the CODE. Never weaken, skip or delete tests to get green. If a
-   lockfile check failed, regenerate the lockfile with the project's
-   dependency tool (e.g. uv lock) and commit it.
+2. Fix the CODE. Never weaken, skip or delete tests to get green, and never
+   make a check pass by weakening it: no swallowing an error to "tolerate" it,
+   no loosened validator or assertion, no "|| true", no "continue-on-error".
+   If your fix leaves the SAME error, your diagnosis was wrong: revert the
+   attempts that did not change it and re-read the log from the first error
+   instead of stacking more changes. Stuck, or the only way to green is
+   weakening a check? Leave a PR comment with the exact error, what you tried
+   and what you could not check, and add the label blocked. If a lockfile
+   check failed, regenerate the lockfile with the project's dependency tool
+   (e.g. uv lock) and commit it.
 3. Run the project's lint and test commands locally until they pass.
 4. Commit and push to this same branch — the existing PR updates itself.
 5. Stop. Do not merge, do not start anything else.

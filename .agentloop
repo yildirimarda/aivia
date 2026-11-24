@@ -1,7 +1,7 @@
-version=0.21.0
+version=0.21.1
 ref=local
 repo=https://github.com/yildirimarda/agentloop.git
-installed=2026-11-17T13:58:34Z
+installed=2026-11-24T08:31:16Z
 hash:PLAN.md=acdb0b176c323f56ccac565c23ad65de
 hash:AGENTS.md=afa82ff854b234c904ed21f227e2da61
 hash:opencode.json=7cbceb85eb08c6785a1676f5efd60dc0
